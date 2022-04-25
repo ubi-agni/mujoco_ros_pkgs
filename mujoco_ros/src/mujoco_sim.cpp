@@ -46,21 +46,22 @@ void init(std::string modelfile)
 	if (!(nh_->hasParam("/use_sim_time")))
 		nh_->setParam("/use_sim_time", true);
 
-	std::strcpy(filename_, modelfile.c_str());
-	loadModel();
+	if (!modelfile.empty()) {
+		std::strcpy(filename_, modelfile.c_str());
+		settings_.loadrequest = 2;
+	}
 
 	nh_->getParam("initial_joint_positions/joint_map", init_joint_pos_map_);
 
 	for (auto const &[name, value] : init_joint_pos_map_) {
 		int id = jointName2id(name);
 		if (id == -1) {
-			ROS_WARN_STREAM_NAMED(
-			    "mujoco", "Joint with name '" << name << "' could not be found. Initial joint position cannot be set!");
+			ROS_WARN_STREAM_NAMED("mujoco", "Joint with name '"
+			                                    << name << "' could not be found. Initial joint position cannot be set!");
 			continue;
 		}
 
-		ROS_DEBUG_STREAM_NAMED("mujoco",
-		                       "Joint name '" << name << "' (mjID '" << id << "') setting to value " << value);
+		ROS_DEBUG_STREAM_NAMED("mujoco", "Joint name '" << name << "' (mjID '" << id << "') setting to value " << value);
 
 		setJointPosition(value, id);
 	}
@@ -146,13 +147,11 @@ void publishSimTime(void)
 
 void eventloop(void)
 {
-	ROS_DEBUG("Starting event loop");
 	while (!glfwWindowShouldClose(window_) && !settings_.exitrequest) {
 		// Critical operations
 		sim_mtx.lock();
 
 		if (settings_.loadrequest == 1) {
-			ROS_INFO_ONCE("Loading model");
 			loadModel();
 		} else if (settings_.loadrequest > 1) {
 			settings_.loadrequest = 1;
@@ -178,7 +177,10 @@ void simulate(void)
 	double cpusync = 0;
 	mjtNum simsync = 0;
 	while (!settings_.exitrequest) {
-		publishSimTime();
+		if (d_) {
+			publishSimTime();
+		}
+
 		if (settings_.run && settings_.busywait) {
 			std::this_thread::yield();
 		} else {
@@ -211,7 +213,7 @@ void simulate(void)
 				    offset > syncmisalign_ * settings_.slow_down || settings_.speed_changed) {
 					// Re-sync
 
-					ROS_WARN_STREAM_NAMED("Mujoco", "Out of sync by " << offset << ". Re-syncing...");
+					ROS_WARN_STREAM_NAMED("mujoco", "Out of sync by " << offset << ". Re-syncing...");
 
 					cpusync                 = tmstart;
 					simsync                 = d_->time * settings_.slow_down;
@@ -336,6 +338,7 @@ void initVisual()
 
 void loadModel(void)
 {
+	settings_.loadrequest = 0;
 	ROS_DEBUG_NAMED("mujoco", "Loading model...");
 	// Make sure filename is given
 	if (!filename_) {
@@ -437,10 +440,12 @@ int uiPredicate(int category, void *userdata)
 
 void drop(GLFWwindow *window, int count, const char **paths)
 {
+	// Ignore file drop
+
 	// make sure list is non-empty
-	if (count > 0) {
-		mju::strcpy_arr(filename_, paths[0]);
-	}
+	// if (count > 0) {
+	// 	mju::strcpy_arr(filename_, paths[0]);
+	// }
 }
 
 void render(GLFWwindow *window)
@@ -463,8 +468,10 @@ void render(GLFWwindow *window)
 		// label
 		if (settings_.loadrequest)
 			mjr_overlay(mjFONT_BIG, mjGRID_TOPRIGHT, smallrect, "loading", NULL, &con_);
-		else
-			mjr_overlay(mjFONT_NORMAL, mjGRID_TOPLEFT, rect, "Drag-and-drop model file here", 0, &con_);
+
+		//// We don't want this. A model should be loaded over services or during start
+		// else
+		// mjr_overlay(mjFONT_NORMAL, mjGRID_TOPLEFT, rect, "Drag-and-drop model file here", 0, &con_);
 
 		// render uis
 		if (settings_.ui0)

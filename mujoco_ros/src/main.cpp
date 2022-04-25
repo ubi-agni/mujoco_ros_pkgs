@@ -17,12 +17,10 @@ int main(int argc, char **argv)
 	ROS_INFO_STREAM("Using modelfile " << filename);
 
 	if (filename.empty()) {
-		ROS_FATAL("No modelfile was provided, simulation cannot start!");
-		return -1;
+		ROS_WARN("No modelfile was provided, launching empty simulation!");
 	}
 
 	std::thread sim_thread(MujocoSim::init, filename);
-
 
 	double control_rate = 0.001;
 	ros::Rate loop_rate(1 / control_rate);
