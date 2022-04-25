@@ -1,0 +1,25 @@
+---
+Checks:          'performance-*,
+                  llvm-namespace-comment,
+                  modernize-redundant-void-arg,
+                  modernize-use-nullptr,
+                  modernize-use-default,
+                  modernize-use-override,
+                  modernize-use-using,
+                  modernize-loop-convert,
+                  readability-named-parameter,
+                  readability-redundant-smartptr-get,
+                  readability-redundant-string-cstr,
+                  readability-simplify-*,
+                  readability-container-size-empty,
+                  '
+HeaderFilterRegex: ''
+AnalyzeTemporaryDtors: false
+CheckOptions:
+  - key:             llvm-namespace-comment.ShortNamespaceLines
+    value:           '10'
+  - key:             llvm-namespace-comment.SpacesBeforeComments
+    value:           '2'
+  - key:             readability-braces-around-statements.ShortStatementLines
+    value:           '2'
+...

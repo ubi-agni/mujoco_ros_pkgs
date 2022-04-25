@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<launch>
+
+  <!-- Robot Customization -->
+  <arg name="unpause"     default="false"  doc="Should the simulation be unpaused on start" />
+  <arg name="modelfile"   default="" doc="MuJoCo xml file to load. Should define robot model and world." />
+
+  <param name="/use_sim_time" value="true"/>
+
+  <env name="ROSCONSOLE_FORMAT" value="[${severity}] [${time}] [${logger}] [${node}]: ${message}"/>
+  <env name="ROSCONSOLE_CONFIG_FILE"
+       value="$(find mujoco_ros)/rosconsole.config"/>
+
+  <node pkg="mujoco_ros" type="mujoco_server" name="mujoco_server" output="screen" >
+    <param name="modelfile" type="str"  value="$(arg modelfile)" />
+    <param name="unpause"   value="$(arg unpause)" />
+  </node>
+</launch>
