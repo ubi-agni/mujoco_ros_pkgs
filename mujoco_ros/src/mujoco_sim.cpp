@@ -69,6 +69,8 @@ void init(std::string modelfile)
 		setJointPosition(value, id);
 	}
 
+	setupCallbacks();
+
 	std::thread simthread(simulate);
 	eventloop();
 
@@ -1835,6 +1837,27 @@ void clearTimers(void)
 mjtNum timer(void)
 {
 	return (mjtNum)(1000 * glfwGetTime());
+}
+
+void setupCallbacks()
+{
+	service_servers_.push_back(nh_->advertiseService("set_pause", setPauseCB));
+	service_servers_.push_back(nh_->advertiseService("load_plugin", loadMJRosPluginCB));
+}
+
+// Service call callbacks
+bool loadMJRosPluginCB(mujoco_ros_msgs::LoadPlugin::Request &req, mujoco_ros_msgs::LoadPlugin::Response &resp)
+{
+	// NYI
+	ROS_DEBUG("Called load plugin cb");
+	return true;
+}
+
+bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &resp)
+{
+	ROS_DEBUG_STREAM("PauseCB called with: " << (bool)req.paused);
+	settings_.run = !req.paused;
+	return true;
 }
 
 } // end namespace detail

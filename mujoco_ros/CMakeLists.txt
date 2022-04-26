@@ -11,12 +11,14 @@ find_package(catkin REQUIRED
     roscpp
     pluginlib
     cmake_modules
+    mujoco_ros_msgs
 )
 
 catkin_package(
   CATKIN_DEPENDS
     roscpp
     pluginlib
+    mujoco_ros_msgs
   INCLUDE_DIRS include
 )
 

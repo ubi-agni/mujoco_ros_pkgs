@@ -27,6 +27,8 @@
 #include <mujoco_ros/uitools.h>
 #include <mujoco_ros/array_safety.h>
 
+#include <mujoco_ros_msgs/SetPause.h>
+
 namespace mju = ::mujoco::sample_util;
 
 static constexpr int kBufSize = 1000;
@@ -162,6 +164,11 @@ void render(GLFWwindow *window);
 // Threads
 void simulate(void);
 void eventloop(void);
+
+// Service calls
+void setupCallbacks();
+bool loadMJRosPluginCB(mujoco_ros_msgs::LoadPlugin::Request &req, mujoco_ros_msgs::LoadPlugin::Response &resp);
+bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &resp);
 
 // UI settings not contained in MuJoCo structures
 struct
