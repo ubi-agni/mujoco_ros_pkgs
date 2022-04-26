@@ -20,17 +20,6 @@ int main(int argc, char **argv)
 		ROS_WARN("No modelfile was provided, launching empty simulation!");
 	}
 
-	std::thread sim_thread(MujocoSim::init, filename);
-
-	double control_rate = 0.001;
-	ros::Rate loop_rate(1 / control_rate);
-
-	while (ros::ok() && MujocoSim::isUp()) {
-		loop_rate.sleep();
-	}
-
-	MujocoSim::requestExternalShutdow();
-	sim_thread.join();
-
+	MujocoSim::init(filename);
 	ROS_INFO("Franka MuJoCo node is terminating");
 }

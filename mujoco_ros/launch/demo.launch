@@ -4,6 +4,8 @@
   <!-- Robot Customization -->
   <arg name="unpause"     default="false"  doc="Should the simulation be unpaused on start" />
   <arg name="modelfile"   default="" doc="MuJoCo xml file to load. Should define robot model and world." />
+  <arg name="headless"   default="false" doc="Should the simulation be rendered." />
+  <arg name="num_sim_steps"   default="-1" doc="Number of simulation steps to run. Set to '-1' to run indefinately." />
 
   <param name="/use_sim_time" value="true"/>
 
@@ -14,5 +16,7 @@
   <node pkg="mujoco_ros" type="mujoco_server" name="mujoco_server" output="screen" >
     <param name="modelfile" type="str"  value="$(arg modelfile)" />
     <param name="unpause"   value="$(arg unpause)" />
+    <param name="visualize"   value="$(eval not arg('headless'))" />
+    <param name="num_steps"   value="$(arg num_sim_steps)" />
   </node>
 </launch>

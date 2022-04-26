@@ -25,8 +25,6 @@ void init(std::string modelfile)
 	if (unpause)
 		settings_.run = 1;
 
-	nh_->param<bool>("visualize", vis_, true);
-
 	// std::string modelfile;
 	// nh_->getParam("modelfile", modelfile);
 
@@ -37,8 +35,13 @@ void init(std::string modelfile)
 		mju_error("Headers and library have different versions");
 	}
 
-	if (vis_)
+	nh_->param<bool>("visualize", vis_, true);
+
+	if (vis_) {
 		initVisual();
+	} else {
+		ROS_DEBUG_NAMED("mujoco", "Will run in headless mode!");
+	}
 
 	pub_clock_ = nh_->advertise<rosgraph_msgs::Clock>("/clock", 10);
 
@@ -69,19 +72,24 @@ void init(std::string modelfile)
 	std::thread simthread(simulate);
 	eventloop();
 
-	ROS_INFO_NAMED("mujoco", "Event loop terminated");
-
+	ROS_DEBUG_NAMED("mujoco", "Event loop terminated");
 	settings_.exitrequest = 1;
-	// simthread.join();
-	ROS_INFO_NAMED("mujoco", "Sim thread terminated");
+	simthread.join();
 
-	uiClearCallback(window_);
+	if (vis_)
+		uiClearCallback(window_);
+
+	ROS_DEBUG_NAMED("mujoco", "Sim thread terminated");
+
+	sim_mtx.unlock();
+	render_mtx.unlock();
+
 	free(ctrlnoise_);
 	mj_deleteData(d_);
 	mj_deleteModel(m_);
 	mjv_freeScene(&scn_);
 	mjr_freeContext(&con_);
-	ROS_INFO_NAMED("mujoco", "Cleanup done");
+	ROS_DEBUG_NAMED("mujoco", "Cleanup done");
 }
 
 // Get current position, velocity, acceleration, and effort of a specific joint
@@ -147,7 +155,7 @@ void publishSimTime(void)
 
 void eventloop(void)
 {
-	while (!glfwWindowShouldClose(window_) && !settings_.exitrequest) {
+	while ((!settings_.exitrequest && !vis_) || (!settings_.exitrequest && !glfwWindowShouldClose(window_))) {
 		// Critical operations
 		sim_mtx.lock();
 
@@ -157,26 +165,35 @@ void eventloop(void)
 			settings_.loadrequest = 1;
 		}
 
-		// Handle events (via callbacks)
-		glfwPollEvents();
+		if (vis_) {
+			// Handle events (via callbacks)
+			glfwPollEvents();
 
-		// Prepare to render
-		prepare();
+			// Prepare to render
+			prepare();
+		}
 
 		// Allow simulation thread to run
 		sim_mtx.unlock();
 
 		// render while sim is running
-		render(window_);
+		if (vis_)
+			render(window_);
 	}
 }
 
 void simulate(void)
 {
+	int num_steps;
+	nh_->param<int>("num_steps", num_steps, -1);
+
+	ROS_DEBUG_STREAM_COND_NAMED(num_steps > 0, "mujoco", "Simulation will terminate after " << num_steps << " steps");
+
 	// cpu-sim syncronization point
 	double cpusync = 0;
 	mjtNum simsync = 0;
-	while (!settings_.exitrequest) {
+
+	while (!settings_.exitrequest && num_steps != 0) {
 		if (d_) {
 			publishSimTime();
 		}
@@ -191,6 +208,12 @@ void simulate(void)
 
 		if (m_) {
 			if (settings_.run) {
+				// Count steps until termination
+				if (num_steps > 0) {
+					num_steps--;
+					ROS_INFO_COND_NAMED(num_steps == 0, "mujoco", "running last sim step before termination!");
+				}
+
 				double tmstart = glfwGetTime();
 
 				// Inject noise
@@ -213,7 +236,7 @@ void simulate(void)
 				    offset > syncmisalign_ * settings_.slow_down || settings_.speed_changed) {
 					// Re-sync
 
-					ROS_WARN_STREAM_NAMED("mujoco", "Out of sync by " << offset << ". Re-syncing...");
+					// ROS_WARN_STREAM_NAMED("mujoco", "Out of sync by " << offset << ". Re-syncing...");
 
 					cpusync                 = tmstart;
 					simsync                 = d_->time * settings_.slow_down;
@@ -254,6 +277,8 @@ void simulate(void)
 		}
 		sim_mtx.unlock();
 	}
+	// Requests eventloop shutdown in case we ran out of simulation steps to use
+	settings_.exitrequest = 1;
 }
 
 void initVisual()
@@ -370,6 +395,7 @@ void loadModel(void)
 		settings_.run = 0;
 	}
 
+	ROS_DEBUG_NAMED("mujoco", "replacing model and data ...");
 	// Delete old model, assign new
 	mj_deleteData(d_);
 	mj_deleteModel(m_);
@@ -377,15 +403,19 @@ void loadModel(void)
 	d_ = mj_makeData(m_);
 	mj_forward(m_, d_);
 
+	ROS_DEBUG_NAMED("mujoco", "resetting noise ...");
 	// Allocate ctrlnoise
 	free(ctrlnoise_);
 	ctrlnoise_ = (mjtNum *)malloc(sizeof(mjtNum) * m_->nu);
 	mju_zero(ctrlnoise_, m_->nu);
 
+	ROS_DEBUG_NAMED("mujoco", "creating scene ...");
 	// Re-create scene and context
 	mjv_makeScene(m_, &scn_, maxgeom_);
-	mjr_makeContext(m_, &con_, 50 * (settings_.font + 1));
+	if (vis_)
+		mjr_makeContext(m_, &con_, 50 * (settings_.font + 1));
 
+	ROS_DEBUG_NAMED("mujoco", "clear perturb ...");
 	// Clear perturbation state
 	pert_.active     = 0;
 	pert_.select     = 0;
@@ -397,28 +427,34 @@ void loadModel(void)
 		mju::strcpy_arr(previous_filename_, filename_);
 	}
 
+	ROS_DEBUG_NAMED("mujoco", "updating scene...");
 	// Update scene
 	mjv_updateScene(m_, d_, &vopt_, &pert_, &cam_, mjCAT_ALL, &scn_);
 
-	// Set window title to model name
-	if (window_ && m_->names) {
-		char title[200] = "Simulate : ";
-		mju::strcat_arr(title, m_->names);
-		glfwSetWindowTitle(window_, title);
+	if (vis_) {
+		// Set window title to model name
+		if (window_ && m_->names) {
+			char title[200] = "Simulate : ";
+			mju::strcat_arr(title, m_->names);
+			glfwSetWindowTitle(window_, title);
+		}
+
+		// Set keyframe range and divisions
+		ui0_.sect[SECT_SIMULATION].item[5].slider.range[0]  = 0;
+		ui0_.sect[SECT_SIMULATION].item[5].slider.range[1]  = mjMAX(0, m_->nkey - 1);
+		ui0_.sect[SECT_SIMULATION].item[5].slider.divisions = mjMAX(1, m_->nkey - 1);
+
+		// Rebuild UI Sections
+		makeSections();
+
+		// Full UI update
+		uiModify(window_, &ui0_, &uistate_, &con_);
+		uiModify(window_, &ui1_, &uistate_, &con_);
 	}
 
-	// Set keyframe range and divisions
-	ui0_.sect[SECT_SIMULATION].item[5].slider.range[0]  = 0;
-	ui0_.sect[SECT_SIMULATION].item[5].slider.range[1]  = mjMAX(0, m_->nkey - 1);
-	ui0_.sect[SECT_SIMULATION].item[5].slider.divisions = mjMAX(1, m_->nkey - 1);
-
-	// Rebuild UI Sections
-	makeSections();
-
-	// Full UI update
-	uiModify(window_, &ui0_, &uistate_, &con_);
-	uiModify(window_, &ui1_, &uistate_, &con_);
+	ROS_DEBUG_NAMED("mujoco", "updating settings ...");
 	updateSettings();
+	ROS_DEBUG_NAMED("mujoco", "settings updated ...");
 }
 
 int uiPredicate(int category, void *userdata)
@@ -1325,6 +1361,7 @@ void updateSettings(void)
 {
 	int i;
 
+	ROS_DEBUG_ONCE_NAMED("mujoco", "\tupdating physics");
 	// physics flags
 	for (i = 0; i < mjNDISABLE; i++) {
 		settings_.disable[i] = ((m_->opt.disableflags & (i << i)) != 0);
@@ -1333,6 +1370,7 @@ void updateSettings(void)
 		settings_.enable[i] = ((m_->opt.enableflags & (1 << 1)) != 0);
 	}
 
+	ROS_DEBUG_ONCE_NAMED("mujoco", "\tupdating cam");
 	// camera
 	if (cam_.type == mjCAMERA_FIXED) {
 		settings_.camera = 2 + cam_.fixedcamid;
@@ -1343,7 +1381,8 @@ void updateSettings(void)
 	}
 
 	// update UI
-	mjui_update(-1, -1, &ui0_, &uistate_, &con_);
+	if (vis_)
+		mjui_update(-1, -1, &ui0_, &uistate_, &con_);
 }
 
 // Physics section of UI
