@@ -6,11 +6,13 @@ namespace MujocoSim {
 
 using namespace detail;
 
+// REVEIW: Still needed?
 int jointName2id(const std::string &joint_name)
 {
 	return mj_name2id(m_, mjOBJ_JOINT, joint_name.c_str());
 }
 
+// REVIEW: Still needed?
 bool isUp(void)
 {
 	return !settings_.exitrequest;
@@ -101,11 +103,13 @@ std::array<double, 4> getJointData(const int &joint_id)
 		      d_->qfrc_applied[m_->jnt_dofadr[joint_id]] };
 }
 
+// REVIEW: Still needed?
 double getBodyMass(const int &body_id)
 {
 	return m_->body_mass[body_id];
 }
 
+// REVIEW: Still needed?
 bool isSimReady(void)
 {
 	// Is model loaded?
@@ -123,21 +127,25 @@ bool isSimReady(void)
 	return true;
 }
 
+// REVIEW: Serve as ROS Callback?
 void requestExternalShutdow(void)
 {
 	settings_.exitrequest = 1;
 }
 
+// REVIEW: Still needed?
 std::array<double, 3> getGravity(void)
 {
 	return { m_->opt.gravity[0], m_->opt.gravity[1], m_->opt.gravity[2] };
 }
 
+// Review: Still needed?
 void setJointEffort(const double &command, const int &joint_id)
 {
 	d_->qfrc_applied[m_->jnt_dofadr[joint_id]] = command;
 }
 
+// Review: Still needed?
 void setJointPosition(const double &pos, const int &joint_id)
 {
 	d_->qpos[m_->jnt_qposadr[joint_id]]        = pos;
@@ -1842,17 +1850,9 @@ mjtNum timer(void)
 void setupCallbacks()
 {
 	service_servers_.push_back(nh_->advertiseService("set_pause", setPauseCB));
-	service_servers_.push_back(nh_->advertiseService("load_plugin", loadMJRosPluginCB));
 }
 
 // Service call callbacks
-bool loadMJRosPluginCB(mujoco_ros_msgs::LoadPlugin::Request &req, mujoco_ros_msgs::LoadPlugin::Response &resp)
-{
-	// NYI
-	ROS_DEBUG("Called load plugin cb");
-	return true;
-}
-
 bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &resp)
 {
 	ROS_DEBUG_STREAM("PauseCB called with: " << (bool)req.paused);

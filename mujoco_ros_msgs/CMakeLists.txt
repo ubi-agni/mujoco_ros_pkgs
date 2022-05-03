@@ -4,7 +4,6 @@ project(mujoco_ros_msgs)
 find_package(catkin REQUIRED COMPONENTS message_generation std_msgs actionlib_msgs)
 
 add_service_files(FILES
-    LoadPlugin.srv
     SetPause.srv
 )
 

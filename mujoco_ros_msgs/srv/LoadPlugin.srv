@@ -1,5 +1,0 @@
-string libraryPath
-string className
----
-bool success
-string error
