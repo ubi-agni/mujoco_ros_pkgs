@@ -130,7 +130,7 @@ bool isSimReady(void)
 }
 
 // REVIEW: Serve as ROS Callback?
-void requestExternalShutdow(void)
+void requestExternalShutdown(void)
 {
 	settings_.exitrequest = 1;
 }

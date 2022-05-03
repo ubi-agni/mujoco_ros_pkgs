@@ -37,7 +37,7 @@ namespace MujocoSim {
 
 void init(std::string modelfile);
 
-void requestExternalShutdow(void);
+void requestExternalShutdown(void);
 bool isSimReady(void);
 
 // Threading and synchronization
