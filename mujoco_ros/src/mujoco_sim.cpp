@@ -1,4 +1,5 @@
 #include <mujoco_ros/mujoco_sim.h>
+#include <mujoco_ros/plugin_utils.h>
 
 #include <rosgraph_msgs/Clock.h>
 
@@ -72,6 +73,7 @@ void init(std::string modelfile)
 	}
 
 	setupCallbacks();
+	plugin_util::loadRegisteredPlugins(*nh_);
 
 	std::thread simthread(simulate);
 	eventloop();

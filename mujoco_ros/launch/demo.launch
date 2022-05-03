@@ -13,6 +13,11 @@
   <env name="ROSCONSOLE_CONFIG_FILE"
        value="$(find mujoco_ros)/rosconsole.config"/>
 
+  <rosparam>
+    MujocoPlugins:
+      myPlugin: { type: some/type, args: some/arg/path }
+  </rosparam>
+
   <node pkg="mujoco_ros" type="mujoco_server" name="mujoco_server" output="screen" >
     <param name="modelfile" type="str"  value="$(arg modelfile)" />
     <param name="unpause"   value="$(arg unpause)" />
