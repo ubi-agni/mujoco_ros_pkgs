@@ -261,6 +261,7 @@ void simulate(void)
 
 					// Run single step, let next iteration deal with timing
 					mj_step(m_, d_);
+					publishSimTime();
 				} else { // in-sync
 					// Step while simtime lags behind cputime , and within safefactor
 					while ((d_->time * settings_.slow_down - simsync) < (glfwGetTime() - cpusync) &&
@@ -273,6 +274,7 @@ void simulate(void)
 						// Run mj_step
 						mjtNum prevtm = d_->time * settings_.slow_down;
 						mj_step(m_, d_);
+						publishSimTime();
 
 						// break on reset
 						if (d_->time * settings_.slow_down < prevtm) {
