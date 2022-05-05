@@ -847,6 +847,7 @@ void uiEvent(mjuiState *state)
 				if (m_ && !settings_.run) {
 					clearTimers();
 					mj_step(m_, d_);
+					publishSimTime();
 					profilerUpdate();
 					sensorUpdate();
 					updateSettings();
@@ -870,6 +871,7 @@ void uiEvent(mjuiState *state)
 					clearTimers();
 					for (i = 0; i < 100; i++) {
 						mj_step(m_, d_);
+						publishSimTime();
 					}
 					profilerUpdate();
 					sensorUpdate();
