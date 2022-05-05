@@ -94,7 +94,7 @@ static boost::shared_ptr<ros::NodeHandle> nh_;
 static std::vector<ros::ServiceServer> service_servers_;
 
 // Keep track of time for resets to not mess up ros time
-static mjtNum last_time_;
+static mjtNum last_time_ = -1;
 
 // constants
 const int maxgeom_          = 5000; // preallocated geom array in mjvScene

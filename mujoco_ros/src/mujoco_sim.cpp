@@ -413,6 +413,8 @@ void loadModel(void)
 	// Delete old model, assign new
 	m_.reset(mnew);
 	d_.reset(mj_makeData(m_.get()));
+	if (last_time_ > 0)
+		d_->time = last_time_;
 	mj_forward(m_.get(), d_.get());
 	publishSimTime();
 
@@ -695,7 +697,9 @@ void uiEvent(mjuiState *state)
 				case 1: // reset
 					if (m_) {
 						mj_resetData(m_.get(), d_.get());
-						d_->time = last_time_;
+						if (last_time_ > 0)
+							d_->time = last_time_;
+						plugin_utils::resetRegisteredPlugins();
 						mj_forward(m_.get(), d_.get());
 						publishSimTime();
 						profilerUpdate();
@@ -719,8 +723,9 @@ void uiEvent(mjuiState *state)
 
 				case 5: // Adjust key
 				case 6: // Reset to key
-					i        = settings_.key;
-					d_->time = m_->key_time[i];
+					// REVIEW: fully disable resetting to keypoints?
+					i = settings_.key;
+					// d_->time = m_->key_time[i]; // ros does not expect jumps back in time
 					mju_copy(d_->qpos, m_->key_qpos + i * m_->nq, m_->nq);
 					mju_copy(d_->qvel, m_->key_qvel + i * m_->nv, m_->nv);
 					mju_copy(d_->act, m_->key_act + i * m_->na, m_->na);
