@@ -414,6 +414,7 @@ void loadModel(void)
 	m_.reset(mnew);
 	d_.reset(mj_makeData(m_.get()));
 	mj_forward(m_.get(), d_.get());
+	publishSimTime();
 
 	ROS_DEBUG_NAMED("mujoco", "resetting noise ...");
 	// Allocate ctrlnoise
@@ -696,6 +697,7 @@ void uiEvent(mjuiState *state)
 						mj_resetData(m_.get(), d_.get());
 						d_->time = last_time_;
 						mj_forward(m_.get(), d_.get());
+						publishSimTime();
 						profilerUpdate();
 						sensorUpdate();
 						updateSettings();
@@ -725,6 +727,7 @@ void uiEvent(mjuiState *state)
 					mju_copy(d_->mocap_pos, m_->key_mpos + i * 3 * m_->nmocap, 3 * m_->nmocap);
 					mju_copy(d_->mocap_quat, m_->key_mquat + i * 4 * m_->nmocap, 4 * m_->nmocap);
 					mj_forward(m_.get(), d_.get());
+					publishSimTime();
 					profilerUpdate();
 					sensorUpdate();
 					updateSettings();
