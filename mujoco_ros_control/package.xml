@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>mujoco_ros_control</name>
+  <version>1.0.0</version>
+  <description>The mujoco_ros_control package</description>
+
+  <url type="repository">https://github.com/DavidPL1/mujoco_ros_pkgs</url>
+  <url type="bugtracker">https://github.com/DavidPL1/mujoco_ros_pkgs/issues</url>
+
+  <maintainer email="dleins@techfak.uni-bielefeld.de">David P. Leins</maintainer>
+
+  <license>BSD</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>pluginlib</build_depend>
+  <build_depend>roscpp</build_depend>
+  <build_export_depend>pluginlib</build_export_depend>
+  <build_export_depend>roscpp</build_export_depend>
+  <exec_depend>pluginlib</exec_depend>
+  <exec_depend>roscpp</exec_depend>
+
+  <depend>urdf</depend>
+  <depend>control_toolbox</depend>
+  <depend>controller_manager</depend>
+  <depend>controller_interface</depend>
+  <depend>hardware_interface</depend>
+  <depend>transmission_interface</depend>
+
+  <depend>mujoco_ros</depend>
+
+  <export>
+    <mujoco_ros plugin="${prefix}/mujoco_ros_control_plugin.xml" />
+    <mujoco_ros_control plugin="${prefix}/default_mujoco_ros_hw_sim_plugin.xml" />
+  </export>
+</package>

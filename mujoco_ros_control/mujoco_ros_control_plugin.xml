@@ -1,0 +1,10 @@
+<library path="lib/libmujoco_ros_control">
+  <class
+    name="mujoco_ros_control/MujocoRosControlPlugin"
+    type="mujoco_ros_control::MujocoRosControlPlugin"
+    base_class_type="MujocoSim::MujocoPlugin">
+    <description>
+      Mujoco plugin that is able to load simulated robort hardware interfaces, enabling to use ros control with mujoco.
+    </description>
+  </class>
+</library>

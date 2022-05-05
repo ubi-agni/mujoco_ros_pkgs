@@ -1,0 +1,10 @@
+<library path="lib/libdefault_mujoco_robot_hw_sim">
+  <class
+    name="mujoco_ros_control/DefaultRobotHWSim"
+    type="mujoco_ros_control::DefaultRobotHWSim"
+    base_class_type="mujoco_ros_control::RobotHWSim">
+    <description>
+      Mujoco plugin that is able to load simulated robort hardware interfaces, enabling to use ros control with mujoco.
+    </description>
+  </class>
+</library>
