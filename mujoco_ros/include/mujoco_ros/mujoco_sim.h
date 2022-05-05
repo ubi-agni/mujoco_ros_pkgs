@@ -28,6 +28,7 @@
 #include <mujoco_ros/array_safety.h>
 
 #include <mujoco_ros_msgs/SetPause.h>
+#include <std_srvs/Empty.h>
 
 namespace mju = ::mujoco::sample_util;
 
@@ -167,6 +168,7 @@ void eventloop(void);
 
 // Service calls
 void setupCallbacks();
+bool shutdownCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
 bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &resp);
 
 // UI settings not contained in MuJoCo structures

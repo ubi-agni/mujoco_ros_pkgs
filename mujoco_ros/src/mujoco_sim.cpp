@@ -1852,9 +1852,16 @@ mjtNum timer(void)
 void setupCallbacks()
 {
 	service_servers_.push_back(nh_->advertiseService("set_pause", setPauseCB));
+	service_servers_.push_back(nh_->advertiseService("shutdown", shutdownCB));
 }
 
 // Service call callbacks
+bool shutdownCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
+{
+	requestExternalShutdown();
+	return true;
+}
+
 bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &resp)
 {
 	ROS_DEBUG_STREAM("PauseCB called with: " << (bool)req.paused);
