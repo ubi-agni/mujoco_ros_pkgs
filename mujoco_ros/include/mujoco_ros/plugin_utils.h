@@ -14,14 +14,42 @@ public:
 	// Called directly afte plugin creation
 	void init(const XmlRpc::XmlRpcValue &config) { rosparam_config_ = config; };
 
+	// Wrapper method that evaluates if loading the plugin is successful
+	void safe_load(mjModelPtr m, mjDataPtr d)
+	{
+		loading_successful_ = load(m, d);
+		if (!loading_successful_)
+			ROS_WARN_STREAM_NAMED("mujoco_ros_plugin",
+			                      "Plugin of type '"
+			                          << rosparam_config_["type"] << "' and full config '" << rosparam_config_
+			                          << "' failed to load. It will be ignored until the next load attempt.");
+	}
+
+	// Wrapper method that only calls update if loading the plugin was successful
+	void safe_update()
+	{
+		if (loading_successful_)
+			update();
+	}
+
+	// Wrapper method that only calls reset if loading the plugin was successful
+	void safe_reset()
+	{
+		if (loading_successful_)
+			reset();
+	}
+
 	// Called once the world is loaded
-	virtual void load(mjModelPtr m, mjDataPtr d) = 0;
+	virtual bool load(mjModelPtr m, mjDataPtr d) = 0;
 
 	// Called on reset
 	virtual void reset() = 0;
 
 	// Called after every world update
 	virtual void update() = 0;
+
+private:
+	bool loading_successful_ = false;
 
 protected:
 	MujocoPlugin() {}

@@ -73,7 +73,7 @@ void loadRegisteredPlugins(mjModelPtr m, mjDataPtr d)
 {
 	if (!mujoco_plugins_.empty()) {
 		for (uint i = 0; i < mujoco_plugins_.size(); i++) {
-			mujoco_plugins_[i]->load(m, d);
+			mujoco_plugins_[i]->safe_load(m, d);
 		}
 	}
 }
@@ -82,7 +82,7 @@ void resetRegisteredPlugins()
 {
 	if (!mujoco_plugins_.empty()) {
 		for (uint i = 0; i < mujoco_plugins_.size(); i++) {
-			mujoco_plugins_[i]->reset();
+			mujoco_plugins_[i]->safe_reset();
 		}
 	}
 }
@@ -91,7 +91,7 @@ void triggerUpdate()
 {
 	if (!mujoco_plugins_.empty()) {
 		for (uint i = 0; i < mujoco_plugins_.size(); i++) {
-			mujoco_plugins_[i]->update();
+			mujoco_plugins_[i]->safe_update();
 		}
 	}
 }
