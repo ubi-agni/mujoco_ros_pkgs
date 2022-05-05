@@ -10,7 +10,7 @@ using namespace detail;
 // REVEIW: Still needed?
 int jointName2id(const std::string &joint_name)
 {
-	return mj_name2id(m_, mjOBJ_JOINT, joint_name.c_str());
+	return mj_name2id(m_.get(), mjOBJ_JOINT, joint_name.c_str());
 }
 
 // REVIEW: Still needed?
@@ -91,8 +91,8 @@ void init(std::string modelfile)
 	render_mtx.unlock();
 
 	free(ctrlnoise_);
-	mj_deleteData(d_);
-	mj_deleteModel(m_);
+	d_.reset();
+	m_.reset();
 	mjv_freeScene(&scn_);
 	mjr_freeContext(&con_);
 	ROS_DEBUG_NAMED("mujoco", "Cleanup done");
@@ -256,11 +256,11 @@ void simulate(void)
 
 					// Clear old perturbations, apply new
 					mju_zero(d_->xfrc_applied, 6 * m_->nbody);
-					mjv_applyPerturbPose(m_, d_, &pert_, 0); // Move mocap bodies only
-					mjv_applyPerturbForce(m_, d_, &pert_);
+					mjv_applyPerturbPose(m_.get(), d_.get(), &pert_, 0); // Move mocap bodies only
+					mjv_applyPerturbForce(m_.get(), d_.get(), &pert_);
 
 					// Run single step, let next iteration deal with timing
-					mj_step(m_, d_);
+					mj_step(m_.get(), d_.get());
 					publishSimTime();
 				} else { // in-sync
 					// Step while simtime lags behind cputime , and within safefactor
@@ -268,12 +268,12 @@ void simulate(void)
 					       (glfwGetTime() - tmstart) < refreshfactor_ / vmode_.refreshRate) {
 						// clear old perturbations, apply new
 						mju_zero(d_->xfrc_applied, 6 * m_->nbody);
-						mjv_applyPerturbPose(m_, d_, &pert_, 0); // Move mocap bodies only
-						mjv_applyPerturbForce(m_, d_, &pert_);
+						mjv_applyPerturbPose(m_.get(), d_.get(), &pert_, 0); // Move mocap bodies only
+						mjv_applyPerturbForce(m_.get(), d_.get(), &pert_);
 
 						// Run mj_step
 						mjtNum prevtm = d_->time * settings_.slow_down;
-						mj_step(m_, d_);
+						mj_step(m_.get(), d_.get());
 						publishSimTime();
 
 						// break on reset
@@ -283,10 +283,10 @@ void simulate(void)
 					}
 				}
 			} else { // Paused
-				mjv_applyPerturbPose(m_, d_, &pert_, 1); // Move mocap and dynamic bodies
+				mjv_applyPerturbPose(m_.get(), d_.get(), &pert_, 1); // Move mocap and dynamic bodies
 
 				// Run mj_forward, to update rendering and joint sliders
-				mj_forward(m_, d_);
+				mj_forward(m_.get(), d_.get());
 			}
 		}
 		sim_mtx.unlock();
@@ -411,11 +411,9 @@ void loadModel(void)
 
 	ROS_DEBUG_NAMED("mujoco", "replacing model and data ...");
 	// Delete old model, assign new
-	mj_deleteData(d_);
-	mj_deleteModel(m_);
-	m_ = mnew;
-	d_ = mj_makeData(m_);
-	mj_forward(m_, d_);
+	m_.reset(mnew);
+	d_.reset(mj_makeData(m_.get()));
+	mj_forward(m_.get(), d_.get());
 
 	ROS_DEBUG_NAMED("mujoco", "resetting noise ...");
 	// Allocate ctrlnoise
@@ -425,9 +423,9 @@ void loadModel(void)
 
 	ROS_DEBUG_NAMED("mujoco", "creating scene ...");
 	// Re-create scene and context
-	mjv_makeScene(m_, &scn_, maxgeom_);
+	mjv_makeScene(m_.get(), &scn_, maxgeom_);
 	if (vis_)
-		mjr_makeContext(m_, &con_, 50 * (settings_.font + 1));
+		mjr_makeContext(m_.get(), &con_, 50 * (settings_.font + 1));
 
 	ROS_DEBUG_NAMED("mujoco", "clear perturb ...");
 	// Clear perturbation state
@@ -443,7 +441,7 @@ void loadModel(void)
 
 	ROS_DEBUG_NAMED("mujoco", "updating scene...");
 	// Update scene
-	mjv_updateScene(m_, d_, &vopt_, &pert_, &cam_, mjCAT_ALL, &scn_);
+	mjv_updateScene(m_.get(), d_.get(), &vopt_, &pert_, &cam_, mjCAT_ALL, &scn_);
 
 	if (vis_) {
 		// Set window title to model name
@@ -623,20 +621,20 @@ void uiEvent(mjuiState *state)
 		if (it && it->sectionid == SECT_FILE) {
 			switch (it->itemid) {
 				case 0: // save xml
-					if (!mj_saveLastXML("mjmodel.xml", m_, err, 200))
+					if (!mj_saveLastXML("mjmodel.xml", m_.get(), err, 200))
 						ROS_ERROR("Save XML error: %s", err);
 					break;
 
 				case 1: // Save mjb
-					mj_saveModel(m_, "mjmodel.mjb", NULL, 0);
+					mj_saveModel(m_.get(), "mjmodel.mjb", NULL, 0);
 					break;
 
 				case 2: // print model
-					mj_printModel(m_, "MJMODEL.TXT");
+					mj_printModel(m_.get(), "MJMODEL.TXT");
 					break;
 
 				case 3: // print data
-					mj_printData(m_, d_, "MJDATA.TXT");
+					mj_printData(m_.get(), d_.get(), "MJDATA.TXT");
 					break;
 
 				case 4: // Quit
@@ -695,9 +693,9 @@ void uiEvent(mjuiState *state)
 			switch (it->itemid) {
 				case 1: // reset
 					if (m_) {
-						mj_resetData(m_, d_);
+						mj_resetData(m_.get(), d_.get());
 						d_->time = last_time_;
-						mj_forward(m_, d_);
+						mj_forward(m_.get(), d_.get());
 						profilerUpdate();
 						sensorUpdate();
 						updateSettings();
@@ -726,7 +724,7 @@ void uiEvent(mjuiState *state)
 					mju_copy(d_->act, m_->key_act + i * m_->na, m_->na);
 					mju_copy(d_->mocap_pos, m_->key_mpos + i * 3 * m_->nmocap, 3 * m_->nmocap);
 					mju_copy(d_->mocap_quat, m_->key_mquat + i * 4 * m_->nmocap, 4 * m_->nmocap);
-					mj_forward(m_, d_);
+					mj_forward(m_.get(), d_.get());
 					profilerUpdate();
 					sensorUpdate();
 					updateSettings();
@@ -848,7 +846,7 @@ void uiEvent(mjuiState *state)
 			case mjKEY_RIGHT: // Step forward
 				if (m_ && !settings_.run) {
 					clearTimers();
-					mj_step(m_, d_);
+					mj_step(m_.get(), d_.get());
 					publishSimTime();
 					profilerUpdate();
 					sensorUpdate();
@@ -865,7 +863,7 @@ void uiEvent(mjuiState *state)
 				if (m_ && !settings_.run) {
 					clearTimers();
 					for (i = 0; i < 100; i++) {
-						mj_step(m_, d_);
+						mj_step(m_.get(), d_.get());
 						publishSimTime();
 					}
 					profilerUpdate();
@@ -912,7 +910,7 @@ void uiEvent(mjuiState *state)
 	// 3D Scroll
 	if (state->type == mjEVENT_SCROLL && state->mouserect == 3 && m_) {
 		// Emulate vertical mouse motion = 5% of window height
-		mjv_moveCamera(m_, mjMOUSE_ZOOM, 0, -0.05 * state->sy, &scn_, &cam_);
+		mjv_moveCamera(m_.get(), mjMOUSE_ZOOM, 0, -0.05 * state->sy, &scn_, &cam_);
 
 		return;
 	}
@@ -931,7 +929,7 @@ void uiEvent(mjuiState *state)
 
 			// Perturbation onset: reset reference
 			if (newperturb && !pert_.active) {
-				mjv_initPerturb(m_, d_, &scn_, &pert_);
+				mjv_initPerturb(m_.get(), d_.get(), &scn_, &pert_);
 			}
 		}
 		pert_.active = newperturb;
@@ -952,7 +950,7 @@ void uiEvent(mjuiState *state)
 			mjrRect r = state->rect[3];
 			mjtNum selpnt[3];
 			int selgeom, selskin;
-			int selbody = mjv_select(m_, d_, &vopt_, (mjtNum)r.width / (mjtNum)r.height,
+			int selbody = mjv_select(m_.get(), d_.get(), &vopt_, (mjtNum)r.width / (mjtNum)r.height,
 			                         (mjtNum)(state->x - r.left) / (mjtNum)r.width,
 			                         (mjtNum)(state->y - r.bottom) / (mjtNum)r.height, &scn_, selpnt, &selgeom, &selskin);
 
@@ -1023,9 +1021,9 @@ void uiEvent(mjuiState *state)
 		// Move perturb or camera
 		mjrRect r = state->rect[3];
 		if (pert_.active) {
-			mjv_movePerturb(m_, d_, action, state->dx / r.height, -state->dy / r.height, &scn_, &pert_);
+			mjv_movePerturb(m_.get(), d_.get(), action, state->dx / r.height, -state->dy / r.height, &scn_, &pert_);
 		} else {
-			mjv_moveCamera(m_, action, state->dx / r.height, -state->dy / r.height, &scn_, &cam_);
+			mjv_moveCamera(m_.get(), action, state->dx / r.height, -state->dy / r.height, &scn_, &cam_);
 		}
 
 		return;
@@ -1699,7 +1697,7 @@ void prepare(void)
 	}
 
 	// Update scene
-	mjv_updateScene(m_, d_, &vopt_, &pert_, &cam_, mjCAT_ALL, &scn_);
+	mjv_updateScene(m_.get(), d_.get(), &vopt_, &pert_, &cam_, mjCAT_ALL, &scn_);
 
 	// Update watch
 	if (settings_.ui0 && ui0_.sect[SECT_WATCH].state) {

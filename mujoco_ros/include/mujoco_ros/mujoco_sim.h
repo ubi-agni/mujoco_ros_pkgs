@@ -34,6 +34,9 @@ namespace mju = ::mujoco::sample_util;
 
 static constexpr int kBufSize = 1000;
 
+typedef boost::shared_ptr<mjModel> mjModelPtr;
+typedef boost::shared_ptr<mjData> mjDataPtr;
+
 namespace MujocoSim {
 
 void init(std::string modelfile);
@@ -59,9 +62,10 @@ void setJointEffort(const double &command, const int &joint_id);
 void setJointPosition(const double &pos, const int &joint_id);
 
 namespace detail {
+
 // model and data
-static mjModel *m_ = NULL;
-static mjData *d_  = NULL;
+static mjModelPtr m_ = NULL;
+static mjDataPtr d_  = NULL;
 
 // filename strings
 static char filename_[kBufSize]          = "";
