@@ -15,8 +15,24 @@
 
   <rosparam>
     MujocoPlugins:
-      myPlugin: { type: some/type, args: some/arg/path }
+      - type: dummyPlugin/DummyPlugin
+      - type: mujoco_ros_control/MujocoRosControlPlugin
+        hardware:
+        - type: myCustom/HWSim
+          robot_namespace: my_robot_ns
+          nested:
+          - n1: 101
+            n2: someval
+      - type: mujoco_ros_control/MujocoRosControlPlugin
+        hardware:
+        - type: myCustom/HWSim
+          robot_namespace: my_robot_ns2
+      - type: mujoco_drake_surfaces_pgk/ContactSimClass
   </rosparam>
+
+  <!-- <rosparam>
+    MujocoPlugins: yes
+  </rosparam> -->
 
   <node pkg="mujoco_ros" type="mujoco_server" name="mujoco_server" output="screen" >
     <param name="modelfile" type="str"  value="$(arg modelfile)" />

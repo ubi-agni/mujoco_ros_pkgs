@@ -73,7 +73,11 @@ void init(std::string modelfile)
 	}
 
 	setupCallbacks();
-	plugin_util::loadRegisteredPlugins(*nh_);
+
+	if (plugin_utils::parsePlugins(*nh_)) {
+		std::vector<MujocoPluginPtr> *plugins = plugin_utils::getRegisteredPluginPtrs();
+		ROS_DEBUG_STREAM_NAMED("mujoco", "Found " << plugins->size() << " plugins");
+	}
 
 	std::thread simthread(simulate);
 	eventloop();
@@ -91,6 +95,7 @@ void init(std::string modelfile)
 	render_mtx.unlock();
 
 	free(ctrlnoise_);
+	plugin_utils::unloadRegisteredPlugins();
 	d_.reset();
 	m_.reset();
 	mjv_freeScene(&scn_);
@@ -262,6 +267,7 @@ void simulate(void)
 					// Run single step, let next iteration deal with timing
 					mj_step(m_.get(), d_.get());
 					publishSimTime();
+					plugin_utils::triggerUpdate();
 				} else { // in-sync
 					// Step while simtime lags behind cputime , and within safefactor
 					while ((d_->time * settings_.slow_down - simsync) < (glfwGetTime() - cpusync) &&
@@ -275,6 +281,7 @@ void simulate(void)
 						mjtNum prevtm = d_->time * settings_.slow_down;
 						mj_step(m_.get(), d_.get());
 						publishSimTime();
+						plugin_utils::triggerUpdate();
 
 						// break on reset
 						if (d_->time * settings_.slow_down < prevtm) {
@@ -441,6 +448,9 @@ void loadModel(void)
 		alignScale();
 		mju::strcpy_arr(previous_filename_, filename_);
 	}
+
+	ROS_DEBUG_NAMED("mujoco", "(re)loading MujocoPlugins ...");
+	plugin_utils::loadRegisteredPlugins(m_, d_);
 
 	ROS_DEBUG_NAMED("mujoco", "updating scene...");
 	// Update scene
@@ -856,6 +866,7 @@ void uiEvent(mjuiState *state)
 					clearTimers();
 					mj_step(m_.get(), d_.get());
 					publishSimTime();
+					plugin_utils::triggerUpdate();
 					profilerUpdate();
 					sensorUpdate();
 					updateSettings();
@@ -873,6 +884,7 @@ void uiEvent(mjuiState *state)
 					for (i = 0; i < 100; i++) {
 						mj_step(m_.get(), d_.get());
 						publishSimTime();
+						plugin_utils::triggerUpdate();
 					}
 					profilerUpdate();
 					sensorUpdate();
