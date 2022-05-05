@@ -857,15 +857,8 @@ void uiEvent(mjuiState *state)
 				break;
 
 			case mjKEY_LEFT: // Step back
-				if (m_ && !settings_.run) {
-					m_->opt.timestep = -m_->opt.timestep;
-					clearTimers();
-					mj_step(m_, d_);
-					m_->opt.timestep = -m_->opt.timestep;
-					profilerUpdate();
-					sensorUpdate();
-					updateSettings();
-				}
+				ROS_DEBUG_THROTTLE_NAMED(1, "mujoco",
+				                         "Stepping backwards is disabled as rostime should never run backwards.");
 				break;
 
 			case mjKEY_DOWN: // Step forward 100
@@ -882,17 +875,8 @@ void uiEvent(mjuiState *state)
 				break;
 
 			case mjKEY_UP: // Step backward 100
-				if (m_ && !settings_.run) {
-					m_->opt.timestep = -m_->opt.timestep;
-					clearTimers();
-					for (i = 0; i < 100; i++) {
-						mj_step(m_, d_);
-					}
-					m_->opt.timestep = -m_->opt.timestep;
-					profilerUpdate();
-					sensorUpdate();
-					updateSettings();
-				}
+				ROS_DEBUG_THROTTLE_NAMED(1, "mujoco",
+				                         "Stepping backwards is disabled as rostime should never run backwards.");
 				break;
 
 			case mjKEY_PAGE_UP: // Select parent body
