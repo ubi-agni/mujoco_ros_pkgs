@@ -3,8 +3,9 @@
   <name>mujoco_ros_msgs</name>
   <version>0.1.0</version>
   <description>mujoco_ros_msgs provides message files for interaction with a mujoco_ros simulation</description>
-  <maintainer email="dleins@techfak.de">David Leins</maintainer>
-  <license>Apache 2.0</license>
+
+  <maintainer email="dleins@techfak.uni-bielefeld.de">David Leins</maintainer>
+  <license>BSD</license>
 
   <url type="repository">https://github.com/DavidPL1/mujoco_ros_pkgs</url>
   <url type="bugtracker">https://github.com/DavidPL1/mujoco_ros_pkgs/issues</url>

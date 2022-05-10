@@ -4,18 +4,19 @@
     <version>1.0.0</version>
     <description>Interface for using ROS with the <a href="https://mujoco.org/">MuJoCo</a> simulator.</description>
 
-    <maintainer email="dleins@techfak.de">David Leins</maintainer>
-
-    <license>BSD,LGPL,Apache 2.0</license>
+    <license>BSD</license>
 
     <url type="bugtracker">https://github.com/DavidPL1/mujoco_ros_pkgs/issues</url>
     <url type="repository">https://github.com/DavidPL1/mujoco_ros_pkgs</url>
 
-    <author>David Leins</author>
+    <maintainer email="dleins@techfak.uni-bielefeld.de">David P. Leins</maintainer>
+    <author>David P. Leins</author>
 
     <buildtool_depend>catkin</buildtool_depend>
 
+    <exec_depend>mujoco_ros_msgs</exec_depend>
     <exec_depend>mujoco_ros</exec_depend>
+    <exec_depend>mujoco_ros_control</exec_depend>
 
     <export>
         <metapackage/>

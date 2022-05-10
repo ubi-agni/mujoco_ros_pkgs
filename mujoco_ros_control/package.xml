@@ -8,6 +8,7 @@
   <url type="bugtracker">https://github.com/DavidPL1/mujoco_ros_pkgs/issues</url>
 
   <maintainer email="dleins@techfak.uni-bielefeld.de">David P. Leins</maintainer>
+  <author>David P. Leins</author>
 
   <license>BSD</license>
 
