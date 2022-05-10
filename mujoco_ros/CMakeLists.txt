@@ -20,6 +20,7 @@ catkin_package(
     pluginlib
     mujoco_ros_msgs
   INCLUDE_DIRS include
+  LIBRARIES ${PROJECT_NAME}
 )
 
 ###########
@@ -81,6 +82,7 @@ install(DIRECTORY include/${PROJECT_NAME}/
 install(TARGETS ${PROJECT_NAME} mujoco_server
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 )
 
 install(DIRECTORY launch
