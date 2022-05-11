@@ -55,8 +55,8 @@ bool DefaultRobotHWSim::initSim(mjModelPtr m_ptr, mjDataPtr d_ptr, const std::st
 	// parameters name is "joint_limits/<joint name>" an example is "joint_limits/axle_joint"
 	const ros::NodeHandle joint_limit_nh(model_nh);
 
-	m_ = m_ptr;
-	d_ = d_ptr;
+	m_ptr_ = m_ptr;
+	d_ptr_ = d_ptr;
 
 	// Resize vectors to our DOF
 	n_dof_ = transmissions.size();
@@ -265,15 +265,15 @@ void DefaultRobotHWSim::writeSim(ros::Time time, ros::Duration period)
 	for (unsigned int j = 0; j < n_dof_; j++) {
 		switch (joint_control_methods_[j]) {
 			case EFFORT: {
-				const double effort                 = e_stop_active_ ? 0 : joint_effort_command_[j];
-				d_->qfrc_applied[m_->jnt_dofadr[j]] = effort;
+				const double effort                         = e_stop_active_ ? 0 : joint_effort_command_[j];
+				d_ptr_->qfrc_applied[m_ptr_->jnt_dofadr[j]] = effort;
 				break;
 			}
 
 			case POSITION: {
-				d_->qpos[m_->jnt_dofadr[j]]         = joint_position_command_[j];
-				d_->qvel[m_->jnt_dofadr[j]]         = 0.;
-				d_->qfrc_applied[m_->jnt_dofadr[j]] = 0.;
+				d_ptr_->qpos[m_ptr_->jnt_dofadr[j]]         = joint_position_command_[j];
+				d_ptr_->qvel[m_ptr_->jnt_dofadr[j]]         = 0.;
+				d_ptr_->qfrc_applied[m_ptr_->jnt_dofadr[j]] = 0.;
 				break;
 			}
 
@@ -295,13 +295,13 @@ void DefaultRobotHWSim::writeSim(ros::Time time, ros::Duration period)
 
 				const double effort_limit = joint_effort_limits_[j];
 				const double effort = clamp(pid_controllers_[j].computeCommand(error, period), -effort_limit, effort_limit);
-				d_->qfrc_applied[m_->jnt_dofadr[j]] = effort;
+				d_ptr_->qfrc_applied[m_ptr_->jnt_dofadr[j]] = effort;
 				break;
 			}
 
 			case VELOCITY: {
-				d_->qvel[m_->jnt_dofadr[j]]         = e_stop_active_ ? 0. : joint_velocity_command_[j];
-				d_->qfrc_applied[m_->jnt_dofadr[j]] = 0.;
+				d_ptr_->qvel[m_ptr_->jnt_dofadr[j]]         = e_stop_active_ ? 0. : joint_velocity_command_[j];
+				d_ptr_->qfrc_applied[m_ptr_->jnt_dofadr[j]] = 0.;
 				break;
 			}
 
@@ -314,7 +314,7 @@ void DefaultRobotHWSim::writeSim(ros::Time time, ros::Duration period)
 					error = joint_velocity_command_[j] - joint_velocity_[j];
 				const double effort_limit = joint_effort_limits_[j];
 				const double effort = clamp(pid_controllers_[j].computeCommand(error, period), -effort_limit, effort_limit);
-				d_->qfrc_applied[m_->jnt_dofadr[j]] = effort;
+				d_ptr_->qfrc_applied[m_ptr_->jnt_dofadr[j]] = effort;
 				break;
 			}
 		}
@@ -328,9 +328,9 @@ void DefaultRobotHWSim::eStopActive(const bool active)
 
 void DefaultRobotHWSim::getJointData(const int &joint_id, double &position, double &velocity, double &effort)
 {
-	position = d_->qpos[m_->jnt_qposadr[joint_id]];
-	velocity = d_->qvel[m_->jnt_dofadr[joint_id]];
-	effort   = d_->qfrc_applied[m_->jnt_dofadr[joint_id]];
+	position = d_ptr_->qpos[m_ptr_->jnt_qposadr[joint_id]];
+	velocity = d_ptr_->qvel[m_ptr_->jnt_dofadr[joint_id]];
+	effort   = d_ptr_->qfrc_applied[m_ptr_->jnt_dofadr[joint_id]];
 }
 
 void DefaultRobotHWSim::registerJointLimits(const std::string &joint_name,

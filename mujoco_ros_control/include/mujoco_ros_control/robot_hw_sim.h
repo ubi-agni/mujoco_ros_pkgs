@@ -108,7 +108,7 @@ public:
 	virtual void eStopActive(const bool active) {}
 
 protected:
-	mjModelPtr m_;
-	mjDataPtr d_;
+	mjModelPtr m_ptr_;
+	mjDataPtr d_ptr_;
 };
 } // namespace mujoco_ros_control
