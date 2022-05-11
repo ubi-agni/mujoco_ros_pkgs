@@ -88,10 +88,8 @@ static std::mutex render_mtx;
 std::array<double, 3> getGravity(void);
 std::array<double, 4> getJointData(const int &joint_id);
 
-int jointName2id(const std::string &joint_name);
+int jointName2id(mjModel *m, const std::string &joint_name);
 double getBodyMass(const int &body_id);
-
-bool isUp(void);
 
 // Setters
 void setJointEffort(const double &command, const int &joint_id);

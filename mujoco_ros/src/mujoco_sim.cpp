@@ -57,16 +57,9 @@ namespace MujocoSim {
 
 using namespace detail;
 
-// REVEIW: Still needed?
-int jointName2id(const std::string &joint_name)
+int jointName2id(mjModel *m, const std::string &joint_name)
 {
-	return mj_name2id(m_.get(), mjOBJ_JOINT, joint_name.c_str());
-}
-
-// REVIEW: Still needed?
-bool isUp(void)
-{
-	return !settings_.exitrequest;
+	return mj_name2id(m, mjOBJ_JOINT, joint_name.c_str());
 }
 
 void init(std::string modelfile)
@@ -110,7 +103,7 @@ void init(std::string modelfile)
 	nh_->getParam("initial_joint_positions/joint_map", init_joint_pos_map_);
 
 	for (auto const &[name, value] : init_joint_pos_map_) {
-		int id = jointName2id(name);
+		int id = mj_name2id(m_.get(), mjOBJ_JOINT, name.c_str());
 		if (id == -1) {
 			ROS_WARN_STREAM_NAMED("mujoco", "Joint with name '"
 			                                    << name << "' could not be found. Initial joint position cannot be set!");
