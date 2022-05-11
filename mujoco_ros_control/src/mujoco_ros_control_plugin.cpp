@@ -91,7 +91,7 @@ bool MujocoRosControlPlugin::load(mjModelPtr m, mjDataPtr d)
 	robot_hw_sim_type_str_ = (std::string)rosparam_config_["hardware"]["type"];
 	robot_namespace_       = rosparam_config_["hardware"].hasMember("robot_namespace") ?
 	                       (std::string)rosparam_config_["hardware"]["robot_namespace"] :
-	                       "~";
+	                       "/";
 	control_period_ = ros::Duration((double)rosparam_config_["hardware"]["control_period"]);
 
 	if (control_period_.toSec() < m->opt.timestep) {
