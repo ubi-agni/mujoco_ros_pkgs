@@ -200,7 +200,8 @@ void publishSimTime(void)
 
 void eventloop(void)
 {
-	while ((!settings_.exitrequest && !vis_) || (!settings_.exitrequest && !glfwWindowShouldClose(window_))) {
+	while (ros::ok() &&
+	       ((!settings_.exitrequest && !vis_) || (!settings_.exitrequest && !glfwWindowShouldClose(window_)))) {
 		// Critical operations
 		sim_mtx.lock();
 
