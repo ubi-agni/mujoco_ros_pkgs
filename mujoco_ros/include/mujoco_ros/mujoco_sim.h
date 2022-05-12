@@ -190,6 +190,7 @@ void printCamera(mjvGLCamera *camera);
 void updateSettings(void);
 void drop(GLFWwindow *window, int count, const char **paths);
 void loadModel(void);
+void loadInitialJointStates(void);
 
 // UI Hooks for uitools.h
 int uiPredicate(int category, void *userdata);

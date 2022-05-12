@@ -100,21 +100,6 @@ void init(std::string modelfile)
 		settings_.loadrequest = 2;
 	}
 
-	nh_->getParam("initial_joint_positions/joint_map", init_joint_pos_map_);
-
-	for (auto const &[name, value] : init_joint_pos_map_) {
-		int id = mj_name2id(m_.get(), mjOBJ_JOINT, name.c_str());
-		if (id == -1) {
-			ROS_WARN_STREAM_NAMED("mujoco", "Joint with name '"
-			                                    << name << "' could not be found. Initial joint position cannot be set!");
-			continue;
-		}
-
-		ROS_DEBUG_STREAM_NAMED("mujoco", "Joint name '" << name << "' (mjID '" << id << "') setting to value " << value);
-
-		setJointPosition(value, id);
-	}
-
 	setupCallbacks();
 
 	if (plugin_utils::parsePlugins(*nh_)) {
@@ -465,7 +450,11 @@ void loadModel(void)
 	d_.reset(mj_makeData(m_.get()));
 	if (last_time_ > 0)
 		d_->time = last_time_;
+
+	loadInitialJointStates();
+
 	mj_forward(m_.get(), d_.get());
+
 	publishSimTime();
 
 	ROS_DEBUG_NAMED("mujoco", "resetting noise ...");
@@ -523,6 +512,24 @@ void loadModel(void)
 	ROS_DEBUG_NAMED("mujoco", "updating settings ...");
 	updateSettings();
 	ROS_DEBUG_NAMED("mujoco", "settings updated ...");
+}
+
+void loadInitialJointStates(void)
+{
+	ROS_DEBUG_NAMED("mujoco", "Fetching and setting initial joint positions ...");
+	nh_->getParam("initial_joint_positions/joint_map", init_joint_pos_map_);
+
+	for (auto const &[name, value] : init_joint_pos_map_) {
+		int id = mj_name2id(m_.get(), mjOBJ_JOINT, name.c_str());
+		if (id == -1) {
+			ROS_WARN_STREAM_NAMED("mujoco", "Joint with name '"
+			                                    << name << "' could not be found. Initial joint position cannot be set!");
+			continue;
+		}
+
+		setJointPosition(value, id);
+		ROS_DEBUG_STREAM_NAMED("mujoco", "\tjoint name '" << name << "' (mjID '" << id << "') set to value: " << value);
+	}
 }
 
 int uiPredicate(int category, void *userdata)
@@ -752,6 +759,7 @@ void uiEvent(mjuiState *state)
 						mj_resetData(m_.get(), d_.get());
 						if (last_time_ > 0)
 							d_->time = last_time_;
+						loadInitialJointStates();
 						plugin_utils::resetRegisteredPlugins();
 						mj_forward(m_.get(), d_.get());
 						publishSimTime();
