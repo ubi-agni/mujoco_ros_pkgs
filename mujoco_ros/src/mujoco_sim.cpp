@@ -71,9 +71,6 @@ void init(std::string modelfile)
 	if (unpause)
 		settings_.run = 1;
 
-	// std::string modelfile;
-	// nh_->getParam("modelfile", modelfile);
-
 	// Print version, check compatibility
 	ROS_INFO("MuJoCo Pro library version %.2lf\n", 0.01 * mj_version());
 	if (mjVERSION_HEADER != mj_version()) {
@@ -131,61 +128,16 @@ void init(std::string modelfile)
 	ROS_DEBUG_NAMED("mujoco", "Cleanup done");
 }
 
-// Get current position, velocity, acceleration, and effort of a specific joint
-std::array<double, 4> getJointData(const int &joint_id)
-{
-	return { d_->qpos[m_->jnt_qposadr[joint_id]], d_->qvel[m_->jnt_dofadr[joint_id]], d_->qacc[m_->jnt_dofadr[joint_id]],
-		      d_->qfrc_applied[m_->jnt_dofadr[joint_id]] };
-}
-
-// REVIEW: Still needed?
-double getBodyMass(const int &body_id)
-{
-	return m_->body_mass[body_id];
-}
-
-// REVIEW: Still needed?
-bool isSimReady(void)
-{
-	// Is model loaded?
-	if (!m_)
-		return false;
-
-	// Is data loaded?
-	if (!d_)
-		return false;
-
-	// We expect at least one controllable joint
-	if (m_->njnt < 1)
-		return false;
-
-	return true;
-}
-
-// REVIEW: Serve as ROS Callback?
-void requestExternalShutdown(void)
-{
-	settings_.exitrequest = 1;
-}
-
-// REVIEW: Still needed?
-std::array<double, 3> getGravity(void)
-{
-	return { m_->opt.gravity[0], m_->opt.gravity[1], m_->opt.gravity[2] };
-}
-
-// Review: Still needed?
-void setJointEffort(const double &command, const int &joint_id)
-{
-	d_->qfrc_applied[m_->jnt_dofadr[joint_id]] = command;
-}
-
-// Review: Still needed?
 void setJointPosition(const double &pos, const int &joint_id)
 {
 	d_->qpos[m_->jnt_qposadr[joint_id]]        = pos;
 	d_->qvel[m_->jnt_dofadr[joint_id]]         = 0;
 	d_->qfrc_applied[m_->jnt_dofadr[joint_id]] = 0;
+}
+
+void requestExternalShutdown(void)
+{
+	settings_.exitrequest = 1;
 }
 
 namespace detail {

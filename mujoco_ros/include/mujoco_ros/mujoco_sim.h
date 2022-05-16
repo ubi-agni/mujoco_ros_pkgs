@@ -78,21 +78,13 @@ namespace MujocoSim {
 void init(std::string modelfile);
 
 void requestExternalShutdown(void);
-bool isSimReady(void);
 
 // Threading and synchronization
 static std::mutex sim_mtx;
 static std::mutex render_mtx;
 
-// Getters
-std::array<double, 3> getGravity(void);
-std::array<double, 4> getJointData(const int &joint_id);
-
 int jointName2id(mjModel *m, const std::string &joint_name);
-double getBodyMass(const int &body_id);
 
-// Setters
-void setJointEffort(const double &command, const int &joint_id);
 void setJointPosition(const double &pos, const int &joint_id);
 
 namespace detail {
