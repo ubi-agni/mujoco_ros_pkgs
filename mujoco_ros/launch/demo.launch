@@ -1,8 +1,9 @@
 <?xml version="1.0"?>
 <launch>
 
-  <arg name="vebose"      default="false"  doc="Should more debug output be printed?" />
+  <arg name="verbose"      default="false"  doc="Should more debug output be printed?" />
   <arg name="unpause"     default="false"  doc="Should the simulation be unpaused on start?" />
+  <arg name="modelfile"   default="$(find mujoco_ros)/test/empty_world.xml" doc="MuJoCo xml file to load. Should define robot model and world." />
   <arg name="headless"   default="false" doc="Should the simulation be rendered." />
   <arg name="num_sim_steps"   default="-1" doc="Number of simulation steps to run. Set to '-1' to run indefinitely." />
 
@@ -12,24 +13,15 @@
   <env if="$(arg verbose)" name="ROSCONSOLE_CONFIG_FILE"
        value="$(find mujoco_ros)/rosconsole.config"/>
 
-
-  <rosparam>
+  <!-- pluign loading -->
+  <!-- If MujocoRosControlPlugin is built, but no urdf is uploaded the simulation will block until it is, thus this is commented -->
+  <!-- <rosparam>
     MujocoPlugins:
-      - type: dummyPlugin/DummyPlugin
       - type: mujoco_ros_control/MujocoRosControlPlugin
         hardware:
-        - type: myCustom/HWSim
-          robot_namespace: my_robot_ns
-          nested:
-          - n1: 101
-            n2: someval
-      - type: mujoco_ros_control/MujocoRosControlPlugin
-        hardware:
-        - type: myCustom/HWSim
-          robot_namespace: my_robot_ns2
+          type: mujoco_ros_control/DefaultRobotHWSim
           control_period: 0.001
-      - type: mujoco_drake_surfaces_pgk/ContactSimClass -->
-  </rosparam>
+  </rosparam> -->
 
   <node pkg="mujoco_ros" type="mujoco_server" name="mujoco_server" output="screen" >
     <param name="modelfile" type="str"  value="$(arg modelfile)" />
