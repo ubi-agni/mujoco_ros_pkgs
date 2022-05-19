@@ -41,8 +41,11 @@ namespace MujocoSim::plugin_utils {
 
 bool parsePlugins(const ros::NodeHandle &nh)
 {
-	if (!nh.hasParam(MUJOCO_PLUGIN_PARAM_PATH)) {
-		ROS_DEBUG_NAMED("mujoco_ros_pluginloader", "No plugins to load listed in parameter server!");
+	std::string param_path;
+	if (nh.searchParam(MUJOCO_PLUGIN_PARAM_NAME, param_path)) {
+		ROS_DEBUG_STREAM_NAMED("mujoco_ros_pluginloader", "Found MujocoPlugins param under " << param_path);
+	} else {
+		ROS_INFO_NAMED("mujoco_ros_pluginloader", "No plugins to load listed in parameter server!");
 		return false;
 	}
 
@@ -52,7 +55,7 @@ bool parsePlugins(const ros::NodeHandle &nh)
 
 	std::vector<std::string> plugin_list;
 	XmlRpc::XmlRpcValue plugin_list_rpc;
-	nh.getParam(MUJOCO_PLUGIN_PARAM_PATH, plugin_list_rpc);
+	nh.getParam(param_path, plugin_list_rpc);
 
 	if (plugin_list_rpc.getType() != XmlRpc::XmlRpcValue::TypeArray) {
 		ROS_ERROR_STREAM_NAMED("mujoco_ros_plugin_loader", "Error while parsing MujocoPlugins rosparam: wrong type.");

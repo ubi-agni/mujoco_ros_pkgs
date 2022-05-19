@@ -129,7 +129,7 @@ std::vector<MujocoPluginPtr> *getRegisteredPluginPtrs();
 static std::vector<MujocoPluginPtr> mujoco_plugins_;
 static boost::shared_ptr<pluginlib::ClassLoader<MujocoPlugin>> plugin_loader_ptr_;
 
-const static std::string MUJOCO_PLUGIN_PARAM_PATH = "/MujocoPlugins/";
+const static std::string MUJOCO_PLUGIN_PARAM_NAME = "MujocoPlugins";
 
 } // end namespace plugin_utils
 } // namespace MujocoSim
