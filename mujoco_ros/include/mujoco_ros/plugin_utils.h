@@ -75,6 +75,7 @@ public:
 			reset();
 	}
 
+protected:
 	// Called once the world is loaded
 	virtual bool load(mjModelPtr m, mjDataPtr d) = 0;
 
