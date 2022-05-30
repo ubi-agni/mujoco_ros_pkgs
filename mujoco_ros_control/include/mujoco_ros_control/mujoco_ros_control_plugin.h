@@ -49,6 +49,7 @@
 #include <pluginlib/class_loader.h>
 #include <std_msgs/Bool.h>
 
+#include <mujoco_ros/common_types.h>
 #include <mujoco_ros/mujoco_sim.h>
 #include <mujoco_ros/plugin_utils.h>
 
@@ -65,10 +66,7 @@ public:
 	virtual ~MujocoRosControlPlugin();
 
 	// Overlead entry point
-	virtual bool load(mjModelPtr m, mjDataPtr d);
-
-	// Called by mujoco
-	virtual void update();
+	virtual bool load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d);
 
 	// Called on reset
 	virtual void reset();
@@ -78,6 +76,8 @@ public:
 
 	// Get transmissions from URDF
 	bool parseTransmissionsFromURDF(const std::string &urdf_string);
+
+	void controlCallback(MujocoSim::mjModelPtr model, MujocoSim::mjDataPtr data);
 
 protected:
 	void eStopCB(const std_msgs::BoolConstPtr &e_stop_active);
@@ -101,8 +101,8 @@ protected:
 	boost::shared_ptr<mujoco_ros_control::RobotHWSim> robot_hw_sim_;
 
 	// Mujoco model and data pointers
-	mjModelPtr m_;
-	mjDataPtr d_;
+	MujocoSim::mjModelPtr m_;
+	MujocoSim::mjDataPtr d_;
 
 	// Controller manager
 	boost::shared_ptr<controller_manager::ControllerManager> controller_manager_;

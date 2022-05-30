@@ -5,6 +5,9 @@ find_package(catkin REQUIRED COMPONENTS message_generation std_msgs actionlib_ms
 
 add_service_files(FILES
     SetPause.srv
+    SimStep.srv
+    BootstrapNS.srv
+    ShutdownNS.srv
 )
 
 generate_messages(DEPENDENCIES std_msgs)

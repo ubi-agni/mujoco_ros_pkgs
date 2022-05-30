@@ -60,8 +60,8 @@ namespace mujoco_ros_control {
 class DefaultRobotHWSim : public mujoco_ros_control::RobotHWSim
 {
 public:
-	virtual bool initSim(mjModelPtr m_ptr, mjDataPtr d_ptr, const std::string &robot_namespace, ros::NodeHandle model_nh,
-	                     const urdf::Model *const urdf_model,
+	virtual bool initSim(MujocoSim::mjModelPtr m_ptr, MujocoSim::mjDataPtr d_ptr, const std::string &robot_namespace,
+	                     ros::NodeHandle model_nh, const urdf::Model *const urdf_model,
 	                     std::vector<transmission_interface::TransmissionInfo> transmissions);
 
 	virtual void readSim(ros::Time time, ros::Duration period);

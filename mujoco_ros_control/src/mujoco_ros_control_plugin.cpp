@@ -49,7 +49,7 @@ namespace mujoco_ros_control {
 
 MujocoRosControlPlugin::~MujocoRosControlPlugin() {}
 
-bool MujocoRosControlPlugin::load(mjModelPtr m, mjDataPtr d)
+bool MujocoRosControlPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d)
 {
 	ROS_INFO_STREAM_NAMED("mujoco_ros_control", "Loading mujoco_ros_control plugin ...");
 
@@ -148,7 +148,7 @@ bool MujocoRosControlPlugin::load(mjModelPtr m, mjDataPtr d)
 	return true;
 }
 
-void MujocoRosControlPlugin::update()
+void MujocoRosControlPlugin::controlCallback(MujocoSim::mjModelPtr /*model*/, MujocoSim::mjDataPtr /*data*/)
 {
 	ros::Time sim_time_ros   = ros::Time::now();
 	ros::Duration sim_period = sim_time_ros - last_update_sim_time_ros_;

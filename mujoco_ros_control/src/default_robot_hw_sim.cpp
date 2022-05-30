@@ -47,8 +47,9 @@ double clamp(const double val, const double min_val, const double max_val)
 
 namespace mujoco_ros_control {
 
-bool DefaultRobotHWSim::initSim(mjModelPtr m_ptr, mjDataPtr d_ptr, const std::string &robot_namespace,
-                                ros::NodeHandle model_nh, const urdf::Model *const urdf_model,
+bool DefaultRobotHWSim::initSim(MujocoSim::mjModelPtr m_ptr, MujocoSim::mjDataPtr d_ptr,
+                                const std::string &robot_namespace, ros::NodeHandle model_nh,
+                                const urdf::Model *const urdf_model,
                                 std::vector<transmission_interface::TransmissionInfo> transmissions)
 {
 	// getJointLimits() searches joint_limit_nh for joint limit parameters. The format of each

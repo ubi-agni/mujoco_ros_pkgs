@@ -1,0 +1,5 @@
+string ros_namespace
+string launchfile
+string[] args
+---
+bool success
