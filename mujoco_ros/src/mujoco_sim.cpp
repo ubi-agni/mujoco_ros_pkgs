@@ -184,6 +184,12 @@ void setJointPosition(mjModelPtr model, mjDataPtr data, const double &pos, const
 	data->qfrc_applied[model->jnt_dofadr[joint_id]] = 0;
 }
 
+void setJointVelocity(mjModelPtr model, mjDataPtr data, const double &vel, const int &joint_id)
+{
+	data->qvel[model->jnt_dofadr[joint_id]]         = vel;
+	data->qfrc_applied[model->jnt_dofadr[joint_id]] = 0;
+}
+
 void requestExternalShutdown(void)
 {
 	settings_.exitrequest = 1;
@@ -453,6 +459,8 @@ void loadModel(void)
 	// Delete old model, assign new
 	mj_env_->model.reset(mnew);
 	environments::assignData(mj_makeData(mnew), mj_env_);
+
+	// if time == 0, then sim is loaded for the first time
 	if (last_time_ > 0)
 		mj_env_->data->time = last_time_;
 
@@ -523,9 +531,12 @@ void loadModel(void)
 void loadInitialJointStates(mjModelPtr model, mjDataPtr data)
 {
 	ROS_DEBUG_NAMED("mujoco", "Fetching and setting initial joint positions ...");
-	nh_->getParam("initial_joint_positions/joint_map", init_joint_pos_map_);
 
-	for (auto const &[name, value] : init_joint_pos_map_) {
+	// Joint positions
+	static std::map<std::string, double> joint_map;
+	nh_->getParam("initial_joint_positions/joint_map", joint_map);
+
+	for (auto const &[name, value] : joint_map) {
 		int id = mj_name2id(model.get(), mjOBJ_JOINT, name.c_str());
 		if (id == -1) {
 			ROS_WARN_STREAM_NAMED("mujoco", "Joint with name '"
@@ -534,7 +545,22 @@ void loadInitialJointStates(mjModelPtr model, mjDataPtr data)
 		}
 
 		setJointPosition(model, data, value, id);
-		ROS_DEBUG_STREAM_NAMED("mujoco", "\tjoint name '" << name << "' (mjID '" << id << "') set to value: " << value);
+		ROS_DEBUG_STREAM_NAMED("mujoco", "\tjoint name '" << name << "' (mjID '" << id << "') set to pos: " << value);
+	}
+
+	joint_map.clear();
+	// Joint velocities
+	nh_->getParam("initial_joint_velocities/joint_map", joint_map);
+	for (auto const &[name, value] : joint_map) {
+		int id = mj_name2id(model.get(), mjOBJ_JOINT, name.c_str());
+		if (id == -1) {
+			ROS_WARN_STREAM_NAMED("mujoco", "Joint with name '"
+			                                    << name << "' could not be found. Initial joint velocity cannot be set!");
+			continue;
+		}
+
+		setJointVelocity(model, data, value, id);
+		ROS_DEBUG_STREAM_NAMED("mujoco", "\tjoint name '" << name << "' (mjID '" << id << "') set to vel: " << value);
 	}
 }
 

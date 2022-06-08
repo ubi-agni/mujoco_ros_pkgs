@@ -84,6 +84,7 @@ static std::mutex render_mtx;
 int jointName2id(mjModel *m, const std::string &joint_name);
 
 void setJointPosition(mjModelPtr model, mjDataPtr data, const double &pos, const int &joint_id);
+void setJointVelocity(mjModelPtr model, mjDataPtr data, const double &vel, const int &joint_id);
 
 // Keep track of overriden collisions to throw warnings
 static std::set<std::pair<int, int>> custom_collisions_;
@@ -105,9 +106,6 @@ static MujocoEnvPtr mj_env_;
 // filename strings
 static char filename_[kBufSize]          = "";
 static char previous_filename_[kBufSize] = "";
-
-// initial joint positions to set on load
-static std::map<std::string, double> init_joint_pos_map_;
 
 // info strings
 static char info_title_[kBufSize];
