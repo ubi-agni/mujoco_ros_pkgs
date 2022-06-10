@@ -94,14 +94,6 @@ void passiveCallback(const mjModel * /*model*/, mjData *data)
 	}
 }
 
-void contactFilterCallback(const mjModel * /*model*/, mjData *data)
-{
-	MujocoEnvPtr env = environments::getEnv(data);
-	if (env) {
-		env->runContactFilterCbs();
-	}
-}
-
 void renderCallback(mjData *data, mjvScene *scene)
 {
 	MujocoEnvPtr env = environments::getEnv(data);
@@ -110,12 +102,21 @@ void renderCallback(mjData *data, mjvScene *scene)
 	}
 }
 
+void lastStageCallback(mjData *data)
+{
+	MujocoEnvPtr env = environments::getEnv(data);
+	if (env) {
+		env->runLastStageCbs();
+	}
+}
+
 void init(std::string modelfile)
 {
 	nh_.reset(new ros::NodeHandle("~"));
 
-	mj_env_.reset(new MujocoEnv("env0"));
-	mj_env_->nh = nh_;
+	std::string mj_env_namespace;
+	nh_->param<std::string>("ns", mj_env_namespace, "/");
+	mj_env_.reset(new MujocoEnv(mj_env_namespace));
 
 	bool unpause;
 	nh_->param<bool>("unpause", unpause, true);
@@ -150,11 +151,6 @@ void init(std::string modelfile)
 
 	setupCallbacks();
 
-	XmlRpc::XmlRpcValue plugin_config;
-	if (plugin_utils::parsePlugins(*nh_, plugin_config)) {
-		plugin_utils::registerPlugins(*nh_, plugin_config, mj_env_);
-	}
-
 	std::thread simthread(simulate);
 	eventloop();
 
@@ -171,7 +167,7 @@ void init(std::string modelfile)
 	render_mtx.unlock();
 
 	mj_env_.reset();
-	plugin_utils::unloadRegisteredPlugins();
+	plugin_utils::unloadPluginloader();
 	mjv_freeScene(&scn_);
 	mjr_freeContext(&con_);
 	ROS_DEBUG_NAMED("mujoco", "Cleanup done");
@@ -309,6 +305,7 @@ void simulate(void)
 					// Run single step, let next iteration deal with timing
 					mj_step(model.get(), data.get());
 					publishSimTime(data->time);
+					lastStageCallback(data.get());
 				} else { // in-sync
 					// Step while simtime lags behind cputime , and within safefactor
 					while ((data->time * settings_.slow_down - simsync) < (glfwGetTime() - cpusync) &&
@@ -322,6 +319,7 @@ void simulate(void)
 						mjtNum prevtm = data->time * settings_.slow_down;
 						mj_step(model.get(), data.get());
 						publishSimTime(data->time);
+						lastStageCallback(data.get());
 
 						// break on reset
 						if (data->time * settings_.slow_down < prevtm) {
@@ -494,9 +492,7 @@ void loadModel(void)
 		mju::strcpy_arr(previous_filename_, filename_);
 	}
 
-	ROS_DEBUG_NAMED("mujoco", "(re)loading MujocoPlugins ...");
-	// TODO: Change things
-	mj_env_->loadPlugins();
+	mj_env_->reload();
 
 	ROS_DEBUG_NAMED("mujoco", "updating scene...");
 	// Update scene
@@ -783,7 +779,7 @@ void uiEvent(mjuiState *state)
 						if (last_time_ > 0)
 							mj_env_->data->time = last_time_;
 						loadInitialJointStates(mj_env_->model, mj_env_->data);
-						mj_env_->resetPlugins();
+						mj_env_->reset();
 						mj_forward(mj_env_->model.get(), mj_env_->data.get());
 						publishSimTime(mj_env_->data->time);
 						profilerUpdate(mj_env_->model, mj_env_->data);
@@ -1941,7 +1937,6 @@ void setupCallbacks()
 
 	mjcb_control = controlCallback;
 	mjcb_passive = passiveCallback;
-	// mjcb_contactfilter = contactFilterCallback;
 }
 
 // Service call callbacks

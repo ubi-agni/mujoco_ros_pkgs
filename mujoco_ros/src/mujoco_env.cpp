@@ -29,10 +29,6 @@ MujocoEnvParallel::MujocoEnvParallel(const std::string &ros_ns, const std::strin
                                      const std::vector<std::string> &launch_args)
     : MujocoEnv(ros_ns), launchfile(launchfile), launch_args(launch_args)
 {
-	ROS_INFO_STREAM_NAMED("mujoco_env", "Creating env '" << name << "'");
-
-	nh.reset(new ros::NodeHandle(name));
-	ROS_DEBUG_STREAM_NAMED("mujoco_env", "nodehandle has namespace: " << nh->getNamespace());
 	bootstrapNamespace();
 }
 
@@ -44,39 +40,44 @@ void MujocoEnvParallel::bootstrapNamespace()
 	bootstrap_msg.request.args          = launch_args;
 
 	if (!ros::service::waitForService("/bootstrap_ns", ros::Duration(5))) {
-		ROS_ERROR_NAMED("mujoco", "Timeout while waiting for namespace bootstrapping node under topic '/bootstrap_ns'. "
-		                          "Is it started correctly?");
+		ROS_ERROR_NAMED("mujoco_env",
+		                "Timeout while waiting for namespace bootstrapping node under topic '/bootstrap_ns'. "
+		                "Is it started correctly?");
 		return;
 	}
 
 	if (!ros::service::call("/bootstrap_ns", bootstrap_msg))
-		ROS_ERROR_STREAM_NAMED("mujoco", "Error while bootstrapping ROS environment for namespace '" << name << "'");
+		ROS_ERROR_STREAM_NAMED("mujoco_env", "Error while bootstrapping ROS environment for namespace '" << name << "'");
 }
 
-void MujocoEnv::addPlugin(MujocoPluginPtr plugin)
+void MujocoEnv::reload()
 {
-	plugins.push_back(plugin);
+	ROS_DEBUG_STREAM_NAMED("mujoco_env", "(re)loading MujocoPlugins ... [" << name << "]");
+	cb_ready_plugins.clear();
+	plugins.clear();
+
+	XmlRpc::XmlRpcValue plugin_config;
+	if (plugin_utils::parsePlugins(nh, plugin_config)) {
+		plugin_utils::registerPlugins(nh, plugin_config, plugins);
+	}
+
+	for (const auto &plugin : plugins) {
+		if (plugin->safe_load(model, data)) {
+			cb_ready_plugins.push_back(plugin);
+		}
+	}
 }
 
-const std::vector<MujocoPluginPtr> MujocoEnv::getPlugins()
-{
-	return plugins;
-}
-
-void MujocoEnv::resetPlugins()
+void MujocoEnv::reset()
 {
 	for (const auto &plugin : plugins) {
 		plugin->safe_reset();
 	}
 }
 
-void MujocoEnv::loadPlugins()
+const std::vector<MujocoPluginPtr> MujocoEnv::getPlugins()
 {
-	for (const auto &plugin : plugins) {
-		if (plugin->safe_load(model, data)) {
-			cb_ready_plugins.push_back(plugin);
-		}
-	}
+	return plugins;
 }
 
 void MujocoEnv::runControlCbs()
@@ -88,21 +89,9 @@ void MujocoEnv::runControlCbs()
 
 void MujocoEnv::runPassiveCbs()
 {
-	if (!model || !data)
-		return;
 	for (const auto &plugin : cb_ready_plugins) {
 		plugin->passiveCallback(model, data);
 	}
-}
-
-void MujocoEnv::runContactFilterCbs()
-{
-	// TODO: NYI
-	// if (!model || !data)
-	//	return;
-	// for (const auto &plugin : cb_ready_plugins) {
-	// plugin->contactFilterCbs(model, data);
-	// }
 }
 
 // TODO: Change once rendering is moved to external functionality
@@ -115,6 +104,23 @@ void MujocoEnv::runRenderCbs(mjvScene *scene)
 	}
 }
 
+void MujocoEnv::runLastStageCbs()
+{
+	for (const auto &plugin : cb_ready_plugins) {
+		plugin->lastStageCallback(model, data);
+	}
+}
+
+MujocoEnv::~MujocoEnv()
+{
+	cb_ready_plugins.clear();
+	plugins.clear();
+	model.reset();
+	data.reset();
+	ctrlnoise = nullptr;
+	nh.reset();
+}
+
 MujocoEnvParallel::~MujocoEnvParallel()
 {
 	mujoco_ros_msgs::ShutdownNS shutdown_msg;
@@ -124,5 +130,3 @@ MujocoEnvParallel::~MujocoEnvParallel()
 }
 
 } // namespace MujocoSim
-
-// MujocoSim::multienv::MujocoEnv

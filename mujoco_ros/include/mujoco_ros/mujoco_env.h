@@ -16,7 +16,13 @@ MujocoEnvPtr getEnv(mjData *data);
 struct MujocoEnv
 {
 public:
-	MujocoEnv(std::string name) : name(name) { ROS_DEBUG_STREAM("created env with name: " << name); };
+	MujocoEnv(std::string name) : name(name)
+	{
+		nh.reset(new ros::NodeHandle(name));
+		ROS_DEBUG_STREAM_NAMED("mujoco_env", "New env created with namespace: " << name);
+	};
+
+	~MujocoEnv();
 
 	MujocoEnv(const MujocoEnv &) = delete;
 
@@ -27,22 +33,30 @@ public:
 
 	std::string name;
 
-	void resetPlugins();
-	void loadPlugins();
-	void addPlugin(MujocoPluginPtr plugin);
+	/**
+	 * @brief Calls reload functions of all members depeding on mjData.
+	 * This function is called when a new mjData object is assigned to the environment.
+	 */
+	void reload();
+
+	/**
+	 * @brief Calls reset functions of all members depending on mjData.
+	 * This function is called on a reset request by the user. mjModel and mjData are not reinitialized.
+	 */
+	void reset();
+
 	const std::vector<MujocoPluginPtr> getPlugins();
 
 	void runControlCbs();
 	void runPassiveCbs();
-	void runContactFilterCbs();
 	void runRenderCbs(mjvScene *scene);
+	void runLastStageCbs();
 
 protected:
 	XmlRpc::XmlRpcValue rpc_plugin_config;
 	std::vector<MujocoPluginPtr> plugins;
 
 private:
-	std::vector<int> tests;
 	std::vector<MujocoPluginPtr> cb_ready_plugins;
 };
 

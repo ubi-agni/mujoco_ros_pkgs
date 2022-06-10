@@ -39,10 +39,11 @@
 
 namespace MujocoSim::plugin_utils {
 
-bool parsePlugins(const ros::NodeHandle &nh, XmlRpc::XmlRpcValue &plugin_config_rpc)
+bool parsePlugins(const ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &plugin_config_rpc)
 {
 	std::string param_path;
-	if (nh.searchParam(MUJOCO_PLUGIN_PARAM_NAME, param_path)) {
+	if (nh->searchParam(MUJOCO_PLUGIN_PARAM_NAME, param_path) ||
+	    ros::param::search(MUJOCO_PLUGIN_PARAM_NAME, param_path)) {
 		ROS_DEBUG_STREAM_NAMED("mujoco_ros_pluginloader", "Found MujocoPlugins param under " << param_path);
 	} else {
 		ROS_INFO_NAMED("mujoco_ros_pluginloader", "No plugins to load listed in parameter server!");
@@ -53,7 +54,7 @@ bool parsePlugins(const ros::NodeHandle &nh, XmlRpc::XmlRpcValue &plugin_config_
 
 	plugin_loader_ptr_.reset(new pluginlib::ClassLoader<MujocoPlugin>("mujoco_ros", "MujocoSim::MujocoPlugin"));
 
-	nh.getParam(param_path, plugin_config_rpc);
+	nh->getParam(param_path, plugin_config_rpc);
 
 	if (plugin_config_rpc.getType() != XmlRpc::XmlRpcValue::TypeArray) {
 		ROS_ERROR_STREAM_NAMED("mujoco_ros_plugin_loader", "Error while parsing MujocoPlugins rosparam: wrong type.");
@@ -65,7 +66,7 @@ bool parsePlugins(const ros::NodeHandle &nh, XmlRpc::XmlRpcValue &plugin_config_
 	return true;
 }
 
-void registerPlugins(const ros::NodeHandle &nh, const XmlRpc::XmlRpcValue &config_rpc, MujocoEnvPtr &env)
+void registerPlugins(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config_rpc, std::vector<MujocoPluginPtr> &plugins)
 {
 	for (uint i = 0; i < config_rpc.size(); i++) {
 		if (config_rpc[i].getType() != XmlRpc::XmlRpcValue::TypeStruct) {
@@ -77,11 +78,11 @@ void registerPlugins(const ros::NodeHandle &nh, const XmlRpc::XmlRpcValue &confi
 			continue;
 		}
 		// TODO: handle failed registration somehow?
-		registerPlugin(nh, config_rpc[i], env);
+		registerPlugin(nh, config_rpc[i], plugins);
 	}
 }
 
-bool registerPlugin(const ros::NodeHandle &nh, const XmlRpc::XmlRpcValue &config, MujocoEnvPtr &env)
+bool registerPlugin(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config, std::vector<MujocoPluginPtr> &plugins)
 {
 	ROS_ASSERT(config.getType() == XmlRpc::XmlRpcValue::TypeStruct);
 	std::string type;
@@ -97,21 +98,21 @@ bool registerPlugin(const ros::NodeHandle &nh, const XmlRpc::XmlRpcValue &config
 
 	try {
 		MujocoPluginPtr mjplugin_ptr = plugin_loader_ptr_->createInstance(type);
-		mjplugin_ptr->init(config, env->nh);
-		env->addPlugin(mjplugin_ptr);
-		ROS_DEBUG_STREAM_NAMED("mujoco_ros_plugin_loader", "Added " << type << " to the list of loaded plugins of env '"
-		                                                            << env->name << "'. List now contains "
-		                                                            << env->getPlugins().size() << " plugin(s)");
+		mjplugin_ptr->init(config, nh);
+		plugins.push_back(mjplugin_ptr);
+		ROS_DEBUG_STREAM_NAMED("mujoco_ros_plugin_loader",
+		                       "Added " << type << " to the list of loaded plugins in namespace '" << nh->getNamespace()
+		                                << "'. List now contains " << plugins.size() << " plugin(s)");
 	} catch (const pluginlib::PluginlibException &ex) {
 		ROS_ERROR_STREAM_NAMED("mujoco_ros_plugin_loader",
-		                       "The plugin failed to load (for env " << env->name << " ): " << ex.what());
+		                       "The plugin failed to load (for namespace " << nh->getNamespace() << " ): " << ex.what());
 		return false;
 	}
 
 	return true;
 }
 
-void unloadRegisteredPlugins()
+void unloadPluginloader()
 {
 	plugin_loader_ptr_.reset();
 }

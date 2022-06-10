@@ -41,6 +41,4 @@ typedef boost::shared_ptr<MujocoEnv> MujocoEnvPtr;
  */
 typedef boost::shared_ptr<MujocoEnvParallel> MujocoEnvParallelPtr;
 
-typedef std::function<void(const mjModel *, const mjData *, mjContact *, int, int, mjtNum)> collision_function;
-
 } // namespace MujocoSim

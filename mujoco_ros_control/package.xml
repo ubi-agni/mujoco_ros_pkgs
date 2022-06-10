@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>mujoco_ros_control</name>
-  <version>2.0.0</version>
+  <version>3.0.0</version>
   <description>The mujoco_ros_control package</description>
 
   <url type="repository">https://github.com/DavidPL1/mujoco_ros_pkgs</url>
@@ -27,7 +27,7 @@
   <depend>hardware_interface</depend>
   <depend>transmission_interface</depend>
 
-  <depend>mujoco_ros</depend>
+  <depend version_gte="3.0.0">mujoco_ros</depend>
 
   <export>
     <mujoco_ros plugin="${prefix}/mujoco_ros_control_plugin.xml" />

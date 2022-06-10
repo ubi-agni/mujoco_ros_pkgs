@@ -34,11 +34,9 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* Authors: David P. Leins*/
+/* Authors: David P. Leins */
 
 #pragma once
-
-#include <mujoco_ros_control/mujoco_ros_control_plugin.h>
 
 #include <boost/shared_ptr.hpp>
 #include <boost/thread.hpp>
@@ -65,7 +63,7 @@ class MujocoRosControlPlugin : public MujocoSim::MujocoPlugin
 public:
 	virtual ~MujocoRosControlPlugin();
 
-	// Overlead entry point
+	// Overload entry point
 	virtual bool load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d);
 
 	// Called on reset
@@ -82,17 +80,11 @@ public:
 protected:
 	void eStopCB(const std_msgs::BoolConstPtr &e_stop_active);
 
-	// Node Handles
-	ros::NodeHandle model_nh_;
-
-	// deferred load in case ros is blocking
-	boost::thread deffered_load_thread_;
-
 	// Interface loader
 	boost::shared_ptr<pluginlib::ClassLoader<mujoco_ros_control::RobotHWSim>> robot_hw_sim_loader_;
 
-	std::string robot_namespace_;
 	std::string robot_description_;
+	std::string robot_namespace_;
 
 	// Transmissions in this plugin's scope
 	std::vector<transmission_interface::TransmissionInfo> transmissions_;

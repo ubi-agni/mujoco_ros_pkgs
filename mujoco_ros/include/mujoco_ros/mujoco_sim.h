@@ -96,7 +96,7 @@ static std::set<std::pair<int, int>> custom_collisions_;
  * @param [in] geom_type2 second type of the colliding geoms.
  * @param [in] collision_cb collision function to call.
  */
-void registerCollisionFunc(int geom_type1, int geom_type2, collision_function collision_cb);
+void registerCollisionFunc(int geom_type1, int geom_type2, mjfCollision collision_cb);
 
 namespace detail {
 

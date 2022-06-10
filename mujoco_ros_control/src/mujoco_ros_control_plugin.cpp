@@ -60,6 +60,8 @@ bool MujocoRosControlPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr 
 		return false;
 	}
 
+	robot_namespace_ = node_handle_->getNamespace();
+
 	ROS_ASSERT(rosparam_config_.getType() == XmlRpc::XmlRpcValue::TypeStruct);
 	// Check rosparam sanity
 	if (!rosparam_config_.hasMember("hardware")) {
@@ -89,10 +91,7 @@ bool MujocoRosControlPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr 
 	}
 
 	robot_hw_sim_type_str_ = (std::string)rosparam_config_["hardware"]["type"];
-	robot_namespace_       = rosparam_config_["hardware"].hasMember("robot_namespace") ?
-	                       (std::string)rosparam_config_["hardware"]["robot_namespace"] :
-	                       "/";
-	control_period_ = ros::Duration((double)rosparam_config_["hardware"]["control_period"]);
+	control_period_        = ros::Duration((double)rosparam_config_["hardware"]["control_period"]);
 
 	if (control_period_.toSec() < m->opt.timestep) {
 		ROS_WARN_STREAM_NAMED("mujoco_ros_control", "Desired controller update period ("
@@ -105,14 +104,12 @@ bool MujocoRosControlPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr 
 	                         (std::string)rosparam_config_["hardware"]["robot_description"] :
 	                         "robot_description";
 
-	model_nh_ = ros::NodeHandle(robot_namespace_);
-
 	e_stop_active_      = false;
 	last_e_stop_active_ = false;
 
 	if (rosparam_config_["hardware"].hasMember("eStopTopic")) {
 		const std::string e_stop_topic = (std::string)rosparam_config_["hardware"]["eStopTopic"];
-		e_stop_sub_                    = model_nh_.subscribe(e_stop_topic, 1, &MujocoRosControlPlugin::eStopCB, this);
+		e_stop_sub_                    = node_handle_->subscribe(e_stop_topic, 1, &MujocoRosControlPlugin::eStopCB, this);
 	}
 
 	std::string urdf_string = getURDF(robot_description_);
@@ -132,13 +129,13 @@ bool MujocoRosControlPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr 
 
 		ROS_DEBUG_STREAM_NAMED("mujoco_ros_control",
 		                       "Trying to initialize robot hw sim of type '" << robot_hw_sim_type_str_ << "'");
-		if (!robot_hw_sim_->initSim(m, d, robot_namespace_, model_nh_, urdf_model_ptr, transmissions_)) {
+		if (!robot_hw_sim_->initSim(m, d, robot_namespace_, *node_handle_, urdf_model_ptr, transmissions_)) {
 			ROS_FATAL_NAMED("mujoco_ros_control", "Could not initialize robot simulation interface");
 			return false;
 		}
 
 		ROS_DEBUG_STREAM_NAMED("mujoco_ros_control", "Loading controller manager");
-		controller_manager_.reset(new controller_manager::ControllerManager(robot_hw_sim_.get(), model_nh_));
+		controller_manager_.reset(new controller_manager::ControllerManager(robot_hw_sim_.get(), *node_handle_));
 	} catch (pluginlib::LibraryLoadException &ex) {
 		ROS_FATAL_STREAM_NAMED("mujoco_ros_control", "Failed to create robot simulation interface loader: " << ex.what());
 		return false;
@@ -193,20 +190,20 @@ std::string MujocoRosControlPlugin::getURDF(std::string param_name) const
 	// search and wait for robot_description on param server
 	while (urdf_string.empty()) {
 		std::string search_param_name;
-		if (model_nh_.searchParam(param_name, search_param_name)) {
+		if (node_handle_->searchParam(param_name, search_param_name)) {
 			ROS_INFO_ONCE_NAMED("mujoco_ros_control",
 			                    "mujoco_ros_control plugin is waiting for model"
 			                    " URDF in parameter [%s] on the ROS param server.",
 			                    search_param_name.c_str());
 
-			model_nh_.getParam(search_param_name, urdf_string);
+			node_handle_->getParam(search_param_name, urdf_string);
 		} else {
 			ROS_INFO_ONCE_NAMED("mujoco_ros_control",
 			                    "mujoco_ros_control plugin is waiting for model"
 			                    " URDF in parameter [%s] on the ROS param server.",
 			                    robot_description_.c_str());
 
-			model_nh_.getParam(param_name, urdf_string);
+			node_handle_->getParam(param_name, urdf_string);
 		}
 
 		std::this_thread::sleep_for(std::chrono::microseconds(100000));
