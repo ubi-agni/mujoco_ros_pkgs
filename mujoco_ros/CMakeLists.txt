@@ -41,6 +41,7 @@ include_directories(
 )
 
 add_library(${PROJECT_NAME}
+  src/mujoco_env.cpp
   src/mujoco_sim.cpp
   src/uitools.c
   src/plugin_utils.cpp

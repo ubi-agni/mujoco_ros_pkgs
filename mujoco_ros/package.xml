@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>mujoco_ros</name>
-  <version>1.0.0</version>
+  <version>3.0.0</version>
   <description>The mujoco_ros package</description>
 
   <maintainer email="dleins@techfak.uni-bielefeld.de">David P. Leins</maintainer>
@@ -15,6 +15,7 @@
 
   <depend>roscpp</depend>
   <depend>pluginlib</depend>
-  <depend>mujoco_ros_msgs</depend>
+  <depend version_gte="0.2.0">mujoco_ros_msgs</depend>
+  <depend>tf</depend>
 
 </package>

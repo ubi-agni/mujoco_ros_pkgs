@@ -43,6 +43,7 @@
 #include <transmission_interface/transmission_info.h>
 #include <urdf/model.h>
 
+#include <mujoco_ros/common_types.h>
 #include <mujoco_ros/mujoco_sim.h>
 
 namespace mujoco_ros_control {
@@ -74,8 +75,8 @@ public:
 	 * @param transmissions Transmissions.
 	 * @return \c true if the simulated robot hardware is initialized successfully, \c false if not.
 	 */
-	virtual bool initSim(mjModelPtr m_ptr, mjDataPtr d_ptr, const std::string &robot_namespace, ros::NodeHandle model_nh,
-	                     const urdf::Model *const urdf_model,
+	virtual bool initSim(MujocoSim::mjModelPtr m_ptr, MujocoSim::mjDataPtr d_ptr, const std::string &robot_namespace,
+	                     ros::NodeHandle model_nh, const urdf::Model *const urdf_model,
 	                     std::vector<transmission_interface::TransmissionInfo> transmissions) = 0;
 
 	/**
@@ -108,7 +109,7 @@ public:
 	virtual void eStopActive(const bool active) {}
 
 protected:
-	mjModelPtr m_ptr_;
-	mjDataPtr d_ptr_;
+	MujocoSim::mjModelPtr m_ptr_;
+	MujocoSim::mjDataPtr d_ptr_;
 };
 } // namespace mujoco_ros_control

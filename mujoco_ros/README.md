@@ -5,6 +5,18 @@ It is an extension of the MuJoCo [simulate](https://github.com/deepmind/mujoco/b
 
 As an example for extended functionality via plugin, take a look at the [mujoco_ros_control](https://github.com/DavidPL1/mujoco_ros_pkgs/mujoco_ros_control) package.
 
+## Plugins
+Plugins provide an easy way of including new functionality into _mujoco\_ros_. The lifecycle of a Plugin is as follows:
+1. Once an _mjData_ instance is created (and stored in a __MujocoEnv_), each configured plugin is instanciated and a pointer to it is stored in the responsible _MujocoEnv_. Directly after creation its `init` function is called, which provides the plugin instance with its specific configuration, if one was provided. This function should take care of generic, non-instance specific configuration.
+Afterwards the `load` function is called, which makes _mjModel_ and _mjData_ available to the plugin. This function should handle the model/instance specific setup of the plugin.
+
+plugins have different callback functions defined in their base class, users should override the callback functions they intend to use. These are the `controlCallback`, `passiveCallback`, and `renderCallback` functions. The first two are automatically configured to run when the `mjcb_passive` function is called by MuJoCo. The latter allows plugins to add visualisation objects before a scene is rendered.
+
+> **Warning**
+> A plugin should __never__ override the base mujoco callback functions! _mujoco\_ros_ uses them to resolve the appropriate environment and run their list of registered plugin instance callbacks. Instance agnostic plugins should be realized as singletons that return a reference to the singleton in their constructor.
+
+___
+
 # Build Instructions
 1. Make sure MuJoCo is installed (the current build uses version 2.1.1) and runs on your machine.
 2. Create a new ROS workspace or include this repository into an existing workspace.

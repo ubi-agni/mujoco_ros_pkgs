@@ -36,7 +36,7 @@
 
 #pragma once
 #include <ros/ros.h>
-#include <mujoco_ros/mujoco_sim.h>
+#include <mujoco_ros/common_types.h>
 
 #include <pluginlib/class_loader.h>
 
@@ -47,11 +47,22 @@ class MujocoPlugin
 public:
 	virtual ~MujocoPlugin() {}
 
-	// Called directly afte plugin creation
-	void init(const XmlRpc::XmlRpcValue &config) { rosparam_config_ = config; };
+	// Called directly after plugin creation
+	void init(const XmlRpc::XmlRpcValue &config, ros::NodeHandlePtr nh)
+	{
+		rosparam_config_ = config;
+		node_handle_     = nh;
+	};
 
-	// Wrapper method that evaluates if loading the plugin is successful
-	void safe_load(mjModelPtr m, mjDataPtr d)
+	/**
+	 * @brief Wrapper method that evaluates if loading the plugin is successful
+	 *
+	 * @param[in] m
+	 * @param[out] d
+	 * @return true if plugin could be loaded without errors.
+	 * @return false if errors occurred during loading.
+	 */
+	bool safe_load(mjModelPtr m, mjDataPtr d)
 	{
 		loading_successful_ = load(m, d);
 		if (!loading_successful_)
@@ -59,30 +70,72 @@ public:
 			                      "Plugin of type '"
 			                          << rosparam_config_["type"] << "' and full config '" << rosparam_config_
 			                          << "' failed to load. It will be ignored until the next load attempt.");
+		return loading_successful_;
 	}
 
-	// Wrapper method that only calls update if loading the plugin was successful
-	void safe_update()
-	{
-		if (loading_successful_)
-			update();
-	}
-
-	// Wrapper method that only calls reset if loading the plugin was successful
+	/**
+	 * @brief Wrapper method that only calls reset if loading the plugin was successful.
+	 */
 	void safe_reset()
 	{
 		if (loading_successful_)
 			reset();
 	}
 
-	// Called once the world is loaded
+	/**
+	 * @brief Override this function to implement custom control laws.
+	 * To apply control, write into \c mjData.ctrl, \c mjData.qfrc_applied and/or \c mjData.xfrc_applied.
+	 * If defined, this function will be called by the mujoco step function at the appropriate time.
+	 *
+	 * @param[in] model pointer to mjModel.
+	 * @param[in] data pointer to mjData.
+	 */
+	virtual void controlCallback(mjModelPtr model, mjDataPtr data){};
+
+	/**
+	 * @brief Override this function to compute and apply custom passive (i.e. non-controlled) forces.
+	 * This callback should add to the vector \c mjData.qfrc_passive instead of overwriting it, otherwise
+	 * the standard passive forces will be lost.
+	 *
+	 * @param[in] model pointer to mjModel.
+	 * @param[in] data pointer to mjData.
+	 */
+	virtual void passiveCallback(mjModelPtr model, mjDataPtr data){};
+
+	/**
+	 * @brief Override this callback to add custom visualisations to the scene.
+	 *
+	 * @param[in] model pointer to mjModel.
+	 * @param[in] data pointer to mjData.
+	 * @param[in] scene pointer to mjvScene.
+	 */
+	virtual void renderCallback(mjModelPtr model, mjDataPtr data, mjvScene *scene){};
+
+	/**
+	 * @brief Override this callback to add custom behavior at the end of a mujoco_ros simulation step.
+	 * Note that unlike `controlCallback` and `passiveCallback` this callback will not be called when mujoco runs
+	 * individual sub-steps.
+	 *
+	 * @param[in] model pointer to mjModel.
+	 * @param[in] data pointer to mjData.
+	 */
+	virtual void lastStageCallback(mjModelPtr model, mjDataPtr data){};
+
+protected:
+	/**
+	 * @brief Called once the world is loaded.
+	 *
+	 * @param[in] m shared pointer to mujoco model.
+	 * @param[in] d shared pointer to mujoco data.
+	 * @return true on succesful load.
+	 * @return false if load was not successful.
+	 */
 	virtual bool load(mjModelPtr m, mjDataPtr d) = 0;
 
-	// Called on reset
+	/**
+	 * @brief Called on reset.
+	 */
 	virtual void reset() = 0;
-
-	// Called after every world update
-	virtual void update() = 0;
 
 private:
 	bool loading_successful_ = false;
@@ -90,46 +143,45 @@ private:
 protected:
 	MujocoPlugin() {}
 	XmlRpc::XmlRpcValue rosparam_config_;
+	ros::NodeHandlePtr node_handle_;
 };
-typedef boost::shared_ptr<MujocoPlugin> MujocoPluginPtr;
 
 namespace plugin_utils {
 
 /**
- * @brief Searches for plugins to load in the ros parameter server and tries to load them.
+ * @brief Searches for plugins to load in the ros parameter server and stores a the configuration in \c
+ * plugin_config_rpc.
  */
-bool parsePlugins(const ros::NodeHandle &nh);
-/**
- * @brief Loads a MujocoPlugin via pluginlib and registers them for further usage.
- */
-bool registerPlugin(const ros::NodeHandle &nh, const XmlRpc::XmlRpcValue &config);
+bool parsePlugins(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &plugin_config_rpc);
 
 /**
- * @brief (Re)set the registered plugins.
+ * @brief Calls registerPlugin for each plugin defined in \c config_rpc.
+ *
+ * @param[in] nh pointer to nodehandle in correct namespace.
+ * @param[in] config_rpc config of at least one plugin to load.
+ * @param[inout] plugins vector of plugins. If successfully initialized, the plugins are appended to the vector.
  */
-void loadRegisteredPlugins(mjModelPtr m, mjDataPtr d);
+void registerPlugins(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config_rpc, std::vector<MujocoPluginPtr> &plugins);
 
 /**
- * @brief Calls the reset function of each registered plugin.
+ * @brief Loads a MujocoPlugin defined in \c config_rpc via pluginlib and registers it in the passed plugin vector for
+ * further usage.
+ *
+ * @param[in] nh pointer to nodehandle in correct namespace.
+ * @param[in] config_rpc config of the plugin to load.
+ * @param[inout] plugins vector of plugins. If successfully initialized, the plugin is appended to the vector.
+ * @return true if initializing the plugin was successful, false otherwise.
  */
-void resetRegisteredPlugins();
+bool registerPlugin(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config_rpc, std::vector<MujocoPluginPtr> &plugins);
 
-/**
- * @brief Calls the update function of each registered plugin.
- */
-void triggerUpdate();
+void unloadPluginloader();
 
-void unloadRegisteredPlugins();
-
-/**
- * @brief Get the vector containing Ptrs to all registered plugin instances.
- */
-std::vector<MujocoPluginPtr> *getRegisteredPluginPtrs();
-
-static std::vector<MujocoPluginPtr> mujoco_plugins_;
 static boost::shared_ptr<pluginlib::ClassLoader<MujocoPlugin>> plugin_loader_ptr_;
 
-const static std::string MUJOCO_PLUGIN_PARAM_PATH = "/MujocoPlugins/";
+/**
+ * @brief Defines under which path the plugin configuration is stored in the ros parameter server.
+ */
+const static std::string MUJOCO_PLUGIN_PARAM_NAME = "MujocoPlugins";
 
 } // end namespace plugin_utils
 } // namespace MujocoSim

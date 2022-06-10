@@ -60,6 +60,9 @@
 
 #include "mjxmacro.h"
 
+#include <mujoco_ros/common_types.h>
+#include <mujoco_ros/mujoco_env.h>
+
 #include <mujoco_ros/uitools.h>
 #include <mujoco_ros/array_safety.h>
 
@@ -68,12 +71,10 @@
 
 namespace mju = ::mujoco::sample_util;
 
-static constexpr int kBufSize = 1000;
-
-typedef boost::shared_ptr<mjModel> mjModelPtr;
-typedef boost::shared_ptr<mjData> mjDataPtr;
-
 namespace MujocoSim {
+
+#define mjENABLED_ros(model, x) (model->opt.enableflags & (x))
+#define mjDISABLED_ros(model, x) (model->opt.disableflags & (x))
 
 void init(std::string modelfile);
 
@@ -85,23 +86,29 @@ static std::mutex render_mtx;
 
 int jointName2id(mjModel *m, const std::string &joint_name);
 
-void setJointPosition(const double &pos, const int &joint_id);
+void setJointPosition(mjModelPtr model, mjDataPtr data, const double &pos, const int &joint_id);
+void setJointVelocity(mjModelPtr model, mjDataPtr data, const double &vel, const int &joint_id);
+
+// Keep track of overriden collisions to throw warnings
+static std::set<std::pair<int, int>> custom_collisions_;
+
+/**
+ * @brief Register a custom collision function for collisions between two geom types.
+ *
+ * @param [in] geom_type1 first geom type of the colliding geoms.
+ * @param [in] geom_type2 second type of the colliding geoms.
+ * @param [in] collision_cb collision function to call.
+ */
+void registerCollisionFunc(int geom_type1, int geom_type2, mjfCollision collision_cb);
 
 namespace detail {
 
-// model and data
-static mjModelPtr m_ = NULL;
-static mjDataPtr d_  = NULL;
+// Env containing model and data
+static MujocoEnvPtr mj_env_;
 
 // filename strings
 static char filename_[kBufSize]          = "";
 static char previous_filename_[kBufSize] = "";
-
-// initial joint positions to set on load
-static std::map<std::string, double> init_joint_pos_map_;
-
-// control noise variables
-static mjtNum *ctrlnoise_ = nullptr;
 
 // info strings
 static char info_title_[kBufSize];
@@ -152,37 +159,37 @@ void initVisual(void);
 
 // Profiler, Sensor, Info, Watch
 void profilerInit(void);
-void profilerUpdate(void);
+void profilerUpdate(mjModelPtr model, mjDataPtr data);
 void profilerShow(mjrRect rect);
 
 void sensorInit(void);
-void sensorUpdate(void);
+void sensorUpdate(mjModelPtr model, mjDataPtr data);
 void sensorShow(mjrRect rect);
 
-void infotext(char (&title)[kBufSize], char (&content)[kBufSize], double interval);
+void infotext(mjModelPtr model, mjDataPtr data, char (&title)[kBufSize], char (&content)[kBufSize], double interval);
 
 void printField(char (&str)[mjMAXUINAME], void *ptr);
 
-void watch(void);
+void watch(mjModelPtr model, mjDataPtr data);
 
 // UI Elements
-void makePhysics(int oldstate);
-void makeRendering(int oldstate);
+void makePhysics(mjModelPtr model, mjDataPtr data, int oldstate);
+void makeRendering(mjModelPtr model, int oldstate);
 void makeGroup(int oldstate);
-void makeJoint(int oldstate);
-void makeControl(int oldstate);
+void makeJoint(mjModelPtr model, mjDataPtr data, int oldstate);
+void makeControl(mjModelPtr model, mjDataPtr data, int oldstate);
 void makeSections(void);
 
 // Utility Functions
-void alignScale(void);
-void copyKey(void);
+void alignScale(mjModelPtr model);
+void copyKey(mjModelPtr model, mjDataPtr data);
 mjtNum timer(void);
-void clearTimers(void);
+void clearTimers(mjDataPtr data);
 void printCamera(mjvGLCamera *camera);
-void updateSettings(void);
+void updateSettings(mjModelPtr model);
 void drop(GLFWwindow *window, int count, const char **paths);
 void loadModel(void);
-void loadInitialJointStates(void);
+void loadInitialJointStates(mjModelPtr model, mjDataPtr data);
 
 // UI Hooks for uitools.h
 int uiPredicate(int category, void *userdata);
@@ -190,7 +197,7 @@ void uiLayout(mjuiState *state);
 void uiEvent(mjuiState *state);
 
 // Rendering and Simulation
-void prepare(void);
+void prepare(mjModelPtr model, mjDataPtr data);
 void render(GLFWwindow *window);
 
 // Threads

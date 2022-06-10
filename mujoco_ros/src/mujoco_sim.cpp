@@ -62,9 +62,58 @@ int jointName2id(mjModel *m, const std::string &joint_name)
 	return mj_name2id(m, mjOBJ_JOINT, joint_name.c_str());
 }
 
+void registerCollisionFunc(int geom_type1, int geom_type2, mjfCollision collision_cb)
+{
+	if (custom_collisions_.find(std::pair(geom_type1, geom_type2)) != custom_collisions_.end() &&
+	    custom_collisions_.find(std::pair(geom_type2, geom_type2)) != custom_collisions_.end()) {
+		ROS_WARN_STREAM_NAMED("mujoco", "A user defined collision callback for collisions between geoms of type "
+		                                    << geom_type1 << " and " << geom_type2
+		                                    << " have already been registered. This might lead to unexpected behavior!");
+	} else {
+		custom_collisions_.insert(std::pair(geom_type1, geom_type2));
+	}
+	mjCOLLISIONFUNC[geom_type1][geom_type2] = collision_cb;
+}
+
+void controlCallback(const mjModel * /*model*/, mjData *data)
+{
+	MujocoEnvPtr env = environments::getEnv(data);
+	if (env) {
+		env->runControlCbs();
+	}
+}
+
+void passiveCallback(const mjModel * /*model*/, mjData *data)
+{
+	MujocoEnvPtr env = environments::getEnv(data);
+	if (env) {
+		env->runPassiveCbs();
+	}
+}
+
+void renderCallback(mjData *data, mjvScene *scene)
+{
+	MujocoEnvPtr env = environments::getEnv(data);
+	if (env) {
+		env->runRenderCbs(scene);
+	}
+}
+
+void lastStageCallback(mjData *data)
+{
+	MujocoEnvPtr env = environments::getEnv(data);
+	if (env) {
+		env->runLastStageCbs();
+	}
+}
+
 void init(std::string modelfile)
 {
 	nh_.reset(new ros::NodeHandle("~"));
+
+	std::string mj_env_namespace;
+	nh_->param<std::string>("ns", mj_env_namespace, "/");
+	mj_env_.reset(new MujocoEnv(mj_env_namespace));
 
 	bool unpause;
 	nh_->param<bool>("unpause", unpause, true);
@@ -99,11 +148,6 @@ void init(std::string modelfile)
 
 	setupCallbacks();
 
-	if (plugin_utils::parsePlugins(*nh_)) {
-		std::vector<MujocoPluginPtr> *plugins = plugin_utils::getRegisteredPluginPtrs();
-		ROS_DEBUG_STREAM_NAMED("mujoco", "Found " << plugins->size() << " plugins");
-	}
-
 	std::thread simthread(simulate);
 	eventloop();
 
@@ -119,20 +163,24 @@ void init(std::string modelfile)
 	sim_mtx.unlock();
 	render_mtx.unlock();
 
-	free(ctrlnoise_);
-	plugin_utils::unloadRegisteredPlugins();
-	d_.reset();
-	m_.reset();
+	mj_env_.reset();
+	plugin_utils::unloadPluginloader();
 	mjv_freeScene(&scn_);
 	mjr_freeContext(&con_);
 	ROS_DEBUG_NAMED("mujoco", "Cleanup done");
 }
 
-void setJointPosition(const double &pos, const int &joint_id)
+void setJointPosition(mjModelPtr model, mjDataPtr data, const double &pos, const int &joint_id)
 {
-	d_->qpos[m_->jnt_qposadr[joint_id]]        = pos;
-	d_->qvel[m_->jnt_dofadr[joint_id]]         = 0;
-	d_->qfrc_applied[m_->jnt_dofadr[joint_id]] = 0;
+	data->qpos[model->jnt_qposadr[joint_id]]        = pos;
+	data->qvel[model->jnt_dofadr[joint_id]]         = 0;
+	data->qfrc_applied[model->jnt_dofadr[joint_id]] = 0;
+}
+
+void setJointVelocity(mjModelPtr model, mjDataPtr data, const double &vel, const int &joint_id)
+{
+	data->qvel[model->jnt_dofadr[joint_id]]         = vel;
+	data->qfrc_applied[model->jnt_dofadr[joint_id]] = 0;
 }
 
 void requestExternalShutdown(void)
@@ -142,12 +190,12 @@ void requestExternalShutdown(void)
 
 namespace detail {
 
-void publishSimTime(void)
+void publishSimTime(mjtNum time)
 {
 	rosgraph_msgs::Clock ros_time;
-	ros_time.clock.fromSec(d_->time);
+	ros_time.clock.fromSec(time);
 	pub_clock_.publish(ros_time);
-	last_time_ = d_->time;
+	last_time_ = time;
 }
 
 void eventloop(void)
@@ -168,7 +216,7 @@ void eventloop(void)
 			glfwPollEvents();
 
 			// Prepare to render
-			prepare();
+			prepare(mj_env_->model, mj_env_->data);
 		}
 
 		// Allow simulation thread to run
@@ -191,9 +239,15 @@ void simulate(void)
 	double cpusync = 0;
 	mjtNum simsync = 0;
 
+	mjModelPtr model;
+	mjDataPtr data;
+
 	while (!settings_.exitrequest && num_steps != 0) {
-		if (d_) {
-			publishSimTime();
+		model = mj_env_->model;
+		data  = mj_env_->data;
+
+		if (data) {
+			publishSimTime(data->time);
 		}
 
 		if (settings_.run && settings_.busywait) {
@@ -204,7 +258,7 @@ void simulate(void)
 
 		sim_mtx.lock();
 
-		if (m_) {
+		if (model) {
 			if (settings_.run) {
 				// Count steps until termination
 				if (num_steps > 0) {
@@ -217,64 +271,64 @@ void simulate(void)
 				// Inject noise
 				if (settings_.ctrlnoisestd) {
 					// Convert rate and scale to discrete time given current timestep
-					mjtNum rate  = mju_exp(-m_->opt.timestep / settings_.ctrlnoiserate);
+					mjtNum rate  = mju_exp(-model->opt.timestep / settings_.ctrlnoiserate);
 					mjtNum scale = settings_.ctrlnoisestd * mju_sqrt(1 - rate * rate);
 
-					for (int i = 0; i < m_->nu; i++) {
+					for (int i = 0; i < model->nu; i++) {
 						// Update noise
-						ctrlnoise_[i] = rate * ctrlnoise_[i] + scale * mju_standardNormal(nullptr);
+						mj_env_->ctrlnoise[i] = rate * mj_env_->ctrlnoise[i] + scale * mju_standardNormal(nullptr);
 						// Apply noise
-						d_->ctrl[i] = ctrlnoise_[i];
+						mj_env_->data->ctrl[i] = mj_env_->ctrlnoise[i];
 					}
 				}
 
 				// Out-of-sync (for any reason)
-				mjtNum offset = mju_abs((d_->time * settings_.slow_down - simsync) - (tmstart - cpusync));
-				if (d_->time * settings_.slow_down < simsync || tmstart < cpusync || cpusync == 0 ||
+				mjtNum offset = mju_abs((data->time * settings_.slow_down - simsync) - (tmstart - cpusync));
+				if (data->time * settings_.slow_down < simsync || tmstart < cpusync || cpusync == 0 ||
 				    offset > syncmisalign_ * settings_.slow_down || settings_.speed_changed) {
 					// Re-sync
 
 					// ROS_WARN_STREAM_NAMED("mujoco", "Out of sync by " << offset << ". Re-syncing...");
 
 					cpusync                 = tmstart;
-					simsync                 = d_->time * settings_.slow_down;
+					simsync                 = data->time * settings_.slow_down;
 					settings_.speed_changed = false;
 
 					// Clear old perturbations, apply new
-					mju_zero(d_->xfrc_applied, 6 * m_->nbody);
-					mjv_applyPerturbPose(m_.get(), d_.get(), &pert_, 0); // Move mocap bodies only
-					mjv_applyPerturbForce(m_.get(), d_.get(), &pert_);
+					mju_zero(data->xfrc_applied, 6 * model->nbody);
+					mjv_applyPerturbPose(model.get(), data.get(), &pert_, 0); // Move mocap bodies only
+					mjv_applyPerturbForce(model.get(), data.get(), &pert_);
 
 					// Run single step, let next iteration deal with timing
-					mj_step(m_.get(), d_.get());
-					publishSimTime();
-					plugin_utils::triggerUpdate();
+					mj_step(model.get(), data.get());
+					publishSimTime(data->time);
+					lastStageCallback(data.get());
 				} else { // in-sync
 					// Step while simtime lags behind cputime , and within safefactor
-					while ((d_->time * settings_.slow_down - simsync) < (glfwGetTime() - cpusync) &&
+					while ((data->time * settings_.slow_down - simsync) < (glfwGetTime() - cpusync) &&
 					       (glfwGetTime() - tmstart) < refreshfactor_ / vmode_.refreshRate) {
 						// clear old perturbations, apply new
-						mju_zero(d_->xfrc_applied, 6 * m_->nbody);
-						mjv_applyPerturbPose(m_.get(), d_.get(), &pert_, 0); // Move mocap bodies only
-						mjv_applyPerturbForce(m_.get(), d_.get(), &pert_);
+						mju_zero(data->xfrc_applied, 6 * model->nbody);
+						mjv_applyPerturbPose(model.get(), data.get(), &pert_, 0); // Move mocap bodies only
+						mjv_applyPerturbForce(model.get(), data.get(), &pert_);
 
 						// Run mj_step
-						mjtNum prevtm = d_->time * settings_.slow_down;
-						mj_step(m_.get(), d_.get());
-						publishSimTime();
-						plugin_utils::triggerUpdate();
+						mjtNum prevtm = data->time * settings_.slow_down;
+						mj_step(model.get(), data.get());
+						publishSimTime(data->time);
+						lastStageCallback(data.get());
 
 						// break on reset
-						if (d_->time * settings_.slow_down < prevtm) {
+						if (data->time * settings_.slow_down < prevtm) {
 							break;
 						}
 					}
 				}
 			} else { // Paused
-				mjv_applyPerturbPose(m_.get(), d_.get(), &pert_, 1); // Move mocap and dynamic bodies
+				mjv_applyPerturbPose(model.get(), data.get(), &pert_, 1); // Move mocap and dynamic bodies
 
 				// Run mj_forward, to update rendering and joint sliders
-				mj_forward(m_.get(), d_.get());
+				mj_forward(model.get(), data.get());
 			}
 		}
 		sim_mtx.unlock();
@@ -336,7 +390,6 @@ void initVisual()
 	// set GLFW callbacks
 	uiSetCallback(window_, &uistate_, uiEvent, uiLayout);
 	glfwSetWindowRefreshCallback(window_, render);
-	glfwSetDropCallback(window_, drop);
 
 	// init state und uis
 	std::memset(&uistate_, 0, sizeof(mjuiState));
@@ -399,28 +452,30 @@ void loadModel(void)
 
 	ROS_DEBUG_NAMED("mujoco", "replacing model and data ...");
 	// Delete old model, assign new
-	m_.reset(mnew);
-	d_.reset(mj_makeData(m_.get()));
+	mj_env_->model.reset(mnew);
+	environments::assignData(mj_makeData(mnew), mj_env_);
+
+	// if time == 0, then sim is loaded for the first time
 	if (last_time_ > 0)
-		d_->time = last_time_;
+		mj_env_->data->time = last_time_;
 
-	loadInitialJointStates();
+	loadInitialJointStates(mj_env_->model, mj_env_->data);
 
-	mj_forward(m_.get(), d_.get());
+	mj_forward(mj_env_->model.get(), mj_env_->data.get());
 
-	publishSimTime();
+	publishSimTime(mj_env_->data->time);
 
 	ROS_DEBUG_NAMED("mujoco", "resetting noise ...");
 	// Allocate ctrlnoise
-	free(ctrlnoise_);
-	ctrlnoise_ = (mjtNum *)malloc(sizeof(mjtNum) * m_->nu);
-	mju_zero(ctrlnoise_, m_->nu);
+	free(mj_env_->ctrlnoise);
+	mj_env_->ctrlnoise = (mjtNum *)malloc(sizeof(mjtNum) * mj_env_->model->nu);
+	mju_zero(mj_env_->ctrlnoise, mj_env_->model->nu);
 
 	ROS_DEBUG_NAMED("mujoco", "creating scene ...");
 	// Re-create scene and context
-	mjv_makeScene(m_.get(), &scn_, maxgeom_);
+	mjv_makeScene(mj_env_->model.get(), &scn_, maxgeom_);
 	if (vis_)
-		mjr_makeContext(m_.get(), &con_, 50 * (settings_.font + 1));
+		mjr_makeContext(mj_env_->model.get(), &con_, 50 * (settings_.font + 1));
 
 	ROS_DEBUG_NAMED("mujoco", "clear perturb ...");
 	// Clear perturbation state
@@ -430,29 +485,28 @@ void loadModel(void)
 
 	// Align and scale view unless reloading the same file
 	if (mju::strcmp_arr(filename_, previous_filename_)) {
-		alignScale();
+		alignScale(mj_env_->model);
 		mju::strcpy_arr(previous_filename_, filename_);
 	}
 
-	ROS_DEBUG_NAMED("mujoco", "(re)loading MujocoPlugins ...");
-	plugin_utils::loadRegisteredPlugins(m_, d_);
+	mj_env_->reload();
 
 	ROS_DEBUG_NAMED("mujoco", "updating scene...");
 	// Update scene
-	mjv_updateScene(m_.get(), d_.get(), &vopt_, &pert_, &cam_, mjCAT_ALL, &scn_);
+	mjv_updateScene(mj_env_->model.get(), mj_env_->data.get(), &vopt_, &pert_, &cam_, mjCAT_ALL, &scn_);
 
 	if (vis_) {
 		// Set window title to model name
-		if (window_ && m_->names) {
+		if (window_ && mj_env_->model->names) {
 			char title[200] = "Simulate : ";
-			mju::strcat_arr(title, m_->names);
+			mju::strcat_arr(title, mj_env_->model->names);
 			glfwSetWindowTitle(window_, title);
 		}
 
 		// Set keyframe range and divisions
 		ui0_.sect[SECT_SIMULATION].item[5].slider.range[0]  = 0;
-		ui0_.sect[SECT_SIMULATION].item[5].slider.range[1]  = mjMAX(0, m_->nkey - 1);
-		ui0_.sect[SECT_SIMULATION].item[5].slider.divisions = mjMAX(1, m_->nkey - 1);
+		ui0_.sect[SECT_SIMULATION].item[5].slider.range[1]  = mjMAX(0, mj_env_->model->nkey - 1);
+		ui0_.sect[SECT_SIMULATION].item[5].slider.divisions = mjMAX(1, mj_env_->model->nkey - 1);
 
 		// Rebuild UI Sections
 		makeSections();
@@ -463,25 +517,43 @@ void loadModel(void)
 	}
 
 	ROS_DEBUG_NAMED("mujoco", "updating settings ...");
-	updateSettings();
+	updateSettings(mj_env_->model);
 	ROS_DEBUG_NAMED("mujoco", "settings updated ...");
 }
 
-void loadInitialJointStates(void)
+void loadInitialJointStates(mjModelPtr model, mjDataPtr data)
 {
 	ROS_DEBUG_NAMED("mujoco", "Fetching and setting initial joint positions ...");
-	nh_->getParam("initial_joint_positions/joint_map", init_joint_pos_map_);
 
-	for (auto const &[name, value] : init_joint_pos_map_) {
-		int id = mj_name2id(m_.get(), mjOBJ_JOINT, name.c_str());
+	// Joint positions
+	static std::map<std::string, double> joint_map;
+	nh_->getParam("initial_joint_positions/joint_map", joint_map);
+
+	for (auto const &[name, value] : joint_map) {
+		int id = mj_name2id(model.get(), mjOBJ_JOINT, name.c_str());
 		if (id == -1) {
 			ROS_WARN_STREAM_NAMED("mujoco", "Joint with name '"
 			                                    << name << "' could not be found. Initial joint position cannot be set!");
 			continue;
 		}
 
-		setJointPosition(value, id);
-		ROS_DEBUG_STREAM_NAMED("mujoco", "\tjoint name '" << name << "' (mjID '" << id << "') set to value: " << value);
+		setJointPosition(model, data, value, id);
+		ROS_DEBUG_STREAM_NAMED("mujoco", "\tjoint name '" << name << "' (mjID '" << id << "') set to pos: " << value);
+	}
+
+	joint_map.clear();
+	// Joint velocities
+	nh_->getParam("initial_joint_velocities/joint_map", joint_map);
+	for (auto const &[name, value] : joint_map) {
+		int id = mj_name2id(model.get(), mjOBJ_JOINT, name.c_str());
+		if (id == -1) {
+			ROS_WARN_STREAM_NAMED("mujoco", "Joint with name '"
+			                                    << name << "' could not be found. Initial joint velocity cannot be set!");
+			continue;
+		}
+
+		setJointVelocity(model, data, value, id);
+		ROS_DEBUG_STREAM_NAMED("mujoco", "\tjoint name '" << name << "' (mjID '" << id << "') set to vel: " << value);
 	}
 }
 
@@ -489,27 +561,17 @@ int uiPredicate(int category, void *userdata)
 {
 	switch (category) {
 		case 2: // require model
-			return (m_ != NULL);
+			return (mj_env_->model != NULL);
 
 		case 3: //
-			return (m_ && m_->nkey);
+			return (mj_env_->model && mj_env_->model->nkey);
 
 		case 4:
-			return (m_ && !settings_.run);
+			return (mj_env_->model && !settings_.run);
 
 		default:
 			return 1;
 	}
-}
-
-void drop(GLFWwindow *window, int count, const char **paths)
-{
-	// Ignore file drop
-
-	// make sure list is non-empty
-	// if (count > 0) {
-	// 	mju::strcpy_arr(filename_, paths[0]);
-	// }
 }
 
 void render(GLFWwindow *window)
@@ -525,7 +587,7 @@ void render(GLFWwindow *window)
 	}
 
 	// no model
-	if (!m_) {
+	if (!mj_env_->model) {
 		// blank screen
 		mjr_rectangle(rect, 0.2f, 0.3f, 0.4f, 1);
 
@@ -545,8 +607,9 @@ void render(GLFWwindow *window)
 
 		// finalize
 		glfwSwapBuffers(window);
+	} else {
+		renderCallback(mj_env_->data.get(), &scn_);
 	}
-
 	// render scene
 	mjr_render(rect, &scn_, &con_);
 
@@ -637,20 +700,20 @@ void uiEvent(mjuiState *state)
 		if (it && it->sectionid == SECT_FILE) {
 			switch (it->itemid) {
 				case 0: // save xml
-					if (!mj_saveLastXML("mjmodel.xml", m_.get(), err, 200))
+					if (!mj_saveLastXML("mjmodel.xml", mj_env_->model.get(), err, 200))
 						ROS_ERROR("Save XML error: %s", err);
 					break;
 
 				case 1: // Save mjb
-					mj_saveModel(m_.get(), "mjmodel.mjb", NULL, 0);
+					mj_saveModel(mj_env_->model.get(), "mjmodel.mjb", NULL, 0);
 					break;
 
 				case 2: // print model
-					mj_printModel(m_.get(), "MJMODEL.TXT");
+					mj_printModel(mj_env_->model.get(), "MJMODEL.TXT");
 					break;
 
 				case 3: // print data
-					mj_printData(m_.get(), d_.get(), "MJDATA.TXT");
+					mj_printData(mj_env_->model.get(), mj_env_->data.get(), "MJDATA.TXT");
 					break;
 
 				case 4: // Quit
@@ -708,17 +771,17 @@ void uiEvent(mjuiState *state)
 		else if (it && it->sectionid == SECT_SIMULATION) {
 			switch (it->itemid) {
 				case 1: // reset
-					if (m_) {
-						mj_resetData(m_.get(), d_.get());
+					if (mj_env_->model) {
+						mj_resetData(mj_env_->model.get(), mj_env_->data.get());
 						if (last_time_ > 0)
-							d_->time = last_time_;
-						loadInitialJointStates();
-						plugin_utils::resetRegisteredPlugins();
-						mj_forward(m_.get(), d_.get());
-						publishSimTime();
-						profilerUpdate();
-						sensorUpdate();
-						updateSettings();
+							mj_env_->data->time = last_time_;
+						loadInitialJointStates(mj_env_->model, mj_env_->data);
+						mj_env_->reset();
+						mj_forward(mj_env_->model.get(), mj_env_->data.get());
+						publishSimTime(mj_env_->data->time);
+						profilerUpdate(mj_env_->model, mj_env_->data);
+						sensorUpdate(mj_env_->model, mj_env_->data);
+						updateSettings(mj_env_->model);
 					}
 					break;
 
@@ -727,12 +790,12 @@ void uiEvent(mjuiState *state)
 					break;
 
 				case 3: // Align
-					alignScale();
-					updateSettings();
+					alignScale(mj_env_->model);
+					updateSettings(mj_env_->model);
 					break;
 
 				case 4: // Copy Pose
-					copyKey();
+					copyKey(mj_env_->model, mj_env_->data);
 					break;
 
 				case 5: // Adjust key
@@ -740,26 +803,30 @@ void uiEvent(mjuiState *state)
 					// REVIEW: fully disable resetting to keypoints?
 					i = settings_.key;
 					// d_->time = m_->key_time[i]; // ros does not expect jumps back in time
-					mju_copy(d_->qpos, m_->key_qpos + i * m_->nq, m_->nq);
-					mju_copy(d_->qvel, m_->key_qvel + i * m_->nv, m_->nv);
-					mju_copy(d_->act, m_->key_act + i * m_->na, m_->na);
-					mju_copy(d_->mocap_pos, m_->key_mpos + i * 3 * m_->nmocap, 3 * m_->nmocap);
-					mju_copy(d_->mocap_quat, m_->key_mquat + i * 4 * m_->nmocap, 4 * m_->nmocap);
-					mj_forward(m_.get(), d_.get());
-					publishSimTime();
-					profilerUpdate();
-					sensorUpdate();
-					updateSettings();
+					mju_copy(mj_env_->data->qpos, mj_env_->model->key_qpos + i * mj_env_->model->nq, mj_env_->model->nq);
+					mju_copy(mj_env_->data->qvel, mj_env_->model->key_qvel + i * mj_env_->model->nv, mj_env_->model->nv);
+					mju_copy(mj_env_->data->act, mj_env_->model->key_act + i * mj_env_->model->na, mj_env_->model->na);
+					mju_copy(mj_env_->data->mocap_pos, mj_env_->model->key_mpos + i * 3 * mj_env_->model->nmocap,
+					         3 * mj_env_->model->nmocap);
+					mju_copy(mj_env_->data->mocap_quat, mj_env_->model->key_mquat + i * 4 * mj_env_->model->nmocap,
+					         4 * mj_env_->model->nmocap);
+					mj_forward(mj_env_->model.get(), mj_env_->data.get());
+					publishSimTime(mj_env_->data->time);
+					profilerUpdate(mj_env_->model, mj_env_->data);
+					sensorUpdate(mj_env_->model, mj_env_->data);
+					updateSettings(mj_env_->model);
 					break;
 
 				case 7: // Set key
-					i               = settings_.key;
-					m_->key_time[i] = d_->time;
-					mju_copy(m_->key_qpos + i * m_->nq, d_->qpos, m_->nq);
-					mju_copy(m_->key_qvel + i * m_->nv, d_->qvel, m_->nv);
-					mju_copy(m_->key_act + i * m_->na, d_->act, m_->na);
-					mju_copy(m_->key_mpos + i * 3 * m_->nmocap, d_->mocap_pos, 3 * m_->nmocap);
-					mju_copy(m_->key_mquat + i * 4 * m_->nmocap, d_->mocap_quat, 4 * m_->nmocap);
+					i                           = settings_.key;
+					mj_env_->model->key_time[i] = mj_env_->data->time;
+					mju_copy(mj_env_->model->key_qpos + i * mj_env_->model->nq, mj_env_->data->qpos, mj_env_->model->nq);
+					mju_copy(mj_env_->model->key_qvel + i * mj_env_->model->nv, mj_env_->data->qvel, mj_env_->model->nv);
+					mju_copy(mj_env_->model->key_act + i * mj_env_->model->na, mj_env_->data->act, mj_env_->model->na);
+					mju_copy(mj_env_->model->key_mpos + i * 3 * mj_env_->model->nmocap, mj_env_->data->mocap_pos,
+					         3 * mj_env_->model->nmocap);
+					mju_copy(mj_env_->model->key_mquat + i * 4 * mj_env_->model->nmocap, mj_env_->data->mocap_quat,
+					         4 * mj_env_->model->nmocap);
 					break;
 			}
 		}
@@ -767,18 +834,18 @@ void uiEvent(mjuiState *state)
 		// Physics section
 		else if (it && it->sectionid == SECT_PHYSICS) {
 			// Update disable flags in mjOption
-			m_->opt.disableflags = 0;
+			mj_env_->model->opt.disableflags = 0;
 			for (i = 0; i < mjNDISABLE; i++) {
 				if (settings_.disable[i]) {
-					m_->opt.disableflags |= (1 << i);
+					mj_env_->model->opt.disableflags |= (1 << i);
 				}
 			}
 
 			// Update enable flags in mjOption
-			m_->opt.enableflags = 0;
+			mj_env_->model->opt.enableflags = 0;
 			for (i = 0; i < mjNENABLE; i++) {
 				if (settings_.enable[i]) {
-					m_->opt.enableflags |= (1 << i);
+					mj_env_->model->opt.enableflags |= (1 << i);
 				}
 			}
 		}
@@ -813,7 +880,7 @@ void uiEvent(mjuiState *state)
 			// Remake joint section if joint group changed
 			if (it->name[0] == 'J' && it->name[1] == 'o') {
 				ui1_.nsect = SECT_JOINT;
-				makeJoint(ui1_.sect[SECT_JOINT].state);
+				makeJoint(mj_env_->model, mj_env_->data, ui1_.sect[SECT_JOINT].state);
 				ui1_.nsect = NSECT1;
 				uiModify(window_, &ui1_, state, &con_);
 			}
@@ -821,7 +888,7 @@ void uiEvent(mjuiState *state)
 			// Remake control section if actuator group changed
 			if (it->name[0] == 'A' && it->name[1] == 'c') {
 				ui1_.nsect = SECT_CONTROL;
-				makeControl(ui1_.sect[SECT_CONTROL].state);
+				makeControl(mj_env_->model, mj_env_->data, ui1_.sect[SECT_CONTROL].state);
 				ui1_.nsect = NSECT1;
 				uiModify(window_, &ui1_, state, &con_);
 			}
@@ -843,7 +910,7 @@ void uiEvent(mjuiState *state)
 		if (it && it->sectionid == SECT_CONTROL) {
 			// clear controls
 			if (it->itemid == 0) {
-				mju_zero(d_->ctrl, m_->nu);
+				mju_zero(mj_env_->data->ctrl, mj_env_->model->nu);
 				mjui_update(SECT_CONTROL, -1, &ui1_, &uistate_, &con_);
 			}
 		}
@@ -858,7 +925,7 @@ void uiEvent(mjuiState *state)
 	if (state->type == mjEVENT_KEY && state->key != 0) {
 		switch (state->key) {
 			case ' ': // Mode
-				if (m_) {
+				if (mj_env_->model) {
 					settings_.run = 1 - settings_.run;
 					pert_.active  = 0;
 					mjui_update(-1, -1, &ui0_, state, &con_);
@@ -866,14 +933,13 @@ void uiEvent(mjuiState *state)
 				break;
 
 			case mjKEY_RIGHT: // Step forward
-				if (m_ && !settings_.run) {
-					clearTimers();
-					mj_step(m_.get(), d_.get());
-					publishSimTime();
-					plugin_utils::triggerUpdate();
-					profilerUpdate();
-					sensorUpdate();
-					updateSettings();
+				if (mj_env_->model && !settings_.run) {
+					clearTimers(mj_env_->data);
+					mj_step(mj_env_->model.get(), mj_env_->data.get());
+					publishSimTime(mj_env_->data->time);
+					profilerUpdate(mj_env_->model, mj_env_->data);
+					sensorUpdate(mj_env_->model, mj_env_->data);
+					updateSettings(mj_env_->model);
 				}
 				break;
 
@@ -883,16 +949,15 @@ void uiEvent(mjuiState *state)
 				break;
 
 			case mjKEY_DOWN: // Step forward 100
-				if (m_ && !settings_.run) {
-					clearTimers();
+				if (mj_env_->model && !settings_.run) {
+					clearTimers(mj_env_->data);
 					for (i = 0; i < 100; i++) {
-						mj_step(m_.get(), d_.get());
-						publishSimTime();
-						plugin_utils::triggerUpdate();
+						mj_step(mj_env_->model.get(), mj_env_->data.get());
+						publishSimTime(mj_env_->data->time);
 					}
-					profilerUpdate();
-					sensorUpdate();
-					updateSettings();
+					profilerUpdate(mj_env_->model, mj_env_->data);
+					sensorUpdate(mj_env_->model, mj_env_->data);
+					updateSettings(mj_env_->model);
 				}
 				break;
 
@@ -902,8 +967,8 @@ void uiEvent(mjuiState *state)
 				break;
 
 			case mjKEY_PAGE_UP: // Select parent body
-				if (m_ && pert_.select > 0) {
-					pert_.select     = m_->body_parentid[pert_.select];
+				if (mj_env_->model && pert_.select > 0) {
+					pert_.select     = mj_env_->model->body_parentid[pert_.select];
 					pert_.skinselect = -1;
 
 					// Stop perturbation if world reached
@@ -932,15 +997,15 @@ void uiEvent(mjuiState *state)
 	}
 
 	// 3D Scroll
-	if (state->type == mjEVENT_SCROLL && state->mouserect == 3 && m_) {
+	if (state->type == mjEVENT_SCROLL && state->mouserect == 3 && mj_env_->model) {
 		// Emulate vertical mouse motion = 5% of window height
-		mjv_moveCamera(m_.get(), mjMOUSE_ZOOM, 0, -0.05 * state->sy, &scn_, &cam_);
+		mjv_moveCamera(mj_env_->model.get(), mjMOUSE_ZOOM, 0, -0.05 * state->sy, &scn_, &cam_);
 
 		return;
 	}
 
 	// 3D press
-	if (state->type == mjEVENT_PRESS && state->mouserect == 3 && m_) {
+	if (state->type == mjEVENT_PRESS && state->mouserect == 3 && mj_env_->model) {
 		// Set perturbation
 		int newperturb = 0;
 		if (state->control && pert_.select > 0) {
@@ -953,7 +1018,7 @@ void uiEvent(mjuiState *state)
 
 			// Perturbation onset: reset reference
 			if (newperturb && !pert_.active) {
-				mjv_initPerturb(m_.get(), d_.get(), &scn_, &pert_);
+				mjv_initPerturb(mj_env_->model.get(), mj_env_->data.get(), &scn_, &pert_);
 			}
 		}
 		pert_.active = newperturb;
@@ -974,7 +1039,7 @@ void uiEvent(mjuiState *state)
 			mjrRect r = state->rect[3];
 			mjtNum selpnt[3];
 			int selgeom, selskin;
-			int selbody = mjv_select(m_.get(), d_.get(), &vopt_, (mjtNum)r.width / (mjtNum)r.height,
+			int selbody = mjv_select(mj_env_->model.get(), mj_env_->data.get(), &vopt_, (mjtNum)r.width / (mjtNum)r.height,
 			                         (mjtNum)(state->x - r.left) / (mjtNum)r.width,
 			                         (mjtNum)(state->y - r.bottom) / (mjtNum)r.height, &scn_, selpnt, &selgeom, &selskin);
 
@@ -1007,8 +1072,8 @@ void uiEvent(mjuiState *state)
 
 					// Compute localpos
 					mjtNum tmp[3];
-					mju_sub3(tmp, selpnt, d_->xpos + 3 * pert_.select);
-					mju_mulMatTVec(pert_.localpos, d_->xmat + 9 * pert_.select, tmp, 3, 3);
+					mju_sub3(tmp, selpnt, mj_env_->data->xpos + 3 * pert_.select);
+					mju_mulMatTVec(pert_.localpos, mj_env_->data->xmat + 9 * pert_.select, tmp, 3, 3);
 				} else {
 					pert_.select     = 0;
 					pert_.skinselect = 0;
@@ -1023,7 +1088,7 @@ void uiEvent(mjuiState *state)
 	}
 
 	// 3D release
-	if (state->type == mjEVENT_RELEASE && state->dragrect == 3 && m_) {
+	if (state->type == mjEVENT_RELEASE && state->dragrect == 3 && mj_env_->model) {
 		// Stop perturbation
 		pert_.active = 0;
 
@@ -1031,7 +1096,7 @@ void uiEvent(mjuiState *state)
 	}
 
 	// 3D move
-	if (state->type == mjEVENT_MOVE && state->dragrect == 3 && m_) {
+	if (state->type == mjEVENT_MOVE && state->dragrect == 3 && mj_env_->model) {
 		// Determine action base on mouse button
 		mjtMouse action;
 		if (state->right) {
@@ -1045,9 +1110,10 @@ void uiEvent(mjuiState *state)
 		// Move perturb or camera
 		mjrRect r = state->rect[3];
 		if (pert_.active) {
-			mjv_movePerturb(m_.get(), d_.get(), action, state->dx / r.height, -state->dy / r.height, &scn_, &pert_);
+			mjv_movePerturb(mj_env_->model.get(), mj_env_->data.get(), action, state->dx / r.height, -state->dy / r.height,
+			                &scn_, &pert_);
 		} else {
-			mjv_moveCamera(m_.get(), action, state->dx / r.height, -state->dy / r.height, &scn_, &cam_);
+			mjv_moveCamera(mj_env_->model.get(), action, state->dx / r.height, -state->dy / r.height, &scn_, &cam_);
 		}
 
 		return;
@@ -1070,14 +1136,14 @@ void printCamera(mjvGLCamera *camera)
 }
 
 // copy qpos to clipboard as key
-void copyKey(void)
+void copyKey(mjModelPtr model, mjDataPtr data)
 {
 	char clipboard[5000] = "<key qpos='";
 	char buf[200];
 
 	// prepare string
-	for (int i = 0; i < m_->nq; i++) {
-		mju::sprintf_arr(buf, i == m_->nq - 1 ? "%g" : "%g ", d_->qpos[i]);
+	for (int i = 0; i < model->nq; i++) {
+		mju::sprintf_arr(buf, i == model->nq - 1 ? "%g" : "%g ", data->qpos[i]);
 		mju::strcat_arr(clipboard, buf);
 	}
 	mju::strcat_arr(clipboard, "'/>");
@@ -1115,7 +1181,7 @@ void sensorInit(void)
 }
 
 // Update sensor figure
-void sensorUpdate(void)
+void sensorUpdate(mjModelPtr model, mjDataPtr data)
 {
 	static const int maxline = 10;
 
@@ -1128,15 +1194,15 @@ void sensorUpdate(void)
 	int lineid = 0;
 
 	// loop over sensors
-	for (int n = 0; n < m_->nsensor; n++) {
+	for (int n = 0; n < model->nsensor; n++) {
 		// go to next line if type is different
-		if (n > 0 && m_->sensor_type[n] != m_->sensor_type[n - 1])
+		if (n > 0 && model->sensor_type[n] != model->sensor_type[n - 1])
 			lineid = mjMIN(lineid + 1, maxline - 1);
 
 		// get info about this sensor
-		mjtNum cutoff = (m_->sensor_cutoff[n] > 0 ? m_->sensor_cutoff[n] : 1);
-		int adr       = m_->sensor_adr[n];
-		int dim       = m_->sensor_dim[n];
+		mjtNum cutoff = (model->sensor_cutoff[n] > 0 ? model->sensor_cutoff[n] : 1);
+		int adr       = model->sensor_adr[n];
+		int dim       = model->sensor_dim[n];
 
 		// data pointer in line
 		int p = figsensor_.linepnt[lineid];
@@ -1153,7 +1219,7 @@ void sensorUpdate(void)
 
 			// y
 			figsensor_.linedata[lineid][2 * p + 4 * i + 1] = 0;
-			figsensor_.linedata[lineid][2 * p + 4 * i + 3] = (float)(d_->sensordata[adr + i] / cutoff);
+			figsensor_.linedata[lineid][2 * p + 4 * i + 3] = (float)(data->sensordata[adr + i] / cutoff);
 		}
 
 		// update linepnt
@@ -1267,20 +1333,20 @@ void profilerInit(void)
 		}
 }
 
-void profilerUpdate(void)
+void profilerUpdate(mjModelPtr model, mjDataPtr data)
 {
 	int i, n;
 
 	// update constraint figure
-	figconstraint_.linepnt[0] = mjMIN(mjMIN(d_->solver_iter, mjNSOLVER), mjMAXLINEPNT);
+	figconstraint_.linepnt[0] = mjMIN(mjMIN(data->solver_iter, mjNSOLVER), mjMAXLINEPNT);
 	for (i = 1; i < 5; i++) {
 		figconstraint_.linepnt[i] = figconstraint_.linepnt[0];
 	}
-	if (m_->opt.solver == mjSOL_PGS) {
+	if (model->opt.solver == mjSOL_PGS) {
 		figconstraint_.linepnt[3] = 0;
 		figconstraint_.linepnt[4] = 0;
 	}
-	if (m_->opt.solver == mjSOL_CG) {
+	if (model->opt.solver == mjSOL_CG) {
 		figconstraint_.linepnt[4] = 0;
 	}
 	for (i = 0; i < figconstraint_.linepnt[0]; i++) {
@@ -1292,19 +1358,19 @@ void profilerUpdate(void)
 		figconstraint_.linedata[4][2 * i] = (float)i;
 
 		// y
-		figconstraint_.linedata[0][2 * i + 1] = (float)d_->nefc;
-		figconstraint_.linedata[1][2 * i + 1] = (float)d_->solver[i].nactive;
-		figconstraint_.linedata[2][2 * i + 1] = (float)d_->solver[i].nchange;
-		figconstraint_.linedata[3][2 * i + 1] = (float)d_->solver[i].neval;
-		figconstraint_.linedata[4][2 * i + 1] = (float)d_->solver[i].nupdate;
+		figconstraint_.linedata[0][2 * i + 1] = (float)data->nefc;
+		figconstraint_.linedata[1][2 * i + 1] = (float)data->solver[i].nactive;
+		figconstraint_.linedata[2][2 * i + 1] = (float)data->solver[i].nchange;
+		figconstraint_.linedata[3][2 * i + 1] = (float)data->solver[i].neval;
+		figconstraint_.linedata[4][2 * i + 1] = (float)data->solver[i].nupdate;
 	}
 
 	// update cost figure
-	figcost_.linepnt[0] = mjMIN(mjMIN(d_->solver_iter, mjNSOLVER), mjMAXLINEPNT);
+	figcost_.linepnt[0] = mjMIN(mjMIN(data->solver_iter, mjNSOLVER), mjMAXLINEPNT);
 	for (i = 1; i < 3; i++) {
 		figcost_.linepnt[i] = figcost_.linepnt[0];
 	}
-	if (m_->opt.solver == mjSOL_PGS) {
+	if (model->opt.solver == mjSOL_PGS) {
 		figcost_.linepnt[1] = 0;
 		figcost_.linepnt[2] = 0;
 	}
@@ -1316,23 +1382,23 @@ void profilerUpdate(void)
 		figcost_.linedata[2][2 * i] = (float)i;
 
 		// y
-		figcost_.linedata[0][2 * i + 1] = (float)mju_log10(mju_max(mjMINVAL, d_->solver[i].improvement));
-		figcost_.linedata[1][2 * i + 1] = (float)mju_log10(mju_max(mjMINVAL, d_->solver[i].gradient));
-		figcost_.linedata[2][2 * i + 1] = (float)mju_log10(mju_max(mjMINVAL, d_->solver[i].lineslope));
+		figcost_.linedata[0][2 * i + 1] = (float)mju_log10(mju_max(mjMINVAL, data->solver[i].improvement));
+		figcost_.linedata[1][2 * i + 1] = (float)mju_log10(mju_max(mjMINVAL, data->solver[i].gradient));
+		figcost_.linedata[2][2 * i + 1] = (float)mju_log10(mju_max(mjMINVAL, data->solver[i].lineslope));
 	}
 
 	// get timers: total, collision, prepare, solve, other
-	mjtNum total = d_->timer[mjTIMER_STEP].duration;
-	int number   = d_->timer[mjTIMER_STEP].number;
+	mjtNum total = data->timer[mjTIMER_STEP].duration;
+	int number   = data->timer[mjTIMER_STEP].number;
 	if (!number) {
-		total  = d_->timer[mjTIMER_FORWARD].duration;
-		number = d_->timer[mjTIMER_FORWARD].number;
+		total  = data->timer[mjTIMER_FORWARD].duration;
+		number = data->timer[mjTIMER_FORWARD].number;
 	}
 	number         = mjMAX(1, number);
-	float tdata[5] = { (float)(total / number), (float)(d_->timer[mjTIMER_POS_COLLISION].duration / number),
-		                (float)(d_->timer[mjTIMER_POS_MAKE].duration / number) +
-		                    (float)(d_->timer[mjTIMER_POS_PROJECT].duration / number),
-		                (float)(d_->timer[mjTIMER_CONSTRAINT].duration / number), 0 };
+	float tdata[5] = { (float)(total / number), (float)(data->timer[mjTIMER_POS_COLLISION].duration / number),
+		                (float)(data->timer[mjTIMER_POS_MAKE].duration / number) +
+		                    (float)(data->timer[mjTIMER_POS_PROJECT].duration / number),
+		                (float)(data->timer[mjTIMER_CONSTRAINT].duration / number), 0 };
 	tdata[4]       = tdata[0] - tdata[1] - tdata[2] - tdata[3];
 
 	// update figtimer
@@ -1349,8 +1415,9 @@ void profilerUpdate(void)
 	}
 
 	// get sizes: nv, nbody, nefc, sqrt(nnz), ncont, iter
-	float sdata[6] = { (float)m_->nv,   (float)m_->nbody,      (float)d_->nefc, (float)mju_sqrt((mjtNum)d_->solver_nnz),
-		                (float)d_->ncon, (float)d_->solver_iter };
+	float sdata[6] = { (float)model->nv,  (float)model->nbody,
+		                (float)data->nefc, (float)mju_sqrt((mjtNum)data->solver_nnz),
+		                (float)data->ncon, (float)data->solver_iter };
 
 	// update figsize
 	pnt = mjMIN(201, figsize_.linepnt[0] + 1);
@@ -1379,17 +1446,17 @@ void profilerShow(mjrRect rect)
 }
 
 // Update UI 0 when MuJoCo structures change (except for joint sliders)
-void updateSettings(void)
+void updateSettings(mjModelPtr model)
 {
 	int i;
 
 	ROS_DEBUG_ONCE_NAMED("mujoco", "\tupdating physics");
 	// physics flags
 	for (i = 0; i < mjNDISABLE; i++) {
-		settings_.disable[i] = ((m_->opt.disableflags & (i << i)) != 0);
+		settings_.disable[i] = ((model->opt.disableflags & (i << i)) != 0);
 	}
 	for (i = 0; i < mjNENABLE; i++) {
-		settings_.enable[i] = ((m_->opt.enableflags & (1 << 1)) != 0);
+		settings_.enable[i] = ((model->opt.enableflags & (1 << 1)) != 0);
 	}
 
 	ROS_DEBUG_ONCE_NAMED("mujoco", "\tupdating cam");
@@ -1408,39 +1475,39 @@ void updateSettings(void)
 }
 
 // Physics section of UI
-void makePhysics(int oldstate)
+void makePhysics(mjModelPtr model, int oldstate)
 {
 	int i;
 
 	mjuiDef defPhysics[]     = { { mjITEM_SECTION, "Physics", oldstate, NULL, "AP" },
-                            { mjITEM_SELECT, "Integrator", 2, &(m_->opt.integrator), "Euler\nRK4" },
-                            { mjITEM_SELECT, "Collision", 2, &(m_->opt.collision), "All\nPair\nDynamic" },
-                            { mjITEM_SELECT, "Cone", 2, &(m_->opt.cone), "Pyramidal\nElliptic" },
-                            { mjITEM_SELECT, "Jacobian", 2, &(m_->opt.jacobian), "Dense\nSparse\nAuto" },
-                            { mjITEM_SELECT, "Solver", 2, &(m_->opt.solver), "PGS\nCG\nNewton" },
+                            { mjITEM_SELECT, "Integrator", 2, &(model->opt.integrator), "Euler\nRK4" },
+                            { mjITEM_SELECT, "Collision", 2, &(model->opt.collision), "All\nPair\nDynamic" },
+                            { mjITEM_SELECT, "Cone", 2, &(model->opt.cone), "Pyramidal\nElliptic" },
+                            { mjITEM_SELECT, "Jacobian", 2, &(model->opt.jacobian), "Dense\nSparse\nAuto" },
+                            { mjITEM_SELECT, "Solver", 2, &(model->opt.solver), "PGS\nCG\nNewton" },
                             { mjITEM_SEPARATOR, "Algorithmic Parameters", 1 },
-                            { mjITEM_EDITNUM, "Timestep", 2, &(m_->opt.timestep), "1 0 1" },
-                            { mjITEM_EDITINT, "Iterations", 2, &(m_->opt.iterations), "1 0 1000" },
-                            { mjITEM_EDITNUM, "Tolerance", 2, &(m_->opt.tolerance), "1 0 1" },
-                            { mjITEM_EDITINT, "Noslip Iter", 2, &(m_->opt.noslip_iterations), "1 0 1000" },
-                            { mjITEM_EDITNUM, "Noslip Tol", 2, &(m_->opt.noslip_tolerance), "1 0 1" },
-                            { mjITEM_EDITINT, "MPR Iter", 2, &(m_->opt.mpr_iterations), "1 0 1000" },
-                            { mjITEM_EDITNUM, "MPR Tol", 2, &(m_->opt.mpr_tolerance), "1 0 1" },
-                            { mjITEM_EDITNUM, "API Rate", 2, &(m_->opt.apirate), "1 0 1000" },
+                            { mjITEM_EDITNUM, "Timestep", 2, &(model->opt.timestep), "1 0 1" },
+                            { mjITEM_EDITINT, "Iterations", 2, &(model->opt.iterations), "1 0 1000" },
+                            { mjITEM_EDITNUM, "Tolerance", 2, &(model->opt.tolerance), "1 0 1" },
+                            { mjITEM_EDITINT, "Noslip Iter", 2, &(model->opt.noslip_iterations), "1 0 1000" },
+                            { mjITEM_EDITNUM, "Noslip Tol", 2, &(model->opt.noslip_tolerance), "1 0 1" },
+                            { mjITEM_EDITINT, "MPR Iter", 2, &(model->opt.mpr_iterations), "1 0 1000" },
+                            { mjITEM_EDITNUM, "MPR Tol", 2, &(model->opt.mpr_tolerance), "1 0 1" },
+                            { mjITEM_EDITNUM, "API Rate", 2, &(model->opt.apirate), "1 0 1000" },
                             { mjITEM_SEPARATOR, "Physical Parameters", 1 },
-                            { mjITEM_EDITNUM, "Gravity", 2, m_->opt.gravity, "3" },
-                            { mjITEM_EDITNUM, "Wind", 2, m_->opt.wind, "3" },
-                            { mjITEM_EDITNUM, "Magnetic", 2, m_->opt.magnetic, "3" },
-                            { mjITEM_EDITNUM, "Density", 2, &(m_->opt.density), "1" },
-                            { mjITEM_EDITNUM, "Viscosity", 2, &(m_->opt.viscosity), "1" },
-                            { mjITEM_EDITNUM, "Imp Ratio", 2, &(m_->opt.impratio), "1" },
+                            { mjITEM_EDITNUM, "Gravity", 2, model->opt.gravity, "3" },
+                            { mjITEM_EDITNUM, "Wind", 2, model->opt.wind, "3" },
+                            { mjITEM_EDITNUM, "Magnetic", 2, model->opt.magnetic, "3" },
+                            { mjITEM_EDITNUM, "Density", 2, &(model->opt.density), "1" },
+                            { mjITEM_EDITNUM, "Viscosity", 2, &(model->opt.viscosity), "1" },
+                            { mjITEM_EDITNUM, "Imp Ratio", 2, &(model->opt.impratio), "1" },
                             { mjITEM_SEPARATOR, "Disable Flags", 1 },
                             { mjITEM_END } };
 	mjuiDef defEnableFlags[] = { { mjITEM_SEPARATOR, "Enable Flags", 1 }, { mjITEM_END } };
 	mjuiDef defOverride[]    = { { mjITEM_SEPARATOR, "Contact Override", 1 },
-                             { mjITEM_EDITNUM, "Margin", 2, &(m_->opt.o_margin), "1" },
-                             { mjITEM_EDITNUM, "Sol Imp", 2, &(m_->opt.o_solimp), "5" },
-                             { mjITEM_EDITNUM, "Sol Ref", 2, &(m_->opt.o_solref), "2" },
+                             { mjITEM_EDITNUM, "Margin", 2, &(model->opt.o_margin), "1" },
+                             { mjITEM_EDITNUM, "Sol Imp", 2, &(model->opt.o_solimp), "5" },
+                             { mjITEM_EDITNUM, "Sol Ref", 2, &(model->opt.o_solref), "2" },
                              { mjITEM_END } };
 
 	// add physics
@@ -1465,7 +1532,7 @@ void makePhysics(int oldstate)
 }
 
 // Make rendering section of UI
-void makeRendering(int oldstate)
+void makeRendering(mjModelPtr model, int oldstate)
 {
 	int i, j;
 
@@ -1486,11 +1553,11 @@ void makeRendering(int oldstate)
 	mjuiDef defOpenGL[] = { { mjITEM_SEPARATOR, "OpenGL Effects", 1 }, { mjITEM_END } };
 
 	// add model cameras, up to UI limit
-	for (i = 0; i < mjMIN(m_->ncam, mjMAXUIMULTI - 2); i++) {
+	for (i = 0; i < mjMIN(model->ncam, mjMAXUIMULTI - 2); i++) {
 		// prepare name
 		char camname[mjMAXUITEXT] = "\n";
-		if (m_->names[m_->name_camadr[i]]) {
-			mju::strcat_arr(camname, m_->names + m_->name_camadr[i]);
+		if (model->names[model->name_camadr[i]]) {
+			mju::strcat_arr(camname, model->names + model->name_camadr[i]);
 		} else {
 			mju::sprintf_arr(camname, "\nCamera %d", i);
 		}
@@ -1578,7 +1645,7 @@ void makeGroup(int oldstate)
 }
 
 // Make joint section of UI
-void makeJoint(int oldstate)
+void makeJoint(mjModelPtr model, mjDataPtr data, int oldstate)
 {
 	int i;
 
@@ -1594,25 +1661,25 @@ void makeJoint(int oldstate)
 
 	// add scalar joints, exit if UI limit reached
 	int itemcnt = 0;
-	for (i = 0; i < m_->njnt && itemcnt < mjMAXUIITEM; i++) {
-		if ((m_->jnt_type[i] == mjJNT_HINGE || m_->jnt_type[i] == mjJNT_SLIDE)) {
+	for (i = 0; i < model->njnt && itemcnt < mjMAXUIITEM; i++) {
+		if ((model->jnt_type[i] == mjJNT_HINGE || model->jnt_type[i] == mjJNT_SLIDE)) {
 			// skip if joint group is disabled
-			if (!vopt_.jointgroup[mjMAX(0, mjMIN(mjNGROUP - 1, m_->jnt_group[i]))]) {
+			if (!vopt_.jointgroup[mjMAX(0, mjMIN(mjNGROUP - 1, model->jnt_group[i]))]) {
 				continue;
 			}
 
 			// set data and name
-			defSlider[0].pdata = d_->qpos + m_->jnt_qposadr[i];
-			if (m_->names[m_->name_jntadr[i]]) {
-				mju::strcpy_arr(defSlider[0].name, m_->names + m_->name_jntadr[i]);
+			defSlider[0].pdata = data->qpos + model->jnt_qposadr[i];
+			if (model->names[model->name_jntadr[i]]) {
+				mju::strcpy_arr(defSlider[0].name, model->names + model->name_jntadr[i]);
 			} else {
 				mju::sprintf_arr(defSlider[0].name, "joint %d", i);
 			}
 
 			// set range
-			if (m_->jnt_limited[i]) {
-				mju::sprintf_arr(defSlider[0].other, "%.4g %.4g", m_->jnt_range[2 * i], m_->jnt_range[2 * i + 1]);
-			} else if (m_->jnt_type[i] == mjJNT_SLIDE) {
+			if (model->jnt_limited[i]) {
+				mju::sprintf_arr(defSlider[0].other, "%.4g %.4g", model->jnt_range[2 * i], model->jnt_range[2 * i + 1]);
+			} else if (model->jnt_type[i] == mjJNT_SLIDE) {
 				mju::strcpy_arr(defSlider[0].other, "-1 1");
 			} else {
 				mju::strcpy_arr(defSlider[0].other, "-3.1416 3.1416");
@@ -1626,7 +1693,7 @@ void makeJoint(int oldstate)
 }
 
 // Make control section of UI
-void makeControl(int oldstate)
+void makeControl(mjModelPtr model, mjDataPtr data, int oldstate)
 {
 	int i;
 
@@ -1641,23 +1708,23 @@ void makeControl(int oldstate)
 
 	// Add controls, exit if UI limit reached (Clear button already added)
 	int itemcnt = 1;
-	for (i = 0; i < m_->nu && itemcnt < mjMAXUIITEM; i++) {
+	for (i = 0; i < model->nu && itemcnt < mjMAXUIITEM; i++) {
 		// Skip if actuator group is disabled
-		if (!vopt_.actuatorgroup[mjMAX(0, mjMIN(mjNGROUP - 1, m_->actuator_group[i]))]) {
+		if (!vopt_.actuatorgroup[mjMAX(0, mjMIN(mjNGROUP - 1, model->actuator_group[i]))]) {
 			continue;
 		}
 
 		// set data and name
-		defSlider[0].pdata = d_->ctrl + i;
-		if (m_->names[m_->name_actuatoradr[i]]) {
-			mju::strcpy_arr(defSlider[0].name, m_->names + m_->name_actuatoradr[i]);
+		defSlider[0].pdata = data->ctrl + i;
+		if (model->names[model->name_actuatoradr[i]]) {
+			mju::strcpy_arr(defSlider[0].name, model->names + model->name_actuatoradr[i]);
 		} else {
 			mju::sprintf_arr(defSlider[0].name, "control %d", i);
 		}
 
 		// set range
-		if (m_->actuator_ctrllimited[i]) {
-			mju::sprintf_arr(defSlider[0].other, "%.4g %.4g", m_->actuator_ctrlrange[2 * i + 1]);
+		if (model->actuator_ctrllimited[i]) {
+			mju::sprintf_arr(defSlider[0].other, "%.4g %.4g", model->actuator_ctrlrange[2 * i + 1]);
 		} else {
 			mju::strcpy_arr(defSlider[0].other, "-1 1");
 		}
@@ -1696,15 +1763,15 @@ void makeSections(void)
 	ui1_.nsect = 0;
 
 	// make
-	makePhysics(oldstate0[SECT_PHYSICS]);
-	makeRendering(oldstate0[SECT_RENDERING]);
+	makePhysics(mj_env_->model, oldstate0[SECT_PHYSICS]);
+	makeRendering(mj_env_->model, oldstate0[SECT_RENDERING]);
 	makeGroup(oldstate0[SECT_GROUP]);
-	makeJoint(oldstate1[SECT_JOINT]);
-	makeControl(oldstate1[SECT_CONTROL]);
+	makeJoint(mj_env_->model, mj_env_->data, oldstate1[SECT_JOINT]);
+	makeControl(mj_env_->model, mj_env_->data, oldstate1[SECT_CONTROL]);
 }
 
 // Prepare to render
-void prepare(void)
+void prepare(mjModelPtr model, mjDataPtr data)
 {
 	// data for FPS calculation
 	static double lastupdatetm = 0;
@@ -1716,16 +1783,16 @@ void prepare(void)
 	lastupdatetm    = tmnow;
 
 	// No model: nothing to do
-	if (!m_) {
+	if (!model) {
 		return;
 	}
 
 	// Update scene
-	mjv_updateScene(m_.get(), d_.get(), &vopt_, &pert_, &cam_, mjCAT_ALL, &scn_);
+	mjv_updateScene(model.get(), data.get(), &vopt_, &pert_, &cam_, mjCAT_ALL, &scn_);
 
 	// Update watch
 	if (settings_.ui0 && ui0_.sect[SECT_WATCH].state) {
-		watch();
+		watch(model, data);
 		mjui_update(SECT_WATCH, -1, &ui0_, &uistate_, &con_);
 	}
 
@@ -1736,7 +1803,7 @@ void prepare(void)
 
 	// Update info text
 	if (settings_.info) {
-		infotext(info_title_, info_content_, interval);
+		infotext(model, data, info_title_, info_content_, interval);
 	}
 
 	// Update control
@@ -1746,16 +1813,16 @@ void prepare(void)
 
 	// Update profiler
 	if (settings_.profiler && settings_.run) {
-		profilerUpdate();
+		profilerUpdate(model, data);
 	}
 
 	// Update sensor
 	if (settings_.sensor && settings_.run) {
-		sensorUpdate();
+		sensorUpdate(model, data);
 	}
 
 	// clear timers once profiler info has been copied
-	clearTimers();
+	clearTimers(data);
 }
 
 // Sprintf forwarding, to avoid compiler warning in x-macro
@@ -1765,24 +1832,24 @@ void printField(char (&str)[mjMAXUINAME], void *ptr)
 }
 
 // Update watch
-void watch(void)
+void watch(mjModelPtr model, mjDataPtr data)
 {
 	// clear
 	ui0_.sect[SECT_WATCH].item[2].multi.nelem = 1;
 	mju::strcpy_arr(ui0_.sect[SECT_WATCH].item[2].multi.name[0], "invalid field");
 
 	// prepare symbols needed by xmacro
-	MJDATA_POINTERS_PREAMBLE(m_);
+	MJDATA_POINTERS_PREAMBLE(model);
 
 // find specified field in mjData arrays, update value
-#define X(TYPE, NAME, NR, NC)                                                                 \
-	if (!mju::strcmp_arr(#NAME, settings_.field) && !mju::strcmp_arr(#TYPE, "mjtNum")) {       \
-		if (settings_.index >= 0 && settings_.index < m_->NR * NC) {                            \
-			printField(ui0_.sect[SECT_WATCH].item[2].multi.name[0], d_->NAME + settings_.index); \
-		} else {                                                                                \
-			mju::strcpy_arr(ui0_.sect[SECT_WATCH].item[2].multi.name[0], "invalid index");       \
-		}                                                                                       \
-		return;                                                                                 \
+#define X(TYPE, NAME, NR, NC)                                                                   \
+	if (!mju::strcmp_arr(#NAME, settings_.field) && !mju::strcmp_arr(#TYPE, "mjtNum")) {         \
+		if (settings_.index >= 0 && settings_.index < model->NR * NC) {                           \
+			printField(ui0_.sect[SECT_WATCH].item[2].multi.name[0], data->NAME + settings_.index); \
+		} else {                                                                                  \
+			mju::strcpy_arr(ui0_.sect[SECT_WATCH].item[2].multi.name[0], "invalid index");         \
+		}                                                                                         \
+		return;                                                                                   \
 	}
 
 	MJDATA_POINTERS
@@ -1790,41 +1857,42 @@ void watch(void)
 }
 
 // Prepare info text
-void infotext(char (&title)[kBufSize], char (&content)[kBufSize], double interval)
+void infotext(mjModelPtr model, mjDataPtr data, char (&title)[kBufSize], char (&content)[kBufSize], double interval)
 {
 	char tmp[20];
 
 	// Compute solver error
 	mjtNum solerr = 0;
-	if (d_->solver_iter) {
-		int ind = mjMIN(d_->solver_iter - 1, mjNSOLVER - 1);
-		solerr  = mju_min(d_->solver[ind].improvement, d_->solver[ind].gradient);
+	if (data->solver_iter) {
+		int ind = mjMIN(data->solver_iter - 1, mjNSOLVER - 1);
+		solerr  = mju_min(data->solver[ind].improvement, data->solver[ind].gradient);
 		if (solerr == 0) {
-			solerr = mju_max(d_->solver[ind].improvement, d_->solver[ind].gradient);
+			solerr = mju_max(data->solver[ind].improvement, data->solver[ind].gradient);
 		}
 	}
 	solerr = mju_log10(mju_max(mjMINVAL, solerr));
 
 	const std::string realtime_nominator = settings_.slow_down == 1 ? "" : "1/";
 	mju::strcpy_arr(title, "Time\nSize\nCPU\nSolver\nFPS\nstack\nconbuf\nefcbuf");
-	mju::sprintf_arr(content, "%-9.3f %s%d x\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%.0f\n%.3f\n%.3f\n%.3f", d_->time,
-	                 realtime_nominator.c_str(), settings_.slow_down, d_->nefc, d_->ncon,
-	                 settings_.run ? d_->timer[mjTIMER_STEP].duration / mjMAX(1, d_->timer[mjTIMER_STEP].number) :
-	                                 d_->timer[mjTIMER_FORWARD].duration / mjMAX(1, d_->timer[mjTIMER_FORWARD].number),
-	                 solerr, d_->solver_iter, 1 / interval, d_->maxuse_stack / (double)d_->nstack,
-	                 d_->maxuse_con / (double)m_->nconmax, d_->maxuse_efc / (double)m_->njmax);
+	mju::sprintf_arr(content, "%-9.3f %s%d x\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%.0f\n%.3f\n%.3f\n%.3f", data->time,
+	                 realtime_nominator.c_str(), settings_.slow_down, data->nefc, data->ncon,
+	                 settings_.run ?
+	                     data->timer[mjTIMER_STEP].duration / mjMAX(1, data->timer[mjTIMER_STEP].number) :
+	                     data->timer[mjTIMER_FORWARD].duration / mjMAX(1, data->timer[mjTIMER_FORWARD].number),
+	                 solerr, data->solver_iter, 1 / interval, data->maxuse_stack / (double)data->nstack,
+	                 data->maxuse_con / (double)model->nconmax, data->maxuse_efc / (double)model->njmax);
 
 	// Add energy if enabled
-	if (mjENABLED(mjENBL_ENERGY)) {
-		mju::sprintf_arr(tmp, "\n%.3f", d_->energy[0] + d_->energy[1]);
+	if (mjENABLED_ros(model, mjENBL_ENERGY)) {
+		mju::sprintf_arr(tmp, "\n%.3f", data->energy[0] + data->energy[1]);
 		mju::strcat_arr(content, tmp);
 		mju::strcat_arr(title, "\nEnergy");
 	}
 
 	// Add FwdInv if enabled
-	if (mjENABLED(mjENBL_FWDINV)) {
-		mju::sprintf_arr(tmp, "\n%.1f %.1f", mju_log10(mju_max(mjMINVAL, d_->solver_fwdinv[0])),
-		                 mju_log10(mju_max(mjMINVAL, d_->solver_fwdinv[1])));
+	if (mjENABLED_ros(model, mjENBL_FWDINV)) {
+		mju::sprintf_arr(tmp, "\n%.1f %.1f", mju_log10(mju_max(mjMINVAL, data->solver_fwdinv[0])),
+		                 mju_log10(mju_max(mjMINVAL, data->solver_fwdinv[1])));
 		mju::strcat_arr(content, tmp);
 		mju::strcat_arr(title, "\nFwdInv");
 	}
@@ -1832,24 +1900,24 @@ void infotext(char (&title)[kBufSize], char (&content)[kBufSize], double interva
 
 //---------------------------------- utility functions --------------------------------------
 // Align and scale view
-void alignScale(void)
+void alignScale(mjModelPtr model)
 {
 	// autoscale
-	cam_.lookat[0] = m_->stat.center[0];
-	cam_.lookat[1] = m_->stat.center[1];
-	cam_.lookat[2] = m_->stat.center[2];
-	cam_.distance  = 1.5 * m_->stat.extent;
+	cam_.lookat[0] = model->stat.center[0];
+	cam_.lookat[1] = model->stat.center[1];
+	cam_.lookat[2] = model->stat.center[2];
+	cam_.distance  = 1.5 * model->stat.extent;
 
 	// set to free camera
 	cam_.type = mjCAMERA_FREE;
 }
 
 // Clear all timers
-void clearTimers(void)
+void clearTimers(mjDataPtr data)
 {
 	for (int i = 0; i < mjNTIMER; i++) {
-		d_->timer[i].duration = 0;
-		d_->timer[i].number   = 0;
+		data->timer[i].duration = 0;
+		data->timer[i].number   = 0;
 	}
 }
 
@@ -1863,6 +1931,9 @@ void setupCallbacks()
 {
 	service_servers_.push_back(nh_->advertiseService("set_pause", setPauseCB));
 	service_servers_.push_back(nh_->advertiseService("shutdown", shutdownCB));
+
+	mjcb_control = controlCallback;
+	mjcb_passive = passiveCallback;
 }
 
 // Service call callbacks

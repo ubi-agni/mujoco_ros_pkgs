@@ -34,11 +34,9 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* Authors: David P. Leins*/
+/* Authors: David P. Leins */
 
 #pragma once
-
-#include <mujoco_ros_control/mujoco_ros_control_plugin.h>
 
 #include <boost/shared_ptr.hpp>
 #include <boost/thread.hpp>
@@ -49,6 +47,7 @@
 #include <pluginlib/class_loader.h>
 #include <std_msgs/Bool.h>
 
+#include <mujoco_ros/common_types.h>
 #include <mujoco_ros/mujoco_sim.h>
 #include <mujoco_ros/plugin_utils.h>
 
@@ -64,11 +63,8 @@ class MujocoRosControlPlugin : public MujocoSim::MujocoPlugin
 public:
 	virtual ~MujocoRosControlPlugin();
 
-	// Overlead entry point
-	virtual bool load(mjModelPtr m, mjDataPtr d);
-
-	// Called by mujoco
-	virtual void update();
+	// Overload entry point
+	virtual bool load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d);
 
 	// Called on reset
 	virtual void reset();
@@ -79,20 +75,16 @@ public:
 	// Get transmissions from URDF
 	bool parseTransmissionsFromURDF(const std::string &urdf_string);
 
+	void controlCallback(MujocoSim::mjModelPtr model, MujocoSim::mjDataPtr data);
+
 protected:
 	void eStopCB(const std_msgs::BoolConstPtr &e_stop_active);
-
-	// Node Handles
-	ros::NodeHandle model_nh_;
-
-	// deferred load in case ros is blocking
-	boost::thread deffered_load_thread_;
 
 	// Interface loader
 	boost::shared_ptr<pluginlib::ClassLoader<mujoco_ros_control::RobotHWSim>> robot_hw_sim_loader_;
 
-	std::string robot_namespace_;
 	std::string robot_description_;
+	std::string robot_namespace_;
 
 	// Transmissions in this plugin's scope
 	std::vector<transmission_interface::TransmissionInfo> transmissions_;
@@ -101,8 +93,8 @@ protected:
 	boost::shared_ptr<mujoco_ros_control::RobotHWSim> robot_hw_sim_;
 
 	// Mujoco model and data pointers
-	mjModelPtr m_;
-	mjDataPtr d_;
+	MujocoSim::mjModelPtr m_;
+	MujocoSim::mjDataPtr d_;
 
 	// Controller manager
 	boost::shared_ptr<controller_manager::ControllerManager> controller_manager_;
