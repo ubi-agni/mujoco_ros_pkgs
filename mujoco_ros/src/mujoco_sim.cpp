@@ -55,9 +55,6 @@
 
 namespace MujocoSim {
 
-#define mjENABLED_ros(x) (mj_env_->model->opt.enableflags & (x))
-#define mjDISABLED_ros(x) (mj_env_->model->opt.disableflags & (x))
-
 using namespace detail;
 
 int jointName2id(mjModel *m, const std::string &joint_name)
@@ -1886,14 +1883,14 @@ void infotext(mjModelPtr model, mjDataPtr data, char (&title)[kBufSize], char (&
 	                 data->maxuse_con / (double)model->nconmax, data->maxuse_efc / (double)model->njmax);
 
 	// Add energy if enabled
-	if (mjENABLED_ros(mjENBL_ENERGY)) {
+	if (mjENABLED_ros(model, mjENBL_ENERGY)) {
 		mju::sprintf_arr(tmp, "\n%.3f", data->energy[0] + data->energy[1]);
 		mju::strcat_arr(content, tmp);
 		mju::strcat_arr(title, "\nEnergy");
 	}
 
 	// Add FwdInv if enabled
-	if (mjENABLED_ros(mjENBL_FWDINV)) {
+	if (mjENABLED_ros(model, mjENBL_FWDINV)) {
 		mju::sprintf_arr(tmp, "\n%.1f %.1f", mju_log10(mju_max(mjMINVAL, data->solver_fwdinv[0])),
 		                 mju_log10(mju_max(mjMINVAL, data->solver_fwdinv[1])));
 		mju::strcat_arr(content, tmp);

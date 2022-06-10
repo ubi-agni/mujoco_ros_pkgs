@@ -73,6 +73,9 @@ namespace mju = ::mujoco::sample_util;
 
 namespace MujocoSim {
 
+#define mjENABLED_ros(model, x) (model->opt.enableflags & (x))
+#define mjDISABLED_ros(model, x) (model->opt.disableflags & (x))
+
 void init(std::string modelfile);
 
 void requestExternalShutdown(void);

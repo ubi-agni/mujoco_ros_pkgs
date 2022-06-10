@@ -12,6 +12,7 @@ Due to the changes in `MujocoPlugin`, plugins need to be rebuilt (hence the majo
 
 2. Added some more documentation.
 3. Added `lastStageCallback` function to `MujocoPlugin` which can be used to define behavior which should be run at the end of a simulation step. Note that this function gets called by the `mujoco\_ros` simulation loop and not by the mujoco engine, hence it won't be called in between engine sub-steps.
+4. Changed mjENABLED_ros/mjDISABLED_ros definitions to not rely on static context.
 
 ## Fixes
 1. Removed `collision_function` typedef, which is a duplicate defenition of mjfCollision.
