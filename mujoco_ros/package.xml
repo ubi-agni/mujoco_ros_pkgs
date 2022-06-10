@@ -16,6 +16,5 @@
   <depend>roscpp</depend>
   <depend>pluginlib</depend>
   <depend version_gte="0.2.0">mujoco_ros_msgs</depend>
-  <depend>tf</depend>
 
 </package>
