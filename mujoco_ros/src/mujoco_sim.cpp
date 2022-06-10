@@ -1815,14 +1815,14 @@ void infotext(char (&title)[kBufSize], char (&content)[kBufSize], double interva
 	                 d_->maxuse_con / (double)m_->nconmax, d_->maxuse_efc / (double)m_->njmax);
 
 	// Add energy if enabled
-	if (mjENABLED(mjENBL_ENERGY)) {
+	if (m_->opt.enableflags & mjENBL_ENERGY) {
 		mju::sprintf_arr(tmp, "\n%.3f", d_->energy[0] + d_->energy[1]);
 		mju::strcat_arr(content, tmp);
 		mju::strcat_arr(title, "\nEnergy");
 	}
 
 	// Add FwdInv if enabled
-	if (mjENABLED(mjENBL_FWDINV)) {
+	if (m_->opt.enableflags & mjENBL_FWDINV) {
 		mju::sprintf_arr(tmp, "\n%.1f %.1f", mju_log10(mju_max(mjMINVAL, d_->solver_fwdinv[0])),
 		                 mju_log10(mju_max(mjMINVAL, d_->solver_fwdinv[1])));
 		mju::strcat_arr(content, tmp);
