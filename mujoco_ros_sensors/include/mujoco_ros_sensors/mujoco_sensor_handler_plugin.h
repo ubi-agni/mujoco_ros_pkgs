@@ -60,7 +60,7 @@ public:
 	void lastStageCallback(MujocoSim::mjModelPtr model, MujocoSim::mjDataPtr data);
 
 private:
-	void loadThread(MujocoSim::mjModelPtr model, MujocoSim::mjDataPtr data);
+	void initSensors(MujocoSim::mjModelPtr model, MujocoSim::mjDataPtr data);
 
 	std::map<std::string, std::pair<ros::Publisher, std::string>> sensor_map_;
 	bool got_transform_ = false;
