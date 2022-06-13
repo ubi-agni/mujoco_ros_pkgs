@@ -41,7 +41,10 @@
 #include <pluginlib/class_list_macros.h>
 #include <tf2_msgs/TFMessage.h>
 
+#include <geometry_msgs/PointStamped.h>
+#include <geometry_msgs/QuaternionStamped.h>
 #include <geometry_msgs/Vector3Stamped.h>
+#include <mujoco_ros_msgs/ScalarStamped.h>
 
 #include <mujoco_ros/mujoco_sim.h>
 
@@ -93,15 +96,73 @@ void MujocoRosSensorsPlugin::lastStageCallback(MujocoSim::mjModelPtr model, Mujo
 		std::tie(pub, frame_id) = sensor_map_[sensor_name];
 
 		switch (type) {
-			case mjSENS_ACCELEROMETER:
-			case mjSENS_FORCE: {
-				geometry_msgs::Vector3Stamped msg;
+			case mjSENS_FRAMELINVEL: {
+				case mjSENS_FRAMELINACC:
+				case mjSENS_FRAMEANGACC:
+				case mjSENS_SUBTREECOM:
+				case mjSENS_SUBTREELINVEL:
+				case mjSENS_SUBTREEANGMOM:
+				case mjSENS_ACCELEROMETER:
+				case mjSENS_VELOCIMETER:
+				case mjSENS_GYRO:
+				case mjSENS_FORCE:
+				case mjSENS_TORQUE:
+				case mjSENS_MAGNETOMETER:
+				case mjSENS_BALLANGVEL:
+				case mjSENS_FRAMEXAXIS:
+				case mjSENS_FRAMEYAXIS:
+				case mjSENS_FRAMEZAXIS:
+					geometry_msgs::Vector3Stamped msg;
+					msg.header.frame_id = frame_id;
+					msg.vector.x        = (float)(data->sensordata[adr] / cutoff);
+					msg.vector.y        = (float)(data->sensordata[adr + 1] / cutoff);
+					msg.vector.z        = (float)(data->sensordata[adr + 2] / cutoff);
+					pub.publish(msg);
+					break;
+			}
+
+			case mjSENS_FRAMEPOS: {
+				geometry_msgs::PointStamped msg;
 				msg.header.frame_id = frame_id;
-				msg.vector.x        = (float)(data->sensordata[adr] / cutoff);
-				msg.vector.y        = (float)(data->sensordata[adr + 1] / cutoff);
-				msg.vector.z        = (float)(data->sensordata[adr + 2] / cutoff);
+				msg.point.x         = (float)(data->sensordata[adr] / cutoff);
+				msg.point.y         = (float)(data->sensordata[adr + 1] / cutoff);
+				msg.point.z         = (float)(data->sensordata[adr + 2] / cutoff);
 				pub.publish(msg);
 				break;
+			}
+
+			case mjSENS_TOUCH: {
+				case mjSENS_RANGEFINDER:
+				case mjSENS_JOINTPOS:
+				case mjSENS_JOINTVEL:
+				case mjSENS_TENDONPOS:
+				case mjSENS_TENDONVEL:
+				case mjSENS_ACTUATORPOS:
+				case mjSENS_ACTUATORVEL:
+				case mjSENS_ACTUATORFRC:
+				case mjSENS_JOINTLIMITPOS:
+				case mjSENS_JOINTLIMITVEL:
+				case mjSENS_JOINTLIMITFRC:
+				case mjSENS_TENDONLIMITPOS:
+				case mjSENS_TENDONLIMITVEL:
+				case mjSENS_TENDONLIMITFRC:
+					mujoco_ros_msgs::ScalarStamped msg;
+					msg.header.frame_id = frame_id;
+					msg.value           = (float)(data->sensordata[adr] / cutoff);
+					pub.publish(msg);
+					break;
+			}
+
+			case mjSENS_BALLQUAT: {
+				case mjSENS_FRAMEQUAT:
+					geometry_msgs::QuaternionStamped msg;
+					msg.header.frame_id = frame_id;
+					msg.quaternion.w    = (float)(data->sensordata[adr] / cutoff);
+					msg.quaternion.x    = (float)(data->sensordata[adr + 1] / cutoff);
+					msg.quaternion.y    = (float)(data->sensordata[adr + 2] / cutoff);
+					msg.quaternion.z    = (float)(data->sensordata[adr + 3] / cutoff);
+					pub.publish(msg);
+					break;
 			}
 
 			default:
@@ -124,14 +185,14 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 	ROS_INFO_NAMED("sensors", "/tf message received");
 
 	char tmp[mjMAXUITEXT];
-	std::string sensor_name;
+	std::string sensor_name, site, frame_id;
 	for (int n = 0; n < model->nsensor; n++) {
-		int adr              = model->sensor_adr[n];
-		int site_id          = model->sensor_objid[n];
-		int parent_id        = model->site_bodyid[site_id];
-		int type             = model->sensor_type[n];
-		std::string site     = mj_id2name(model.get(), model->sensor_objtype[n], site_id);
-		std::string frame_id = mj_id2name(model.get(), mjOBJ_BODY, parent_id);
+		int adr       = model->sensor_adr[n];
+		int site_id   = model->sensor_objid[n];
+		int parent_id = model->site_bodyid[site_id];
+		int type      = model->sensor_type[n];
+
+		site = mj_id2name(model.get(), model->sensor_objtype[n], site_id);
 
 		if (model->names[model->name_sensoradr[n]]) {
 			mju::strcat_arr(tmp, model->names + model->name_sensoradr[n]);
@@ -144,6 +205,46 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 		// reset tmp string
 		tmp[0] = '\0';
 
+		// Global frame sensors
+		bool global_frame = false;
+		frame_id          = "world";
+		switch (type) {
+			case mjSENS_FRAMEXAXIS:
+			case mjSENS_FRAMEYAXIS:
+			case mjSENS_FRAMEZAXIS:
+			case mjSENS_FRAMELINVEL:
+			case mjSENS_FRAMELINACC:
+			case mjSENS_FRAMEANGACC:
+			case mjSENS_SUBTREECOM:
+			case mjSENS_SUBTREELINVEL:
+			case mjSENS_SUBTREEANGMOM:
+				sensor_map_[sensor_name] =
+				    std::pair(node_handle_->advertise<geometry_msgs::Vector3Stamped>(sensor_name, 10), frame_id);
+				global_frame = true;
+				break;
+
+			case mjSENS_FRAMEPOS:
+				sensor_map_[sensor_name] =
+				    std::pair(node_handle_->advertise<geometry_msgs::PointStamped>(sensor_name, 10), frame_id);
+				global_frame = true;
+				break;
+
+			case mjSENS_BALLQUAT:
+			case mjSENS_FRAMEQUAT:
+				sensor_map_[sensor_name] =
+				    std::pair(node_handle_->advertise<geometry_msgs::QuaternionStamped>(sensor_name, 10), frame_id);
+				global_frame = true;
+				break;
+		}
+
+		// Check if sensor is in global frame and already setup
+		if (global_frame) {
+			ROS_DEBUG_STREAM_NAMED("sensors", "Setting up sensor " << sensor_name << " on site " << site << " (frame_id: "
+			                                                       << frame_id << ") of type " << SENSOR_STRING[type]);
+			continue;
+		}
+
+		frame_id = mj_id2name(model.get(), mjOBJ_BODY, parent_id);
 		ROS_DEBUG_STREAM_NAMED("sensors", "Setting up sensor " << sensor_name << " on site " << site << " (frame_id: "
 		                                                       << frame_id << ") of type " << SENSOR_STRING[type]);
 
@@ -153,13 +254,35 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 			continue;
 		}
 
-		std::string topic = frame_id + "/" + std::string(SENSOR_STRING[type]);
-
 		switch (type) {
 			case mjSENS_ACCELEROMETER:
+			case mjSENS_VELOCIMETER:
+			case mjSENS_GYRO:
 			case mjSENS_FORCE:
+			case mjSENS_TORQUE:
+			case mjSENS_MAGNETOMETER:
+			case mjSENS_BALLANGVEL:
 				sensor_map_[sensor_name] =
 				    std::pair(node_handle_->advertise<geometry_msgs::Vector3Stamped>(sensor_name, 10), frame_id);
+				break;
+
+			case mjSENS_TOUCH:
+			case mjSENS_RANGEFINDER:
+			case mjSENS_JOINTPOS:
+			case mjSENS_JOINTVEL:
+			case mjSENS_TENDONPOS:
+			case mjSENS_TENDONVEL:
+			case mjSENS_ACTUATORPOS:
+			case mjSENS_ACTUATORVEL:
+			case mjSENS_ACTUATORFRC:
+			case mjSENS_JOINTLIMITPOS:
+			case mjSENS_JOINTLIMITVEL:
+			case mjSENS_JOINTLIMITFRC:
+			case mjSENS_TENDONLIMITPOS:
+			case mjSENS_TENDONLIMITVEL:
+			case mjSENS_TENDONLIMITFRC:
+				sensor_map_[sensor_name] =
+				    std::pair(node_handle_->advertise<mujoco_ros_msgs::ScalarStamped>(sensor_name, 10), frame_id);
 				break;
 
 			default:
@@ -172,12 +295,15 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 	got_transform_ = true;
 }
 
-void MujocoRosSensorsPlugin::reset()
-{
-	got_transform_ = false;
-	sensor_map_.clear();
-	deferred_load_thread_ = boost::thread(boost::bind(&MujocoRosSensorsPlugin::initSensors, this, model, data));
-}
+// Nothing to do on reset
+void MujocoRosSensorsPlugin::reset(){};
+
+// void MujocoRosSensorsPlugin::reload()
+// {
+// 	got_transform_ = false;
+// 	sensor_map_.clear();
+// 	deferred_load_thread_ = boost::thread(boost::bind(&MujocoRosSensorsPlugin::initSensors, this, model, data));
+// }
 
 } // namespace mujoco_ros_sensors
 
