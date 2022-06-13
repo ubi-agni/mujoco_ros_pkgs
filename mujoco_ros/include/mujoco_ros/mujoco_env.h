@@ -16,6 +16,11 @@ MujocoEnvPtr getEnv(mjData *data);
 struct MujocoEnv
 {
 public:
+	/**
+	 * @brief Construct a new Mujoco Env object in a given namespace.
+	 *
+	 * @param[in] name namespace of the environment.
+	 */
 	MujocoEnv(std::string name) : name(name)
 	{
 		nh.reset(new ros::NodeHandle(name));
@@ -26,11 +31,15 @@ public:
 
 	MujocoEnv(const MujocoEnv &) = delete;
 
+	/// Pointer to mjModel
 	mjModelPtr model;
+	/// Pointer to mjData
 	mjDataPtr data;
+	/// Noise to apply to control signal
 	mjtNum *ctrlnoise = nullptr;
+	/// Pointer to ros nodehandle in env namespace
 	ros::NodeHandlePtr nh;
-
+	/// Env namespace
 	std::string name;
 
 	/**
@@ -66,9 +75,10 @@ public:
 	/**
 	 * @brief Construct a new Mujoco Env object
 	 *
-	 * @param ros_ns namespace of the environment used in ros.
-	 * @param bootstrap_launchfile (optional) launchfile that will be started to bootstrap a ros environment for the
+	 * @param[in] ros_ns namespace of the environment used in ros.
+	 * @param[in] launchfile (optional) launchfile that will be started to bootstrap a ros environment for the
 	 * namespace.
+	 * @param[in] launch_args (optional) arguments to start the supplied launchfile with.
 	 */
 	MujocoEnvParallel(const std::string &ros_ns, const std::string &launchfile = "",
 	                  const std::vector<std::string> &launch_args = std::vector<std::string>());
@@ -79,7 +89,7 @@ public:
 	std::vector<std::string> launch_args;
 
 	/**
-	 * @brief Runs the launchfile, if any was given.
+	 * @brief Runs the launchfile with the supplied list of arguments, if any was given.
 	 */
 	void bootstrapNamespace();
 };
