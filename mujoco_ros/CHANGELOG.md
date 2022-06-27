@@ -17,3 +17,4 @@ Due to the changes in `MujocoPlugin`, plugins need to be rebuilt (hence the majo
 ## Fixes
 1. Removed `collision_function` typedef, which is a duplicate defenition of mjfCollision.
 2. Removed `runContactFilterCbs` from `MujocoEnv`, since contact filter callbacks fully override the standard behavior. For contact filtering a similar approach to collision function registration should be used.
+3. Fixed step counter ignoring multiple steps during synchronization if desynchronized.
