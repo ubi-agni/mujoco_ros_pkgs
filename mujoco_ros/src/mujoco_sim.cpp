@@ -116,14 +116,26 @@ void init(std::string modelfile)
 {
 	nh_.reset(new ros::NodeHandle("~"));
 
+	settings_.exitrequest = 0;
+
 	std::string mj_env_namespace;
 	nh_->param<std::string>("ns", mj_env_namespace, "/");
 	mj_env_.reset(new MujocoEnv(mj_env_namespace));
 
+	double time = ros::Time::now().toSec();
+	if (time > 0) {
+		ROS_DEBUG_STREAM_NAMED("mujoco", "ROS time was not 0, starting with time at " << time << " seconds");
+		last_time_ = time;
+	}
+
 	bool unpause;
 	nh_->param<bool>("unpause", unpause, true);
-	if (unpause)
+	if (unpause) {
 		settings_.run = 1;
+	} else {
+		ROS_DEBUG_NAMED("mujoco", "Starting in paused state");
+		settings_.run = 0;
+	}
 
 	// Print version, check compatibility
 	ROS_INFO("MuJoCo Pro library version %.2lf\n", 0.01 * mj_version());
@@ -172,6 +184,13 @@ void init(std::string modelfile)
 	plugin_utils::unloadPluginloader();
 	mjv_freeScene(&scn_);
 	mjr_freeContext(&con_);
+
+	for (auto ss : service_servers_) {
+		ROS_DEBUG_STREAM_NAMED("mujoco", "Shutting down service " << ss.getService());
+		ss.shutdown();
+	}
+	service_servers_.clear();
+
 	ROS_DEBUG_NAMED("mujoco", "Cleanup done");
 }
 
