@@ -557,7 +557,7 @@ void loadInitialJointStates(mjModelPtr model, mjDataPtr data)
 	ROS_DEBUG_NAMED("mujoco", "Fetching and setting initial joint positions ...");
 
 	// Joint positions
-	static std::map<std::string, double> joint_map;
+	std::map<std::string, double> joint_map;
 	nh_->getParam("initial_joint_positions/joint_map", joint_map);
 
 	for (auto const &[name, value] : joint_map) {
