@@ -57,6 +57,11 @@ namespace MujocoSim {
 
 using namespace detail;
 
+MujocoSim::MujocoEnvPtr MujocoSim::detail::unit_testing::getmjEnv()
+{
+	return mj_env_;
+}
+
 int jointName2id(mjModel *m, const std::string &joint_name)
 {
 	return mj_name2id(m, mjOBJ_JOINT, joint_name.c_str());

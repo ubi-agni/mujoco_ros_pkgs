@@ -106,6 +106,17 @@ namespace detail {
 // Env containing model and data
 static MujocoEnvPtr mj_env_;
 
+// Helper function for unit tests to access the env
+namespace unit_testing {
+/**
+ * @brief Gets the current MujocoEnv. This function is meant for unit testing only and might return a nullpointer if
+ * used wrongly.
+ *
+ * @return Pointer to the current MujocoEnv.
+ */
+MujocoEnvPtr getmjEnv();
+} // namespace unit_testing
+
 // filename strings
 static char filename_[kBufSize]          = "";
 static char previous_filename_[kBufSize] = "";
