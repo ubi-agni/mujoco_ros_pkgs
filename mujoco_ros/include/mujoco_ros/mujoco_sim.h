@@ -101,6 +101,12 @@ static std::set<std::pair<int, int>> custom_collisions_;
  */
 void registerCollisionFunc(int geom_type1, int geom_type2, mjfCollision collision_cb);
 
+/**
+ * @brief Reset the simulation.
+ *
+ */
+void resetSim();
+
 namespace detail {
 
 // Env containing model and data
@@ -219,6 +225,7 @@ void eventloop(void);
 void setupCallbacks();
 bool shutdownCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
 bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &resp);
+bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
 
 // UI settings not contained in MuJoCo structures
 struct

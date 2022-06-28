@@ -212,6 +212,22 @@ void requestExternalShutdown(void)
 	settings_.exitrequest = 1;
 }
 
+void resetSim()
+{
+	if (mj_env_->model) {
+		mj_resetData(mj_env_->model.get(), mj_env_->data.get());
+		if (last_time_ > 0)
+			mj_env_->data->time = last_time_;
+		loadInitialJointStates(mj_env_->model, mj_env_->data);
+		mj_env_->reset();
+		mj_forward(mj_env_->model.get(), mj_env_->data.get());
+		publishSimTime(mj_env_->data->time);
+		profilerUpdate(mj_env_->model, mj_env_->data);
+		sensorUpdate(mj_env_->model, mj_env_->data);
+		updateSettings(mj_env_->model);
+	}
+}
+
 namespace detail {
 
 void publishSimTime(mjtNum time)
@@ -802,18 +818,7 @@ void uiEvent(mjuiState *state)
 		else if (it && it->sectionid == SECT_SIMULATION) {
 			switch (it->itemid) {
 				case 1: // reset
-					if (mj_env_->model) {
-						mj_resetData(mj_env_->model.get(), mj_env_->data.get());
-						if (last_time_ > 0)
-							mj_env_->data->time = last_time_;
-						loadInitialJointStates(mj_env_->model, mj_env_->data);
-						mj_env_->reset();
-						mj_forward(mj_env_->model.get(), mj_env_->data.get());
-						publishSimTime(mj_env_->data->time);
-						profilerUpdate(mj_env_->model, mj_env_->data);
-						sensorUpdate(mj_env_->model, mj_env_->data);
-						updateSettings(mj_env_->model);
-					}
+					resetSim();
 					break;
 
 				case 2: // Reload
@@ -1962,6 +1967,7 @@ void setupCallbacks()
 {
 	service_servers_.push_back(nh_->advertiseService("set_pause", setPauseCB));
 	service_servers_.push_back(nh_->advertiseService("shutdown", shutdownCB));
+	service_servers_.push_back(nh_->advertiseService("reset", resetCB));
 
 	mjcb_control = controlCallback;
 	mjcb_passive = passiveCallback;
@@ -1978,6 +1984,12 @@ bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPau
 {
 	ROS_DEBUG_STREAM("PauseCB called with: " << (bool)req.paused);
 	settings_.run = !req.paused;
+	return true;
+}
+
+bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
+{
+	resetSim();
 	return true;
 }
 
