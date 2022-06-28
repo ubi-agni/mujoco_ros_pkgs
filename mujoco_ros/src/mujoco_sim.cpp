@@ -330,7 +330,8 @@ void simulate(void)
 				} else { // in-sync
 					// Step while simtime lags behind cputime , and within safefactor
 					while ((data->time * settings_.slow_down - simsync) < (glfwGetTime() - cpusync) &&
-					       (glfwGetTime() - tmstart) < refreshfactor_ / vmode_.refreshRate && num_steps > 0) {
+					       (glfwGetTime() - tmstart) < refreshfactor_ / vmode_.refreshRate &&
+					       (num_steps == -1 || num_steps > 0)) {
 						// clear old perturbations, apply new
 						mju_zero(data->xfrc_applied, 6 * model->nbody);
 						mjv_applyPerturbPose(model.get(), data.get(), &pert_, 0); // Move mocap bodies only
@@ -341,6 +342,12 @@ void simulate(void)
 						mj_step(model.get(), data.get());
 						publishSimTime(data->time);
 						lastStageCallback(data.get());
+
+						// Count steps until termination
+						if (num_steps > 0) {
+							num_steps--;
+							ROS_INFO_COND_NAMED(num_steps == 0, "mujoco", "running last sim step before termination!");
+						}
 
 						// break on reset
 						if (data->time * settings_.slow_down < prevtm) {
