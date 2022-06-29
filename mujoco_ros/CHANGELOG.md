@@ -1,3 +1,20 @@
+# Unreleased
+
+## Changes
+1. Better setup and cleanup in init function. This enables running the application multiple times (consecutively) when used as library:
+  - exitrequest is set to 0 on start.
+  - if ros time is not zero, the simulation is initialized with the current ros time as start time.
+  - run i.e. the pause flag is now explicitly set according to the unpause ros param.
+  - The services are explicitly unregistered on shutdown and the static services list is cleared.
+2. Async spinner is now manually shutdown and ros::shutdown is called on server node termination.
+3. Added unit tests for `mujoco_ros` single environment library functions.
+
+## Fixes
+1. Fixed step counter ignoring multiple steps during synchronization if desynchronized.
+2. Fixed wrong declaration of publishSimTime in header.
+
+
+
 # 3.0.0
 
 ## Changes

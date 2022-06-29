@@ -151,6 +151,8 @@ namespace plugin_utils {
 /**
  * @brief Searches for plugins to load in the ros parameter server and stores a the configuration in \c
  * plugin_config_rpc.
+ * @param[in] nh Pointer to nodehandle where to first look for the plugin config.
+ * @param[inout] plugin_config_rpc If any configuration is found, it is stored in this variable.
  */
 bool parsePlugins(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &plugin_config_rpc);
 
