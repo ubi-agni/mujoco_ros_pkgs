@@ -177,10 +177,10 @@ void setJointPosition(mjModelPtr model, mjDataPtr data, const double &pos, const
 	data->qfrc_applied[model->jnt_dofadr[joint_id]] = 0;
 }
 
-void setJointVelocity(mjModelPtr model, mjDataPtr data, const double &vel, const int &joint_id)
+void setJointVelocity(mjModelPtr model, mjDataPtr data, const double &vel, const int &joint_id, const int &offset)
 {
-	data->qvel[model->jnt_dofadr[joint_id]]         = vel;
-	data->qfrc_applied[model->jnt_dofadr[joint_id]] = 0;
+	data->qvel[model->jnt_dofadr[joint_id] + offset]         = vel;
+	data->qfrc_applied[model->jnt_dofadr[joint_id] + offset] = 0;
 }
 
 void requestExternalShutdown(void)
@@ -541,19 +541,25 @@ void loadInitialJointStates(mjModelPtr model, mjDataPtr data)
 		ROS_DEBUG_STREAM_NAMED("mujoco", "\tjoint name '" << name << "' (mjID '" << id << "') set to pos: " << value);
 	}
 
-	joint_map.clear();
 	// Joint velocities
-	nh_->getParam("initial_joint_velocities/joint_map", joint_map);
-	for (auto const &[name, value] : joint_map) {
+	static std::map<std::string, std::string> joint_velocities_map;
+	nh_->getParam("initial_joint_velocities/joint_map", joint_velocities_map);
+	for (auto const &[name, str_values] : joint_velocities_map) {
 		int id = mj_name2id(model.get(), mjOBJ_JOINT, name.c_str());
 		if (id == -1) {
 			ROS_WARN_STREAM_NAMED("mujoco", "Joint with name '"
 			                                    << name << "' could not be found. Initial joint velocity cannot be set!");
 			continue;
 		}
-
-		setJointVelocity(model, data, value, id);
-		ROS_DEBUG_STREAM_NAMED("mujoco", "\tjoint name '" << name << "' (mjID '" << id << "') set to vel: " << value);
+		std::stringstream stream_values(str_values);
+		int i = 0;
+		std::string value;
+		while (std::getline(stream_values, value, ' ')) {
+			setJointVelocity(model, data, std::stod(value), id, i);
+			++i;
+		}
+		ROS_DEBUG_STREAM_NAMED("mujoco",
+		                       "\tjoint name '" << name << "' (mjID '" << id << "') set to vel: " << str_values);
 	}
 }
 
