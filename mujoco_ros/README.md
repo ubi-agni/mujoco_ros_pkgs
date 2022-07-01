@@ -17,6 +17,28 @@ plugins have different callback functions defined in their base class, users sho
 
 ___
 
+## Initial Joint States
+Initial joint states, i.e. positions and/or velocities, can be set using ros parameters. The joint configuration is fetched and applied when the world model is loaded, reset or reloaded.
+For each joint values for all degrees of freedom (depending on the joint type) need to be provided. To ensure that the ros parameter server correctly interprets the data type, the values should be explicitly given as *one* string. This is especially important when providing single values for hinge or slide joints, as ros will otherwise interpret them as double or int and `mujoco_ros` won`t be able to read them (and in most cases will be unable to detect that something went wrong and simply ignore the value).
+The following sample config shows an example how to correctly provide values for each joint type:
+```yaml
+# Set positions
+initial_joint_positions:
+  joint_map:
+    joint1 : "-1.57"                                #Hinge/Slide joint: single axis value
+    ball_joint : "1.0 0 0 0"                        #Ball joint: quaternion (w x y z) relative to parent orientation
+    free_joint: "2.0 1.0 1.06 0.0 0.707 0.0 0.707"  #Free joint: Position (x y z) followed by a quaternion (w x y z) in world coordinates
+
+# Set velocities
+initial_joint_velocities:
+  joint_map:
+    joint1 : "-1.57"                     #Hinge/Slide joint: single axis value
+    ball_joint : "0 0 20.0"              #Ball joint: r p y
+    free_joint : "1.0 2.0 3.0 10 20 30"  #Free joint: x y z r p y
+```
+
+___
+
 # Build Instructions
 1. Make sure MuJoCo is installed (the current build uses version 2.1.1) and runs on your machine.
 2. Create a new ROS workspace or include this repository into an existing workspace.

@@ -57,6 +57,11 @@ namespace MujocoSim {
 
 using namespace detail;
 
+MujocoSim::MujocoEnvPtr MujocoSim::detail::unit_testing::getmjEnv()
+{
+	return mj_env_;
+}
+
 int jointName2id(mjModel *m, const std::string &joint_name)
 {
 	return mj_name2id(m, mjOBJ_JOINT, joint_name.c_str());
@@ -111,14 +116,26 @@ void init(std::string modelfile)
 {
 	nh_.reset(new ros::NodeHandle("~"));
 
+	settings_.exitrequest = 0;
+
 	std::string mj_env_namespace;
 	nh_->param<std::string>("ns", mj_env_namespace, "/");
 	mj_env_.reset(new MujocoEnv(mj_env_namespace));
 
+	double time = ros::Time::now().toSec();
+	if (time > 0) {
+		ROS_DEBUG_STREAM_NAMED("mujoco", "ROS time was not 0, starting with time at " << time << " seconds");
+		last_time_ = time;
+	}
+
 	bool unpause;
 	nh_->param<bool>("unpause", unpause, true);
-	if (unpause)
+	if (unpause) {
 		settings_.run = 1;
+	} else {
+		ROS_DEBUG_NAMED("mujoco", "Starting in paused state");
+		settings_.run = 0;
+	}
 
 	// Print version, check compatibility
 	ROS_INFO("MuJoCo Pro library version %.2lf\n", 0.01 * mj_version());
@@ -167,25 +184,50 @@ void init(std::string modelfile)
 	plugin_utils::unloadPluginloader();
 	mjv_freeScene(&scn_);
 	mjr_freeContext(&con_);
+
+	for (auto ss : service_servers_) {
+		ROS_DEBUG_STREAM_NAMED("mujoco", "Shutting down service " << ss.getService());
+		ss.shutdown();
+	}
+	service_servers_.clear();
+
 	ROS_DEBUG_NAMED("mujoco", "Cleanup done");
 }
 
-void setJointPosition(mjModelPtr model, mjDataPtr data, const double &pos, const int &joint_id)
+void setJointPosition(mjModelPtr model, mjDataPtr data, const double &pos, const int &joint_id,
+                      const int &jnt_axis /*= 0*/)
 {
-	data->qpos[model->jnt_qposadr[joint_id]]        = pos;
-	data->qvel[model->jnt_dofadr[joint_id]]         = 0;
-	data->qfrc_applied[model->jnt_dofadr[joint_id]] = 0;
+	data->qpos[model->jnt_qposadr[joint_id] + jnt_axis]        = pos;
+	data->qvel[model->jnt_dofadr[joint_id] + jnt_axis]         = 0;
+	data->qfrc_applied[model->jnt_dofadr[joint_id] + jnt_axis] = 0;
 }
 
-void setJointVelocity(mjModelPtr model, mjDataPtr data, const double &vel, const int &joint_id)
+void setJointVelocity(mjModelPtr model, mjDataPtr data, const double &vel, const int &joint_id,
+                      const int &jnt_axis /*= 0*/)
 {
-	data->qvel[model->jnt_dofadr[joint_id]]         = vel;
-	data->qfrc_applied[model->jnt_dofadr[joint_id]] = 0;
+	data->qvel[model->jnt_dofadr[joint_id] + jnt_axis]         = vel;
+	data->qfrc_applied[model->jnt_dofadr[joint_id] + jnt_axis] = 0;
 }
 
 void requestExternalShutdown(void)
 {
 	settings_.exitrequest = 1;
+}
+
+void resetSim()
+{
+	if (mj_env_->model) {
+		mj_resetData(mj_env_->model.get(), mj_env_->data.get());
+		if (last_time_ > 0)
+			mj_env_->data->time = last_time_;
+		loadInitialJointStates(mj_env_->model, mj_env_->data);
+		mj_env_->reset();
+		mj_forward(mj_env_->model.get(), mj_env_->data.get());
+		publishSimTime(mj_env_->data->time);
+		profilerUpdate(mj_env_->model, mj_env_->data);
+		sensorUpdate(mj_env_->model, mj_env_->data);
+		updateSettings(mj_env_->model);
+	}
 }
 
 namespace detail {
@@ -260,12 +302,6 @@ void simulate(void)
 
 		if (model) {
 			if (settings_.run) {
-				// Count steps until termination
-				if (num_steps > 0) {
-					num_steps--;
-					ROS_INFO_COND_NAMED(num_steps == 0, "mujoco", "running last sim step before termination!");
-				}
-
 				double tmstart = glfwGetTime();
 
 				// Inject noise
@@ -303,10 +339,17 @@ void simulate(void)
 					mj_step(model.get(), data.get());
 					publishSimTime(data->time);
 					lastStageCallback(data.get());
+
+					// Count steps until termination
+					if (num_steps > 0) {
+						num_steps--;
+						ROS_INFO_COND_NAMED(num_steps == 0, "mujoco", "running last sim step before termination!");
+					}
 				} else { // in-sync
 					// Step while simtime lags behind cputime , and within safefactor
 					while ((data->time * settings_.slow_down - simsync) < (glfwGetTime() - cpusync) &&
-					       (glfwGetTime() - tmstart) < refreshfactor_ / vmode_.refreshRate) {
+					       (glfwGetTime() - tmstart) < refreshfactor_ / vmode_.refreshRate &&
+					       (num_steps == -1 || num_steps > 0)) {
 						// clear old perturbations, apply new
 						mju_zero(data->xfrc_applied, 6 * model->nbody);
 						mjv_applyPerturbPose(model.get(), data.get(), &pert_, 0); // Move mocap bodies only
@@ -317,6 +360,12 @@ void simulate(void)
 						mj_step(model.get(), data.get());
 						publishSimTime(data->time);
 						lastStageCallback(data.get());
+
+						// Count steps until termination
+						if (num_steps > 0) {
+							num_steps--;
+							ROS_INFO_COND_NAMED(num_steps == 0, "mujoco", "running last sim step before termination!");
+						}
 
 						// break on reset
 						if (data->time * settings_.slow_down < prevtm) {
@@ -526,10 +575,17 @@ void loadInitialJointStates(mjModelPtr model, mjDataPtr data)
 	ROS_DEBUG_NAMED("mujoco", "Fetching and setting initial joint positions ...");
 
 	// Joint positions
-	static std::map<std::string, double> joint_map;
+	std::map<std::string, std::string> joint_map;
 	nh_->getParam("initial_joint_positions/joint_map", joint_map);
 
-	for (auto const &[name, value] : joint_map) {
+	// This check only assures that there aren't single axis joint values that are non-strings.
+	// One ill-defined value among correct parameters can't be recognized.
+	if (nh_->hasParam("initial_joint_positions/joint_map") && joint_map.size() == 0) {
+		ROS_WARN_NAMED("mujoco", "Initial joint positions not recognized by rosparam server. Check your config, "
+		                         "especially values for single axis joints should explicitly provided as string!");
+	}
+	for (auto const &[name, str_values] : joint_map) {
+		ROS_DEBUG_STREAM_NAMED("mujoco", "Trying to set jointpos of joint " << name << " to values: " << str_values);
 		int id = mj_name2id(model.get(), mjOBJ_JOINT, name.c_str());
 		if (id == -1) {
 			ROS_WARN_STREAM_NAMED("mujoco", "Joint with name '"
@@ -537,23 +593,99 @@ void loadInitialJointStates(mjModelPtr model, mjDataPtr data)
 			continue;
 		}
 
-		setJointPosition(model, data, value, id);
-		ROS_DEBUG_STREAM_NAMED("mujoco", "\tjoint name '" << name << "' (mjID '" << id << "') set to pos: " << value);
+		int num_axes = 0;
+		int jnt_type = model->jnt_type[id];
+		switch (jnt_type) {
+			case mjJNT_FREE:
+				num_axes = 7; // x y z (Position) w x y z (Orientation Quaternion) in world
+				break;
+			case mjJNT_BALL:
+				num_axes = 4; // w x y z (Quaternion)
+				break;
+			case mjJNT_SLIDE:
+			case mjJNT_HINGE:
+				num_axes = 1; // single axis value
+				break;
+			default:
+				break;
+		}
+
+		double axis_vals[num_axes];
+		std::stringstream stream_values(str_values);
+		int jnt_axis = 0;
+		std::string value;
+		while (std::getline(stream_values, value, ' ')) {
+			if (jnt_axis > num_axes)
+				break;
+			axis_vals[jnt_axis] = std::stod(value);
+			jnt_axis++;
+		}
+
+		if (jnt_axis != num_axes) {
+			ROS_ERROR_STREAM_NAMED("mujoco", "Provided initial position values for joint "
+			                                     << name << " don't match the degrees of freedom of the joint (exactly "
+			                                     << num_axes << " values are needed)!");
+			continue;
+		}
+		for (jnt_axis = 0; jnt_axis < num_axes; jnt_axis++) {
+			setJointPosition(model, data, axis_vals[jnt_axis], id, jnt_axis);
+		}
 	}
 
-	joint_map.clear();
 	// Joint velocities
+	joint_map.clear();
 	nh_->getParam("initial_joint_velocities/joint_map", joint_map);
-	for (auto const &[name, value] : joint_map) {
+	// This check only assures that there aren't single axis joint values that are non-strings.
+	// One ill-defined value among correct parameters can't be recognized.
+	if (nh_->hasParam("initial_joint_velocities/joint_map") && joint_map.size() == 0) {
+		ROS_WARN_NAMED("mujoco", "Initial joint positions not recognized by rosparam server. Check your config, "
+		                         "especially values for single axis joints should explicitly provided as string!");
+	}
+	for (auto const &[name, str_values] : joint_map) {
+		ROS_DEBUG_STREAM_NAMED("mujoco", "Trying to set jointvels of joint " << name << " to values: " << str_values);
 		int id = mj_name2id(model.get(), mjOBJ_JOINT, name.c_str());
 		if (id == -1) {
 			ROS_WARN_STREAM_NAMED("mujoco", "Joint with name '"
 			                                    << name << "' could not be found. Initial joint velocity cannot be set!");
 			continue;
 		}
+		int num_axes = 0;
+		int jnt_type = model->jnt_type[id];
+		switch (jnt_type) {
+			case mjJNT_FREE:
+				num_axes = 6; // x y z r p y
+				break;
+			case mjJNT_BALL:
+				num_axes = 3; // r p y
+				break;
+			case mjJNT_SLIDE:
+			case mjJNT_HINGE:
+				num_axes = 1; // single axis value
+				break;
+			default:
+				break;
+		}
 
-		setJointVelocity(model, data, value, id);
-		ROS_DEBUG_STREAM_NAMED("mujoco", "\tjoint name '" << name << "' (mjID '" << id << "') set to vel: " << value);
+		double axis_vals[num_axes];
+		std::stringstream stream_values(str_values);
+		int jnt_axis = 0;
+		std::string value;
+		while (std::getline(stream_values, value, ' ')) {
+			if (jnt_axis > num_axes)
+				break;
+			axis_vals[jnt_axis] = std::stod(value);
+			jnt_axis++;
+		}
+
+		if (jnt_axis != num_axes) {
+			ROS_ERROR_STREAM_NAMED("mujoco", "Provided initial velocity values for joint "
+			                                     << name << " don't match the degrees of freedom of the joint (exactly "
+			                                     << num_axes << " values are needed)!");
+			continue;
+		}
+		for (jnt_axis = 0; jnt_axis < num_axes; jnt_axis++) {
+			setJointVelocity(model, data, axis_vals[jnt_axis], id, jnt_axis);
+		}
 	}
 }
 
@@ -771,18 +903,7 @@ void uiEvent(mjuiState *state)
 		else if (it && it->sectionid == SECT_SIMULATION) {
 			switch (it->itemid) {
 				case 1: // reset
-					if (mj_env_->model) {
-						mj_resetData(mj_env_->model.get(), mj_env_->data.get());
-						if (last_time_ > 0)
-							mj_env_->data->time = last_time_;
-						loadInitialJointStates(mj_env_->model, mj_env_->data);
-						mj_env_->reset();
-						mj_forward(mj_env_->model.get(), mj_env_->data.get());
-						publishSimTime(mj_env_->data->time);
-						profilerUpdate(mj_env_->model, mj_env_->data);
-						sensorUpdate(mj_env_->model, mj_env_->data);
-						updateSettings(mj_env_->model);
-					}
+					resetSim();
 					break;
 
 				case 2: // Reload
@@ -1931,6 +2052,7 @@ void setupCallbacks()
 {
 	service_servers_.push_back(nh_->advertiseService("set_pause", setPauseCB));
 	service_servers_.push_back(nh_->advertiseService("shutdown", shutdownCB));
+	service_servers_.push_back(nh_->advertiseService("reset", resetCB));
 
 	mjcb_control = controlCallback;
 	mjcb_passive = passiveCallback;
@@ -1947,6 +2069,12 @@ bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPau
 {
 	ROS_DEBUG_STREAM("PauseCB called with: " << (bool)req.paused);
 	settings_.run = !req.paused;
+	return true;
+}
+
+bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
+{
+	resetSim();
 	return true;
 }
 
