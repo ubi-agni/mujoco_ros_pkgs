@@ -194,17 +194,19 @@ void init(std::string modelfile)
 	ROS_DEBUG_NAMED("mujoco", "Cleanup done");
 }
 
-void setJointPosition(mjModelPtr model, mjDataPtr data, const double &pos, const int &joint_id)
+void setJointPosition(mjModelPtr model, mjDataPtr data, const double &pos, const int &joint_id,
+                      const int &jnt_axis /*= 0*/)
 {
-	data->qpos[model->jnt_qposadr[joint_id]]        = pos;
-	data->qvel[model->jnt_dofadr[joint_id]]         = 0;
-	data->qfrc_applied[model->jnt_dofadr[joint_id]] = 0;
+	data->qpos[model->jnt_qposadr[joint_id] + jnt_axis]        = pos;
+	data->qvel[model->jnt_dofadr[joint_id] + jnt_axis]         = 0;
+	data->qfrc_applied[model->jnt_dofadr[joint_id] + jnt_axis] = 0;
 }
 
-void setJointVelocity(mjModelPtr model, mjDataPtr data, const double &vel, const int &joint_id)
+void setJointVelocity(mjModelPtr model, mjDataPtr data, const double &vel, const int &joint_id,
+                      const int &jnt_axis /*= 0*/)
 {
-	data->qvel[model->jnt_dofadr[joint_id]]         = vel;
-	data->qfrc_applied[model->jnt_dofadr[joint_id]] = 0;
+	data->qvel[model->jnt_dofadr[joint_id] + jnt_axis]         = vel;
+	data->qfrc_applied[model->jnt_dofadr[joint_id] + jnt_axis] = 0;
 }
 
 void requestExternalShutdown(void)
@@ -573,10 +575,17 @@ void loadInitialJointStates(mjModelPtr model, mjDataPtr data)
 	ROS_DEBUG_NAMED("mujoco", "Fetching and setting initial joint positions ...");
 
 	// Joint positions
-	std::map<std::string, double> joint_map;
+	std::map<std::string, std::string> joint_map;
 	nh_->getParam("initial_joint_positions/joint_map", joint_map);
 
-	for (auto const &[name, value] : joint_map) {
+	// This check only assures that there aren't single axis joint values that are non-strings.
+	// One ill-defined value among correct parameters can't be recognized.
+	if (nh_->hasParam("initial_joint_positions/joint_map") && joint_map.size() == 0) {
+		ROS_WARN_NAMED("mujoco", "Initial joint positions not recognized by rosparam server. Check your config, "
+		                         "especially values for single axis joints should explicitly provided as string!");
+	}
+	for (auto const &[name, str_values] : joint_map) {
+		ROS_DEBUG_STREAM_NAMED("mujoco", "Trying to set jointpos of joint " << name << " to values: " << str_values);
 		int id = mj_name2id(model.get(), mjOBJ_JOINT, name.c_str());
 		if (id == -1) {
 			ROS_WARN_STREAM_NAMED("mujoco", "Joint with name '"
@@ -584,23 +593,99 @@ void loadInitialJointStates(mjModelPtr model, mjDataPtr data)
 			continue;
 		}
 
-		setJointPosition(model, data, value, id);
-		ROS_DEBUG_STREAM_NAMED("mujoco", "\tjoint name '" << name << "' (mjID '" << id << "') set to pos: " << value);
+		int num_axes = 0;
+		int jnt_type = model->jnt_type[id];
+		switch (jnt_type) {
+			case mjJNT_FREE:
+				num_axes = 7; // x y z (Position) w x y z (Orientation Quaternion) in world
+				break;
+			case mjJNT_BALL:
+				num_axes = 4; // w x y z (Quaternion)
+				break;
+			case mjJNT_SLIDE:
+			case mjJNT_HINGE:
+				num_axes = 1; // single axis value
+				break;
+			default:
+				break;
+		}
+
+		double axis_vals[num_axes];
+		std::stringstream stream_values(str_values);
+		int jnt_axis = 0;
+		std::string value;
+		while (std::getline(stream_values, value, ' ')) {
+			if (jnt_axis > num_axes)
+				break;
+			axis_vals[jnt_axis] = std::stod(value);
+			jnt_axis++;
+		}
+
+		if (jnt_axis != num_axes) {
+			ROS_ERROR_STREAM_NAMED("mujoco", "Provided initial position values for joint "
+			                                     << name << " don't match the degrees of freedom of the joint (exactly "
+			                                     << num_axes << " values are needed)!");
+			continue;
+		}
+		for (jnt_axis = 0; jnt_axis < num_axes; jnt_axis++) {
+			setJointPosition(model, data, axis_vals[jnt_axis], id, jnt_axis);
+		}
 	}
 
-	joint_map.clear();
 	// Joint velocities
+	joint_map.clear();
 	nh_->getParam("initial_joint_velocities/joint_map", joint_map);
-	for (auto const &[name, value] : joint_map) {
+	// This check only assures that there aren't single axis joint values that are non-strings.
+	// One ill-defined value among correct parameters can't be recognized.
+	if (nh_->hasParam("initial_joint_velocities/joint_map") && joint_map.size() == 0) {
+		ROS_WARN_NAMED("mujoco", "Initial joint positions not recognized by rosparam server. Check your config, "
+		                         "especially values for single axis joints should explicitly provided as string!");
+	}
+	for (auto const &[name, str_values] : joint_map) {
+		ROS_DEBUG_STREAM_NAMED("mujoco", "Trying to set jointvels of joint " << name << " to values: " << str_values);
 		int id = mj_name2id(model.get(), mjOBJ_JOINT, name.c_str());
 		if (id == -1) {
 			ROS_WARN_STREAM_NAMED("mujoco", "Joint with name '"
 			                                    << name << "' could not be found. Initial joint velocity cannot be set!");
 			continue;
 		}
+		int num_axes = 0;
+		int jnt_type = model->jnt_type[id];
+		switch (jnt_type) {
+			case mjJNT_FREE:
+				num_axes = 6; // x y z r p y
+				break;
+			case mjJNT_BALL:
+				num_axes = 3; // r p y
+				break;
+			case mjJNT_SLIDE:
+			case mjJNT_HINGE:
+				num_axes = 1; // single axis value
+				break;
+			default:
+				break;
+		}
 
-		setJointVelocity(model, data, value, id);
-		ROS_DEBUG_STREAM_NAMED("mujoco", "\tjoint name '" << name << "' (mjID '" << id << "') set to vel: " << value);
+		double axis_vals[num_axes];
+		std::stringstream stream_values(str_values);
+		int jnt_axis = 0;
+		std::string value;
+		while (std::getline(stream_values, value, ' ')) {
+			if (jnt_axis > num_axes)
+				break;
+			axis_vals[jnt_axis] = std::stod(value);
+			jnt_axis++;
+		}
+
+		if (jnt_axis != num_axes) {
+			ROS_ERROR_STREAM_NAMED("mujoco", "Provided initial velocity values for joint "
+			                                     << name << " don't match the degrees of freedom of the joint (exactly "
+			                                     << num_axes << " values are needed)!");
+			continue;
+		}
+		for (jnt_axis = 0; jnt_axis < num_axes; jnt_axis++) {
+			setJointVelocity(model, data, axis_vals[jnt_axis], id, jnt_axis);
+		}
 	}
 }
 

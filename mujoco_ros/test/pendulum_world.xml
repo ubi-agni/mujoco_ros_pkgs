@@ -17,8 +17,7 @@
 
         <body name="base_link">
             <geom type="capsule" fromto="0 0 1  0 0 0.6" size="0.06"/>
-            <!-- <joint name="joint0" type="ball" pos="0 0 1"/> -->
-            <joint name="joint0" type="hinge" pos="0 0 1" axis="0 1 0"/>
+            <joint name="balljoint" type="ball" pos="0 0 1"/>
             <body name="middle_link">
                 <geom type="capsule" fromto="0 0 0.6  0.0 0 0.3" size="0.04"/>
                 <joint name="joint1" type="hinge" pos="0 0 0.6" axis="0 1 0"/>
@@ -28,6 +27,10 @@
                     <joint name="joint2" type="hinge" pos="0.0 0 0.3" axis="0 1 0"/>
                 </body>
             </body>
+        </body>
+        <body name="body_ball" pos="1 0 0.06" >
+            <freejoint name="ball_freejoint"/>
+            <geom name="ball" type="sphere" size="0.05" rgba="1.0 0.55 0.0 0.2" mass="0.1"/>
         </body>
     </worldbody>
 </mujoco>
