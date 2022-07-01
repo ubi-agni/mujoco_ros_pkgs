@@ -32,7 +32,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  *********************************************************************/
 
-/* Authors: David P. Leins*/
+/* Authors: David P. Leins */
 
 #pragma once
 #include <ros/ros.h>
