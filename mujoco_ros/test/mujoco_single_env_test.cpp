@@ -107,22 +107,38 @@ TEST_F(MujocoRosFixture, default_initial_joint_states)
 	MujocoSim::mjDataPtr d      = getData(env);
 	MujocoSim::mjModelPtr m     = getModel(env);
 
-	int id0, id1, id2;
-	id0 = MujocoSim::jointName2id(m.get(), "joint0");
-	id1 = MujocoSim::jointName2id(m.get(), "joint1");
-	id2 = MujocoSim::jointName2id(m.get(), "joint2");
+	int id_balljoint, id1, id2, id_free;
+	id_balljoint = MujocoSim::jointName2id(m.get(), "balljoint");
+	id1          = MujocoSim::jointName2id(m.get(), "joint1");
+	id2          = MujocoSim::jointName2id(m.get(), "joint2");
+	id_free      = MujocoSim::jointName2id(m.get(), "ball_freejoint");
 
-	EXPECT_NE(id0, -1) << "'joint0' should be found as joint in model!";
+	EXPECT_NE(id_balljoint, -1) << "'balljoint' should be found as joint in model!";
 	EXPECT_NE(id1, -1) << "'joint1' should be found as joint in model!";
 	EXPECT_NE(id2, -1) << "'joint2' should be found as joint in model!";
+	EXPECT_NE(id_free, -1) << "'ball_freejoint' should be found as joint in model!";
 
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id0]], 0.0) << "'joint0' position should be 0!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint]], 1.0) << "'balljoint' w quat should be 1!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint] + 1], 0.0) << "'balljoint' x quat should be 0!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint] + 2], 0.0) << "'balljoint' y quat should be 0!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint] + 3], 0.0) << "'balljoint' z quat should be 0!";
 	EXPECT_EQ(d->qpos[m->jnt_qposadr[id1]], 0.0) << "'joint1' position should be 0!";
 	EXPECT_EQ(d->qpos[m->jnt_qposadr[id2]], 0.0) << "'joint2' position should be 0!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free]], 1.0) << "'ball_freejoint' x position should be 1!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 1], 0.0) << "'ball_freejoint' y position should be 0!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 2], 0.06) << "'ball_freejoint' z position should be 0.06!";
 
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id0]], 0.0) << "'joint0' velocity should be 0!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint]], 0.0) << "'balljoint' roll vel should be 0!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint] + 1], 0.0) << "'balljoint' pitch vel should be 0!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint] + 2], 0.0) << "'balljoint' yaw vel should be 0!";
 	EXPECT_EQ(d->qvel[m->jnt_dofadr[id1]], 0.0) << "'joint1' velocity should be 0!";
 	EXPECT_EQ(d->qvel[m->jnt_dofadr[id2]], 0.0) << "'joint2' velocity should be 0!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free]], 0.0) << "'ball_freejoint' x vel should be 1!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 1], 0.0) << "'ball_freejoint' y vel should be 0!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 2], 0.0) << "'ball_freejoint' z vel should be 0.06!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 3], 0.0) << "'ball_freejoint' roll vel should be 0!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 4], 0.0) << "'ball_freejoint' pitch vel should be 0!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 5], 0.0) << "'ball_freejoint' yaw vel should be 0!";
 
 	MujocoSim::requestExternalShutdown();
 	mjThread.join();
@@ -133,13 +149,16 @@ TEST_F(MujocoRosFixture, custom_initial_joint_states_on_reset)
 	nh->setParam("unpause", false);
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
-	std::map<std::string, double> pos_map, vel_map;
+	std::map<std::string, std::string> pos_map, vel_map;
 
-	pos_map.insert({ "joint0", -0.314 });
-	pos_map.insert({ "joint1", -1.57 });
-	pos_map.insert({ "joint2", -0.66 });
+	pos_map.insert({ "balljoint", "0 0.707 0 0.707" });
+	pos_map.insert({ "joint1", "-1.57" });
+	pos_map.insert({ "joint2", "-0.66" });
+	pos_map.insert({ "ball_freejoint", "2.0 1.0 1.06 0.0 0.707 0.0 0.707" });
 
-	vel_map.insert({ "joint2", 1.05 });
+	vel_map.insert({ "balljoint", "5 5 10" });
+	vel_map.insert({ "joint2", "1.05" });
+	vel_map.insert({ "ball_freejoint", "1.0 2.0 3.0 10 20 30" });
 
 	std::thread mjThread(MujocoSim::init, xml_path);
 	std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -148,23 +167,43 @@ TEST_F(MujocoRosFixture, custom_initial_joint_states_on_reset)
 	MujocoSim::mjDataPtr d      = getData(env);
 	MujocoSim::mjModelPtr m     = getModel(env);
 
-	int id0, id1, id2;
+	int id_balljoint, id1, id2, id_free;
 
-	id0 = MujocoSim::jointName2id(m.get(), "joint0");
-	id1 = MujocoSim::jointName2id(m.get(), "joint1");
-	id2 = MujocoSim::jointName2id(m.get(), "joint2");
+	id_balljoint = MujocoSim::jointName2id(m.get(), "balljoint");
+	id1          = MujocoSim::jointName2id(m.get(), "joint1");
+	id2          = MujocoSim::jointName2id(m.get(), "joint2");
+	id_free      = MujocoSim::jointName2id(m.get(), "ball_freejoint");
 
-	EXPECT_NE(id0, -1) << "'joint0' should be found as joint in model!";
+	EXPECT_NE(id_balljoint, -1) << "'balljoint' should be found as joint in model!";
 	EXPECT_NE(id1, -1) << "'joint1' should be found as joint in model!";
 	EXPECT_NE(id2, -1) << "'joint2' should be found as joint in model!";
+	EXPECT_NE(id_free, -1) << "'ball_freejoint' should be found as joint in model!";
 
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id0]], 0.0) << "'joint0' position should be 0!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint]], 1.0) << "'balljoint' w quat should be 1!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint] + 1], 0.0) << "'balljoint' x quat should be 0!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint] + 2], 0.0) << "'balljoint' y quat should be 0!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint] + 3], 0.0) << "'balljoint' z quat should be 0!";
 	EXPECT_EQ(d->qpos[m->jnt_qposadr[id1]], 0.0) << "'joint1' position should be 0!";
 	EXPECT_EQ(d->qpos[m->jnt_qposadr[id2]], 0.0) << "'joint2' position should be 0!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free]], 1.0) << "'ball_freejoint' x position should be 1!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 1], 0.0) << "'ball_freejoint' y position should be 0!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 2], 0.06) << "'ball_freejoint' z position should be 0.06!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 3], 1.0) << "'ball_freejoint' quat w should be 1!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 4], 0.0) << "'ball_freejoint' quat x should be 0!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 5], 0.0) << "'ball_freejoint' quat y should be 0!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 6], 0.0) << "'ball_freejoint' quat z should be 0!";
 
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id0]], 0.0) << "'joint0' velocity should be 0!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint]], 0.0) << "'balljoint' roll vel should be 0!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint] + 1], 0.0) << "'balljoint' pitch vel should be 0!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint] + 2], 0.0) << "'balljoint' yaw vel should be 0!";
 	EXPECT_EQ(d->qvel[m->jnt_dofadr[id1]], 0.0) << "'joint1' velocity should be 0!";
 	EXPECT_EQ(d->qvel[m->jnt_dofadr[id2]], 0.0) << "'joint2' velocity should be 0!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free]], 0.0) << "'ball_freejoint' x vel should be 1!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 1], 0.0) << "'ball_freejoint' y vel should be 0!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 2], 0.0) << "'ball_freejoint' z vel should be 0.06!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 3], 0.0) << "'ball_freejoint' roll vel should be 0!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 4], 0.0) << "'ball_freejoint' pitch vel should be 0!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 5], 0.0) << "'ball_freejoint' yaw vel should be 0!";
 
 	nh->setParam("initial_joint_positions/joint_map", pos_map);
 	nh->setParam("initial_joint_velocities/joint_map", vel_map);
@@ -172,13 +211,31 @@ TEST_F(MujocoRosFixture, custom_initial_joint_states_on_reset)
 	std_srvs::Empty srv;
 	MujocoSim::detail::resetCB(srv.request, srv.response);
 
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id0]], -0.314) << "'joint0' position should be changed!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint]], 0.0) << "'balljoint' w quat should be changed!";
+	EXPECT_NEAR(d->qpos[m->jnt_qposadr[id_balljoint] + 1], 0.707, 9e-4) << "'balljoint' x quat should be changed!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint] + 2], 0.0) << "'balljoint' y quat should be changed!";
+	EXPECT_NEAR(d->qpos[m->jnt_qposadr[id_balljoint] + 3], 0.707, 9e-4) << "'balljoint' z quat should be changed!";
 	EXPECT_EQ(d->qpos[m->jnt_qposadr[id1]], -1.57) << "'joint1' position should be changed!";
 	EXPECT_EQ(d->qpos[m->jnt_qposadr[id2]], -0.66) << "'joint2' position should be changed!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free]], 2.0) << "'ball_freejoint' x position should be changed!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 1], 1.0) << "'ball_freejoint' y position should be changed!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 2], 1.06) << "'ball_freejoint' z position should be changed!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 3], 0.0) << "'ball_freejoint' quat w should be changed!";
+	EXPECT_NEAR(d->qpos[m->jnt_qposadr[id_free] + 4], 0.707, 9e-4) << "'ball_freejoint' quat x should be changed!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 5], 0.0) << "'ball_freejoint' quat y should be changed!";
+	EXPECT_NEAR(d->qpos[m->jnt_qposadr[id_free] + 6], 0.707, 9e-4) << "'ball_freejoint' quat z should be changed!";
 
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id0]], 0.0) << "'joint0' velocity should be 0!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint]], 5.0) << "'balljoint' roll vel should be changed!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint] + 1], 5.0) << "'balljoint' pitch vel should be changed!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint] + 2], 10.0) << "'balljoint' yaw vel should be changed!";
 	EXPECT_EQ(d->qvel[m->jnt_dofadr[id1]], 0.0) << "'joint1' velocity should be 0!";
 	EXPECT_EQ(d->qvel[m->jnt_dofadr[id2]], 1.05) << "'joint2' velocity should be changed!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free]], 1.0) << "'ball_freejoint' x vel should be changed!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 1], 2.0) << "'ball_freejoint' y vel should be changed!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 2], 3.0) << "'ball_freejoint' z vel should be changed!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 3], 10.0) << "'ball_freejoint' roll vel should be changed!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 4], 20.0) << "'ball_freejoint' pitch vel should be changed!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 5], 30.0) << "'ball_freejoint' yaw vel should be changed!";
 
 	MujocoSim::requestExternalShutdown();
 	mjThread.join();
@@ -192,13 +249,16 @@ TEST_F(MujocoRosFixture, custom_initial_joint_states)
 	nh->setParam("unpause", false);
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
-	std::map<std::string, double> pos_map, vel_map;
+	std::map<std::string, std::string> pos_map, vel_map;
 
-	pos_map.insert({ "joint0", -0.314 });
-	pos_map.insert({ "joint1", -1.57 });
-	pos_map.insert({ "joint2", -0.66 });
+	pos_map.insert({ "balljoint", "0 0.707 0 0.707" });
+	pos_map.insert({ "joint1", "-1.57" });
+	pos_map.insert({ "joint2", "-0.66" });
+	pos_map.insert({ "ball_freejoint", "2.0 1.0 1.06 0.0 0.707 0.0 0.707" });
 
-	vel_map.insert({ "joint2", 1.05 });
+	vel_map.insert({ "balljoint", "5 5 10" });
+	vel_map.insert({ "joint2", "1.05" });
+	vel_map.insert({ "ball_freejoint", "1.0 2.0 3.0 10 20 30" });
 
 	nh->setParam("initial_joint_positions/joint_map", pos_map);
 	nh->setParam("initial_joint_velocities/joint_map", vel_map);
@@ -210,23 +270,43 @@ TEST_F(MujocoRosFixture, custom_initial_joint_states)
 	MujocoSim::mjDataPtr d      = getData(env);
 	MujocoSim::mjModelPtr m     = getModel(env);
 
-	int id0, id1, id2;
+	int id_balljoint, id1, id2, id_free;
 
-	id0 = MujocoSim::jointName2id(m.get(), "joint0");
-	id1 = MujocoSim::jointName2id(m.get(), "joint1");
-	id2 = MujocoSim::jointName2id(m.get(), "joint2");
+	id_balljoint = MujocoSim::jointName2id(m.get(), "balljoint");
+	id1          = MujocoSim::jointName2id(m.get(), "joint1");
+	id2          = MujocoSim::jointName2id(m.get(), "joint2");
+	id_free      = MujocoSim::jointName2id(m.get(), "ball_freejoint");
 
-	EXPECT_NE(id0, -1) << "'joint0' should be found as joint in model!";
+	EXPECT_NE(id_balljoint, -1) << "'balljoint' should be found as joint in model!";
 	EXPECT_NE(id1, -1) << "'joint1' should be found as joint in model!";
 	EXPECT_NE(id2, -1) << "'joint2' should be found as joint in model!";
+	EXPECT_NE(id_free, -1) << "'ball_freejoint' should be found as joint in model!";
 
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id0]], -0.314) << "'joint0' position should be changed!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint]], 0.0) << "'balljoint' w quat should be changed!";
+	EXPECT_NEAR(d->qpos[m->jnt_qposadr[id_balljoint] + 1], 0.707, 9e-4) << "'balljoint' x quat should be changed!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint] + 2], 0.0) << "'balljoint' y quat should be changed!";
+	EXPECT_NEAR(d->qpos[m->jnt_qposadr[id_balljoint] + 3], 0.707, 9e-4) << "'balljoint' z quat should be changed!";
 	EXPECT_EQ(d->qpos[m->jnt_qposadr[id1]], -1.57) << "'joint1' position should be changed!";
 	EXPECT_EQ(d->qpos[m->jnt_qposadr[id2]], -0.66) << "'joint2' position should be changed!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free]], 2.0) << "'ball_freejoint' x position should be changed!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 1], 1.0) << "'ball_freejoint' y position should be changed!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 2], 1.06) << "'ball_freejoint' z position should be changed!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 3], 0.0) << "'ball_freejoint' quat w should be changed!";
+	EXPECT_NEAR(d->qpos[m->jnt_qposadr[id_free] + 4], 0.707, 9e-4) << "'ball_freejoint' quat x should be changed!";
+	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 5], 0.0) << "'ball_freejoint' quat y should be changed!";
+	EXPECT_NEAR(d->qpos[m->jnt_qposadr[id_free] + 6], 0.707, 9e-4) << "'ball_freejoint' quat z should be changed!";
 
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id0]], 0.0) << "'joint0' velocity should be 0!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint]], 5.0) << "'balljoint' roll vel should be changed!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint] + 1], 5.0) << "'balljoint' pitch vel should be changed!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint] + 2], 10.0) << "'balljoint' yaw vel should be changed!";
 	EXPECT_EQ(d->qvel[m->jnt_dofadr[id1]], 0.0) << "'joint1' velocity should be 0!";
 	EXPECT_EQ(d->qvel[m->jnt_dofadr[id2]], 1.05) << "'joint2' velocity should be changed!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free]], 1.0) << "'ball_freejoint' x vel should be 1!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 1], 2.0) << "'ball_freejoint' y vel should be 0!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 2], 3.0) << "'ball_freejoint' z vel should be 0.06!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 3], 10.0) << "'ball_freejoint' roll vel should be changed!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 4], 20.0) << "'ball_freejoint' pitch vel should be changed!";
+	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 5], 30.0) << "'ball_freejoint' yaw vel should be changed!";
 
 	MujocoSim::requestExternalShutdown();
 	mjThread.join();

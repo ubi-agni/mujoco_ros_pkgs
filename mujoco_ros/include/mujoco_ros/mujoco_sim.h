@@ -86,8 +86,10 @@ static std::mutex render_mtx;
 
 int jointName2id(mjModel *m, const std::string &joint_name);
 
-void setJointPosition(mjModelPtr model, mjDataPtr data, const double &pos, const int &joint_id);
-void setJointVelocity(mjModelPtr model, mjDataPtr data, const double &vel, const int &joint_id, const int &offset);
+void setJointPosition(mjModelPtr model, mjDataPtr data, const double &pos, const int &joint_id,
+                      const int &jnt_axis = 0);
+void setJointVelocity(mjModelPtr model, mjDataPtr data, const double &vel, const int &joint_id,
+                      const int &jnt_axis = 0);
 
 // Keep track of overriden collisions to throw warnings
 static std::set<std::pair<int, int>> custom_collisions_;
