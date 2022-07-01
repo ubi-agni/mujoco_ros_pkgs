@@ -59,5 +59,8 @@ int main(int argc, char **argv)
 	MujocoSim::init(filename);
 	ROS_INFO("Franka MuJoCo node is terminating");
 
+	spinner.stop();
+
+	ros::shutdown();
 	return 0;
 }

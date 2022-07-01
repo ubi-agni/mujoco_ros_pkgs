@@ -86,8 +86,10 @@ static std::mutex render_mtx;
 
 int jointName2id(mjModel *m, const std::string &joint_name);
 
-void setJointPosition(mjModelPtr model, mjDataPtr data, const double &pos, const int &joint_id);
-void setJointVelocity(mjModelPtr model, mjDataPtr data, const double &vel, const int &joint_id);
+void setJointPosition(mjModelPtr model, mjDataPtr data, const double &pos, const int &joint_id,
+                      const int &jnt_axis = 0);
+void setJointVelocity(mjModelPtr model, mjDataPtr data, const double &vel, const int &joint_id,
+                      const int &jnt_axis = 0);
 
 // Keep track of overriden collisions to throw warnings
 static std::set<std::pair<int, int>> custom_collisions_;
@@ -101,10 +103,27 @@ static std::set<std::pair<int, int>> custom_collisions_;
  */
 void registerCollisionFunc(int geom_type1, int geom_type2, mjfCollision collision_cb);
 
+/**
+ * @brief Reset the simulation.
+ *
+ */
+void resetSim();
+
 namespace detail {
 
 // Env containing model and data
 static MujocoEnvPtr mj_env_;
+
+// Helper function for unit tests to access the env
+namespace unit_testing {
+/**
+ * @brief Gets the current MujocoEnv. This function is meant for unit testing only and might return a nullpointer if
+ * used wrongly.
+ *
+ * @return Pointer to the current MujocoEnv.
+ */
+MujocoEnvPtr getmjEnv();
+} // namespace unit_testing
 
 // filename strings
 static char filename_[kBufSize]          = "";
@@ -119,7 +138,7 @@ static bool vis_;
 static double last_rendered_ = 0;
 
 // ROS callback for sim time publisher on /clock
-void publishSimTime();
+void publishSimTime(mjtNum time);
 static ros::Publisher pub_clock_;
 static boost::shared_ptr<ros::NodeHandle> nh_;
 
@@ -208,6 +227,7 @@ void eventloop(void);
 void setupCallbacks();
 bool shutdownCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
 bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &resp);
+bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
 
 // UI settings not contained in MuJoCo structures
 struct
