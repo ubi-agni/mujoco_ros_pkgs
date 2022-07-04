@@ -12,6 +12,7 @@ find_package(catkin REQUIRED
     pluginlib
     cmake_modules
     mujoco_ros_msgs
+    urdf
 )
 
 catkin_package(
@@ -19,6 +20,7 @@ catkin_package(
     roscpp
     pluginlib
     mujoco_ros_msgs
+    urdf
   INCLUDE_DIRS include
   LIBRARIES ${PROJECT_NAME}
 )
