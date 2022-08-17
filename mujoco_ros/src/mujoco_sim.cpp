@@ -53,13 +53,17 @@
 
 #include <rosgraph_msgs/Clock.h>
 
+#include <iostream>
+#include <boost/algorithm/string/classification.hpp>
+#include <boost/algorithm/string/split.hpp>
+
 namespace MujocoSim {
 
 using namespace detail;
 
 MujocoSim::MujocoEnvPtr MujocoSim::detail::unit_testing::getmjEnv()
 {
-	return mj_env_;
+	return main_env_;
 }
 
 int jointName2id(mjModel *m, const std::string &joint_name)
@@ -118,9 +122,21 @@ void init(std::string modelfile)
 
 	settings_.exitrequest = 0;
 
-	std::string mj_env_namespace;
-	nh_->param<std::string>("ns", mj_env_namespace, "/");
-	mj_env_.reset(new MujocoEnv(mj_env_namespace));
+	// Print version, check compatibility
+	ROS_INFO("MuJoCo Pro library version %.2lf\n", 0.01 * mj_version());
+	if (mjVERSION_HEADER != mj_version()) {
+		ROS_ERROR_NAMED("mujoco", "Headers and library have different versions");
+		mju_error("Headers and library have different versions");
+	}
+
+	// Check which sim mode to use
+	nh_->param<int>("num_simulations", num_simulations_, 1);
+	env_list_.resize(num_simulations_);
+	if (num_simulations_ > 1) {
+		sim_mode_ = simMode::PARALLEL;
+	} else {
+		sim_mode_ = simMode::SINGLE;
+	}
 
 	double time = ros::Time::now().toSec();
 	if (time > 0) {
@@ -128,20 +144,57 @@ void init(std::string modelfile)
 		last_time_ = time;
 	}
 
+	nh_->param<bool>("benchmark_time", benchmark_env_time_, false);
+
 	bool unpause;
 	nh_->param<bool>("unpause", unpause, true);
-	if (unpause) {
-		settings_.run = 1;
-	} else {
-		ROS_DEBUG_NAMED("mujoco", "Starting in paused state");
-		settings_.run = 0;
-	}
+	if (sim_mode_ == simMode::SINGLE) {
+		std::string main_env_namespace;
+		nh_->param<std::string>("ns", main_env_namespace, "/");
+		main_env_.reset(new MujocoEnv(main_env_namespace));
 
-	// Print version, check compatibility
-	ROS_INFO("MuJoCo Pro library version %.2lf\n", 0.01 * mj_version());
-	if (mjVERSION_HEADER != mj_version()) {
-		ROS_ERROR_NAMED("mujoco", "Headers and library have different versions");
-		mju_error("Headers and library have different versions");
+		if (unpause) {
+			settings_.run = 1;
+		} else {
+			ROS_DEBUG_NAMED("mujoco", "Starting in paused state");
+			settings_.run = 0;
+		}
+	} else {
+		settings_.run = 0;
+		ROS_DEBUG_NAMED("mujoco", "Multi env sim mode starting in mandatory pause mode.");
+
+		std::string bootstrap_launchfile;
+		std::vector<std::string> bootstrap_launchargs;
+
+		nh_->param<std::string>("bootstrap_launchfile", bootstrap_launchfile, "");
+		nh_->param<std::vector<std::string>>("bootstrap_launchargs", bootstrap_launchargs, std::vector<std::string>());
+
+		if (!bootstrap_launchfile.empty()) {
+			ROS_INFO_STREAM_NAMED("mujoco",
+			                      "Using '" << bootstrap_launchfile << "' as environment bootstrapping launchfile");
+			if (!bootstrap_launchargs.empty()) {
+				std::string bootstrap_launchargs_string;
+				for (const auto &s : bootstrap_launchargs) {
+					bootstrap_launchargs_string += s + " ";
+				}
+				ROS_DEBUG_STREAM_NAMED("mujoco", "Got launchargs: " << bootstrap_launchargs_string);
+			} else {
+				ROS_DEBUG_NAMED("mujoco", "No bootstrap args provided");
+			}
+		} else {
+			ROS_WARN_NAMED("mujoco", "No bootstrapping launchfile provided, was this on purpose?");
+		}
+
+		MujocoEnvParallelPtr env_ptr;
+		for (int i = 0; i < num_simulations_; i++) {
+			// Creation of envs in the init is better to avoid destruction and re-creation of envs in the loading function.
+			bootstrap_launchargs.push_back("ns:=env" + std::to_string(i));
+			env_ptr.reset(new MujocoEnvParallel("env" + std::to_string(i), bootstrap_launchfile, bootstrap_launchargs));
+			bootstrap_launchargs.pop_back();
+			env_list_[i] = env_ptr;
+			if (i == 0)
+				main_env_ = env_ptr;
+		}
 	}
 
 	nh_->param<bool>("visualize", vis_, true);
@@ -180,7 +233,7 @@ void init(std::string modelfile)
 	sim_mtx.unlock();
 	render_mtx.unlock();
 
-	mj_env_.reset();
+	main_env_.reset();
 	plugin_utils::unloadPluginloader();
 	mjv_freeScene(&scn_);
 	mjr_freeContext(&con_);
@@ -216,17 +269,50 @@ void requestExternalShutdown(void)
 
 void resetSim()
 {
-	if (mj_env_->model) {
-		mj_resetData(mj_env_->model.get(), mj_env_->data.get());
+	if (main_env_->model) {
+		mj_resetData(main_env_->model.get(), main_env_->data.get());
 		if (last_time_ > 0)
-			mj_env_->data->time = last_time_;
-		loadInitialJointStates(mj_env_->model, mj_env_->data);
-		mj_env_->reset();
-		mj_forward(mj_env_->model.get(), mj_env_->data.get());
-		publishSimTime(mj_env_->data->time);
-		profilerUpdate(mj_env_->model, mj_env_->data);
-		sensorUpdate(mj_env_->model, mj_env_->data);
-		updateSettings(mj_env_->model);
+			main_env_->data->time = last_time_;
+		loadInitialJointStates(main_env_->model, main_env_->data);
+		main_env_->reset();
+		mj_forward(main_env_->model.get(), main_env_->data.get());
+		publishSimTime(main_env_->data->time);
+		profilerUpdate(main_env_->model, main_env_->data);
+		sensorUpdate(main_env_->model, main_env_->data);
+		updateSettings(main_env_->model);
+	}
+}
+
+void synchedMultiSimStep(uint num_steps)
+{
+	std::thread th[num_simulations_];
+
+	publishSimTime(main_env_->data->time);
+	std::chrono::_V2::system_clock::time_point t0, t1;
+
+	if (benchmark_env_time_)
+		t0 = std::chrono::high_resolution_clock::now();
+	for (uint step = 0; step < num_steps; step++) {
+		// Let all envs do one step
+		for (int id = 0; id < num_simulations_; id++) {
+			th[id] = std::thread(simulateSteps, env_list_[id], 1);
+		}
+		// Wait for all envs to finish the step
+		for (int id = 0; id < num_simulations_; id++) {
+			th[id].join();
+		}
+
+		// Publish new synchronized sim time
+		publishSimTime(main_env_->data->time);
+	}
+
+	if (benchmark_env_time_) {
+		t1 = std::chrono::high_resolution_clock::now();
+
+		std::chrono::duration<double, std::milli> ms_double = t1 - t0;
+		ROS_DEBUG_STREAM_NAMED("mujoco", num_steps << " steps with " << num_simulations_ << " instances took "
+		                                           << ms_double.count() << " ms (" << ms_double.count() / num_steps
+		                                           << " ms on average per step)");
 	}
 }
 
@@ -258,7 +344,7 @@ void eventloop(void)
 			glfwPollEvents();
 
 			// Prepare to render
-			prepare(mj_env_->model, mj_env_->data);
+			prepare(main_env_->model, main_env_->data);
 		}
 
 		// Allow simulation thread to run
@@ -285,8 +371,8 @@ void simulate(void)
 	mjDataPtr data;
 
 	while (!settings_.exitrequest && num_steps != 0) {
-		model = mj_env_->model;
-		data  = mj_env_->data;
+		model = main_env_->model;
+		data  = main_env_->data;
 
 		if (data) {
 			publishSimTime(data->time);
@@ -301,7 +387,7 @@ void simulate(void)
 		sim_mtx.lock();
 
 		if (model) {
-			if (settings_.run) {
+			if (settings_.run && sim_mode_ == simMode::SINGLE) {
 				double tmstart = glfwGetTime();
 
 				// Inject noise
@@ -312,9 +398,9 @@ void simulate(void)
 
 					for (int i = 0; i < model->nu; i++) {
 						// Update noise
-						mj_env_->ctrlnoise[i] = rate * mj_env_->ctrlnoise[i] + scale * mju_standardNormal(nullptr);
+						main_env_->ctrlnoise[i] = rate * main_env_->ctrlnoise[i] + scale * mju_standardNormal(nullptr);
 						// Apply noise
-						mj_env_->data->ctrl[i] = mj_env_->ctrlnoise[i];
+						main_env_->data->ctrl[i] = main_env_->ctrlnoise[i];
 					}
 				}
 
@@ -373,6 +459,9 @@ void simulate(void)
 						}
 					}
 				}
+			} else if (sim_mode_ == simMode::PARALLEL && settings_.multi_env_steps != 0) {
+				synchedMultiSimStep(1);
+				settings_.multi_env_steps--;
 			} else { // Paused
 				mjv_applyPerturbPose(model.get(), data.get(), &pert_, 1); // Move mocap and dynamic bodies
 
@@ -381,9 +470,43 @@ void simulate(void)
 			}
 		}
 		sim_mtx.unlock();
+
+		std::string modelfile;
+		nh_->getParam("modelfile", modelfile);
+		if (!modelfile.empty() && strcmp(filename_, modelfile.c_str())) {
+			ROS_DEBUG_STREAM_NAMED("mujoco", "Got new modelfile from param server! Requesting load ...");
+			std::strcpy(filename_, modelfile.c_str());
+			settings_.loadrequest = 2;
+		}
 	}
 	// Requests eventloop shutdown in case we ran out of simulation steps to use
 	settings_.exitrequest = 1;
+}
+
+void simulateSteps(MujocoEnvPtr env, int steps)
+{
+	while (!settings_.exitrequest && steps != 0) {
+		if (steps > 0) {
+			steps--;
+		}
+
+		if (settings_.ctrlnoisestd) {
+			// Convert rate and scale to discrete time given current timestep
+			mjtNum rate  = mju_exp(-env->model->opt.timestep / settings_.ctrlnoiserate);
+			mjtNum scale = settings_.ctrlnoisestd * mju_sqrt(1 - rate * rate);
+
+			for (int i = 0; i < env->model->nu; i++) {
+				// Update noise
+				env->ctrlnoise[i] = rate * env->ctrlnoise[i] + scale * mju_standardNormal(nullptr);
+				// Apply noise
+				env->data->ctrl[i] = env->ctrlnoise[i];
+			}
+		}
+
+		// Run mj_step
+		mjtNum prevtm = env->data->time * settings_.slow_down;
+		mj_step(env->model.get(), env->data.get());
+	}
 }
 
 void initVisual()
@@ -499,32 +622,20 @@ void loadModel(void)
 		settings_.run = 0;
 	}
 
-	ROS_DEBUG_NAMED("mujoco", "replacing model and data ...");
-	// Delete old model, assign new
-	mj_env_->model.reset(mnew);
-	environments::assignData(mj_makeData(mnew), mj_env_);
-
-	// if time == 0, then sim is loaded for the first time
-	if (last_time_ > 0)
-		mj_env_->data->time = last_time_;
-
-	loadInitialJointStates(mj_env_->model, mj_env_->data);
-
-	mj_forward(mj_env_->model.get(), mj_env_->data.get());
-
-	publishSimTime(mj_env_->data->time);
-
-	ROS_DEBUG_NAMED("mujoco", "resetting noise ...");
-	// Allocate ctrlnoise
-	free(mj_env_->ctrlnoise);
-	mj_env_->ctrlnoise = (mjtNum *)malloc(sizeof(mjtNum) * mj_env_->model->nu);
-	mju_zero(mj_env_->ctrlnoise, mj_env_->model->nu);
-
-	ROS_DEBUG_NAMED("mujoco", "creating scene ...");
-	// Re-create scene and context
-	mjv_makeScene(mj_env_->model.get(), &scn_, maxgeom_);
-	if (vis_)
-		mjr_makeContext(mj_env_->model.get(), &con_, 50 * (settings_.font + 1));
+	if (sim_mode_ == simMode::SINGLE) {
+		ROS_DEBUG_STREAM_NAMED("mujoco", "Setting up env '" << main_env_->name << "' ...");
+		// Delete old model, assign new
+		main_env_->model.reset(mnew);
+		environments::assignData(mj_makeData(mnew), main_env_);
+		setupEnv(main_env_);
+	} else {
+		for (const auto &env : env_list_) {
+			ROS_DEBUG_STREAM_NAMED("mujoco", "Setting up env '" << env->name << "' ...");
+			env->model.reset(mnew);
+			environments::assignData(mj_makeData(mnew), env);
+			setupEnv(env);
+		}
+	}
 
 	ROS_DEBUG_NAMED("mujoco", "clear perturb ...");
 	// Clear perturbation state
@@ -532,30 +643,31 @@ void loadModel(void)
 	pert_.select     = 0;
 	pert_.skinselect = -1;
 
+	if (vis_)
+		mjr_makeContext(main_env_->model.get(), &con_, 50 * (settings_.font + 1));
+
 	// Align and scale view unless reloading the same file
 	if (mju::strcmp_arr(filename_, previous_filename_)) {
-		alignScale(mj_env_->model);
+		alignScale(main_env_->model);
 		mju::strcpy_arr(previous_filename_, filename_);
 	}
 
-	mj_env_->reload();
-
 	ROS_DEBUG_NAMED("mujoco", "updating scene...");
 	// Update scene
-	mjv_updateScene(mj_env_->model.get(), mj_env_->data.get(), &vopt_, &pert_, &cam_, mjCAT_ALL, &scn_);
+	mjv_updateScene(main_env_->model.get(), main_env_->data.get(), &vopt_, &pert_, &cam_, mjCAT_ALL, &scn_);
 
 	if (vis_) {
 		// Set window title to model name
-		if (window_ && mj_env_->model->names) {
+		if (window_ && main_env_->model->names) {
 			char title[200] = "Simulate : ";
-			mju::strcat_arr(title, mj_env_->model->names);
+			mju::strcat_arr(title, main_env_->model->names);
 			glfwSetWindowTitle(window_, title);
 		}
 
 		// Set keyframe range and divisions
 		ui0_.sect[SECT_SIMULATION].item[5].slider.range[0]  = 0;
-		ui0_.sect[SECT_SIMULATION].item[5].slider.range[1]  = mjMAX(0, mj_env_->model->nkey - 1);
-		ui0_.sect[SECT_SIMULATION].item[5].slider.divisions = mjMAX(1, mj_env_->model->nkey - 1);
+		ui0_.sect[SECT_SIMULATION].item[5].slider.range[1]  = mjMAX(0, main_env_->model->nkey - 1);
+		ui0_.sect[SECT_SIMULATION].item[5].slider.divisions = mjMAX(1, main_env_->model->nkey - 1);
 
 		// Rebuild UI Sections
 		makeSections();
@@ -566,8 +678,34 @@ void loadModel(void)
 	}
 
 	ROS_DEBUG_NAMED("mujoco", "updating settings ...");
-	updateSettings(mj_env_->model);
+	// model pointers of all envs point to the same model instance
+	updateSettings(main_env_->model);
 	ROS_DEBUG_NAMED("mujoco", "settings updated ...");
+}
+
+void setupEnv(MujocoEnvPtr env)
+{
+	// if time == 0, then sim is loaded for the first time
+	if (last_time_ > 0)
+		env->data->time = last_time_;
+
+	loadInitialJointStates(env->model, env->data);
+
+	mj_forward(env->model.get(), env->data.get());
+
+	publishSimTime(env->data->time);
+
+	ROS_DEBUG_NAMED("mujoco", "resetting noise ...");
+	// Allocate ctrlnoise
+	free(env->ctrlnoise);
+	env->ctrlnoise = (mjtNum *)malloc(sizeof(mjtNum) * env->model->nu);
+	mju_zero(env->ctrlnoise, env->model->nu);
+
+	ROS_DEBUG_NAMED("mujoco", "creating scene ...");
+	// Re-create scene and context
+	mjv_makeScene(env->model.get(), &scn_, maxgeom_);
+
+	env->reload();
 }
 
 void loadInitialJointStates(mjModelPtr model, mjDataPtr data)
@@ -693,13 +831,13 @@ int uiPredicate(int category, void *userdata)
 {
 	switch (category) {
 		case 2: // require model
-			return (mj_env_->model != NULL);
+			return (main_env_->model != NULL);
 
 		case 3: //
-			return (mj_env_->model && mj_env_->model->nkey);
+			return (main_env_->model && main_env_->model->nkey);
 
 		case 4:
-			return (mj_env_->model && !settings_.run);
+			return (main_env_->model && !settings_.run);
 
 		default:
 			return 1;
@@ -719,7 +857,7 @@ void render(GLFWwindow *window)
 	}
 
 	// no model
-	if (!mj_env_->model) {
+	if (!main_env_->model) {
 		// blank screen
 		mjr_rectangle(rect, 0.2f, 0.3f, 0.4f, 1);
 
@@ -740,7 +878,7 @@ void render(GLFWwindow *window)
 		// finalize
 		glfwSwapBuffers(window);
 	} else {
-		renderCallback(mj_env_->data.get(), &scn_);
+		renderCallback(main_env_->data.get(), &scn_);
 	}
 	// render scene
 	mjr_render(rect, &scn_, &con_);
@@ -832,20 +970,20 @@ void uiEvent(mjuiState *state)
 		if (it && it->sectionid == SECT_FILE) {
 			switch (it->itemid) {
 				case 0: // save xml
-					if (!mj_saveLastXML("mjmodel.xml", mj_env_->model.get(), err, 200))
+					if (!mj_saveLastXML("mjmodel.xml", main_env_->model.get(), err, 200))
 						ROS_ERROR("Save XML error: %s", err);
 					break;
 
 				case 1: // Save mjb
-					mj_saveModel(mj_env_->model.get(), "mjmodel.mjb", NULL, 0);
+					mj_saveModel(main_env_->model.get(), "mjmodel.mjb", NULL, 0);
 					break;
 
 				case 2: // print model
-					mj_printModel(mj_env_->model.get(), "MJMODEL.TXT");
+					mj_printModel(main_env_->model.get(), "MJMODEL.TXT");
 					break;
 
 				case 3: // print data
-					mj_printData(mj_env_->model.get(), mj_env_->data.get(), "MJDATA.TXT");
+					mj_printData(main_env_->model.get(), main_env_->data.get(), "MJDATA.TXT");
 					break;
 
 				case 4: // Quit
@@ -911,12 +1049,12 @@ void uiEvent(mjuiState *state)
 					break;
 
 				case 3: // Align
-					alignScale(mj_env_->model);
-					updateSettings(mj_env_->model);
+					alignScale(main_env_->model);
+					updateSettings(main_env_->model);
 					break;
 
 				case 4: // Copy Pose
-					copyKey(mj_env_->model, mj_env_->data);
+					copyKey(main_env_->model, main_env_->data);
 					break;
 
 				case 5: // Adjust key
@@ -924,30 +1062,36 @@ void uiEvent(mjuiState *state)
 					// REVIEW: fully disable resetting to keypoints?
 					i = settings_.key;
 					// d_->time = m_->key_time[i]; // ros does not expect jumps back in time
-					mju_copy(mj_env_->data->qpos, mj_env_->model->key_qpos + i * mj_env_->model->nq, mj_env_->model->nq);
-					mju_copy(mj_env_->data->qvel, mj_env_->model->key_qvel + i * mj_env_->model->nv, mj_env_->model->nv);
-					mju_copy(mj_env_->data->act, mj_env_->model->key_act + i * mj_env_->model->na, mj_env_->model->na);
-					mju_copy(mj_env_->data->mocap_pos, mj_env_->model->key_mpos + i * 3 * mj_env_->model->nmocap,
-					         3 * mj_env_->model->nmocap);
-					mju_copy(mj_env_->data->mocap_quat, mj_env_->model->key_mquat + i * 4 * mj_env_->model->nmocap,
-					         4 * mj_env_->model->nmocap);
-					mj_forward(mj_env_->model.get(), mj_env_->data.get());
-					publishSimTime(mj_env_->data->time);
-					profilerUpdate(mj_env_->model, mj_env_->data);
-					sensorUpdate(mj_env_->model, mj_env_->data);
-					updateSettings(mj_env_->model);
+					mju_copy(main_env_->data->qpos, main_env_->model->key_qpos + i * main_env_->model->nq,
+					         main_env_->model->nq);
+					mju_copy(main_env_->data->qvel, main_env_->model->key_qvel + i * main_env_->model->nv,
+					         main_env_->model->nv);
+					mju_copy(main_env_->data->act, main_env_->model->key_act + i * main_env_->model->na,
+					         main_env_->model->na);
+					mju_copy(main_env_->data->mocap_pos, main_env_->model->key_mpos + i * 3 * main_env_->model->nmocap,
+					         3 * main_env_->model->nmocap);
+					mju_copy(main_env_->data->mocap_quat, main_env_->model->key_mquat + i * 4 * main_env_->model->nmocap,
+					         4 * main_env_->model->nmocap);
+					mj_forward(main_env_->model.get(), main_env_->data.get());
+					publishSimTime(main_env_->data->time);
+					profilerUpdate(main_env_->model, main_env_->data);
+					sensorUpdate(main_env_->model, main_env_->data);
+					updateSettings(main_env_->model);
 					break;
 
 				case 7: // Set key
-					i                           = settings_.key;
-					mj_env_->model->key_time[i] = mj_env_->data->time;
-					mju_copy(mj_env_->model->key_qpos + i * mj_env_->model->nq, mj_env_->data->qpos, mj_env_->model->nq);
-					mju_copy(mj_env_->model->key_qvel + i * mj_env_->model->nv, mj_env_->data->qvel, mj_env_->model->nv);
-					mju_copy(mj_env_->model->key_act + i * mj_env_->model->na, mj_env_->data->act, mj_env_->model->na);
-					mju_copy(mj_env_->model->key_mpos + i * 3 * mj_env_->model->nmocap, mj_env_->data->mocap_pos,
-					         3 * mj_env_->model->nmocap);
-					mju_copy(mj_env_->model->key_mquat + i * 4 * mj_env_->model->nmocap, mj_env_->data->mocap_quat,
-					         4 * mj_env_->model->nmocap);
+					i                             = settings_.key;
+					main_env_->model->key_time[i] = main_env_->data->time;
+					mju_copy(main_env_->model->key_qpos + i * main_env_->model->nq, main_env_->data->qpos,
+					         main_env_->model->nq);
+					mju_copy(main_env_->model->key_qvel + i * main_env_->model->nv, main_env_->data->qvel,
+					         main_env_->model->nv);
+					mju_copy(main_env_->model->key_act + i * main_env_->model->na, main_env_->data->act,
+					         main_env_->model->na);
+					mju_copy(main_env_->model->key_mpos + i * 3 * main_env_->model->nmocap, main_env_->data->mocap_pos,
+					         3 * main_env_->model->nmocap);
+					mju_copy(main_env_->model->key_mquat + i * 4 * main_env_->model->nmocap, main_env_->data->mocap_quat,
+					         4 * main_env_->model->nmocap);
 					break;
 			}
 		}
@@ -955,18 +1099,18 @@ void uiEvent(mjuiState *state)
 		// Physics section
 		else if (it && it->sectionid == SECT_PHYSICS) {
 			// Update disable flags in mjOption
-			mj_env_->model->opt.disableflags = 0;
+			main_env_->model->opt.disableflags = 0;
 			for (i = 0; i < mjNDISABLE; i++) {
 				if (settings_.disable[i]) {
-					mj_env_->model->opt.disableflags |= (1 << i);
+					main_env_->model->opt.disableflags |= (1 << i);
 				}
 			}
 
 			// Update enable flags in mjOption
-			mj_env_->model->opt.enableflags = 0;
+			main_env_->model->opt.enableflags = 0;
 			for (i = 0; i < mjNENABLE; i++) {
 				if (settings_.enable[i]) {
-					mj_env_->model->opt.enableflags |= (1 << i);
+					main_env_->model->opt.enableflags |= (1 << i);
 				}
 			}
 		}
@@ -1001,7 +1145,7 @@ void uiEvent(mjuiState *state)
 			// Remake joint section if joint group changed
 			if (it->name[0] == 'J' && it->name[1] == 'o') {
 				ui1_.nsect = SECT_JOINT;
-				makeJoint(mj_env_->model, mj_env_->data, ui1_.sect[SECT_JOINT].state);
+				makeJoint(main_env_->model, main_env_->data, ui1_.sect[SECT_JOINT].state);
 				ui1_.nsect = NSECT1;
 				uiModify(window_, &ui1_, state, &con_);
 			}
@@ -1009,7 +1153,7 @@ void uiEvent(mjuiState *state)
 			// Remake control section if actuator group changed
 			if (it->name[0] == 'A' && it->name[1] == 'c') {
 				ui1_.nsect = SECT_CONTROL;
-				makeControl(mj_env_->model, mj_env_->data, ui1_.sect[SECT_CONTROL].state);
+				makeControl(main_env_->model, main_env_->data, ui1_.sect[SECT_CONTROL].state);
 				ui1_.nsect = NSECT1;
 				uiModify(window_, &ui1_, state, &con_);
 			}
@@ -1031,7 +1175,7 @@ void uiEvent(mjuiState *state)
 		if (it && it->sectionid == SECT_CONTROL) {
 			// clear controls
 			if (it->itemid == 0) {
-				mju_zero(mj_env_->data->ctrl, mj_env_->model->nu);
+				mju_zero(main_env_->data->ctrl, main_env_->model->nu);
 				mjui_update(SECT_CONTROL, -1, &ui1_, &uistate_, &con_);
 			}
 		}
@@ -1046,21 +1190,33 @@ void uiEvent(mjuiState *state)
 	if (state->type == mjEVENT_KEY && state->key != 0) {
 		switch (state->key) {
 			case ' ': // Mode
-				if (mj_env_->model) {
-					settings_.run = 1 - settings_.run;
-					pert_.active  = 0;
+				if (main_env_->model) {
+					// if (sim_mode_ == simMode::PARALLEL) {
+					// 	ROS_WARN_NAMED("mujoco", "Unpausing in PARALLEL sim mode is not allowed, use stepping instead!");
+					// 	break;
+					// }
+					settings_.run             = 1 - settings_.run;
+					settings_.multi_env_steps = 0 - settings_.run;
+					pert_.active              = 0;
 					mjui_update(-1, -1, &ui0_, state, &con_);
 				}
 				break;
 
 			case mjKEY_RIGHT: // Step forward
-				if (mj_env_->model && !settings_.run) {
-					clearTimers(mj_env_->data);
-					mj_step(mj_env_->model.get(), mj_env_->data.get());
-					publishSimTime(mj_env_->data->time);
-					profilerUpdate(mj_env_->model, mj_env_->data);
-					sensorUpdate(mj_env_->model, mj_env_->data);
-					updateSettings(mj_env_->model);
+				if (main_env_->model && !settings_.run) {
+					clearTimers(main_env_->data);
+
+					if (sim_mode_ == simMode::PARALLEL) {
+						settings_.multi_env_steps = 1;
+						// synchedMultiSimStep(1);
+					} else {
+						mj_step(main_env_->model.get(), main_env_->data.get());
+						publishSimTime(main_env_->data->time);
+					}
+
+					profilerUpdate(main_env_->model, main_env_->data);
+					sensorUpdate(main_env_->model, main_env_->data);
+					updateSettings(main_env_->model);
 				}
 				break;
 
@@ -1070,15 +1226,24 @@ void uiEvent(mjuiState *state)
 				break;
 
 			case mjKEY_DOWN: // Step forward 100
-				if (mj_env_->model && !settings_.run) {
-					clearTimers(mj_env_->data);
-					for (i = 0; i < 100; i++) {
-						mj_step(mj_env_->model.get(), mj_env_->data.get());
-						publishSimTime(mj_env_->data->time);
+				if (main_env_->model && !settings_.run) {
+					clearTimers(main_env_->data);
+
+					if (sim_mode_ == simMode::PARALLEL) {
+						settings_.multi_env_steps = 100;
+						// for (i = 0; i < 100; i++) {
+						// 	synchedMultiSimStep(1);
+						// }
+					} else {
+						for (i = 0; i < 100; i++) {
+							mj_step(main_env_->model.get(), main_env_->data.get());
+							publishSimTime(main_env_->data->time);
+						}
 					}
-					profilerUpdate(mj_env_->model, mj_env_->data);
-					sensorUpdate(mj_env_->model, mj_env_->data);
-					updateSettings(mj_env_->model);
+
+					profilerUpdate(main_env_->model, main_env_->data);
+					sensorUpdate(main_env_->model, main_env_->data);
+					updateSettings(main_env_->model);
 				}
 				break;
 
@@ -1088,8 +1253,8 @@ void uiEvent(mjuiState *state)
 				break;
 
 			case mjKEY_PAGE_UP: // Select parent body
-				if (mj_env_->model && pert_.select > 0) {
-					pert_.select     = mj_env_->model->body_parentid[pert_.select];
+				if (main_env_->model && pert_.select > 0) {
+					pert_.select     = main_env_->model->body_parentid[pert_.select];
 					pert_.skinselect = -1;
 
 					// Stop perturbation if world reached
@@ -1118,15 +1283,15 @@ void uiEvent(mjuiState *state)
 	}
 
 	// 3D Scroll
-	if (state->type == mjEVENT_SCROLL && state->mouserect == 3 && mj_env_->model) {
+	if (state->type == mjEVENT_SCROLL && state->mouserect == 3 && main_env_->model) {
 		// Emulate vertical mouse motion = 5% of window height
-		mjv_moveCamera(mj_env_->model.get(), mjMOUSE_ZOOM, 0, -0.05 * state->sy, &scn_, &cam_);
+		mjv_moveCamera(main_env_->model.get(), mjMOUSE_ZOOM, 0, -0.05 * state->sy, &scn_, &cam_);
 
 		return;
 	}
 
 	// 3D press
-	if (state->type == mjEVENT_PRESS && state->mouserect == 3 && mj_env_->model) {
+	if (state->type == mjEVENT_PRESS && state->mouserect == 3 && main_env_->model) {
 		// Set perturbation
 		int newperturb = 0;
 		if (state->control && pert_.select > 0) {
@@ -1139,7 +1304,7 @@ void uiEvent(mjuiState *state)
 
 			// Perturbation onset: reset reference
 			if (newperturb && !pert_.active) {
-				mjv_initPerturb(mj_env_->model.get(), mj_env_->data.get(), &scn_, &pert_);
+				mjv_initPerturb(main_env_->model.get(), main_env_->data.get(), &scn_, &pert_);
 			}
 		}
 		pert_.active = newperturb;
@@ -1160,8 +1325,8 @@ void uiEvent(mjuiState *state)
 			mjrRect r = state->rect[3];
 			mjtNum selpnt[3];
 			int selgeom, selskin;
-			int selbody = mjv_select(mj_env_->model.get(), mj_env_->data.get(), &vopt_, (mjtNum)r.width / (mjtNum)r.height,
-			                         (mjtNum)(state->x - r.left) / (mjtNum)r.width,
+			int selbody = mjv_select(main_env_->model.get(), main_env_->data.get(), &vopt_,
+			                         (mjtNum)r.width / (mjtNum)r.height, (mjtNum)(state->x - r.left) / (mjtNum)r.width,
 			                         (mjtNum)(state->y - r.bottom) / (mjtNum)r.height, &scn_, selpnt, &selgeom, &selskin);
 
 			// Set lookat point, start tracking is requested
@@ -1193,8 +1358,8 @@ void uiEvent(mjuiState *state)
 
 					// Compute localpos
 					mjtNum tmp[3];
-					mju_sub3(tmp, selpnt, mj_env_->data->xpos + 3 * pert_.select);
-					mju_mulMatTVec(pert_.localpos, mj_env_->data->xmat + 9 * pert_.select, tmp, 3, 3);
+					mju_sub3(tmp, selpnt, main_env_->data->xpos + 3 * pert_.select);
+					mju_mulMatTVec(pert_.localpos, main_env_->data->xmat + 9 * pert_.select, tmp, 3, 3);
 				} else {
 					pert_.select     = 0;
 					pert_.skinselect = 0;
@@ -1209,7 +1374,7 @@ void uiEvent(mjuiState *state)
 	}
 
 	// 3D release
-	if (state->type == mjEVENT_RELEASE && state->dragrect == 3 && mj_env_->model) {
+	if (state->type == mjEVENT_RELEASE && state->dragrect == 3 && main_env_->model) {
 		// Stop perturbation
 		pert_.active = 0;
 
@@ -1217,7 +1382,7 @@ void uiEvent(mjuiState *state)
 	}
 
 	// 3D move
-	if (state->type == mjEVENT_MOVE && state->dragrect == 3 && mj_env_->model) {
+	if (state->type == mjEVENT_MOVE && state->dragrect == 3 && main_env_->model) {
 		// Determine action base on mouse button
 		mjtMouse action;
 		if (state->right) {
@@ -1231,10 +1396,10 @@ void uiEvent(mjuiState *state)
 		// Move perturb or camera
 		mjrRect r = state->rect[3];
 		if (pert_.active) {
-			mjv_movePerturb(mj_env_->model.get(), mj_env_->data.get(), action, state->dx / r.height, -state->dy / r.height,
-			                &scn_, &pert_);
+			mjv_movePerturb(main_env_->model.get(), main_env_->data.get(), action, state->dx / r.height,
+			                -state->dy / r.height, &scn_, &pert_);
 		} else {
-			mjv_moveCamera(mj_env_->model.get(), action, state->dx / r.height, -state->dy / r.height, &scn_, &cam_);
+			mjv_moveCamera(main_env_->model.get(), action, state->dx / r.height, -state->dy / r.height, &scn_, &cam_);
 		}
 
 		return;
@@ -1884,11 +2049,11 @@ void makeSections(void)
 	ui1_.nsect = 0;
 
 	// make
-	makePhysics(mj_env_->model, oldstate0[SECT_PHYSICS]);
-	makeRendering(mj_env_->model, oldstate0[SECT_RENDERING]);
+	makePhysics(main_env_->model, oldstate0[SECT_PHYSICS]);
+	makeRendering(main_env_->model, oldstate0[SECT_RENDERING]);
 	makeGroup(oldstate0[SECT_GROUP]);
-	makeJoint(mj_env_->model, mj_env_->data, oldstate1[SECT_JOINT]);
-	makeControl(mj_env_->model, mj_env_->data, oldstate1[SECT_CONTROL]);
+	makeJoint(main_env_->model, main_env_->data, oldstate1[SECT_JOINT]);
+	makeControl(main_env_->model, main_env_->data, oldstate1[SECT_CONTROL]);
 }
 
 // Prepare to render
@@ -2050,7 +2215,8 @@ mjtNum timer(void)
 
 void setupCallbacks()
 {
-	service_servers_.push_back(nh_->advertiseService("set_pause", setPauseCB));
+	if (sim_mode_ == simMode::SINGLE)
+		service_servers_.push_back(nh_->advertiseService("set_pause", setPauseCB));
 	service_servers_.push_back(nh_->advertiseService("shutdown", shutdownCB));
 	service_servers_.push_back(nh_->advertiseService("reset", resetCB));
 
@@ -2075,6 +2241,13 @@ bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPau
 bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
 {
 	resetSim();
+	return true;
+}
+
+bool simStepCB(mujoco_ros_msgs::SimStep::Request &req, mujoco_ros_msgs::SimStep::Response &resp)
+{
+	settings_.multi_env_steps = req.num_steps;
+	// synchedMultiSimStep(req.num_steps);
 	return true;
 }
 

@@ -29,7 +29,8 @@ MujocoEnvParallel::MujocoEnvParallel(const std::string &ros_ns, const std::strin
                                      const std::vector<std::string> &launch_args)
     : MujocoEnv(ros_ns), launchfile(launchfile), launch_args(launch_args)
 {
-	bootstrapNamespace();
+	if (!launchfile.empty())
+		bootstrapNamespace();
 }
 
 void MujocoEnvParallel::bootstrapNamespace()

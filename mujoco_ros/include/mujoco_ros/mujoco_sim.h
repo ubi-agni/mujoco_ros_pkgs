@@ -67,6 +67,7 @@
 #include <mujoco_ros/array_safety.h>
 
 #include <mujoco_ros_msgs/SetPause.h>
+#include <mujoco_ros_msgs/SimStep.h>
 #include <std_srvs/Empty.h>
 
 namespace mju = ::mujoco::sample_util;
@@ -83,6 +84,10 @@ void requestExternalShutdown(void);
 // Threading and synchronization
 static std::mutex sim_mtx;
 static std::mutex render_mtx;
+
+static simMode sim_mode_;
+// To keep track of the amount of parallel environments
+static int num_simulations_;
 
 int jointName2id(mjModel *m, const std::string &joint_name);
 
@@ -109,10 +114,22 @@ void registerCollisionFunc(int geom_type1, int geom_type2, mjfCollision collisio
  */
 void resetSim();
 
+/**
+ * @brief Step num_steps steps through all simulated environments in a synchronized manner, one step at a time.
+ *
+ * @param[in] num_steps number of steps to simulate.
+ */
+void synchedMultiSimStep(uint num_steps);
+
 namespace detail {
 
-// Env containing model and data
-static MujocoEnvPtr mj_env_;
+// Env selected for rendering (if enabled) and responsible for time publishing.
+static MujocoEnvPtr main_env_;
+// List of currently used envs
+static std::vector<MujocoEnvPtr> env_list_;
+
+// Time benchmarking bool for multienv performance measuring
+static bool benchmark_env_time_;
 
 // Helper function for unit tests to access the env
 namespace unit_testing {
@@ -209,6 +226,7 @@ void updateSettings(mjModelPtr model);
 void drop(GLFWwindow *window, int count, const char **paths);
 void loadModel(void);
 void loadInitialJointStates(mjModelPtr model, mjDataPtr data);
+void setupEnv(MujocoEnvPtr env);
 
 // UI Hooks for uitools.h
 int uiPredicate(int category, void *userdata);
@@ -221,6 +239,7 @@ void render(GLFWwindow *window);
 
 // Threads
 void simulate(void);
+void simulateSteps(MujocoEnvPtr env, int steps);
 void eventloop(void);
 
 // Service calls
@@ -228,6 +247,7 @@ void setupCallbacks();
 bool shutdownCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
 bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &resp);
 bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
+bool simStepCB(mujoco_ros_msgs::SimStep::Request &req, mujoco_ros_msgs::SimStep::Response &resp);
 
 // UI settings not contained in MuJoCo structures
 struct
@@ -257,6 +277,9 @@ struct
 	bool speed_changed   = true;
 	double ctrlnoisestd  = 0.0;
 	double ctrlnoiserate = 0.0;
+
+	// multi env
+	int multi_env_steps = 0;
 
 	// watch
 	char field[mjMAXUITEXT] = "qpos";

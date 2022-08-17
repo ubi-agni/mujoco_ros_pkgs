@@ -8,11 +8,13 @@
   - The services are explicitly unregistered on shutdown and the static services list is cleared.
 2. Async spinner is now manually shutdown and ros::shutdown is called on server node termination.
 3. Added unit tests for `mujoco_ros` single environment library functions.
-3. Added possibility to set initial joint positions and velocities for ball and free joints (i.e. joints with more than one DoF) and edited tests to reflect the changes.
+4. Added possibility to set initial joint positions and velocities for ball and free joints (i.e. joints with more than one DoF) and edited tests to reflect the changes.
+5. Changed the way single and parallel env is handled. Instead of using separate functions, most library function check the running simulation type (PARALLEL or SINGLE). In case of parallel env execution, The mj_env_ (renamed to main_env_) variable now contains a pointer to the selected main environment, which will be used for rendering, if enabled.
 
 ## Fixes
 1. Fixed step counter ignoring multiple steps during synchronization if desynchronized.
 2. Fixed wrong declaration of publishSimTime in header.
+3. Fixed bootstrap_launchargs not being passed on to the ns_bootstrapping node
 
 
 

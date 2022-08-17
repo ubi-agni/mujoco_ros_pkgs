@@ -7,6 +7,16 @@ static constexpr int kBufSize = 1000;
 namespace MujocoSim {
 
 /**
+ * @brief Helper enum to enable/disable features of the respective sim mode.
+ *
+ */
+typedef enum simMode_
+{
+	SINGLE = 0,
+	PARALLEL
+} simMode;
+
+/**
  * @def mjModelPtr
  * @brief boost::shared_ptr to mjModel
  */
