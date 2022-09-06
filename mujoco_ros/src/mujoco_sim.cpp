@@ -66,9 +66,15 @@ MujocoSim::MujocoEnvPtr MujocoSim::detail::unit_testing::getmjEnv()
 	return main_env_;
 }
 
-int jointName2id(mjModel *m, const std::string &joint_name)
+int jointName2id(mjModel *m, const std::string &joint_name, const std::string &robot_namespace /* = std::string()*/)
 {
-	return mj_name2id(m, mjOBJ_JOINT, joint_name.c_str());
+	int result = mj_name2id(m, mjOBJ_JOINT, joint_name.c_str());
+	if (result == -1 and robot_namespace.size() > 0) {
+		ROS_DEBUG_STREAM_NAMED("mujoco", "Trying to find joint without namespace ("
+		                                     << joint_name.substr(robot_namespace.size()) << ")");
+		result = mj_name2id(m, mjOBJ_JOINT, joint_name.substr(robot_namespace.size()).c_str());
+	}
+	return result;
 }
 
 void registerCollisionFunc(int geom_type1, int geom_type2, mjfCollision collision_cb)

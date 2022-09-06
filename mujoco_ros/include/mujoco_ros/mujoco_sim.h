@@ -89,7 +89,7 @@ static simMode sim_mode_;
 // To keep track of the amount of parallel environments
 static int num_simulations_;
 
-int jointName2id(mjModel *m, const std::string &joint_name);
+int jointName2id(mjModel *m, const std::string &joint_name, const std::string &robot_namespace = std::string());
 
 void setJointPosition(mjModelPtr model, mjDataPtr data, const double &pos, const int &joint_id,
                       const int &jnt_axis = 0);
