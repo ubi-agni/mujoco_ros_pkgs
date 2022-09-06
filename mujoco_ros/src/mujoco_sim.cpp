@@ -52,6 +52,7 @@
 #include <mujoco_ros/plugin_utils.h>
 
 #include <rosgraph_msgs/Clock.h>
+#include <boost/filesystem.hpp>
 
 namespace MujocoSim {
 
@@ -109,6 +110,41 @@ void lastStageCallback(mjData *data)
 	MujocoEnvPtr env = environments::getEnv(data);
 	if (env) {
 		env->runLastStageCbs();
+	}
+}
+
+void setupVFS(const std::string &filename, const std::string &content /* = std::string()*/)
+{
+	mj_defaultVFS(&vfs_);
+
+	// File from disk
+	int ret;
+	if (content.empty()) {
+		if (!boost::filesystem::is_regular_file(filename)) {
+			ROS_ERROR_STREAM_NAMED("mujoco", filename << " is not a regular file! Cannot load config!");
+			return;
+		}
+
+		boost::filesystem::path path(filename);
+		path = boost::filesystem::absolute(path);
+		ret  = mj_addFileVFS(&vfs_, path.parent_path().c_str(), path.filename().c_str());
+		if (ret == 1) {
+			ROS_ERROR_STREAM_NAMED("mujoco", "Could not save file "
+			                                     << filename
+			                                     << " to VFS, because it's full! This should not happen, check with dev!");
+			return;
+		} else if (ret == 2) {
+			ROS_ERROR_STREAM_NAMED("mujoco", "Could not save file "
+			                                     << filename << " to VFS, because the file is already present in VFS!");
+			return;
+		}
+		ROS_DEBUG_STREAM_NAMED("mujoco",
+		                       "Successfully saved file " << filename << " in mujoco VFS for accelerated loading");
+	} else { // File in memory
+		mj_makeEmptyFileVFS(&vfs_, filename.c_str(), content.size() + 1);
+		int file_idx = mj_findFileVFS(&vfs_, filename.c_str());
+		memcpy(vfs_.filedata[file_idx], content.c_str(), content.size() + 1);
+		ROS_DEBUG_STREAM_NAMED("mujoco", "Successfully saved xml content as mujoco VFS file for accelerated loading");
 	}
 }
 
@@ -484,7 +520,7 @@ void loadModel(void)
 			mju::strcpy_arr(error, "could not load binary model");
 		}
 	} else {
-		mnew = mj_loadXML(filename_, NULL, error, 500);
+		mnew = mj_loadXML(filename_, &vfs_, error, 500);
 	}
 	if (!mnew) {
 		std::printf("%s\n", error);

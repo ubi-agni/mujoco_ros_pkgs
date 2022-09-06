@@ -109,6 +109,8 @@ void registerCollisionFunc(int geom_type1, int geom_type2, mjfCollision collisio
  */
 void resetSim();
 
+void setupVFS(const std::string &filename, const std::string &content = std::string());
+
 namespace detail {
 
 // Env containing model and data
@@ -124,6 +126,9 @@ namespace unit_testing {
  */
 MujocoEnvPtr getmjEnv();
 } // namespace unit_testing
+
+// MuJoCo virtual filesystem to store mjcf in-memory.
+static mjVFS vfs_;
 
 // filename strings
 static char filename_[kBufSize]          = "";
