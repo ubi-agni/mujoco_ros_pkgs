@@ -56,6 +56,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <condition_variable>
 #include <ros/ros.h>
 
 #include "mjxmacro.h"
@@ -84,6 +85,9 @@ void requestExternalShutdown(void);
 // Threading and synchronization
 static std::mutex sim_mtx;
 static std::mutex render_mtx;
+static std::condition_variable step_signal_;
+static std::mutex readyness_mtx;
+static int ready_threads_;
 
 static simMode sim_mode_;
 // To keep track of the amount of parallel environments
@@ -115,11 +119,10 @@ void registerCollisionFunc(int geom_type1, int geom_type2, mjfCollision collisio
 void resetSim();
 
 /**
- * @brief Step num_steps steps through all simulated environments in a synchronized manner, one step at a time.
+ * @brief Step through all simulated environments in a synchronized manner.
  *
- * @param[in] num_steps number of steps to simulate.
  */
-void synchedMultiSimStep(uint num_steps);
+void synchedMultiSimStep();
 
 namespace detail {
 
@@ -239,7 +242,7 @@ void render(GLFWwindow *window);
 
 // Threads
 void simulate(void);
-void simulateSteps(MujocoEnvPtr env, int steps);
+void envStepLoop(MujocoEnvParallelPtr env);
 void eventloop(void);
 
 // Service calls

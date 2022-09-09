@@ -1,5 +1,6 @@
 #pragma once
 
+#include <thread>
 #include <ros/ros.h>
 
 #include <mujoco_ros/common_types.h>
@@ -88,6 +89,11 @@ public:
 	                  const std::vector<std::string> &launch_args = std::vector<std::string>());
 	MujocoEnvParallel(const MujocoEnvParallel &) = delete;
 	~MujocoEnvParallel();
+
+	// Env loop stepping thread
+	std::thread *loop_thread = nullptr;
+	// Bool to notify loop thread it should be stopped.
+	std::atomic_bool stop_loop;
 
 	std::string launchfile;
 	std::vector<std::string> launch_args;

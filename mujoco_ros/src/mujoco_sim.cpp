@@ -139,7 +139,8 @@ void init(std::string modelfile)
 	nh_->param<int>("num_simulations", num_simulations_, 1);
 	env_list_.resize(num_simulations_);
 	if (num_simulations_ > 1) {
-		sim_mode_ = simMode::PARALLEL;
+		sim_mode_      = simMode::PARALLEL;
+		ready_threads_ = 0;
 	} else {
 		sim_mode_ = simMode::SINGLE;
 	}
@@ -231,6 +232,17 @@ void init(std::string modelfile)
 	settings_.exitrequest = 1;
 	simthread.join();
 
+	if (sim_mode_ == simMode::PARALLEL) {
+		step_signal_.notify_all();
+		for (const auto &env : env_list_) {
+			MujocoEnvParallelPtr parallel_env = boost::static_pointer_cast<MujocoEnvParallel>(env);
+			if (parallel_env->loop_thread != nullptr) {
+				parallel_env->loop_thread->join();
+				ROS_DEBUG_STREAM_NAMED("mujoco", "Joined loop thread of " << env->name);
+			}
+		}
+	}
+
 	if (vis_)
 		uiClearCallback(window_);
 
@@ -289,36 +301,43 @@ void resetSim()
 	}
 }
 
-void synchedMultiSimStep(uint num_steps)
+void synchedMultiSimStep()
 {
-	std::thread th[num_simulations_];
-
 	publishSimTime(main_env_->data->time);
+
 	std::chrono::_V2::system_clock::time_point t0, t1;
 
 	if (benchmark_env_time_)
 		t0 = std::chrono::high_resolution_clock::now();
-	for (uint step = 0; step < num_steps; step++) {
-		// Let all envs do one step
-		for (int id = 0; id < num_simulations_; id++) {
-			th[id] = std::thread(simulateSteps, env_list_[id], 1);
-		}
-		// Wait for all envs to finish the step
-		for (int id = 0; id < num_simulations_; id++) {
-			th[id].join();
-		}
 
-		// Publish new synchronized sim time
-		publishSimTime(main_env_->data->time);
+	bool waiting = true;
+	uint trys    = 1;
+
+	while (waiting && trys < 1000 && !settings_.exitrequest) {
+		{
+			std::unique_lock<std::mutex> lk(readyness_mtx);
+			waiting = ready_threads_ != num_simulations_;
+
+			if (not waiting || settings_.exitrequest) {
+				step_signal_.notify_all();
+				ready_threads_ -= num_simulations_;
+			}
+			trys += 1;
+		}
 	}
 
+	// Publish new synchronized sim time
+	publishSimTime(main_env_->data->time);
+
 	if (benchmark_env_time_) {
-		t1 = std::chrono::high_resolution_clock::now();
+		t1             = std::chrono::high_resolution_clock::now();
+		uint curr_step = (main_env_->data->time / main_env_->model->opt.timestep);
 
 		std::chrono::duration<double, std::milli> ms_double = t1 - t0;
-		ROS_DEBUG_STREAM_NAMED("mujoco", num_steps << " steps with " << num_simulations_ << " instances took "
-		                                           << ms_double.count() << " ms (" << ms_double.count() / num_steps
-		                                           << " ms on average per step)");
+
+		ROS_DEBUG_STREAM_COND_NAMED(curr_step % 100 == 0 || curr_step == 1, "mujoco",
+		                            "One step with " << num_simulations_ << " instances took " << ms_double.count()
+		                                             << " ms ");
 	}
 }
 
@@ -466,7 +485,7 @@ void simulate(void)
 					}
 				}
 			} else if (sim_mode_ == simMode::PARALLEL && settings_.multi_env_steps != 0) {
-				synchedMultiSimStep(1);
+				synchedMultiSimStep();
 				settings_.multi_env_steps--;
 			} else { // Paused
 				mjv_applyPerturbPose(model.get(), data.get(), &pert_, 1); // Move mocap and dynamic bodies
@@ -489,13 +508,9 @@ void simulate(void)
 	settings_.exitrequest = 1;
 }
 
-void simulateSteps(MujocoEnvPtr env, int steps)
+void envStepLoop(MujocoEnvParallelPtr env)
 {
-	while (!settings_.exitrequest && steps != 0) {
-		if (steps > 0) {
-			steps--;
-		}
-
+	while (!settings_.exitrequest && not env->stop_loop) {
 		if (settings_.ctrlnoisestd) {
 			// Convert rate and scale to discrete time given current timestep
 			mjtNum rate  = mju_exp(-env->model->opt.timestep / settings_.ctrlnoiserate);
@@ -509,10 +524,20 @@ void simulateSteps(MujocoEnvPtr env, int steps)
 			}
 		}
 
+		{
+			// ROS_DEBUG_STREAM_NAMED("envStepLoop", "Increasing number of ready threads to " << ready_threads_+1 << " ["
+			// << env->name << "]"); ROS_DEBUG_STREAM_NAMED("envStepLoop", "Waiting for signal... [" << env->name << "]");
+			std::unique_lock<std::mutex> lk(readyness_mtx);
+			ready_threads_ += 1;
+			step_signal_.wait(lk);
+		}
+		if (env->stop_loop || settings_.exitrequest)
+			break;
 		// Run mj_step
-		mjtNum prevtm = env->data->time * settings_.slow_down;
 		mj_step(env->model.get(), env->data.get());
 	}
+	ROS_DEBUG_STREAM_COND_NAMED(settings_.exitrequest, "envStepLoop",
+	                            "halted because of exit request [" << env->name << "]");
 }
 
 void initVisual()
@@ -637,9 +662,17 @@ void loadModel(void)
 	} else {
 		for (const auto &env : env_list_) {
 			ROS_DEBUG_STREAM_NAMED("mujoco", "Setting up env '" << env->name << "' ...");
+			MujocoEnvParallelPtr parallel_env = boost::static_pointer_cast<MujocoEnvParallel>(env);
+			if (parallel_env->loop_thread != nullptr) {
+				parallel_env->stop_loop = true;
+				parallel_env->loop_thread->join();
+			}
 			env->model.reset(mnew);
 			environments::assignData(mj_makeData(mnew), env);
 			setupEnv(env);
+			parallel_env->stop_loop = false;
+			ROS_DEBUG_STREAM_NAMED("mujoco", "Starting thread for " << parallel_env->name);
+			parallel_env->loop_thread = new std::thread(envStepLoop, parallel_env);
 		}
 	}
 
@@ -1214,7 +1247,6 @@ void uiEvent(mjuiState *state)
 
 					if (sim_mode_ == simMode::PARALLEL) {
 						settings_.multi_env_steps = 1;
-						// synchedMultiSimStep(1);
 					} else {
 						mj_step(main_env_->model.get(), main_env_->data.get());
 						publishSimTime(main_env_->data->time);
@@ -1238,7 +1270,6 @@ void uiEvent(mjuiState *state)
 					if (sim_mode_ == simMode::PARALLEL) {
 						settings_.multi_env_steps = 100;
 						// for (i = 0; i < 100; i++) {
-						// 	synchedMultiSimStep(1);
 						// }
 					} else {
 						for (i = 0; i < 100; i++) {
@@ -2253,7 +2284,6 @@ bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
 bool simStepCB(mujoco_ros_msgs::SimStep::Request &req, mujoco_ros_msgs::SimStep::Response &resp)
 {
 	settings_.multi_env_steps = req.num_steps;
-	// synchedMultiSimStep(req.num_steps);
 	return true;
 }
 
