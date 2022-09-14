@@ -17,6 +17,7 @@
     <exec_depend>mujoco_ros_msgs</exec_depend>
     <exec_depend>mujoco_ros</exec_depend>
     <exec_depend>mujoco_ros_control</exec_depend>
+    <exec_depend>mujoco_ros_sensors</exec_depend>
 
     <export>
         <metapackage/>
