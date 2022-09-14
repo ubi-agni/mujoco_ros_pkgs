@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>mujoco_ros_sensors</name>
+  <version>1.0.0</version>
+  <description>Sensor plugin for mujoco_ros</description>
+
+  <maintainer email="dleins@techfak.uni-bielefeld.de">David P. Leins</maintainer>
+  <license>BSD</license>
+
+  <url type="repository">https://github.com/DavidPL1/mujoco_ros_pkgs</url>
+  <url type="bugtracker">https://github.com/DavidPL1/mujoco_ros_pkgs/issues</url>
+  <author>David P. Leins</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <depend version_gte="3.0.0">mujoco_ros</depend>
+  <depend>mujoco_ros_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+
+
+  <export>
+    <mujoco_ros plugin="${prefix}/mujoco_ros_sensors_plugin.xml" />
+  </export>
+</package>

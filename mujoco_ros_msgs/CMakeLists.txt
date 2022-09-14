@@ -3,6 +3,10 @@ project(mujoco_ros_msgs)
 
 find_package(catkin REQUIRED COMPONENTS message_generation std_msgs actionlib_msgs)
 
+add_message_files(FILES
+    ScalarStamped.msg
+)
+
 add_service_files(FILES
     SetPause.srv
     SimStep.srv

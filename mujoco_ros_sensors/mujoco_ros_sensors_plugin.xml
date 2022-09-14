@@ -1,0 +1,10 @@
+<library path="lib/libmujoco_ros_sensors">
+  <class
+    name="mujoco_ros_sensors/MujocoRosSensorsPlugin"
+    type="mujoco_ros_sensors::MujocoRosSensorsPlugin"
+    base_class_type="MujocoSim::MujocoPlugin">
+    <description>
+      Mujoco plugin to publish the default mujoco sensors to ros.
+    </description>
+  </class>
+</library>
