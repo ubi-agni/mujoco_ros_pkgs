@@ -46,7 +46,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  *********************************************************************/
 
-/* Authors: David P. Leins*/
+/* Authors: David P. Leins */
 
 #pragma once
 
@@ -124,6 +124,15 @@ void resetSim();
  */
 void synchedMultiSimStep();
 
+/**
+ * @brief Setup default VFS and save the current mujoco model in memory.
+ *
+ * @param [in] filename either the filename on disk or the VFS filename to save the provided content to.
+ * @param [in] content model as string. Can be used if the model was constructed in memory and does not exist as file on
+ * disk.
+ */
+void setupVFS(const std::string &filename, const std::string &content = std::string());
+
 namespace detail {
 
 // Env selected for rendering (if enabled) and responsible for time publishing.
@@ -144,6 +153,9 @@ namespace unit_testing {
  */
 MujocoEnvPtr getmjEnv();
 } // namespace unit_testing
+
+// MuJoCo virtual filesystem to store mjcf in-memory.
+static mjVFS vfs_;
 
 // filename strings
 static char filename_[kBufSize]          = "";

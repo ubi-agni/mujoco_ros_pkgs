@@ -32,7 +32,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  *********************************************************************/
 
-/* Authors: David P. Leins*/
+/* Authors: David P. Leins */
 
 #include <mujoco_ros/mujoco_sim.h>
 
@@ -47,12 +47,37 @@ int main(int argc, char **argv)
 
 	bool vis = true;
 
+	/*
+	 * Model (file) passing: the model can be provided as file to parse or directly as string stored in the rosparam
+	 * server. If both string and file are provided, the string takes precedence.
+	 */
+
 	std::string filename;
-
 	nh.getParam("modelfile", filename);
-	ROS_INFO_STREAM("Using modelfile " << filename);
 
-	if (filename.empty()) {
+	std::string xml_content_path;
+	std::string xml_content;
+	bool wait_for_xml = nh.param<bool>("wait_for_xml", false);
+
+	ROS_INFO_COND(wait_for_xml, "Waiting for xml content to be available on rosparam server");
+
+	while (wait_for_xml) {
+		if (nh.searchParam("mujoco_xml", xml_content_path) || ros::param::search("mujoco_xml", xml_content_path)) {
+			ROS_DEBUG_STREAM("Found mujoco_xml_content param under " << xml_content_path);
+
+			nh.getParam(xml_content_path, xml_content);
+			if (!xml_content.empty()) {
+				ROS_INFO("Got xml content from ros param server");
+				filename = "rosparam_content";
+			}
+			wait_for_xml = false;
+		}
+	}
+
+	if (!filename.empty()) {
+		ROS_INFO_STREAM("Using modelfile " << filename);
+		MujocoSim::setupVFS(filename, xml_content);
+	} else {
 		ROS_WARN("No modelfile was provided, launching empty simulation!");
 	}
 
