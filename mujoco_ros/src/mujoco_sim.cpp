@@ -571,6 +571,7 @@ void envStepLoop(MujocoEnvParallelPtr env)
 			break;
 		// Run mj_step
 		mj_step(env->model.get(), env->data.get());
+		lastStageCallback(env->data.get());
 	}
 	ROS_DEBUG_STREAM_COND_NAMED(settings_.exitrequest, "envStepLoop",
 	                            "halted because of exit request [" << env->name << "]");
