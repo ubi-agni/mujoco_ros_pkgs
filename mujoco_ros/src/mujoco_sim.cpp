@@ -520,9 +520,13 @@ void simulate(void)
 						}
 					}
 				}
-			} else if (sim_mode_ == simMode::PARALLEL && settings_.multi_env_steps != 0) {
-				synchedMultiSimStep();
-				settings_.multi_env_steps--;
+			} else if (sim_mode_ == simMode::PARALLEL) {
+				if (settings_.multi_env_steps != 0) {
+					synchedMultiSimStep();
+					settings_.multi_env_steps--;
+				} else { // Paused in PARALLEL mode
+					std::this_thread::sleep_for(std::chrono::milliseconds(1));
+				}
 			} else { // Paused
 				mjv_applyPerturbPose(model.get(), data.get(), &pert_, 1); // Move mocap and dynamic bodies
 

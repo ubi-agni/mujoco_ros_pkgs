@@ -40,6 +40,7 @@ import roslaunch
 import roslaunch.rlutil
 import roslaunch.parent
 import rospy
+import time
 
 from mujoco_ros_msgs.srv import ShutdownNS, BootstrapNS
 
@@ -130,3 +131,4 @@ if __name__ == '__main__':
 
         if shutdown_queue.qsize() > 0:
             shutdown_response_queue.put(shutdown_ns(shutdown_queue.get()))
+        time.sleep(0.01)
