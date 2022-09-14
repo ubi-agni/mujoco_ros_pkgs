@@ -98,7 +98,8 @@ void MujocoRosSensorsPlugin::lastStageCallback(MujocoSim::mjModelPtr model, Mujo
 		std::tie(pub, frame_id) = sensor_map_[sensor_name];
 
 		switch (type) {
-			case mjSENS_FRAMELINVEL: {
+			{
+				case mjSENS_FRAMELINVEL:
 				case mjSENS_FRAMELINACC:
 				case mjSENS_FRAMEANGACC:
 				case mjSENS_SUBTREECOM:
@@ -133,27 +134,28 @@ void MujocoRosSensorsPlugin::lastStageCallback(MujocoSim::mjModelPtr model, Mujo
 				break;
 			}
 
-			case mjSENS_TOUCH: {
-				case mjSENS_RANGEFINDER:
-				case mjSENS_JOINTPOS:
-				case mjSENS_JOINTVEL:
-				case mjSENS_TENDONPOS:
-				case mjSENS_TENDONVEL:
-				case mjSENS_ACTUATORPOS:
-				case mjSENS_ACTUATORVEL:
-				case mjSENS_ACTUATORFRC:
-				case mjSENS_JOINTLIMITPOS:
-				case mjSENS_JOINTLIMITVEL:
-				case mjSENS_JOINTLIMITFRC:
-				case mjSENS_TENDONLIMITPOS:
-				case mjSENS_TENDONLIMITVEL:
-				case mjSENS_TENDONLIMITFRC:
-					mujoco_ros_msgs::ScalarStamped msg;
-					msg.header.frame_id = frame_id;
-					msg.value           = (float)(data->sensordata[adr] / cutoff);
-					pub.publish(msg);
-					break;
-			}
+				{
+					case mjSENS_TOUCH:
+					case mjSENS_RANGEFINDER:
+					case mjSENS_JOINTPOS:
+					case mjSENS_JOINTVEL:
+					case mjSENS_TENDONPOS:
+					case mjSENS_TENDONVEL:
+					case mjSENS_ACTUATORPOS:
+					case mjSENS_ACTUATORVEL:
+					case mjSENS_ACTUATORFRC:
+					case mjSENS_JOINTLIMITPOS:
+					case mjSENS_JOINTLIMITVEL:
+					case mjSENS_JOINTLIMITFRC:
+					case mjSENS_TENDONLIMITPOS:
+					case mjSENS_TENDONLIMITVEL:
+					case mjSENS_TENDONLIMITFRC:
+						mujoco_ros_msgs::ScalarStamped msg;
+						msg.header.frame_id = frame_id;
+						msg.value           = (float)(data->sensordata[adr] / cutoff);
+						pub.publish(msg);
+						break;
+				}
 
 			case mjSENS_BALLQUAT: {
 				case mjSENS_FRAMEQUAT:
