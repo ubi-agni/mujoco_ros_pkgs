@@ -76,6 +76,8 @@ void MujocoRosSensorsPlugin::lastStageCallback(MujocoSim::mjModelPtr model, Mujo
 	mjtNum cutoff;
 
 	char tmp[mjMAXUITEXT];
+	tmp[0] = '\0';
+
 	for (int n = 0; n < model->nsensor; n++) {
 		adr    = model->sensor_adr[n];
 		type   = model->sensor_type[n];
