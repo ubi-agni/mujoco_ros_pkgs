@@ -1,4 +1,8 @@
 cmake_minimum_required(VERSION 3.4)
+
+# INTERPROCEDURAL_OPTIMIZATION is enforced when enabled.
+set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
+
 project(mujoco_ros)
 
 set(CMAKE_CXX_STANDARD 17)
