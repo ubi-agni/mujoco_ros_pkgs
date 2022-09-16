@@ -1843,7 +1843,7 @@ void makePhysics(mjModelPtr model, int oldstate)
 {
 	int i;
 
-	mjuiDef defPhysics[]     = { { mjITEM_SECTION, "Physics", oldstate, NULL, "AP" },
+	mjuiDef defPhysics[]     = { { mjITEM_SECTION, "Physics", oldstate, nullptr, "AP" },
                             { mjITEM_SELECT, "Integrator", 2, &(model->opt.integrator), "Euler\nRK4" },
                             { mjITEM_SELECT, "Collision", 2, &(model->opt.collision), "All\nPair\nDynamic" },
                             { mjITEM_SELECT, "Cone", 2, &(model->opt.cone), "Pyramidal\nElliptic" },
@@ -1878,7 +1878,7 @@ void makePhysics(mjModelPtr model, int oldstate)
 	mjui_add(&ui0_, defPhysics);
 
 	// add flags programmatically
-	mjuiDef defFlag[] = { { mjITEM_CHECKINT, "", 2, NULL, "" }, { mjITEM_END } };
+	mjuiDef defFlag[] = { { mjITEM_CHECKINT, "", 2, nullptr, "" }, { mjITEM_END } };
 	for (i = 0; i < mjNDISABLE; i++) {
 		mju::strcpy_arr(defFlag[0].name, mjDISABLESTRING[i]);
 		defFlag[0].pdata = settings_.disable + i;
@@ -1901,12 +1901,12 @@ void makeRendering(mjModelPtr model, int oldstate)
 	int i, j;
 
 	mjuiDef defRendering[] = {
-		{ mjITEM_SECTION, "Rendering", oldstate, NULL, "AR" },
+		{ mjITEM_SECTION, "Rendering", oldstate, nullptr, "AR" },
 		{ mjITEM_SELECT, "Camera", 2, &(settings_.camera), "Free\nTracking" },
 		{ mjITEM_SELECT, "Label", 2, &(vopt_.label),
 		  "None\nBody\nJoint\nGeom\nSite\nCamera\nLight\nTendon\nActuator\nConstraint\nSkin\nSelection\nSel Pnt\nForce" },
 		{ mjITEM_SELECT, "Frame", 2, &(vopt_.frame), "None\nBody\nGeom\nSite\nCamera\nLight\nWorld" },
-		{ mjITEM_BUTTON, "Print camera", 2, NULL, "" },
+		{ mjITEM_BUTTON, "Copy camera", 2, nullptr, "" },
 		{
 		    mjITEM_SEPARATOR,
 		    "Model Elements",
@@ -1939,7 +1939,7 @@ void makeRendering(mjModelPtr model, int oldstate)
 	mjui_add(&ui0_, defRendering);
 
 	// add flags programmatically
-	mjuiDef defFlag[] = { { mjITEM_CHECKBYTE, "", 2, NULL, "" }, { mjITEM_END } };
+	mjuiDef defFlag[] = { { mjITEM_CHECKBYTE, "", 2, nullptr, "" }, { mjITEM_END } };
 	for (i = 0; i < mjNVISFLAG; i++) {
 		// set name, remove "&"
 		mju::strcpy_arr(defFlag[0].name, mjVISSTRING[i][0]);
@@ -1958,7 +1958,8 @@ void makeRendering(mjModelPtr model, int oldstate)
 	mjui_add(&ui0_, defOpenGL);
 	for (i = 0; i < mjNRNDFLAG; i++) {
 		mju::strcpy_arr(defFlag[0].name, mjRNDSTRING[i][0]);
-		mju::sprintf_arr(defFlag[0].other, " %s", mjRNDSTRING[i][2]);
+		if (mjRNDSTRING[i][2][0])
+			mju::sprintf_arr(defFlag[0].other, " %s", mjRNDSTRING[i][2]);
 		defFlag[0].pdata = scn_.flags + i;
 		mjui_add(&ui0_, defFlag);
 	}
@@ -1967,7 +1968,7 @@ void makeRendering(mjModelPtr model, int oldstate)
 // Make group section UI
 void makeGroup(int oldstate)
 {
-	mjuiDef defGroup[] = { { mjITEM_SECTION, "Group enable", oldstate, NULL, "AG" },
+	mjuiDef defGroup[] = { { mjITEM_SECTION, "Group enable", oldstate, nullptr, "AG" },
 		                    { mjITEM_SEPARATOR, "Geom groups", 1 },
 		                    { mjITEM_CHECKBYTE, "Geom 0", 2, vopt_.geomgroup, " 0" },
 		                    { mjITEM_CHECKBYTE, "Geom 1", 2, vopt_.geomgroup + 1, " 1" },
@@ -2014,10 +2015,10 @@ void makeJoint(mjModelPtr model, mjDataPtr data, int oldstate)
 	int i;
 
 	mjuiDef defJoint[] = {
-		{ mjITEM_SECTION, "Joint", oldstate, NULL, "AJ" },
+		{ mjITEM_SECTION, "Joint", oldstate, nullptr, "AJ" },
 		{ mjITEM_END },
 	};
-	mjuiDef defSlider[] = { { mjITEM_SLIDERNUM, "", 2, NULL, "0 1" }, { mjITEM_END } };
+	mjuiDef defSlider[] = { { mjITEM_SLIDERNUM, "", 2, nullptr, "0 1" }, { mjITEM_END } };
 
 	// add section
 	mjui_add(&ui1_, defJoint);
@@ -2061,10 +2062,10 @@ void makeControl(mjModelPtr model, mjDataPtr data, int oldstate)
 {
 	int i;
 
-	mjuiDef defControl[] = { { mjITEM_SECTION, "Control", oldstate, NULL, "AC" },
+	mjuiDef defControl[] = { { mjITEM_SECTION, "Control", oldstate, nullptr, "AC" },
 		                      { mjITEM_BUTTON, "Clear all", 2 },
 		                      { mjITEM_END } };
-	mjuiDef defSlider[]  = { { mjITEM_SLIDERNUM, "", 2, NULL, "0 1" }, { mjITEM_END } };
+	mjuiDef defSlider[]  = { { mjITEM_SLIDERNUM, "", 2, nullptr, "0 1" }, { mjITEM_END } };
 
 	// Add section
 	mjui_add(&ui1_, defControl);

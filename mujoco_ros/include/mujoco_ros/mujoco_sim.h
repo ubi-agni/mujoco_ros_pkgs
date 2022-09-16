@@ -59,7 +59,7 @@
 #include <condition_variable>
 #include <ros/ros.h>
 
-#include "mjxmacro.h"
+#include <mujoco/mjxmacro.h>
 
 #include <mujoco_ros/common_types.h>
 #include <mujoco_ros/mujoco_env.h>

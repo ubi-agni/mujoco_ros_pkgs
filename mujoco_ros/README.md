@@ -40,7 +40,7 @@ initial_joint_velocities:
 ___
 
 # Build Instructions
-1. Make sure MuJoCo is installed (the current build uses version 2.1.1) and runs on your machine.
+1. Make sure MuJoCo is installed (the current build uses version 2.2.2) and runs on your machine.
 2. Create a new ROS workspace or include this repository into an existing workspace.
 3. Before building, make sure that your compiler knows where to find the MuJoCo library, e.g. by running
 ```bash

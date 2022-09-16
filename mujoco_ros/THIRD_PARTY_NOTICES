@@ -1,4 +1,4 @@
-The mujoco_ros package is incorporates the MuJoCo Version 2.1.1 library.
+The mujoco_ros package is incorporates the MuJoCo Version 2.2.2 library.
 Its copyright and license information is included below.
 
 =========================  MuJoCo ============================================
@@ -19,7 +19,7 @@ limitations under the License.
 
 ---- MuJoCo Third Party Notice ----
 
-MuJoCo version 2.1.1 incorporates the following open-source libraries:
+MuJoCo version 2.2.2 incorporates the following open-source libraries:
 
   - libccd
   - Collisions

@@ -36,7 +36,7 @@
 
 #pragma once
 
-#include <mujoco.h>
+#include <mujoco/mujoco.h>
 
 static constexpr int kBufSize = 1000;
 
