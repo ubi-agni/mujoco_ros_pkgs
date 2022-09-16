@@ -28,7 +28,7 @@ catkin_package(
   urdf
   mujoco_ros
  INCLUDE_DIRS include
- LIBRARIES ${PROJECT_NAME} default_mujoco_robot_hw_sim
+ LIBRARIES ${PROJECT_NAME} default_mujoco_ros_robot_hw_sim
 )
 
 # link_directories(
@@ -53,15 +53,15 @@ target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )
 
-add_library(default_mujoco_robot_hw_sim src/default_robot_hw_sim.cpp)
-target_include_directories(default_mujoco_robot_hw_sim SYSTEM PUBLIC
+add_library(default_mujoco_ros_robot_hw_sim src/default_robot_hw_sim.cpp)
+target_include_directories(default_mujoco_ros_robot_hw_sim SYSTEM PUBLIC
   ${catkin_INCLUDE_DIRS}
 )
-target_link_libraries(default_mujoco_robot_hw_sim
+target_link_libraries(default_mujoco_ros_robot_hw_sim
   ${catkin_LIBRARIES}
 )
 
-install(TARGETS ${PROJECT_NAME} default_mujoco_robot_hw_sim
+install(TARGETS ${PROJECT_NAME} default_mujoco_ros_robot_hw_sim
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
@@ -73,6 +73,6 @@ install(DIRECTORY include/${PROJECT_NAME}/
 
 install(FILES
     mujoco_ros_control_plugin.xml
-    default_mujoco_robot_hw_sim_plugin.xml
+    default_mujoco_ros_robot_hw_sim_plugin.xml
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )

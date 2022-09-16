@@ -31,6 +31,6 @@
 
   <export>
     <mujoco_ros plugin="${prefix}/mujoco_ros_control_plugin.xml" />
-    <mujoco_ros_control plugin="${prefix}/default_mujoco_ros_hw_sim_plugin.xml" />
+    <mujoco_ros_control plugin="${prefix}/default_mujoco_ros_robot_hw_sim_plugin.xml" />
   </export>
 </package>
