@@ -17,6 +17,9 @@ find_package(catkin REQUIRED
     cmake_modules
     mujoco_ros_msgs
     urdf
+    tf2
+    tf2_ros
+    tf2_geometry_msgs
 )
 
 catkin_package(
@@ -25,6 +28,9 @@ catkin_package(
     pluginlib
     mujoco_ros_msgs
     urdf
+    tf2
+    tf2_ros
+    tf2_geometry_msgs
   INCLUDE_DIRS include
   LIBRARIES ${PROJECT_NAME}
 )

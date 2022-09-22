@@ -51,6 +51,11 @@
 #include <mujoco_ros/mujoco_sim.h>
 #include <mujoco_ros/plugin_utils.h>
 
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+
+#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/Twist.h>
+
 #include <rosgraph_msgs/Clock.h>
 #include <boost/filesystem.hpp>
 
@@ -262,6 +267,11 @@ void init(std::string modelfile)
 	setupCallbacks();
 
 	std::thread simthread(simulate);
+
+	tf_bufferPtr_.reset(new tf2_ros::Buffer());
+	tf_bufferPtr_->setUsingDedicatedThread(true);
+	tf_listenerPtr_.reset(new tf2_ros::TransformListener(*tf_bufferPtr_));
+
 	eventloop();
 
 	ROS_DEBUG_NAMED("mujoco", "Event loop terminated");
@@ -2298,6 +2308,8 @@ void setupCallbacks()
 		service_servers_.push_back(nh_->advertiseService("set_pause", setPauseCB));
 	service_servers_.push_back(nh_->advertiseService("shutdown", shutdownCB));
 	service_servers_.push_back(nh_->advertiseService("reset", resetCB));
+	service_servers_.push_back(nh_->advertiseService("set_model_state", setModelStateCB));
+	service_servers_.push_back(nh_->advertiseService("get_model_state", getModelStateCB));
 
 	mjcb_control = controlCallback;
 	mjcb_passive = passiveCallback;
@@ -2326,6 +2338,149 @@ bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
 bool simStepCB(mujoco_ros_msgs::SimStep::Request &req, mujoco_ros_msgs::SimStep::Response &resp)
 {
 	settings_.multi_env_steps = req.num_steps;
+	return true;
+}
+
+bool setModelStateCB(mujoco_ros_msgs::SetModelState::Request &req, mujoco_ros_msgs::SetModelState::Response &resp)
+{
+	uint env_id = (req.model_state.env_id);
+	ROS_DEBUG_STREAM_NAMED("mujoco", "Searching for env '/env" << env_id << "'");
+	MujocoEnvPtr env = environments::getEnvById(env_id);
+
+	if (env == nullptr) {
+		std::string error_msg = "Could not find environment with id " + req.model_state.env_id;
+		ROS_WARN_STREAM_NAMED("mujoco", error_msg);
+		resp.status_message = static_cast<decltype(resp.status_message)>(error_msg);
+		resp.success        = false;
+		return false;
+	}
+
+	int model_id = mj_name2id(env->model.get(), mjOBJ_BODY, req.model_state.model_name.c_str());
+	if (model_id == -1) {
+		std::string error_msg = "Could not find model (mujoco body) with name " + req.model_state.model_name;
+		ROS_WARN_STREAM_NAMED("mujoco", error_msg);
+		resp.status_message = static_cast<decltype(resp.status_message)>(error_msg);
+		resp.success        = false;
+		return false;
+	}
+
+	ROS_DEBUG_STREAM_NAMED("mujoco", "Body has " << env->model->body_jntnum[model_id] << " joints");
+	int jnt_adr  = env->model->body_jntadr[model_id];
+	int jnt_type = env->model->jnt_type[jnt_adr];
+	if (jnt_type != mjJNT_FREE) {
+		std::string error_msg = "Body " + req.model_state.model_name +
+		                        " has no joint of type 'freetype'. This service call does not support any other types!";
+		ROS_WARN_STREAM_NAMED("mujoco", error_msg);
+		resp.success        = false;
+		resp.status_message = static_cast<decltype(resp.status_message)>(error_msg);
+		return false;
+	}
+	int jnt_qposadr = env->model->jnt_qposadr[jnt_adr];
+	int jnt_dofadr  = env->model->jnt_dofadr[jnt_adr];
+
+	geometry_msgs::PoseStamped target_pose;
+	geometry_msgs::Twist target_twist;
+
+	// Lock mutex to prevent updating the body while a step is performed
+	std::unique_lock<std::mutex> lk(sim_mtx);
+	if (req.model_state.reference_frame != "" && req.model_state.reference_frame != "world") {
+		geometry_msgs::PoseStamped init_pose;
+		init_pose.header          = std_msgs::Header();
+		init_pose.header.frame_id = req.model_state.reference_frame;
+		init_pose.pose            = req.model_state.pose;
+
+		try {
+			tf_bufferPtr_->transform<geometry_msgs::PoseStamped>(init_pose, target_pose, "world");
+
+			// Only pose can be transformed. Twist will be ignored!
+			ROS_WARN_NAMED("mujoco", "Transforming twists from other frames is not supported!");
+
+		} catch (tf2::TransformException &ex) {
+			ROS_WARN_STREAM_NAMED("mujoco", ex.what());
+			resp.status_message = static_cast<decltype(resp.status_message)>(ex.what());
+			resp.success        = false;
+			return false;
+		}
+	} else {
+		target_pose.pose = req.model_state.pose;
+		target_twist     = req.model_state.twist;
+	}
+
+	// Set freejoint position and quaternion
+	env->data->qpos[jnt_qposadr]     = target_pose.pose.position.x;
+	env->data->qpos[jnt_qposadr + 1] = target_pose.pose.position.y;
+	env->data->qpos[jnt_qposadr + 2] = target_pose.pose.position.z;
+	env->data->qpos[jnt_qposadr + 3] = target_pose.pose.orientation.w;
+	env->data->qpos[jnt_qposadr + 4] = target_pose.pose.orientation.x;
+	env->data->qpos[jnt_qposadr + 5] = target_pose.pose.orientation.y;
+	env->data->qpos[jnt_qposadr + 6] = target_pose.pose.orientation.z;
+
+	// Set freejoint twist
+	env->data->qvel[jnt_dofadr]     = target_twist.linear.x;
+	env->data->qvel[jnt_dofadr + 1] = target_twist.linear.y;
+	env->data->qvel[jnt_dofadr + 2] = target_twist.linear.z;
+	env->data->qvel[jnt_dofadr + 3] = target_twist.angular.x;
+	env->data->qvel[jnt_dofadr + 4] = target_twist.angular.y;
+	env->data->qvel[jnt_dofadr + 5] = target_twist.angular.z;
+
+	resp.success = true;
+	return true;
+}
+
+bool getModelStateCB(mujoco_ros_msgs::GetModelState::Request &req, mujoco_ros_msgs::GetModelState::Response &resp)
+{
+	uint env_id = (req.env_id);
+	ROS_DEBUG_STREAM_NAMED("mujoco", "Searching for env '/env" << env_id << "'");
+	MujocoEnvPtr env = environments::getEnvById(env_id);
+
+	if (env == nullptr) {
+		std::string error_msg = "Could not find environment with id " + req.env_id;
+		ROS_WARN_STREAM_NAMED("mujoco", error_msg);
+		resp.status_message = static_cast<decltype(resp.status_message)>(error_msg);
+		resp.success        = false;
+		return false;
+	}
+
+	int model_id = mj_name2id(env->model.get(), mjOBJ_BODY, req.model_name.c_str());
+	if (model_id == -1) {
+		std::string error_msg = "Could not find model (mujoco body) with name " + req.model_name;
+		ROS_WARN_STREAM_NAMED("mujoco", error_msg);
+		resp.status_message = static_cast<decltype(resp.status_message)>(error_msg);
+		resp.success        = false;
+		return false;
+	}
+
+	int jnt_adr  = env->model->body_jntadr[model_id];
+	int jnt_type = env->model->jnt_type[jnt_adr];
+	if (jnt_type != mjJNT_FREE) {
+		std::string error_msg = "Body " + req.model_name +
+		                        " has no joint of type 'freetype'. This service call does not support any other types!";
+		ROS_WARN_STREAM_NAMED("mujoco", error_msg);
+		resp.success        = false;
+		resp.status_message = static_cast<decltype(resp.status_message)>(error_msg);
+		return false;
+	}
+	int jnt_qposadr = env->model->jnt_qposadr[jnt_adr];
+	int jnt_dofadr  = env->model->jnt_dofadr[jnt_adr];
+
+	resp.model_state.pose.position.x    = env->data->qpos[jnt_qposadr];
+	resp.model_state.pose.position.y    = env->data->qpos[jnt_qposadr + 1];
+	resp.model_state.pose.position.z    = env->data->qpos[jnt_qposadr + 2];
+	resp.model_state.pose.orientation.w = env->data->qpos[jnt_qposadr + 3];
+	resp.model_state.pose.orientation.x = env->data->qpos[jnt_qposadr + 4];
+	resp.model_state.pose.orientation.y = env->data->qpos[jnt_qposadr + 5];
+	resp.model_state.pose.orientation.z = env->data->qpos[jnt_qposadr + 6];
+
+	resp.model_state.twist.linear.x  = env->data->qvel[jnt_dofadr];
+	resp.model_state.twist.linear.y  = env->data->qvel[jnt_dofadr + 1];
+	resp.model_state.twist.linear.z  = env->data->qvel[jnt_dofadr + 2];
+	resp.model_state.twist.angular.x = env->data->qvel[jnt_dofadr + 3];
+	resp.model_state.twist.angular.y = env->data->qvel[jnt_dofadr + 4];
+	resp.model_state.twist.angular.z = env->data->qvel[jnt_dofadr + 5];
+
+	resp.model_state.reference_frame = "world";
+
+	resp.success = true;
 	return true;
 }
 

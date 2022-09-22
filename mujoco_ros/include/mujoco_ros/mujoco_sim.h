@@ -59,6 +59,8 @@
 #include <condition_variable>
 #include <ros/ros.h>
 
+#include <tf2_ros/transform_listener.h>
+
 #include <mujoco/mjxmacro.h>
 
 #include <mujoco_ros/common_types.h>
@@ -69,6 +71,8 @@
 
 #include <mujoco_ros_msgs/SetPause.h>
 #include <mujoco_ros_msgs/SimStep.h>
+#include <mujoco_ros_msgs/SetModelState.h>
+#include <mujoco_ros_msgs/GetModelState.h>
 #include <std_srvs/Empty.h>
 
 namespace mju = ::mujoco::sample_util;
@@ -174,6 +178,10 @@ void publishSimTime(mjtNum time);
 static ros::Publisher pub_clock_;
 static boost::shared_ptr<ros::NodeHandle> nh_;
 
+// ROS TF2
+static boost::shared_ptr<tf2_ros::Buffer> tf_bufferPtr_;
+static boost::shared_ptr<tf2_ros::TransformListener> tf_listenerPtr_;
+
 // Services
 static std::vector<ros::ServiceServer> service_servers_;
 
@@ -263,6 +271,8 @@ bool shutdownCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
 bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &resp);
 bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
 bool simStepCB(mujoco_ros_msgs::SimStep::Request &req, mujoco_ros_msgs::SimStep::Response &resp);
+bool setModelStateCB(mujoco_ros_msgs::SetModelState::Request &req, mujoco_ros_msgs::SetModelState::Response &resp);
+bool getModelStateCB(mujoco_ros_msgs::GetModelState::Request &req, mujoco_ros_msgs::GetModelState::Response &resp);
 
 // UI settings not contained in MuJoCo structures
 struct

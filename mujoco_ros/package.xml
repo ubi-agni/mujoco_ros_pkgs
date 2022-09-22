@@ -15,8 +15,10 @@
 
   <depend>roscpp</depend>
   <depend>pluginlib</depend>
-  <depend version_gte="0.2.0">mujoco_ros_msgs</depend>
-  <depend>tf</depend>
+  <depend version_gte="0.4.0">mujoco_ros_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
   <depend version_gte="1.13.2">urdf</depend>
 
 </package>
