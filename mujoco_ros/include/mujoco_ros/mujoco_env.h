@@ -48,9 +48,33 @@ class MujocoRosFixture;
 namespace MujocoSim {
 
 namespace environments {
+
 static std::map<mjData *, MujocoEnvPtr> env_map_;
+
+/**
+ * @brief Adds a new entry to the env_map_, assigning a MujocoEnvPtr to a unique mjData pointer.
+ *
+ * @param[in] data mjData pointer used as key element in the map.
+ * @param[in] env MujocoEnvPtr assigned to the mjData pointer.
+ */
 void assignData(mjData *data, MujocoEnvPtr env);
+
+/**
+ * @brief Retrieve the MujocoEnvPtr assigned to the given mjData pointer from the env_map_.
+ *
+ * @param[in] data mjData pointer used as key.
+ * @return MujocoEnvPtr if `data` is in the map, otherwise nullptr is returned.
+ */
 MujocoEnvPtr getEnv(mjData *data);
+
+/**
+ * @brief Retreive a MujocoEnvPtr by id.
+ *
+ * @param[in] id id to search for.
+ * @return MujocoEnvPtr if an env with that id exists, otherwise nullptr is returned.
+ */
+MujocoEnvPtr getEnvById(uint id);
+
 } // end namespace environments
 
 struct MujocoEnv

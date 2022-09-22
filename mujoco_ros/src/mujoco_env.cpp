@@ -45,6 +45,7 @@
 namespace MujocoSim {
 
 namespace environments {
+
 void assignData(mjData *data, MujocoEnvPtr env)
 {
 	env->data.reset(data);
@@ -57,6 +58,16 @@ MujocoEnvPtr getEnv(mjData *data)
 		return env_map_[data];
 	} else
 		return nullptr;
+}
+
+MujocoEnvPtr getEnvById(uint id)
+{
+	for (std::pair<mjData *, MujocoEnvPtr> element : env_map_) {
+		if (element.second->name == "/env" + id || (element.second->name == "/" && id == 0)) {
+			return element.second;
+		}
+	}
+	return nullptr;
 }
 
 } // end namespace environments
