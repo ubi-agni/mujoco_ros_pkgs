@@ -10,6 +10,9 @@
 
 # Emacs temp files
 .#*
+*~
+[#]*[#]
+.\#*
 
 # OSX Files
 .DS_Store
