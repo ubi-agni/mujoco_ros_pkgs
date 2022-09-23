@@ -532,6 +532,11 @@ void simulate(void)
 				}
 			} else if (sim_mode_ == simMode::PARALLEL) {
 				if (settings_.multi_env_steps != 0) {
+					// clear old perturbations, apply new
+					mju_zero(data->xfrc_applied, 6 * model->nbody);
+					mjv_applyPerturbPose(model.get(), data.get(), &pert_, 0); // Move mocap bodies only
+					mjv_applyPerturbForce(model.get(), data.get(), &pert_);
+
 					synchedMultiSimStep();
 					settings_.multi_env_steps--;
 				} else { // Paused in PARALLEL mode
