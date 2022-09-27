@@ -307,6 +307,7 @@ void init(std::string modelfile)
 		ss.shutdown();
 	}
 	service_servers_.clear();
+	action_step_->shutdown();
 
 	ROS_DEBUG_NAMED("mujoco", "Cleanup done");
 }
@@ -531,22 +532,35 @@ void simulate(void)
 					}
 				}
 			} else if (sim_mode_ == simMode::PARALLEL) {
-				if (settings_.multi_env_steps != 0) {
+				if (settings_.manual_env_steps != 0) {
 					// clear old perturbations, apply new
 					mju_zero(data->xfrc_applied, 6 * model->nbody);
 					mjv_applyPerturbPose(model.get(), data.get(), &pert_, 0); // Move mocap bodies only
 					mjv_applyPerturbForce(model.get(), data.get(), &pert_);
 
 					synchedMultiSimStep();
-					settings_.multi_env_steps--;
+					settings_.manual_env_steps--;
 				} else { // Paused in PARALLEL mode
 					std::this_thread::sleep_for(std::chrono::milliseconds(1));
 				}
-			} else { // Paused
-				mjv_applyPerturbPose(model.get(), data.get(), &pert_, 1); // Move mocap and dynamic bodies
+			} else { // Paused in single env mode
+				if (settings_.manual_env_steps > 0) { // Action call or arrow keys used for stepping
+					mju_zero(data->xfrc_applied, 6 * model->nbody);
+					mjv_applyPerturbPose(model.get(), data.get(), &pert_, 0); // Move mocap bodies only
+					mjv_applyPerturbForce(model.get(), data.get(), &pert_);
 
-				// Run mj_forward, to update rendering and joint sliders
-				mj_forward(model.get(), data.get());
+					// Run single step
+					mj_step(model.get(), data.get());
+					publishSimTime(data->time);
+					lastStageCallback(data.get());
+
+					settings_.manual_env_steps--;
+				} else {
+					mjv_applyPerturbPose(model.get(), data.get(), &pert_, 1); // Move mocap and dynamic bodies
+
+					// Run mj_forward, to update rendering and joint sliders
+					mj_forward(model.get(), data.get());
+				}
 			}
 		}
 		sim_mtx.unlock();
@@ -1290,9 +1304,10 @@ void uiEvent(mjuiState *state)
 					// 	ROS_WARN_NAMED("mujoco", "Unpausing in PARALLEL sim mode is not allowed, use stepping instead!");
 					// 	break;
 					// }
-					settings_.run             = 1 - settings_.run;
-					settings_.multi_env_steps = 0 - settings_.run;
-					pert_.active              = 0;
+					settings_.run = 1 - settings_.run;
+					if (settings_.run)
+						settings_.manual_env_steps = 0;
+					pert_.active = 0;
 					mjui_update(-1, -1, &ui0_, state, &con_);
 				}
 				break;
@@ -1300,17 +1315,7 @@ void uiEvent(mjuiState *state)
 			case mjKEY_RIGHT: // Step forward
 				if (main_env_->model && !settings_.run) {
 					clearTimers(main_env_->data);
-
-					if (sim_mode_ == simMode::PARALLEL) {
-						settings_.multi_env_steps = 1;
-					} else {
-						mj_step(main_env_->model.get(), main_env_->data.get());
-						publishSimTime(main_env_->data->time);
-					}
-
-					profilerUpdate(main_env_->model, main_env_->data);
-					sensorUpdate(main_env_->model, main_env_->data);
-					updateSettings(main_env_->model);
+					settings_.manual_env_steps = 1;
 				}
 				break;
 
@@ -1322,21 +1327,7 @@ void uiEvent(mjuiState *state)
 			case mjKEY_DOWN: // Step forward 100
 				if (main_env_->model && !settings_.run) {
 					clearTimers(main_env_->data);
-
-					if (sim_mode_ == simMode::PARALLEL) {
-						settings_.multi_env_steps = 100;
-						// for (i = 0; i < 100; i++) {
-						// }
-					} else {
-						for (i = 0; i < 100; i++) {
-							mj_step(main_env_->model.get(), main_env_->data.get());
-							publishSimTime(main_env_->data->time);
-						}
-					}
-
-					profilerUpdate(main_env_->model, main_env_->data);
-					sensorUpdate(main_env_->model, main_env_->data);
-					updateSettings(main_env_->model);
+					settings_.manual_env_steps = 100;
 				}
 				break;
 
@@ -2316,6 +2307,10 @@ void setupCallbacks()
 	service_servers_.push_back(nh_->advertiseService("set_model_state", setModelStateCB));
 	service_servers_.push_back(nh_->advertiseService("get_model_state", getModelStateCB));
 
+	action_step_ =
+	    std::make_unique<actionlib::SimpleActionServer<mujoco_ros_msgs::StepAction>>(*nh_, "step", onStepGoal, false);
+	action_step_->start();
+
 	mjcb_control = controlCallback;
 	mjcb_passive = passiveCallback;
 }
@@ -2331,6 +2326,8 @@ bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPau
 {
 	ROS_DEBUG_STREAM("PauseCB called with: " << (bool)req.paused);
 	settings_.run = !req.paused;
+	if (settings_.run)
+		settings_.manual_env_steps = 0;
 	return true;
 }
 
@@ -2340,10 +2337,41 @@ bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
 	return true;
 }
 
-bool simStepCB(mujoco_ros_msgs::SimStep::Request &req, mujoco_ros_msgs::SimStep::Response &resp)
+void onStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal)
 {
-	settings_.multi_env_steps = req.num_steps;
-	return true;
+	mujoco_ros_msgs::StepResult result;
+
+	if (settings_.manual_env_steps > 0 || settings_.run) {
+		ROS_WARN_NAMED("mujoco", "Simulation is currently unpaused. Stepping makes no sense right now.");
+		result.success = false;
+		action_step_->setPreempted(result);
+		action_step_->setSucceeded(result);
+		return;
+	}
+
+	mujoco_ros_msgs::StepFeedback feedback;
+
+	feedback.steps_left = goal->num_steps + settings_.manual_env_steps;
+	settings_.manual_env_steps += goal->num_steps;
+
+	result.success = true;
+	while (settings_.manual_env_steps > 0) {
+		if (action_step_->isPreemptRequested() || !ros::ok()) {
+			ROS_WARN_STREAM_NAMED("mujoco", "Simulation step action preempted");
+			result.success = false;
+			action_step_->setPreempted(result);
+			settings_.manual_env_steps = 0;
+			break;
+		}
+
+		feedback.steps_left = settings_.manual_env_steps;
+		action_step_->publishFeedback(feedback);
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+
+	feedback.steps_left = settings_.manual_env_steps;
+	action_step_->publishFeedback(feedback);
+	action_step_->setSucceeded(result);
 }
 
 bool setModelStateCB(mujoco_ros_msgs::SetModelState::Request &req, mujoco_ros_msgs::SetModelState::Response &resp)

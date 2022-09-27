@@ -70,9 +70,12 @@
 #include <mujoco_ros/array_safety.h>
 
 #include <mujoco_ros_msgs/SetPause.h>
-#include <mujoco_ros_msgs/SimStep.h>
+#include <mujoco_ros_msgs/StepAction.h>
+#include <mujoco_ros_msgs/StepGoal.h>
 #include <mujoco_ros_msgs/SetModelState.h>
 #include <mujoco_ros_msgs/GetModelState.h>
+
+#include <actionlib/server/simple_action_server.h>
 #include <std_srvs/Empty.h>
 
 namespace mju = ::mujoco::sample_util;
@@ -184,6 +187,8 @@ static boost::shared_ptr<tf2_ros::TransformListener> tf_listenerPtr_;
 
 // Services
 static std::vector<ros::ServiceServer> service_servers_;
+// Actions
+static std::unique_ptr<actionlib::SimpleActionServer<mujoco_ros_msgs::StepAction>> action_step_;
 
 // Keep track of time for resets to not mess up ros time
 static mjtNum last_time_ = -1;
@@ -270,9 +275,11 @@ void setupCallbacks();
 bool shutdownCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
 bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &resp);
 bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
-bool simStepCB(mujoco_ros_msgs::SimStep::Request &req, mujoco_ros_msgs::SimStep::Response &resp);
 bool setModelStateCB(mujoco_ros_msgs::SetModelState::Request &req, mujoco_ros_msgs::SetModelState::Response &resp);
 bool getModelStateCB(mujoco_ros_msgs::GetModelState::Request &req, mujoco_ros_msgs::GetModelState::Response &resp);
+
+// Action calls
+void onStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal);
 
 // UI settings not contained in MuJoCo structures
 struct
@@ -304,7 +311,7 @@ struct
 	double ctrlnoiserate = 0.0;
 
 	// multi env
-	int multi_env_steps = 0;
+	int manual_env_steps = 0;
 
 	// watch
 	char field[mjMAXUITEXT] = "qpos";
