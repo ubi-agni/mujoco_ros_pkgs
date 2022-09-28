@@ -1,4 +1,6 @@
-mujoco_ros_msgs/ModelState model_state
+mujoco_ros_msgs/ModelState state
+bool set_pose
+bool set_twist
 ---
 bool success
 string status_message
