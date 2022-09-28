@@ -25,6 +25,7 @@ add_service_files(
     SetModelState.srv
     GetModelState.srv
     SetGeomProperties.srv
+    ResetBodyQPos.srv
 )
 
 add_action_files(

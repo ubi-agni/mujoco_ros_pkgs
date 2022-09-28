@@ -1,0 +1,5 @@
+uint8 env_id
+string name
+---
+bool success
+string status_message

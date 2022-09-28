@@ -75,6 +75,7 @@
 #include <mujoco_ros_msgs/SetModelState.h>
 #include <mujoco_ros_msgs/GetModelState.h>
 #include <mujoco_ros_msgs/SetGeomProperties.h>
+#include <mujoco_ros_msgs/ResetBodyQPos.h>
 
 #include <actionlib/server/simple_action_server.h>
 #include <std_srvs/Empty.h>
@@ -278,6 +279,7 @@ bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPau
 bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
 bool setModelStateCB(mujoco_ros_msgs::SetModelState::Request &req, mujoco_ros_msgs::SetModelState::Response &resp);
 bool getModelStateCB(mujoco_ros_msgs::GetModelState::Request &req, mujoco_ros_msgs::GetModelState::Response &resp);
+bool resetBodyQPosCB(mujoco_ros_msgs::ResetBodyQPos::Request &req, mujoco_ros_msgs::ResetBodyQPos::Response &resp);
 bool setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request &req,
                          mujoco_ros_msgs::SetGeomProperties::Response &resp);
 

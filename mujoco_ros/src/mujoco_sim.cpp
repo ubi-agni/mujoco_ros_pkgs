@@ -2307,6 +2307,7 @@ void setupCallbacks()
 	service_servers_.push_back(nh_->advertiseService("set_model_state", setModelStateCB));
 	service_servers_.push_back(nh_->advertiseService("get_model_state", getModelStateCB));
 	service_servers_.push_back(nh_->advertiseService("set_geom_properties", setGeomPropertiesCB));
+	service_servers_.push_back(nh_->advertiseService("reset_model_qpos", resetBodyQPosCB));
 
 	action_step_ =
 	    std::make_unique<actionlib::SimpleActionServer<mujoco_ros_msgs::StepAction>>(*nh_, "step", onStepGoal, false);
@@ -2532,6 +2533,42 @@ bool getModelStateCB(mujoco_ros_msgs::GetModelState::Request &req, mujoco_ros_ms
 	resp.state.reference_frame = "world";
 
 	resp.success = true;
+	return true;
+}
+
+bool resetBodyQPosCB(mujoco_ros_msgs::ResetBodyQPos::Request &req, mujoco_ros_msgs::ResetBodyQPos::Response &resp)
+{
+	uint env_id = (req.env_id);
+	ROS_DEBUG_STREAM_NAMED("mujoco", "Searching for env '/env" << env_id << "'");
+	MujocoEnvPtr env = environments::getEnvById(env_id);
+
+	if (env == nullptr) {
+		std::string error_msg = "Could not find environment with id " + env_id;
+		ROS_WARN_STREAM_NAMED("mujoco", error_msg);
+		resp.status_message = static_cast<decltype(resp.status_message)>(error_msg);
+		resp.success        = false;
+		return false;
+	}
+
+	int body_id = mj_name2id(env->model.get(), mjOBJ_BODY, req.name.c_str());
+	if (body_id == -1) {
+		std::string error_msg = "Could not find model (mujoco body) with name " + req.name + ". Trying to find geom...";
+		ROS_WARN_STREAM_NAMED("mujoco", error_msg);
+		int geom_id = mj_name2id(env->model.get(), mjOBJ_GEOM, req.name.c_str());
+		if (geom_id == -1) {
+			std::string error_msg = "Could not find model (mujoco geom) with name " + req.name;
+			ROS_WARN_STREAM_NAMED("mujoco", error_msg);
+			resp.status_message = static_cast<decltype(resp.status_message)>(error_msg);
+			resp.success        = false;
+			return false;
+		}
+		body_id = env->model->geom_bodyid[geom_id];
+	}
+
+	int jnt_adr = env->model->body_jntadr[body_id];
+	int num_jnt = env->model->body_jntnum[body_id];
+	mju_copy(env->data->qpos + env->model->jnt_qposadr[jnt_adr], env->model->qpos0 + env->model->jnt_qposadr[jnt_adr],
+	         num_jnt);
 	return true;
 }
 
