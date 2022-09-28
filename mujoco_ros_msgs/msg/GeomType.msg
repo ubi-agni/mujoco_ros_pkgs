@@ -1,0 +1,10 @@
+uint16 value
+uint16 PLANE=0
+uint16 HFIELD=1
+uint16 SPHERE=2
+uint16 CAPSULE=3
+uint16 ELLIPSOID=4
+uint16 CYLINDER=5
+uint16 BOX=6
+uint16 MESH=7
+uint16 GEOM_NONE = 1001

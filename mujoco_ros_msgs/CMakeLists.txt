@@ -13,6 +13,8 @@ add_message_files(
   FILES
     ScalarStamped.msg
     ModelState.msg
+    GeomProperties.msg
+    GeomType.msg
 )
 
 add_service_files(
@@ -22,6 +24,7 @@ add_service_files(
     ShutdownNS.srv
     SetModelState.srv
     GetModelState.srv
+    SetGeomProperties.srv
 )
 
 add_action_files(

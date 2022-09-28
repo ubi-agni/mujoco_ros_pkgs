@@ -2306,6 +2306,7 @@ void setupCallbacks()
 	service_servers_.push_back(nh_->advertiseService("reset", resetCB));
 	service_servers_.push_back(nh_->advertiseService("set_model_state", setModelStateCB));
 	service_servers_.push_back(nh_->advertiseService("get_model_state", getModelStateCB));
+	service_servers_.push_back(nh_->advertiseService("set_geom_properties", setGeomPropertiesCB));
 
 	action_step_ =
 	    std::make_unique<actionlib::SimpleActionServer<mujoco_ros_msgs::StepAction>>(*nh_, "step", onStepGoal, false);
@@ -2531,6 +2532,70 @@ bool getModelStateCB(mujoco_ros_msgs::GetModelState::Request &req, mujoco_ros_ms
 	resp.state.reference_frame = "world";
 
 	resp.success = true;
+	return true;
+}
+
+bool setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request &req,
+                         mujoco_ros_msgs::SetGeomProperties::Response &resp)
+{
+	uint env_id = (req.properties.env_id);
+	ROS_DEBUG_STREAM_NAMED("mujoco", "Searching for env '/env" << env_id << "'");
+	MujocoEnvPtr env = environments::getEnvById(env_id);
+
+	if (env == nullptr) {
+		std::string error_msg = "Could not find environment with id " + env_id;
+		ROS_WARN_STREAM_NAMED("mujoco", error_msg);
+		resp.status_message = static_cast<decltype(resp.status_message)>(error_msg);
+		resp.success        = false;
+		return false;
+	}
+
+	int geom_id = mj_name2id(env->model.get(), mjOBJ_GEOM, req.properties.name.c_str());
+	if (geom_id == -1) {
+		std::string error_msg = "Could not find model (mujoco body) with name " + req.properties.name;
+		ROS_WARN_STREAM_NAMED("mujoco", error_msg);
+		resp.status_message = static_cast<decltype(resp.status_message)>(error_msg);
+		resp.success        = false;
+		return false;
+	}
+
+	int body_id = env->model->geom_bodyid[geom_id];
+
+	// Lock mutex to prevent updating the body while a step is performed
+	std::unique_lock<std::mutex> lk(sim_mtx);
+
+	ROS_DEBUG_STREAM_NAMED("mujoco", "Changing properties of geom '" << req.properties.name.c_str() << "' ...");
+	if (req.set_mass) {
+		ROS_DEBUG_STREAM_NAMED("mujoco", "\tReplacing mass '" << env->model->body_mass[body_id] << "' with new mass '"
+		                                                      << req.properties.mass << "'");
+		env->model->body_mass[body_id] = req.properties.mass;
+	}
+	if (req.set_friction) {
+		ROS_DEBUG_STREAM_NAMED("mujoco", "\tReplacing friction '" << env->model->geom_friction[geom_id * 3] << ", "
+		                                                          << env->model->geom_friction[geom_id * 3 + 1] << ", "
+		                                                          << env->model->geom_friction[geom_id * 3 + 2]
+		                                                          << "' with new mass '" << req.properties.friction_slide
+		                                                          << ", " << req.properties.friction_spin << ", "
+		                                                          << req.properties.friction_roll << "'");
+		env->model->geom_friction[geom_id * 3]     = req.properties.friction_slide;
+		env->model->geom_friction[geom_id * 3 + 1] = req.properties.friction_spin;
+		env->model->geom_friction[geom_id * 3 + 2] = req.properties.friction_roll;
+	}
+	if (req.set_type) {
+		ROS_DEBUG_STREAM_NAMED("mujoco", "\tReplacing type '" << env->model->geom_type[geom_id] << "' with new type '"
+		                                                      << req.properties.type << "'");
+		env->model->geom_type[geom_id] = req.properties.type.value;
+	}
+
+	if (req.set_type || req.set_mass) {
+		mjtNum *qpos_tmp = mj_stackAlloc(env->data.get(), env->model->nq);
+		mju_copy(qpos_tmp, env->data->qpos, env->model->nq);
+		ROS_DEBUG_NAMED("mujoco", "Copied current qpos state");
+		mj_setConst(env->model.get(), env->data.get());
+		ROS_DEBUG_NAMED("mujoco", "Reset constants");
+		mju_copy(env->data->qpos, qpos_tmp, env->model->nq);
+		ROS_DEBUG_NAMED("mujoco", "Copied qpos state back to data");
+	}
 	return true;
 }
 
