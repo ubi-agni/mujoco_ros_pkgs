@@ -84,8 +84,7 @@ void MujocoRosSensorsPlugin::lastStageCallback(MujocoSim::mjModelPtr model, Mujo
 		cutoff = (model->sensor_cutoff[n] > 0 ? model->sensor_cutoff[n] : 1);
 
 		if (model->names[model->name_sensoradr[n]]) {
-			mju::strcat_arr(tmp, model->names + model->name_sensoradr[n]);
-			sensor_name = std::string(tmp);
+            sensor_name = mj_id2name(model.get(), mjOBJ_SENSOR, n);
 		} else {
 			continue;
 		}
@@ -203,8 +202,7 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 		site = mj_id2name(model.get(), model->sensor_objtype[n], site_id);
 
 		if (model->names[model->name_sensoradr[n]]) {
-			mju::strcat_arr(tmp, model->names + model->name_sensoradr[n]);
-			sensor_name = std::string(tmp);
+            sensor_name = mj_id2name(model.get(), mjOBJ_SENSOR, n);
 		} else {
 			ROS_WARN_STREAM_NAMED("sensors",
 			                      "Sensor name resolution error. Skipping sensor of type " << type << " on site " << site);
