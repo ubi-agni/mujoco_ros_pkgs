@@ -26,6 +26,8 @@
   <depend>controller_interface</depend>
   <depend>hardware_interface</depend>
   <depend>transmission_interface</depend>
+  <depend>joint_limits_interface</depend>
+  <depend>angles</depend>
 
   <depend version_gte="3.0.0">mujoco_ros</depend>
 

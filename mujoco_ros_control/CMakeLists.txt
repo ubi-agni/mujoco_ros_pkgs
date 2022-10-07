@@ -12,6 +12,8 @@ find_package(catkin REQUIRED COMPONENTS
   control_toolbox
   hardware_interface
   transmission_interface
+  joint_limits_interface
+  angles
   urdf
   mujoco_ros
 )
@@ -25,6 +27,8 @@ catkin_package(
   control_toolbox
   hardware_interface
   transmission_interface
+  joint_limits_interface
+  angles
   urdf
   mujoco_ros
  INCLUDE_DIRS include
