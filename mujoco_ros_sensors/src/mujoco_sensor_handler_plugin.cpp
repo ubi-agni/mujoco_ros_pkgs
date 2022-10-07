@@ -181,9 +181,9 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 {
 	// Wait for transforms to be available, then check if the frame ids exists
 	tf2_ros::Buffer tfBuffer;
+	tf2_ros::TransformListener tf_listener(tfBuffer);
 	ROS_INFO_NAMED("sensors", "sensors_plugin is waiting for /tf to be published ...");
 	ros::topic::waitForMessage<tf2_msgs::TFMessage>("/tf", *node_handle_);
-
 	ROS_INFO_NAMED("sensors", "/tf message received");
 
 	std::string sensor_name, site, frame_id;
@@ -207,12 +207,35 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 		bool global_frame = false;
 		frame_id          = "world";
 		switch (type) {
-			case mjSENS_FRAMEXAXIS:
-			case mjSENS_FRAMEYAXIS:
-			case mjSENS_FRAMEZAXIS:
-			case mjSENS_FRAMELINVEL:
-			case mjSENS_FRAMELINACC:
-			case mjSENS_FRAMEANGACC:
+			{
+				case mjSENS_FRAMEXAXIS:
+				case mjSENS_FRAMEYAXIS:
+				case mjSENS_FRAMEZAXIS:
+				case mjSENS_FRAMELINVEL:
+				case mjSENS_FRAMELINACC:
+				case mjSENS_FRAMEANGACC:
+					int refid = model->sensor_refid[n];
+					if (refid != -1) {
+						int reftype = model->sensor_reftype[n];
+						if (reftype == mjOBJ_SITE) {
+							refid   = model->site_bodyid[refid];
+							reftype = mjOBJ_BODY;
+						}
+						frame_id = mj_id2name(model.get(), reftype, refid);
+						if (!tfBuffer._frameExists(frame_id)) {
+							ROS_WARN_STREAM_NAMED("sensors", "Cannot find frame with id '"
+							                                     << frame_id
+							                                     << "' to publish sensor information from, skipping sensor.");
+							continue;
+						}
+						ROS_DEBUG_STREAM_NAMED("sensors", "Sensor has relative frame with id " << refid << " and type "
+						                                                                       << reftype << " and ref_frame "
+						                                                                       << frame_id);
+					}
+					sensor_map_[sensor_name] =
+					    std::pair(node_handle_->advertise<geometry_msgs::Vector3Stamped>(sensor_name, 10, true), frame_id);
+					break;
+			}
 			case mjSENS_SUBTREECOM:
 			case mjSENS_SUBTREELINVEL:
 			case mjSENS_SUBTREEANGMOM:
@@ -220,12 +243,31 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 				    std::pair(node_handle_->advertise<geometry_msgs::Vector3Stamped>(sensor_name, 10, true), frame_id);
 				global_frame = true;
 				break;
-
-			case mjSENS_FRAMEPOS:
-				sensor_map_[sensor_name] =
-				    std::pair(node_handle_->advertise<geometry_msgs::PointStamped>(sensor_name, 10, true), frame_id);
-				global_frame = true;
-				break;
+				{
+					case mjSENS_FRAMEPOS:
+						int refid = model->sensor_refid[n];
+						if (refid != -1) {
+							int reftype = model->sensor_reftype[n];
+							if (reftype == mjOBJ_SITE) {
+								refid   = model->site_bodyid[refid];
+								reftype = mjOBJ_BODY;
+							}
+							frame_id = mj_id2name(model.get(), reftype, refid);
+							if (!tfBuffer._frameExists(frame_id)) {
+								ROS_WARN_STREAM_NAMED(
+								    "sensors", "Cannot find frame with id '"
+								                   << frame_id << "' to publish sensor information from, skipping sensor.");
+								continue;
+							}
+							ROS_DEBUG_STREAM_NAMED("sensors", "Sensor has relative frame with id "
+							                                      << refid << " and type " << reftype << " and ref_frame "
+							                                      << frame_id);
+						}
+						sensor_map_[sensor_name] =
+						    std::pair(node_handle_->advertise<geometry_msgs::PointStamped>(sensor_name, 10, true), frame_id);
+						global_frame = true;
+						break;
+				}
 
 			case mjSENS_BALLQUAT:
 			case mjSENS_FRAMEQUAT:
@@ -236,7 +278,7 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 		}
 
 		// Check if sensor is in global frame and already setup
-		if (global_frame) {
+		if (global_frame || frame_id != "world") {
 			ROS_DEBUG_STREAM_NAMED("sensors", "Setting up sensor " << sensor_name << " on site " << site << " (frame_id: "
 			                                                       << frame_id << ") of type " << SENSOR_STRING[type]);
 			continue;
@@ -246,7 +288,7 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 		ROS_DEBUG_STREAM_NAMED("sensors", "Setting up sensor " << sensor_name << " on site " << site << " (frame_id: "
 		                                                       << frame_id << ") of type " << SENSOR_STRING[type]);
 
-		if (tf2_ros::Buffer()._frameExists(frame_id)) {
+		if (!tfBuffer._frameExists(frame_id)) {
 			ROS_WARN_STREAM_NAMED("sensors", "Cannot find frame with id '"
 			                                     << frame_id << "' to publish sensor information from, skipping sensor.");
 			continue;
