@@ -75,21 +75,16 @@ void MujocoRosSensorsPlugin::lastStageCallback(MujocoSim::mjModelPtr model, Mujo
 	int adr, type;
 	mjtNum cutoff;
 
-	char tmp[mjMAXUITEXT];
-	tmp[0] = '\0';
-
 	for (int n = 0; n < model->nsensor; n++) {
 		adr    = model->sensor_adr[n];
 		type   = model->sensor_type[n];
 		cutoff = (model->sensor_cutoff[n] > 0 ? model->sensor_cutoff[n] : 1);
 
 		if (model->names[model->name_sensoradr[n]]) {
-            sensor_name = mj_id2name(model.get(), mjOBJ_SENSOR, n);
+			sensor_name = mj_id2name(model.get(), mjOBJ_SENSOR, n);
 		} else {
 			continue;
 		}
-		// reset tmp string
-		tmp[0] = '\0';
 
 		if (sensor_map_.find(sensor_name) == sensor_map_.end())
 			continue;
@@ -191,7 +186,6 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 
 	ROS_INFO_NAMED("sensors", "/tf message received");
 
-	char tmp[mjMAXUITEXT];
 	std::string sensor_name, site, frame_id;
 	for (int n = 0; n < model->nsensor; n++) {
 		int adr       = model->sensor_adr[n];
@@ -202,14 +196,12 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 		site = mj_id2name(model.get(), model->sensor_objtype[n], site_id);
 
 		if (model->names[model->name_sensoradr[n]]) {
-            sensor_name = mj_id2name(model.get(), mjOBJ_SENSOR, n);
+			sensor_name = mj_id2name(model.get(), mjOBJ_SENSOR, n);
 		} else {
 			ROS_WARN_STREAM_NAMED("sensors",
 			                      "Sensor name resolution error. Skipping sensor of type " << type << " on site " << site);
 			continue;
 		}
-		// reset tmp string
-		tmp[0] = '\0';
 
 		// Global frame sensors
 		bool global_frame = false;
