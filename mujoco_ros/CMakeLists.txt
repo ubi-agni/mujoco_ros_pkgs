@@ -8,13 +8,17 @@ project(mujoco_ros)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Find MuJoCo
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
+find_package(mujoco REQUIRED)
+find_library(GLFW libglfw.so.3)
+
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED
     roscpp
     pluginlib
-    cmake_modules
     mujoco_ros_msgs
     urdf
     tf2
@@ -31,26 +35,13 @@ catkin_package(
     tf2
     tf2_ros
     tf2_geometry_msgs
-  INCLUDE_DIRS include
-  LIBRARIES ${PROJECT_NAME}
+  INCLUDE_DIRS include ${mujoco_INCLUDE_DIR}
+  LIBRARIES ${PROJECT_NAME} ${mujoco_LIBRARIES}
 )
 
 ###########
 ## Build ##
 ###########
-
-## Specify additional locations of header files
-## Your package locations should be listed before other locations
-
-link_directories(
-  ${catkin_LIBRARY_DIRS}
-)
-
-include_directories(
- include
- ${catkin_INCLUDE_DIRS}
- ${Boost_INCLUDE_DIR}
-)
 
 add_library(${PROJECT_NAME}
   src/mujoco_env.cpp
@@ -59,22 +50,19 @@ add_library(${PROJECT_NAME}
   src/plugin_utils.cpp
 )
 
-find_library(GLFW libglfw.so.3)
-LINK_DIRECTORIES( ${MUJOCO_HOME}/mujoco/bin )
 target_link_libraries(${PROJECT_NAME}
-   ${catkin_LIBRARIES}
-   mujoco
-   GL
-   GLEW
-   ${GLFW}
- )
- target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC
-  ${catkin_INCLUDE_DIRS}
- )
- add_dependencies(${PROJECT_NAME}
+  mujoco
+  ${catkin_LIBRARIES}
+  ${GLFW}
+)
+target_include_directories(${PROJECT_NAME}
+  PUBLIC include
+  SYSTEM PUBLIC ${catkin_INCLUDE_DIRS}
+)
+add_dependencies(${PROJECT_NAME}
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
   ${catkin_EXPORTED_TARGETS}
- )
+)
 
 add_executable(mujoco_server
   src/main.cpp

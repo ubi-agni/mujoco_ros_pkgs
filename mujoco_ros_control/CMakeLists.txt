@@ -31,10 +31,6 @@ catkin_package(
  LIBRARIES ${PROJECT_NAME} default_mujoco_ros_robot_hw_sim
 )
 
-# link_directories(
-#   ${catkin_LIBRARY_DIRS}
-# )
-
 include_directories(
     include
     ${Boost_INCLUDE_DIRS}
