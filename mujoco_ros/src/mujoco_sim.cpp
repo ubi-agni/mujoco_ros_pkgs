@@ -2637,6 +2637,20 @@ bool setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request &req,
 		env->model->geom_type[geom_id] = req.properties.type.value;
 	}
 
+	if (req.set_size) {
+		ROS_DEBUG_STREAM_NAMED("mujoco", "\tReplacing size '" << env->model->geom_size[geom_id * 3] << ", "
+		                                                      << env->model->geom_size[geom_id * 3 + 1] << ", "
+		                                                      << env->model->geom_size[geom_id * 3 + 2]
+		                                                      << "' with new size '" << req.properties.size_0 << ", "
+		                                                      << req.properties.size_1 << ", " << req.properties.size_2
+		                                                      << "'");
+		env->model->geom_size[geom_id * 3]     = req.properties.size_0;
+		env->model->geom_size[geom_id * 3 + 1] = req.properties.size_1;
+		env->model->geom_size[geom_id * 3 + 1] = req.properties.size_2;
+
+		mj_forward(env->model.get(), env->data.get());
+	}
+
 	if (req.set_type || req.set_mass) {
 		mjtNum *qpos_tmp = mj_stackAlloc(env->data.get(), env->model->nq);
 		mju_copy(qpos_tmp, env->data->qpos, env->model->nq);
