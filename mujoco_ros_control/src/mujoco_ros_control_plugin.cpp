@@ -181,6 +181,8 @@ void MujocoRosControlPlugin::controlCallback(MujocoSim::mjModelPtr /*model*/, Mu
 void MujocoRosControlPlugin::reset()
 {
 	ROS_INFO("Resetting mujoco_ros_control");
+	last_update_sim_time_ros_ = ros::Time();
+	last_write_sim_time_ros_  = ros::Time();
 }
 
 std::string MujocoRosControlPlugin::getURDF(std::string param_name) const
