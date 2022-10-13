@@ -253,7 +253,7 @@ void init(std::string modelfile)
 		ROS_DEBUG_NAMED("mujoco", "Will run in headless mode!");
 	}
 
-	pub_clock_ = nh_->advertise<rosgraph_msgs::Clock>("/clock", 10);
+	pub_clock_ = nh_->advertise<rosgraph_msgs::Clock>("/clock", 1);
 
 	// If not already set, set use_sim_time param manually
 	if (!(nh_->hasParam("/use_sim_time")))
