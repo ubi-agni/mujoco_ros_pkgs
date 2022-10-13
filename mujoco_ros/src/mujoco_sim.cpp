@@ -344,8 +344,6 @@ void resetSim()
 {
 	if (main_env_->model) {
 		mj_resetData(main_env_->model.get(), main_env_->data.get());
-		if (last_time_ > 0)
-			main_env_->data->time = last_time_;
 		loadInitialJointStates(main_env_->model, main_env_->data);
 		main_env_->reset();
 		mj_forward(main_env_->model.get(), main_env_->data.get());
