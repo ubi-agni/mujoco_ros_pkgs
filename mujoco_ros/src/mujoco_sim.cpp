@@ -165,6 +165,15 @@ void setupVFS(const std::string &filename, const std::string &content /* = std::
 
 void init(std::string modelfile)
 {
+	// If not already set, set use_sim_time param manually
+	// This needs to happen before the NodeHandle creation
+	bool use_sim_time_set;
+	ros::param::get("/use_sim_time", use_sim_time_set);
+	if (!use_sim_time_set) {
+		ROS_INFO_NAMED("mujoco", "use_sim_time was not set. Setting it manually");
+		ros::param::set("/use_sim_time", true);
+	}
+
 	nh_.reset(new ros::NodeHandle("~"));
 
 	settings_.exitrequest = 0;
@@ -254,10 +263,6 @@ void init(std::string modelfile)
 	}
 
 	pub_clock_ = nh_->advertise<rosgraph_msgs::Clock>("/clock", 1);
-
-	// If not already set, set use_sim_time param manually
-	if (!(nh_->hasParam("/use_sim_time")))
-		nh_->setParam("/use_sim_time", true);
 
 	if (!modelfile.empty()) {
 		std::strcpy(filename_, modelfile.c_str());
