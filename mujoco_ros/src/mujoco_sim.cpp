@@ -397,8 +397,8 @@ namespace detail {
 
 void publishSimTime(mjtNum time)
 {
-	rosgraph_msgs::Clock ros_time;
-	ros_time.clock.fromSec(time);
+	rosgraph_msgs::ClockPtr ros_time(new rosgraph_msgs::Clock);
+	ros_time->clock.fromSec(time);
 	pub_clock_.publish(ros_time);
 	last_time_ = time;
 }

@@ -233,14 +233,14 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 						                                                                       << frame_id);
 					}
 					sensor_map_[sensor_name] =
-					    std::pair(node_handle_->advertise<geometry_msgs::Vector3Stamped>(sensor_name, 10, true), frame_id);
+					    std::pair(node_handle_->advertise<geometry_msgs::Vector3Stamped>(sensor_name, 1, true), frame_id);
 					break;
 			}
 			case mjSENS_SUBTREECOM:
 			case mjSENS_SUBTREELINVEL:
 			case mjSENS_SUBTREEANGMOM:
 				sensor_map_[sensor_name] =
-				    std::pair(node_handle_->advertise<geometry_msgs::Vector3Stamped>(sensor_name, 10, true), frame_id);
+				    std::pair(node_handle_->advertise<geometry_msgs::Vector3Stamped>(sensor_name, 1, true), frame_id);
 				global_frame = true;
 				break;
 				{
@@ -264,7 +264,7 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 							                                      << frame_id);
 						}
 						sensor_map_[sensor_name] =
-						    std::pair(node_handle_->advertise<geometry_msgs::PointStamped>(sensor_name, 10, true), frame_id);
+						    std::pair(node_handle_->advertise<geometry_msgs::PointStamped>(sensor_name, 1, true), frame_id);
 						global_frame = true;
 						break;
 				}
@@ -272,7 +272,7 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 			case mjSENS_BALLQUAT:
 			case mjSENS_FRAMEQUAT:
 				sensor_map_[sensor_name] =
-				    std::pair(node_handle_->advertise<geometry_msgs::QuaternionStamped>(sensor_name, 10, true), frame_id);
+				    std::pair(node_handle_->advertise<geometry_msgs::QuaternionStamped>(sensor_name, 1, true), frame_id);
 				global_frame = true;
 				break;
 		}
@@ -303,7 +303,7 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 			case mjSENS_MAGNETOMETER:
 			case mjSENS_BALLANGVEL:
 				sensor_map_[sensor_name] =
-				    std::pair(node_handle_->advertise<geometry_msgs::Vector3Stamped>(sensor_name, 10, true), frame_id);
+				    std::pair(node_handle_->advertise<geometry_msgs::Vector3Stamped>(sensor_name, 1, true), frame_id);
 				break;
 
 			case mjSENS_TOUCH:
@@ -322,7 +322,7 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 			case mjSENS_TENDONLIMITVEL:
 			case mjSENS_TENDONLIMITFRC:
 				sensor_map_[sensor_name] =
-				    std::pair(node_handle_->advertise<mujoco_ros_msgs::ScalarStamped>(sensor_name, 10, true), frame_id);
+				    std::pair(node_handle_->advertise<mujoco_ros_msgs::ScalarStamped>(sensor_name, 1, true), frame_id);
 				break;
 
 			default:
