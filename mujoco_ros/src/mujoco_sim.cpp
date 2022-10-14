@@ -400,7 +400,6 @@ void publishSimTime(mjtNum time)
 	rosgraph_msgs::Clock ros_time;
 	ros_time.clock.fromSec(time);
 	pub_clock_.publish(ros_time);
-	last_time_ = time;
 }
 
 void eventloop(void)
@@ -792,10 +791,6 @@ void loadModel(void)
 
 void setupEnv(MujocoEnvPtr env)
 {
-	// if time == 0, then sim is loaded for the first time
-	if (last_time_ > 0)
-		env->data->time = last_time_;
-
 	loadInitialJointStates(env->model, env->data);
 
 	mj_forward(env->model.get(), env->data.get());
