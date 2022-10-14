@@ -192,9 +192,6 @@ static std::vector<ros::ServiceServer> service_servers_;
 // Actions
 static std::unique_ptr<actionlib::SimpleActionServer<mujoco_ros_msgs::StepAction>> action_step_;
 
-// Keep track of time for resets to not mess up ros time
-static mjtNum last_time_ = -1;
-
 // constants
 const int maxgeom_          = 5000; // preallocated geom array in mjvScene
 const double syncmisalign_  = 0.1; // maximum time mis-alignment before re-sync
