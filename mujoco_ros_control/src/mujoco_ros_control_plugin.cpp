@@ -147,7 +147,13 @@ bool MujocoRosControlPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr 
 
 void MujocoRosControlPlugin::controlCallback(MujocoSim::mjModelPtr /*model*/, MujocoSim::mjDataPtr /*data*/)
 {
-	ros::Time sim_time_ros   = ros::Time::now();
+	ros::Time sim_time_ros = ros::Time::now();
+	if (sim_time_ros < last_update_sim_time_ros_) {
+		ROS_INFO_NAMED("mujoco_ros_control", "Resetting mujoco_ros_control due to time reset");
+		last_update_sim_time_ros_ = ros::Time();
+		last_write_sim_time_ros_  = ros::Time();
+	}
+
 	ros::Duration sim_period = sim_time_ros - last_update_sim_time_ros_;
 	bool reset_ctrls         = last_update_sim_time_ros_.isZero();
 
@@ -173,12 +179,7 @@ void MujocoRosControlPlugin::controlCallback(MujocoSim::mjModelPtr /*model*/, Mu
 	last_write_sim_time_ros_ = sim_time_ros;
 }
 
-void MujocoRosControlPlugin::reset()
-{
-	ROS_INFO("Resetting mujoco_ros_control");
-	last_update_sim_time_ros_ = ros::Time();
-	last_write_sim_time_ros_  = ros::Time();
-}
+void MujocoRosControlPlugin::reset() {}
 
 std::string MujocoRosControlPlugin::getURDF(std::string param_name) const
 {

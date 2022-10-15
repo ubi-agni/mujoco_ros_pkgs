@@ -195,13 +195,7 @@ void init(std::string modelfile)
 		sim_mode_ = simMode::SINGLE;
 	}
 
-	pub_clock_  = nh_->advertise<rosgraph_msgs::Clock>("/clock", 1);
-	double time = ros::Time::now().toSec();
-	if (time > 0) {
-		ROS_DEBUG_STREAM_NAMED("mujoco", "ROS time was not 0, starting with time at " << time << " seconds");
-		last_time_ = (mjtNum)time;
-	}
-	publishSimTime(time);
+	pub_clock_ = nh_->advertise<rosgraph_msgs::Clock>("/clock", 1);
 
 	nh_->param<bool>("benchmark_time", benchmark_env_time_, false);
 
