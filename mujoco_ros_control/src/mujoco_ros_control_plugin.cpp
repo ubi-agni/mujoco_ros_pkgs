@@ -149,24 +149,19 @@ void MujocoRosControlPlugin::controlCallback(MujocoSim::mjModelPtr /*model*/, Mu
 {
 	ros::Time sim_time_ros   = ros::Time::now();
 	ros::Duration sim_period = sim_time_ros - last_update_sim_time_ros_;
+	bool reset_ctrls         = last_update_sim_time_ros_.isZero();
 
 	robot_hw_sim_->eStopActive(e_stop_active_);
 
-	if (sim_period >= control_period_) {
+	if (sim_period >= control_period_ || (reset_ctrls && !sim_period.isZero())) {
 		last_update_sim_time_ros_ = sim_time_ros;
 		robot_hw_sim_->readSim(sim_time_ros, sim_period);
 
-		bool reset_ctrls;
 		if (e_stop_active_) {
-			reset_ctrls         = false;
 			last_e_stop_active_ = true;
-		} else {
-			if (last_e_stop_active_) {
-				reset_ctrls         = true;
-				last_e_stop_active_ = false;
-			} else {
-				reset_ctrls = false;
-			}
+		} else if (last_e_stop_active_) {
+			reset_ctrls         = true;
+			last_e_stop_active_ = false;
 		}
 
 		controller_manager_->update(sim_time_ros, sim_period, reset_ctrls);
