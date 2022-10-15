@@ -452,10 +452,6 @@ void simulate(void)
 		model = main_env_->model;
 		data  = main_env_->data;
 
-		if (data) {
-			publishSimTime(data->time);
-		}
-
 		if (settings_.run && settings_.busywait) {
 			std::this_thread::yield();
 		} else {
