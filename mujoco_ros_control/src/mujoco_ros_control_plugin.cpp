@@ -141,7 +141,7 @@ bool MujocoRosControlPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr 
 		return false;
 	}
 
-	ROS_INFO_NAMED("mujoco_ros_control", "Loaded mujoco_ros_control");
+	ROS_INFO("Loaded mujoco_ros_control");
 	return true;
 }
 
@@ -180,7 +180,7 @@ void MujocoRosControlPlugin::controlCallback(MujocoSim::mjModelPtr /*model*/, Mu
 
 void MujocoRosControlPlugin::reset()
 {
-	ROS_INFO_NAMED("mujoco_ros_control", "Resetting mujoco_ros_control");
+	ROS_INFO("Resetting mujoco_ros_control");
 }
 
 std::string MujocoRosControlPlugin::getURDF(std::string param_name) const
