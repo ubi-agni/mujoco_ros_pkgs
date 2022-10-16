@@ -173,10 +173,10 @@ void MujocoRosControlPlugin::controlCallback(MujocoSim::mjModelPtr /*model*/, Mu
 		controller_manager_->update(sim_time_ros, sim_period, reset_ctrls);
 	}
 
-	if (last_update_sim_time_ros_.toNSec() > 0.0 && (sim_time_ros - last_write_sim_time_ros_).toNSec() > 0.0)
+	if (!last_update_sim_time_ros_.isZero() && (sim_time_ros > last_write_sim_time_ros_)) {
 		robot_hw_sim_->writeSim(sim_time_ros, sim_time_ros - last_write_sim_time_ros_);
-
-	last_write_sim_time_ros_ = sim_time_ros;
+		last_write_sim_time_ros_ = sim_time_ros;
+	}
 }
 
 void MujocoRosControlPlugin::reset() {}
