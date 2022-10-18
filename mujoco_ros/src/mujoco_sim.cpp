@@ -290,9 +290,14 @@ void init(std::string modelfile)
 			if (parallel_env->loop_thread != nullptr) {
 				parallel_env->loop_thread->join();
 				ROS_DEBUG_STREAM_NAMED("mujoco", "Joined loop thread of " << env->name);
+				environments::unregisterEnv(env->data.get());
 			}
 		}
+	} else {
+		environments::unregisterEnv(main_env_->data.get());
 	}
+
+	env_list_.clear();
 
 	if (vis_)
 		uiClearCallback(window_);

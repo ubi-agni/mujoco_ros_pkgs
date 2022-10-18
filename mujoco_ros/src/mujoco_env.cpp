@@ -70,6 +70,22 @@ MujocoEnvPtr getEnvById(uint id)
 	return nullptr;
 }
 
+void unregisterEnv(mjData *data)
+{
+	if (env_map_.find(data) != env_map_.end()) {
+		env_map_.erase(data);
+	}
+}
+
+void unregisterEnv(uint id)
+{
+	for (std::pair<mjData *, MujocoEnvPtr> element : env_map_) {
+		if (element.second->name == "/env" + id || (element.second->name == "/" && id == 0)) {
+			env_map_.erase(element.second->data.get());
+		}
+	}
+}
+
 } // end namespace environments
 
 MujocoEnvParallel::MujocoEnvParallel(const std::string &ros_ns, const std::string &launchfile,

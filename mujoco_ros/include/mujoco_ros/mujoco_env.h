@@ -75,6 +75,24 @@ MujocoEnvPtr getEnv(mjData *data);
  */
 MujocoEnvPtr getEnvById(uint id);
 
+/**
+ * @brief Unregisters an mjData/MujocoEnvPtr entry in the static map resolved by mjData pointer.
+ * This is necessary to deallocate the environment and its plugins, once it is not needed anymore, to greacefully shut
+ * down.
+ *
+ * @param data mjData pointer which is used as key in the map to retrieve the correct MujocoEnvPtr.
+ */
+void unregisterEnv(mjData *data);
+
+/**
+ * @brief Unregisters an mjData/MujocoEnvPtr entry in the static map resolved by environment id.
+ * This is necessary to deallocate the environment and its plugins, once it is not needed anymore, to greacefully shut
+ * down.
+ *
+ * @param id id of the MujocoEnv that should be unregistered.
+ */
+void unregisterEnv(uint id);
+
 } // end namespace environments
 
 struct MujocoEnv
