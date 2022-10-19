@@ -18,12 +18,15 @@ if(NOT mujoco_FOUND)
 
 	if(mujoco_INCLUDE_DIR AND mujoco_LIBRARIES)
 		set(mujoco_FOUND TRUE)
-		add_library(mujoco SHARED IMPORTED)
-		set_property(TARGET mujoco PROPERTY IMPORTED_LOCATION "${mujoco_LIBRARIES}")
-		set_target_properties(mujoco PROPERTIES
+		add_library(mujoco::mujoco SHARED IMPORTED)
+		set_property(TARGET mujoco::mujoco PROPERTY IMPORTED_LOCATION "${mujoco_LIBRARIES}")
+		set_target_properties(mujoco::mujoco PROPERTIES
 			INTERFACE_INCLUDE_DIRECTORIES "${mujoco_INCLUDE_DIR}"
 		)
 	else()
 		message(FATAL_ERROR "Failed to find mujoco")
 	endif()
 endif()
+
+set(mujoco_LIBRARIES mujoco::mujoco)
+get_target_property(mujoco_INCLUDE_DIR mujoco::mujoco INTERFACE_INCLUDE_DIRECTORIES)
