@@ -2,10 +2,10 @@ find_package(mujoco QUIET NO_MODULE)
 
 if(NOT mujoco_FOUND)
 	# Find headers
-	find_file(mujoco_INCLUDE_DIR include/mujoco/mujoco.h PATHS ENV MUJOCO_DIR)
-	if(mujoco_INCLUDE_DIR)
-		get_filename_component(mujoco_INCLUDE_DIR ${mujoco_INCLUDE_DIR} PATH)
-		get_filename_component(mujoco_INCLUDE_DIR ${mujoco_INCLUDE_DIR} PATH)
+	find_file(mujoco_INCLUDE_DIRS include/mujoco/mujoco.h PATHS ENV MUJOCO_DIR)
+	if(mujoco_INCLUDE_DIRS)
+		get_filename_component(mujoco_INCLUDE_DIRS ${mujoco_INCLUDE_DIRS} PATH)
+		get_filename_component(mujoco_INCLUDE_DIRS ${mujoco_INCLUDE_DIRS} PATH)
 	endif()
 
 	# Find library
@@ -16,12 +16,12 @@ if(NOT mujoco_FOUND)
 	include(CMakeFindDependencyMacro)
 	find_dependency(OpenGL REQUIRED)
 
-	if(mujoco_INCLUDE_DIR AND mujoco_LIBRARIES)
+	if(mujoco_INCLUDE_DIRS AND mujoco_LIBRARIES)
 		set(mujoco_FOUND TRUE)
 		add_library(mujoco::mujoco SHARED IMPORTED)
 		set_property(TARGET mujoco::mujoco PROPERTY IMPORTED_LOCATION "${mujoco_LIBRARIES}")
 		set_target_properties(mujoco::mujoco PROPERTIES
-			INTERFACE_INCLUDE_DIRECTORIES "${mujoco_INCLUDE_DIR}"
+			INTERFACE_INCLUDE_DIRECTORIES "${mujoco_INCLUDE_DIRS}"
 		)
 	else()
 		message(FATAL_ERROR "Failed to find mujoco")
@@ -29,4 +29,4 @@ if(NOT mujoco_FOUND)
 endif()
 
 set(mujoco_LIBRARIES mujoco::mujoco)
-get_target_property(mujoco_INCLUDE_DIR mujoco::mujoco INTERFACE_INCLUDE_DIRECTORIES)
+get_target_property(mujoco_INCLUDE_DIRS mujoco::mujoco INTERFACE_INCLUDE_DIRECTORIES)

@@ -35,7 +35,7 @@ catkin_package(
     tf2
     tf2_ros
     tf2_geometry_msgs
-  INCLUDE_DIRS include ${mujoco_INCLUDE_DIR}
+  INCLUDE_DIRS include ${mujoco_INCLUDE_DIRS}
   LIBRARIES ${PROJECT_NAME} ${mujoco_LIBRARIES}
 )
 
