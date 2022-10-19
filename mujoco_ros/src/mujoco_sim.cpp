@@ -458,7 +458,7 @@ void simulate(void)
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
 
-		if (model) {
+		if (model && data) {
 			std::lock_guard<std::mutex> lk(sim_mtx);
 			if (settings_.run && sim_mode_ == simMode::SINGLE) {
 				double tmstart = glfwGetTime();
