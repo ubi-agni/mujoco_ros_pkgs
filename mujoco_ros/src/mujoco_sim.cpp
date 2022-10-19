@@ -165,13 +165,13 @@ void setupVFS(const std::string &filename, const std::string &content /* = std::
 
 void init(std::string modelfile)
 {
-	// If not already set, set use_sim_time param manually
-	// This needs to happen before the NodeHandle creation
+	// use_sim_time should be set in roslaunch before running any node.
+	// Otherwise nodes might behave unintendedly. Hence, issue an error in this case.
 	bool use_sim_time_set;
-	ros::param::get("/use_sim_time", use_sim_time_set);
-	if (!use_sim_time_set) {
-		ROS_INFO_NAMED("mujoco", "use_sim_time was not set. Setting it manually");
-		ros::param::set("/use_sim_time", true);
+	if (!ros::param::get("/use_sim_time", use_sim_time_set) || !use_sim_time_set) {
+		ROS_FATAL_NAMED("mujoco", "/use_sim_time ROS param is not true. Make sure it is set before starting any node, "
+		                          "otherwise nodes might behave unexpectedly.");
+		return;
 	}
 
 	nh_.reset(new ros::NodeHandle("~"));
