@@ -1,4 +1,4 @@
-find_package(mujoco QUIET NO_MODULE)
+find_package(mujoco::mujoco QUIET NO_MODULE)
 
 if(NOT mujoco_FOUND)
 	# Find headers
