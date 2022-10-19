@@ -2652,7 +2652,7 @@ bool setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request &req,
 		                                                      << "'");
 		env->model->geom_size[geom_id * 3]     = req.properties.size_0;
 		env->model->geom_size[geom_id * 3 + 1] = req.properties.size_1;
-		env->model->geom_size[geom_id * 3 + 1] = req.properties.size_2;
+		env->model->geom_size[geom_id * 3 + 2] = req.properties.size_2;
 
 		mj_forward(env->model.get(), env->data.get());
 	}
