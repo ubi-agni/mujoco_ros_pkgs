@@ -195,11 +195,13 @@ void init(std::string modelfile)
 		sim_mode_ = simMode::SINGLE;
 	}
 
+	pub_clock_  = nh_->advertise<rosgraph_msgs::Clock>("/clock", 1);
 	double time = ros::Time::now().toSec();
 	if (time > 0) {
 		ROS_DEBUG_STREAM_NAMED("mujoco", "ROS time was not 0, starting with time at " << time << " seconds");
-		last_time_ = time;
+		last_time_ = (mjtNum)time;
 	}
+	publishSimTime(time);
 
 	nh_->param<bool>("benchmark_time", benchmark_env_time_, false);
 
@@ -261,8 +263,6 @@ void init(std::string modelfile)
 	} else {
 		ROS_DEBUG_NAMED("mujoco", "Will run in headless mode!");
 	}
-
-	pub_clock_ = nh_->advertise<rosgraph_msgs::Clock>("/clock", 1);
 
 	if (!modelfile.empty()) {
 		std::strcpy(filename_, modelfile.c_str());
@@ -355,8 +355,6 @@ void resetSim()
 
 void synchedMultiSimStep()
 {
-	publishSimTime(main_env_->data->time);
-
 	std::chrono::_V2::system_clock::time_point t0, t1;
 
 	if (benchmark_env_time_)
@@ -804,8 +802,6 @@ void setupEnv(MujocoEnvPtr env)
 
 	mj_forward(env->model.get(), env->data.get());
 
-	publishSimTime(env->data->time);
-
 	ROS_DEBUG_NAMED("mujoco", "resetting noise ...");
 	// Allocate ctrlnoise
 	free(env->ctrlnoise);
@@ -1184,7 +1180,6 @@ void uiEvent(mjuiState *state)
 					mju_copy(main_env_->data->mocap_quat, main_env_->model->key_mquat + i * 4 * main_env_->model->nmocap,
 					         4 * main_env_->model->nmocap);
 					mj_forward(main_env_->model.get(), main_env_->data.get());
-					publishSimTime(main_env_->data->time);
 					profilerUpdate(main_env_->model, main_env_->data);
 					sensorUpdate(main_env_->model, main_env_->data);
 					updateSettings(main_env_->model);
