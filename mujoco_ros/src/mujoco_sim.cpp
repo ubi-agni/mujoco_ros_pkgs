@@ -315,6 +315,7 @@ void init(std::string modelfile)
 	}
 	service_servers_.clear();
 	action_step_->shutdown();
+	action_step_.reset();
 
 	ROS_DEBUG_NAMED("mujoco", "Cleanup done");
 }
