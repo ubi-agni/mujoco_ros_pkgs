@@ -40,8 +40,6 @@
 
 #include <ros/ros.h>
 
-#include <tf2_ros/transform_listener.h>
-
 #include <mujoco_ros/common_types.h>
 #include <mujoco_ros/plugin_utils.h>
 

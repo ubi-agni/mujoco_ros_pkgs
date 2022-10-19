@@ -39,7 +39,6 @@
 #include <mujoco_ros_sensors/mujoco_sensor_handler_plugin.h>
 
 #include <pluginlib/class_list_macros.h>
-#include <tf2_msgs/TFMessage.h>
 
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/QuaternionStamped.h>
@@ -179,13 +178,6 @@ void MujocoRosSensorsPlugin::lastStageCallback(MujocoSim::mjModelPtr model, Mujo
 
 void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim::mjDataPtr data)
 {
-	// Wait for transforms to be available, then check if the frame ids exists
-	tf2_ros::Buffer tfBuffer;
-	tf2_ros::TransformListener tf_listener(tfBuffer);
-	ROS_INFO_NAMED("sensors", "sensors_plugin is waiting for /tf to be published ...");
-	ros::topic::waitForMessage<tf2_msgs::TFMessage>("/tf", *node_handle_);
-	ROS_INFO_NAMED("sensors", "/tf message received");
-
 	std::string sensor_name, site, frame_id;
 	for (int n = 0; n < model->nsensor; n++) {
 		int adr       = model->sensor_adr[n];
@@ -222,12 +214,6 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 							reftype = mjOBJ_BODY;
 						}
 						frame_id = mj_id2name(model.get(), reftype, refid);
-						if (!tfBuffer._frameExists(frame_id)) {
-							ROS_WARN_STREAM_NAMED("sensors", "Cannot find frame with id '"
-							                                     << frame_id
-							                                     << "' to publish sensor information from, skipping sensor.");
-							continue;
-						}
 						ROS_DEBUG_STREAM_NAMED("sensors", "Sensor has relative frame with id " << refid << " and type "
 						                                                                       << reftype << " and ref_frame "
 						                                                                       << frame_id);
@@ -253,12 +239,6 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 								reftype = mjOBJ_BODY;
 							}
 							frame_id = mj_id2name(model.get(), reftype, refid);
-							if (!tfBuffer._frameExists(frame_id)) {
-								ROS_WARN_STREAM_NAMED(
-								    "sensors", "Cannot find frame with id '"
-								                   << frame_id << "' to publish sensor information from, skipping sensor.");
-								continue;
-							}
 							ROS_DEBUG_STREAM_NAMED("sensors", "Sensor has relative frame with id "
 							                                      << refid << " and type " << reftype << " and ref_frame "
 							                                      << frame_id);
@@ -287,12 +267,6 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 		frame_id = mj_id2name(model.get(), mjOBJ_BODY, parent_id);
 		ROS_DEBUG_STREAM_NAMED("sensors", "Setting up sensor " << sensor_name << " on site " << site << " (frame_id: "
 		                                                       << frame_id << ") of type " << SENSOR_STRING[type]);
-
-		if (!tfBuffer._frameExists(frame_id)) {
-			ROS_WARN_STREAM_NAMED("sensors", "Cannot find frame with id '"
-			                                     << frame_id << "' to publish sensor information from, skipping sensor.");
-			continue;
-		}
 
 		switch (type) {
 			case mjSENS_ACCELEROMETER:
