@@ -304,9 +304,6 @@ void init(std::string modelfile)
 
 	ROS_DEBUG_NAMED("mujoco", "Sim thread terminated");
 
-	sim_mtx.unlock();
-	render_mtx.unlock();
-
 	main_env_.reset();
 	plugin_utils::unloadPluginloader();
 	mjv_freeScene(&scn_);
@@ -412,24 +409,23 @@ void eventloop(void)
 	while (ros::ok() &&
 	       ((!settings_.exitrequest && !vis_) || (!settings_.exitrequest && !glfwWindowShouldClose(window_)))) {
 		// Critical operations
-		sim_mtx.lock();
+		{
+			std::lock_guard<std::mutex> lk(sim_mtx);
 
-		if (settings_.loadrequest == 1) {
-			loadModel();
-		} else if (settings_.loadrequest > 1) {
-			settings_.loadrequest = 1;
-		}
+			if (settings_.loadrequest == 1) {
+				loadModel();
+			} else if (settings_.loadrequest > 1) {
+				settings_.loadrequest = 1;
+			}
 
-		if (vis_) {
-			// Handle events (via callbacks)
-			glfwPollEvents();
+			if (vis_) {
+				// Handle events (via callbacks)
+				glfwPollEvents();
 
-			// Prepare to render
-			prepare(main_env_->model, main_env_->data);
-		}
-
-		// Allow simulation thread to run
-		sim_mtx.unlock();
+				// Prepare to render
+				prepare(main_env_->model, main_env_->data);
+			}
+		} // unlocks sim_mtx
 
 		// render while sim is running
 		if (vis_)
@@ -461,9 +457,8 @@ void simulate(void)
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
 
-		sim_mtx.lock();
-
 		if (model) {
+			std::lock_guard<std::mutex> lk(sim_mtx);
 			if (settings_.run && sim_mode_ == simMode::SINGLE) {
 				double tmstart = glfwGetTime();
 
@@ -567,8 +562,7 @@ void simulate(void)
 					mj_forward(model.get(), data.get());
 				}
 			}
-		}
-		sim_mtx.unlock();
+		} // unlocks sim_mtx
 
 		std::string modelfile;
 		nh_->getParam("modelfile", modelfile);
@@ -958,7 +952,7 @@ int uiPredicate(int category, void *userdata)
 
 void render(GLFWwindow *window)
 {
-	render_mtx.lock();
+	std::lock_guard<std::mutex> lk(render_mtx);
 
 	// get 3D rectangle and reduced for profiler
 	mjrRect rect      = uistate_.rect[3];
@@ -1031,7 +1025,6 @@ void render(GLFWwindow *window)
 
 	// finalize
 	glfwSwapBuffers(window);
-	render_mtx.unlock();
 }
 
 // Set window layout
@@ -2435,7 +2428,7 @@ bool setModelStateCB(mujoco_ros_msgs::SetModelState::Request &req, mujoco_ros_ms
 	geometry_msgs::Twist target_twist;
 
 	// Lock mutex to prevent updating the body while a step is performed
-	std::unique_lock<std::mutex> lk(sim_mtx);
+	std::lock_guard<std::mutex> lk(sim_mtx);
 	if (req.state.reference_frame != "" && req.state.reference_frame != "world") {
 		geometry_msgs::PoseStamped init_pose;
 		init_pose.header          = std_msgs::Header();
@@ -2614,7 +2607,7 @@ bool setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request &req,
 	int body_id = env->model->geom_bodyid[geom_id];
 
 	// Lock mutex to prevent updating the body while a step is performed
-	std::unique_lock<std::mutex> lk(sim_mtx);
+	std::lock_guard<std::mutex> lk(sim_mtx);
 
 	ROS_DEBUG_STREAM_NAMED("mujoco", "Changing properties of geom '" << req.properties.name.c_str() << "' ...");
 	if (req.set_mass) {
@@ -2654,6 +2647,8 @@ bool setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request &req,
 	}
 
 	if (req.set_type || req.set_mass) {
+		std::lock_guard<std::mutex> lk(render_mtx); // Prevent rendering the reset to q0
+
 		mjtNum *qpos_tmp = mj_stackAlloc(env->data.get(), env->model->nq);
 		mju_copy(qpos_tmp, env->data->qpos, env->model->nq);
 		ROS_DEBUG_NAMED("mujoco", "Copied current qpos state");
