@@ -72,10 +72,10 @@
 #include <mujoco_ros_msgs/SetPause.h>
 #include <mujoco_ros_msgs/StepAction.h>
 #include <mujoco_ros_msgs/StepGoal.h>
-#include <mujoco_ros_msgs/SetModelState.h>
-#include <mujoco_ros_msgs/GetModelState.h>
+#include <mujoco_ros_msgs/SetBodyState.h>
+#include <mujoco_ros_msgs/GetBodyState.h>
 #include <mujoco_ros_msgs/SetGeomProperties.h>
-#include <mujoco_ros_msgs/ResetBodyQPos.h>
+#include <mujoco_ros_msgs/GetGeomProperties.h>
 
 #include <actionlib/server/simple_action_server.h>
 #include <std_srvs/Empty.h>
@@ -277,11 +277,12 @@ void setupCallbacks();
 bool shutdownCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
 bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &resp);
 bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
-bool setModelStateCB(mujoco_ros_msgs::SetModelState::Request &req, mujoco_ros_msgs::SetModelState::Response &resp);
-bool getModelStateCB(mujoco_ros_msgs::GetModelState::Request &req, mujoco_ros_msgs::GetModelState::Response &resp);
-bool resetBodyQPosCB(mujoco_ros_msgs::ResetBodyQPos::Request &req, mujoco_ros_msgs::ResetBodyQPos::Response &resp);
+bool setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req, mujoco_ros_msgs::SetBodyState::Response &resp);
+bool getBodyStateCB(mujoco_ros_msgs::GetBodyState::Request &req, mujoco_ros_msgs::GetBodyState::Response &resp);
 bool setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request &req,
                          mujoco_ros_msgs::SetGeomProperties::Response &resp);
+bool getGeomPropertiesCB(mujoco_ros_msgs::GetGeomProperties::Request &req,
+                         mujoco_ros_msgs::GetGeomProperties::Response &resp);
 
 // Action calls
 void onStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal);

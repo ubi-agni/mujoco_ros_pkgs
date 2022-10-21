@@ -1,0 +1,6 @@
+uint8 env_id
+string geom_name
+---
+mujoco_ros_msgs/GeomProperties properties
+bool success
+string status_message

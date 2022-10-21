@@ -1,6 +1,8 @@
-mujoco_ros_msgs/ModelState state
+mujoco_ros_msgs/BodyState state
 bool set_pose
 bool set_twist
+bool set_mass
+bool reset_qpos
 ---
 bool success
 string status_message

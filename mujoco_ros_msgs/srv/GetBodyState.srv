@@ -1,6 +1,6 @@
 uint8 env_id
 string name
 ---
-mujoco_ros_msgs/ModelState state
+mujoco_ros_msgs/BodyState state
 bool success
 string status_message

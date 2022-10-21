@@ -12,7 +12,7 @@ find_package(catkin REQUIRED
 add_message_files(
   FILES
     ScalarStamped.msg
-    ModelState.msg
+    BodyState.msg
     GeomProperties.msg
     GeomType.msg
 )
@@ -22,9 +22,10 @@ add_service_files(
     SetPause.srv
     BootstrapNS.srv
     ShutdownNS.srv
-    SetModelState.srv
-    GetModelState.srv
+    SetBodyState.srv
+    GetBodyState.srv
     SetGeomProperties.srv
+    GetGeomProperties.srv
     ResetBodyQPos.srv
 )
 

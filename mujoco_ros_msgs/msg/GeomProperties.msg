@@ -1,7 +1,7 @@
 uint8 env_id
 string name
 mujoco_ros_msgs/GeomType type
-float32 mass
+float32 body_mass # total mass of the body this geom belongs to
 float32 size_0
 float32 size_1
 float32 size_2

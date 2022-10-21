@@ -36,13 +36,20 @@
 
 #include <gtest/gtest.h>
 
-#include <mujoco_ros_msgs/SetPause.h>
-
 #include <mujoco_ros/mujoco_sim.h>
 #include <mujoco_ros/mujoco_env.h>
 #include <mujoco_ros/common_types.h>
 
 #include <mujoco_ros_msgs/SetPause.h>
+#include <mujoco_ros_msgs/StepAction.h>
+#include <mujoco_ros_msgs/StepGoal.h>
+#include <mujoco_ros_msgs/SetBodyState.h>
+#include <mujoco_ros_msgs/GetBodyState.h>
+#include <mujoco_ros_msgs/SetGeomProperties.h>
+#include <mujoco_ros_msgs/GeomType.h>
+
+#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/TwistStamped.h>
 
 #include <ros/ros.h>
 #include <ros/package.h>
@@ -57,7 +64,7 @@ int main(int argc, char **argv)
 }
 
 namespace unit_testing {
-class MujocoRosFixture : public ::testing::Test
+class MujocoRosCoreFixture : public ::testing::Test
 {
 protected:
 	std::shared_ptr<ros::NodeHandle> nh;
@@ -74,7 +81,60 @@ protected:
 	virtual void TearDown() {}
 };
 
-TEST_F(MujocoRosFixture, init_with_model)
+class MujocoRosBaseFixture : public ::testing::Test
+{
+protected:
+	std::shared_ptr<ros::NodeHandle> nh;
+	MujocoSim::MujocoEnvPtr env;
+	MujocoSim::mjDataPtr d;
+	MujocoSim::mjModelPtr m;
+	std::unique_ptr<std::thread> mj_thread;
+
+	virtual void SetUp()
+	{
+		nh.reset(new ros::NodeHandle("~"));
+		nh->setParam("unpause", false);
+		nh->setParam("visualize", false);
+
+		std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
+
+		mj_thread = std::unique_ptr<std::thread>(new std::thread(MujocoSim::init, xml_path));
+		std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+		env = MujocoSim::detail::unit_testing::getmjEnv();
+		d   = env->data;
+		m   = env->model;
+	}
+
+	virtual void TearDown() {}
+};
+
+void compare_qpos(MujocoSim::mjDataPtr d, int qpos_adr, std::string joint_name, const std::vector<double> &values,
+                  const std::vector<double> &tolerances = {})
+{
+	if (tolerances.size() == 0) {
+		for (int i = 0; i < values.size(); i++) {
+			EXPECT_EQ(d->qpos[qpos_adr + i], values[i]) << "qpos of joint '" << joint_name << "' at index " << i << " is "
+			                                            << d->qpos[qpos_adr + i] << " instead of " << values[i] << "!";
+		}
+	} else {
+		for (int i = 0; i < values.size(); i++) {
+			EXPECT_NEAR(d->qpos[qpos_adr + i], values[i], tolerances[i])
+			    << "qpos of joint '" << joint_name << "' at index " << i << " is " << d->qpos[qpos_adr + i]
+			    << " instead of " << values[i] << " (tolerance: " << tolerances[i] << ")!";
+		}
+	}
+}
+
+void compare_qvel(MujocoSim::mjDataPtr d, int dof_adr, std::string joint_name, std::vector<double> values)
+{
+	for (int i = 0; i < values.size(); i++) {
+		EXPECT_EQ(d->qvel[dof_adr + i], values[i]) << "qvel of joint '" << joint_name << "' at index " << i << " is "
+		                                           << d->qvel[dof_adr + i] << " instead of " << values[i] << "!";
+	}
+}
+
+TEST_F(MujocoRosCoreFixture, init_with_model)
 {
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
 	std::thread mjThread(MujocoSim::init, xml_path);
@@ -87,7 +147,7 @@ TEST_F(MujocoRosFixture, init_with_model)
 	mjThread.join();
 }
 
-TEST_F(MujocoRosFixture, pause_unpause)
+TEST_F(MujocoRosCoreFixture, pause_unpause)
 {
 	nh->setParam("unpause", false);
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
@@ -117,7 +177,7 @@ TEST_F(MujocoRosFixture, pause_unpause)
 	mjThread.join();
 }
 
-TEST_F(MujocoRosFixture, num_steps)
+TEST_F(MujocoRosCoreFixture, num_steps)
 {
 	nh->setParam("num_steps", 100);
 	double time = ros::Time::now().toSec();
@@ -131,17 +191,9 @@ TEST_F(MujocoRosFixture, num_steps)
 	nh->deleteParam("num_steps");
 }
 
-TEST_F(MujocoRosFixture, default_initial_joint_states)
+TEST_F(MujocoRosBaseFixture, default_initial_joint_states)
 {
 	nh->setParam("unpause", false);
-
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
-	std::thread mjThread(MujocoSim::init, xml_path);
-	std::this_thread::sleep_for(std::chrono::seconds(1));
-
-	MujocoSim::MujocoEnvPtr env = MujocoSim::detail::unit_testing::getmjEnv();
-	MujocoSim::mjDataPtr d      = getData(env);
-	MujocoSim::mjModelPtr m     = getModel(env);
 
 	int id_balljoint, id1, id2, id_free;
 	id_balljoint = MujocoSim::jointName2id(m.get(), "balljoint");
@@ -154,33 +206,21 @@ TEST_F(MujocoRosFixture, default_initial_joint_states)
 	EXPECT_NE(id2, -1) << "'joint2' should be found as joint in model!";
 	EXPECT_NE(id_free, -1) << "'ball_freejoint' should be found as joint in model!";
 
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint]], 1.0) << "'balljoint' w quat should be 1!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint] + 1], 0.0) << "'balljoint' x quat should be 0!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint] + 2], 0.0) << "'balljoint' y quat should be 0!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint] + 3], 0.0) << "'balljoint' z quat should be 0!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id1]], 0.0) << "'joint1' position should be 0!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id2]], 0.0) << "'joint2' position should be 0!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free]], 1.0) << "'ball_freejoint' x position should be 1!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 1], 0.0) << "'ball_freejoint' y position should be 0!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 2], 0.06) << "'ball_freejoint' z position should be 0.06!";
+	compare_qpos(d, m->jnt_qposadr[id_balljoint], "balljoint", { 1.0, 0.0, 0.0, 0.0 });
+	compare_qpos(d, m->jnt_qposadr[id1], "joint1", { 0.0 });
+	compare_qpos(d, m->jnt_qposadr[id2], "joint2", { 0.0 });
+	compare_qpos(d, m->jnt_qposadr[id_free], "ball_freejoint", { 1.0, 0.0, 0.06, 1.0, 0.0, 0.0, 0.0 });
 
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint]], 0.0) << "'balljoint' roll vel should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint] + 1], 0.0) << "'balljoint' pitch vel should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint] + 2], 0.0) << "'balljoint' yaw vel should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id1]], 0.0) << "'joint1' velocity should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id2]], 0.0) << "'joint2' velocity should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free]], 0.0) << "'ball_freejoint' x vel should be 1!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 1], 0.0) << "'ball_freejoint' y vel should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 2], 0.0) << "'ball_freejoint' z vel should be 0.06!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 3], 0.0) << "'ball_freejoint' roll vel should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 4], 0.0) << "'ball_freejoint' pitch vel should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 5], 0.0) << "'ball_freejoint' yaw vel should be 0!";
+	compare_qvel(d, m->jnt_dofadr[id_balljoint], "balljoint", { 0.0, 0.0, 0.0 });
+	compare_qvel(d, m->jnt_dofadr[id1], "joint1", { 0.0 });
+	compare_qvel(d, m->jnt_dofadr[id2], "joint2", { 0.0 });
+	compare_qvel(d, m->jnt_dofadr[id_free], "ball_freejoint", { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 });
 
 	MujocoSim::requestExternalShutdown();
-	mjThread.join();
+	mj_thread->join();
 }
 
-TEST_F(MujocoRosFixture, custom_initial_joint_states_on_reset)
+TEST_F(MujocoRosCoreFixture, custom_initial_joint_states_on_reset)
 {
 	nh->setParam("unpause", false);
 
@@ -200,8 +240,8 @@ TEST_F(MujocoRosFixture, custom_initial_joint_states_on_reset)
 	std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
 	MujocoSim::MujocoEnvPtr env = MujocoSim::detail::unit_testing::getmjEnv();
-	MujocoSim::mjDataPtr d      = getData(env);
-	MujocoSim::mjModelPtr m     = getModel(env);
+	MujocoSim::mjDataPtr d      = env->data;
+	MujocoSim::mjModelPtr m     = env->model;
 
 	int id_balljoint, id1, id2, id_free;
 
@@ -215,31 +255,15 @@ TEST_F(MujocoRosFixture, custom_initial_joint_states_on_reset)
 	EXPECT_NE(id2, -1) << "'joint2' should be found as joint in model!";
 	EXPECT_NE(id_free, -1) << "'ball_freejoint' should be found as joint in model!";
 
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint]], 1.0) << "'balljoint' w quat should be 1!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint] + 1], 0.0) << "'balljoint' x quat should be 0!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint] + 2], 0.0) << "'balljoint' y quat should be 0!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint] + 3], 0.0) << "'balljoint' z quat should be 0!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id1]], 0.0) << "'joint1' position should be 0!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id2]], 0.0) << "'joint2' position should be 0!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free]], 1.0) << "'ball_freejoint' x position should be 1!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 1], 0.0) << "'ball_freejoint' y position should be 0!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 2], 0.06) << "'ball_freejoint' z position should be 0.06!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 3], 1.0) << "'ball_freejoint' quat w should be 1!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 4], 0.0) << "'ball_freejoint' quat x should be 0!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 5], 0.0) << "'ball_freejoint' quat y should be 0!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 6], 0.0) << "'ball_freejoint' quat z should be 0!";
+	compare_qpos(d, m->jnt_qposadr[id_balljoint], "balljoint", { 1.0, 0.0, 0.0, 0.0 });
+	compare_qpos(d, m->jnt_qposadr[id1], "joint1", { 0.0 });
+	compare_qpos(d, m->jnt_qposadr[id2], "joint2", { 0.0 });
+	compare_qpos(d, m->jnt_qposadr[id_free], "ball_freejoint", { 1.0, 0.0, 0.06, 1.0, 0.0, 0.0, 0.0 });
 
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint]], 0.0) << "'balljoint' roll vel should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint] + 1], 0.0) << "'balljoint' pitch vel should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint] + 2], 0.0) << "'balljoint' yaw vel should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id1]], 0.0) << "'joint1' velocity should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id2]], 0.0) << "'joint2' velocity should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free]], 0.0) << "'ball_freejoint' x vel should be 1!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 1], 0.0) << "'ball_freejoint' y vel should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 2], 0.0) << "'ball_freejoint' z vel should be 0.06!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 3], 0.0) << "'ball_freejoint' roll vel should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 4], 0.0) << "'ball_freejoint' pitch vel should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 5], 0.0) << "'ball_freejoint' yaw vel should be 0!";
+	compare_qvel(d, m->jnt_dofadr[id_balljoint], "balljoint", { 0.0, 0.0, 0.0 });
+	compare_qvel(d, m->jnt_dofadr[id1], "joint1", { 0.0 });
+	compare_qvel(d, m->jnt_dofadr[id2], "joint2", { 0.0 });
+	compare_qvel(d, m->jnt_dofadr[id_free], "ball_freejoint", { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 });
 
 	nh->setParam("initial_joint_positions/joint_map", pos_map);
 	nh->setParam("initial_joint_velocities/joint_map", vel_map);
@@ -247,31 +271,16 @@ TEST_F(MujocoRosFixture, custom_initial_joint_states_on_reset)
 	std_srvs::Empty srv;
 	MujocoSim::detail::resetCB(srv.request, srv.response);
 
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint]], 0.0) << "'balljoint' w quat should be changed!";
-	EXPECT_NEAR(d->qpos[m->jnt_qposadr[id_balljoint] + 1], 0.707, 9e-4) << "'balljoint' x quat should be changed!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint] + 2], 0.0) << "'balljoint' y quat should be changed!";
-	EXPECT_NEAR(d->qpos[m->jnt_qposadr[id_balljoint] + 3], 0.707, 9e-4) << "'balljoint' z quat should be changed!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id1]], -1.57) << "'joint1' position should be changed!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id2]], -0.66) << "'joint2' position should be changed!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free]], 2.0) << "'ball_freejoint' x position should be changed!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 1], 1.0) << "'ball_freejoint' y position should be changed!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 2], 1.06) << "'ball_freejoint' z position should be changed!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 3], 0.0) << "'ball_freejoint' quat w should be changed!";
-	EXPECT_NEAR(d->qpos[m->jnt_qposadr[id_free] + 4], 0.707, 9e-4) << "'ball_freejoint' quat x should be changed!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 5], 0.0) << "'ball_freejoint' quat y should be changed!";
-	EXPECT_NEAR(d->qpos[m->jnt_qposadr[id_free] + 6], 0.707, 9e-4) << "'ball_freejoint' quat z should be changed!";
+	compare_qpos(d, m->jnt_qposadr[id_balljoint], "balljoint", { 0.0, 0.707, 0.0, 0.707 }, { 0.0, 9e-4, 0.0, 9e-4 });
+	compare_qpos(d, m->jnt_qposadr[id1], "joint1", { -1.57 });
+	compare_qpos(d, m->jnt_qposadr[id2], "joint2", { -0.66 });
+	compare_qpos(d, m->jnt_qposadr[id_free], "ball_freejoint", { 2.0, 1.0, 1.06, 0.0, 0.707, 0.0, 0.707 },
+	             { 0.0, 0.0, 0.0, 0.0, 9e-4, 0.0, 9e-4 });
 
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint]], 5.0) << "'balljoint' roll vel should be changed!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint] + 1], 5.0) << "'balljoint' pitch vel should be changed!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint] + 2], 10.0) << "'balljoint' yaw vel should be changed!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id1]], 0.0) << "'joint1' velocity should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id2]], 1.05) << "'joint2' velocity should be changed!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free]], 1.0) << "'ball_freejoint' x vel should be changed!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 1], 2.0) << "'ball_freejoint' y vel should be changed!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 2], 3.0) << "'ball_freejoint' z vel should be changed!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 3], 10.0) << "'ball_freejoint' roll vel should be changed!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 4], 20.0) << "'ball_freejoint' pitch vel should be changed!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 5], 30.0) << "'ball_freejoint' yaw vel should be changed!";
+	compare_qvel(d, m->jnt_dofadr[id_balljoint], "balljoint", { 5.0, 5.0, 10.0 });
+	compare_qvel(d, m->jnt_dofadr[id1], "joint1", { 0.0 });
+	compare_qvel(d, m->jnt_dofadr[id2], "joint2", { 1.05 });
+	compare_qvel(d, m->jnt_dofadr[id_free], "ball_freejoint", { 1.0, 2.0, 3.0, 10.0, 20.0, 30.0 });
 
 	MujocoSim::requestExternalShutdown();
 	mjThread.join();
@@ -280,7 +289,7 @@ TEST_F(MujocoRosFixture, custom_initial_joint_states_on_reset)
 	nh->deleteParam("initial_joint_velocities/joint_map");
 }
 
-TEST_F(MujocoRosFixture, custom_initial_joint_states)
+TEST_F(MujocoRosCoreFixture, custom_initial_joint_states)
 {
 	nh->setParam("unpause", false);
 
@@ -303,8 +312,8 @@ TEST_F(MujocoRosFixture, custom_initial_joint_states)
 	std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
 	MujocoSim::MujocoEnvPtr env = MujocoSim::detail::unit_testing::getmjEnv();
-	MujocoSim::mjDataPtr d      = getData(env);
-	MujocoSim::mjModelPtr m     = getModel(env);
+	MujocoSim::mjDataPtr d      = env->data;
+	MujocoSim::mjModelPtr m     = env->model;
 
 	int id_balljoint, id1, id2, id_free;
 
@@ -318,37 +327,342 @@ TEST_F(MujocoRosFixture, custom_initial_joint_states)
 	EXPECT_NE(id2, -1) << "'joint2' should be found as joint in model!";
 	EXPECT_NE(id_free, -1) << "'ball_freejoint' should be found as joint in model!";
 
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint]], 0.0) << "'balljoint' w quat should be changed!";
-	EXPECT_NEAR(d->qpos[m->jnt_qposadr[id_balljoint] + 1], 0.707, 9e-4) << "'balljoint' x quat should be changed!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_balljoint] + 2], 0.0) << "'balljoint' y quat should be changed!";
-	EXPECT_NEAR(d->qpos[m->jnt_qposadr[id_balljoint] + 3], 0.707, 9e-4) << "'balljoint' z quat should be changed!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id1]], -1.57) << "'joint1' position should be changed!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id2]], -0.66) << "'joint2' position should be changed!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free]], 2.0) << "'ball_freejoint' x position should be changed!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 1], 1.0) << "'ball_freejoint' y position should be changed!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 2], 1.06) << "'ball_freejoint' z position should be changed!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 3], 0.0) << "'ball_freejoint' quat w should be changed!";
-	EXPECT_NEAR(d->qpos[m->jnt_qposadr[id_free] + 4], 0.707, 9e-4) << "'ball_freejoint' quat x should be changed!";
-	EXPECT_EQ(d->qpos[m->jnt_qposadr[id_free] + 5], 0.0) << "'ball_freejoint' quat y should be changed!";
-	EXPECT_NEAR(d->qpos[m->jnt_qposadr[id_free] + 6], 0.707, 9e-4) << "'ball_freejoint' quat z should be changed!";
+	compare_qpos(d, m->jnt_qposadr[id_balljoint], "balljoint", { 0.0, 0.707, 0.0, 0.707 }, { 0.0, 9e-4, 0.0, 9e-4 });
+	compare_qpos(d, m->jnt_qposadr[id1], "joint1", { -1.57 });
+	compare_qpos(d, m->jnt_qposadr[id2], "joint2", { -0.66 });
+	compare_qpos(d, m->jnt_qposadr[id_free], "ball_freejoint", { 2.0, 1.0, 1.06, 0.0, 0.707, 0.0, 0.707 },
+	             { 0.0, 0.0, 0.0, 0.0, 9e-4, 0.0, 9e-4 });
 
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint]], 5.0) << "'balljoint' roll vel should be changed!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint] + 1], 5.0) << "'balljoint' pitch vel should be changed!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_balljoint] + 2], 10.0) << "'balljoint' yaw vel should be changed!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id1]], 0.0) << "'joint1' velocity should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id2]], 1.05) << "'joint2' velocity should be changed!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free]], 1.0) << "'ball_freejoint' x vel should be 1!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 1], 2.0) << "'ball_freejoint' y vel should be 0!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 2], 3.0) << "'ball_freejoint' z vel should be 0.06!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 3], 10.0) << "'ball_freejoint' roll vel should be changed!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 4], 20.0) << "'ball_freejoint' pitch vel should be changed!";
-	EXPECT_EQ(d->qvel[m->jnt_dofadr[id_free] + 5], 30.0) << "'ball_freejoint' yaw vel should be changed!";
+	compare_qvel(d, m->jnt_dofadr[id_balljoint], "balljoint", { 5.0, 5.0, 10.0 });
+	compare_qvel(d, m->jnt_dofadr[id1], "joint1", { 0.0 });
+	compare_qvel(d, m->jnt_dofadr[id2], "joint2", { 1.05 });
+	compare_qvel(d, m->jnt_dofadr[id_free], "ball_freejoint", { 1.0, 2.0, 3.0, 10.0, 20.0, 30.0 });
 
 	MujocoSim::requestExternalShutdown();
 	mjThread.join();
 
 	nh->deleteParam("initial_joint_positions/joint_map");
 	nh->deleteParam("initial_joint_velocities/joint_map");
+}
+
+TEST_F(MujocoRosBaseFixture, set_body_state)
+{
+	nh->setParam("unpause", false);
+
+	int id_balljoint, id1, id2, id_free;
+
+	id_balljoint = MujocoSim::jointName2id(m.get(), "balljoint");
+	id1          = MujocoSim::jointName2id(m.get(), "joint1");
+	id2          = MujocoSim::jointName2id(m.get(), "joint2");
+	id_free      = MujocoSim::jointName2id(m.get(), "ball_freejoint");
+
+	mujoco_ros_msgs::SetBodyState srv;
+
+	// Invalid env_id
+	srv.request.state.env_id = 1;
+	MujocoSim::detail::setBodyStateCB(srv.request, srv.response);
+	EXPECT_FALSE(srv.response.success);
+
+	// Invalid body_name
+	srv.request.state.env_id = 0;
+	srv.request.state.name   = "unknown";
+	MujocoSim::detail::setBodyStateCB(srv.request, srv.response);
+	EXPECT_FALSE(srv.response.success);
+
+	// Resolve body
+	srv.request.state.name = "middle_link";
+	MujocoSim::detail::setBodyStateCB(srv.request, srv.response);
+	EXPECT_TRUE(srv.response.success);
+
+	// Resolve body from child geom
+	srv.request.state.name = "EE";
+	MujocoSim::detail::setBodyStateCB(srv.request, srv.response);
+	EXPECT_TRUE(srv.response.success);
+
+	// Position change errors
+	srv.request.set_pose = true;
+
+	//   Not a freejoint
+	MujocoSim::detail::setBodyStateCB(srv.request, srv.response);
+	EXPECT_FALSE(srv.response.success);
+
+	//   No joint
+	srv.request.state.name = "immovable";
+	MujocoSim::detail::setBodyStateCB(srv.request, srv.response);
+	EXPECT_FALSE(srv.response.success);
+
+	//   unknown frame_id
+	srv.request.state.name                 = "ball";
+	srv.request.state.pose.header.frame_id = "unknown";
+	MujocoSim::detail::setBodyStateCB(srv.request, srv.response);
+	EXPECT_FALSE(srv.response.success);
+
+	// Twist change errors
+	srv.request.set_pose  = false;
+	srv.request.set_twist = true;
+
+	//   other frame_id than world
+	srv.request.state.twist.header.frame_id = "not-world";
+	MujocoSim::detail::setBodyStateCB(srv.request, srv.response);
+	EXPECT_FALSE(srv.response.success);
+
+	// New twist and pose
+	srv.request.set_pose                      = true;
+	srv.request.state.pose.header.frame_id    = "world";
+	srv.request.state.pose.pose.position.x    = 2;
+	srv.request.state.pose.pose.position.y    = 2;
+	srv.request.state.pose.pose.position.z    = 2;
+	srv.request.state.pose.pose.orientation.x = 0.707;
+	srv.request.state.pose.pose.orientation.y = 0.0;
+	srv.request.state.pose.pose.orientation.z = 0.707;
+	srv.request.state.pose.pose.orientation.w = 0.0;
+
+	srv.request.state.twist.header.frame_id = "world";
+	srv.request.state.twist.twist.linear.x  = 0.1;
+	srv.request.state.twist.twist.linear.y  = 0.1;
+	srv.request.state.twist.twist.linear.z  = -0.1;
+	srv.request.state.twist.twist.angular.x = 0.1;
+	srv.request.state.twist.twist.angular.y = 0;
+	srv.request.state.twist.twist.angular.z = 0;
+	MujocoSim::detail::setBodyStateCB(srv.request, srv.response);
+	EXPECT_TRUE(srv.response.success);
+
+	compare_qpos(d, m->jnt_qposadr[id_free], "ball_freejoint", { 2.0, 2.0, 2.0, 0.0, 0.707, 0.0, 0.707 },
+	             { 0.0, 0.0, 0.0, 0.0, 9e-4, 0.0, 9e-4 });
+	compare_qvel(d, m->jnt_dofadr[id_free], "ball_freejoint", { 0.1, 0.1, -0.1, 0.1, 0.0, 0.0 });
+
+	// New mass
+	srv.request.set_pose   = false;
+	srv.request.set_twist  = false;
+	srv.request.set_mass   = true;
+	srv.request.state.mass = 0.299;
+	EXPECT_NE(m->body_mass[mj_name2id(m.get(), mjOBJ_BODY, "body_ball")], srv.request.state.mass)
+	    << "Mass already has the requested value!"; // Check that mass is different beforehand
+	MujocoSim::detail::setBodyStateCB(srv.request, srv.response);
+	EXPECT_TRUE(srv.response.success);
+
+	EXPECT_EQ(m->body_mass[mj_name2id(m.get(), mjOBJ_BODY, "body_ball")], srv.request.state.mass)
+	    << "Mass did not change to the requested value";
+	// reset
+	srv.request.set_mass   = false;
+	srv.request.reset_qpos = true;
+	MujocoSim::detail::setBodyStateCB(srv.request, srv.response);
+	EXPECT_TRUE(srv.response.success);
+
+	compare_qpos(d, m->jnt_qposadr[id_free], "ball_freejoint", { 1.0, 0.0, 0.06, 1.0, 0.0, 0.0, 0.0 });
+	compare_qvel(d, m->jnt_dofadr[id_free], "ball_freejoint", { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 });
+
+	MujocoSim::requestExternalShutdown();
+	mj_thread->join();
+}
+
+TEST_F(MujocoRosBaseFixture, set_geom_properties)
+{
+	nh->setParam("unpause", false);
+
+	int ball_geom_id = mj_name2id(m.get(), mjOBJ_GEOM, "ball");
+	int ball_body_id = mj_name2id(m.get(), mjOBJ_BODY, "body_ball");
+
+	EXPECT_NE(ball_geom_id, -1) << "'ball' should be found as geom in model!";
+	EXPECT_NE(ball_body_id, -1) << "'body_ball' should be found as body in model!";
+
+	mujoco_ros_msgs::SetGeomProperties srv;
+
+	// Invalid env_id
+	srv.request.properties.env_id = 1;
+	srv.request.properties.name   = "ball";
+	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
+	EXPECT_FALSE(srv.response.success);
+
+	// Invalid geom_name
+	srv.request.properties.env_id = 0;
+	srv.request.properties.name   = "unknown";
+	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
+	EXPECT_FALSE(srv.response.success);
+
+	// Resolve geom
+	srv.request.properties.name = "ball";
+	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
+	EXPECT_TRUE(srv.response.success);
+
+	// set mass
+	srv.request.set_mass             = true;
+	srv.request.properties.body_mass = 0.299;
+	EXPECT_NE(m->body_mass[ball_body_id], srv.request.properties.body_mass) << "Mass already has requested value!";
+	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
+	EXPECT_TRUE(srv.response.success);
+	EXPECT_EQ(m->body_mass[ball_body_id], srv.request.properties.body_mass)
+	    << "Mass did not change to the requested value";
+
+	// set friction
+	srv.request.set_mass                  = false;
+	srv.request.set_friction              = true;
+	srv.request.properties.friction_slide = 0;
+	srv.request.properties.friction_spin  = 0;
+	srv.request.properties.friction_roll  = 0;
+	EXPECT_TRUE(m->geom_friction[ball_geom_id * 3] != 0 && m->geom_friction[ball_geom_id * 3 + 1] != 0 &&
+	            m->geom_friction[ball_geom_id * 3 + 2] != 0)
+	    << "Some friction values already at 0!";
+	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
+	EXPECT_TRUE(srv.response.success);
+	EXPECT_TRUE(m->geom_friction[ball_geom_id * 3] == 0) << "Slide friction unchanged!";
+	EXPECT_TRUE(m->geom_friction[ball_geom_id * 3 + 1] == 0) << "Spin friction unchanged!";
+	EXPECT_TRUE(m->geom_friction[ball_geom_id * 3 + 2] == 0) << "Roll friction uncahnged!";
+
+	// set type (not checking PLANE, HFIELD, MESH, and rendering types)
+	srv.request.set_friction = false;
+	srv.request.set_type     = true;
+	//   BOX
+	srv.request.properties.type.value = mujoco_ros_msgs::GeomType::BOX;
+	EXPECT_NE(env->model->geom_type[ball_geom_id], mjGEOM_BOX) << "Geom already is of type BOX";
+	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
+	EXPECT_TRUE(srv.response.success);
+	EXPECT_EQ(env->model->geom_type[ball_geom_id], mjGEOM_BOX) << "Geom unchanged";
+	//   CYLINDER
+	srv.request.properties.type.value = mujoco_ros_msgs::GeomType::CYLINDER;
+	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
+	EXPECT_TRUE(srv.response.success);
+	EXPECT_EQ(env->model->geom_type[ball_geom_id], mjGEOM_CYLINDER) << "Geom unchanged";
+	//  ELLIPSOID
+	srv.request.properties.type.value = mujoco_ros_msgs::GeomType::ELLIPSOID;
+	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
+	EXPECT_TRUE(srv.response.success);
+	EXPECT_EQ(env->model->geom_type[ball_geom_id], mjGEOM_ELLIPSOID) << "Geom unchanged";
+	//  CAPSULE
+	srv.request.properties.type.value = mujoco_ros_msgs::GeomType::CAPSULE;
+	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
+	EXPECT_TRUE(srv.response.success);
+	EXPECT_EQ(env->model->geom_type[ball_geom_id], mjGEOM_CAPSULE) << "Geom unchanged";
+	//  SPHERE
+	srv.request.properties.type.value = mujoco_ros_msgs::GeomType::SPHERE;
+	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
+	EXPECT_TRUE(srv.response.success);
+	EXPECT_EQ(env->model->geom_type[ball_geom_id], mjGEOM_SPHERE) << "Geom unchanged";
+
+	// set size
+	srv.request.set_type          = false;
+	srv.request.set_size          = true;
+	srv.request.properties.size_0 = 0.01;
+	srv.request.properties.size_1 = 0.01;
+	srv.request.properties.size_2 = 0.01;
+	EXPECT_TRUE(env->model->geom_size[ball_geom_id * 3] != 0.01 && env->model->geom_size[ball_geom_id * 3 + 1] != 0.01 &&
+	            env->model->geom_size[ball_geom_id * 3 + 2] != 0.01)
+	    << "Geom size is already 0.01 0.01 0.01!";
+	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
+	EXPECT_NEAR(env->model->geom_size[ball_geom_id * 3], 0.01, 9e-4) << "Size 0 unchanged";
+	EXPECT_NEAR(env->model->geom_size[ball_geom_id * 3 + 1], 0.01, 9e-4) << "Size 1 unchanged";
+	EXPECT_NEAR(env->model->geom_size[ball_geom_id * 3 + 2], 0.01, 9e-4) << "Size 2 unchanged";
+
+	MujocoSim::requestExternalShutdown();
+	mj_thread->join();
+}
+
+TEST_F(MujocoRosBaseFixture, get_body_state)
+{
+	nh->setParam("unpause", false);
+
+	mujoco_ros_msgs::SetBodyState srv;
+	srv.request.set_pose                      = true;
+	srv.request.set_twist                     = true;
+	srv.request.set_mass                      = true;
+	srv.request.set_pose                      = true;
+	srv.request.state.env_id                  = 0;
+	srv.request.state.name                    = "body_ball";
+	srv.request.state.mass                    = 0.299;
+	srv.request.state.pose.pose.position.x    = 1.0;
+	srv.request.state.pose.pose.position.y    = 1.0;
+	srv.request.state.pose.pose.position.z    = 1.0;
+	srv.request.state.pose.pose.orientation.w = 1.0;
+	srv.request.state.pose.pose.orientation.x = 0.0;
+	srv.request.state.pose.pose.orientation.y = 0.0;
+	srv.request.state.pose.pose.orientation.z = 0.0;
+	srv.request.state.twist.twist.linear.x    = 0.1;
+	srv.request.state.twist.twist.linear.y    = 0.1;
+	srv.request.state.twist.twist.linear.z    = -0.1;
+	srv.request.state.twist.twist.angular.x   = 0.1;
+	srv.request.state.twist.twist.angular.y   = 0.1;
+	srv.request.state.twist.twist.angular.z   = -0.1;
+	MujocoSim::detail::setBodyStateCB(srv.request, srv.response);
+	EXPECT_TRUE(srv.response.success);
+
+	mujoco_ros_msgs::GetBodyState g_srv;
+	// wrong env_id
+	g_srv.request.env_id = 1;
+	g_srv.request.name   = "body_ball";
+	EXPECT_FALSE(g_srv.response.success);
+
+	// wrong body name
+	g_srv.request.env_id = 0;
+	g_srv.request.name   = "unknown";
+
+	// correct request
+	g_srv.request.env_id = 0;
+	g_srv.request.name   = "body_ball";
+	MujocoSim::detail::getBodyStateCB(g_srv.request, g_srv.response);
+	EXPECT_TRUE(g_srv.response.success);
+	EXPECT_EQ(g_srv.response.state.mass, srv.request.state.mass);
+	EXPECT_EQ(g_srv.response.state.name, srv.request.state.name);
+	EXPECT_EQ(g_srv.response.state.pose.pose, srv.request.state.pose.pose);
+	EXPECT_EQ(g_srv.response.state.twist.twist, srv.request.state.twist.twist);
+
+	// TODO: tests for bodies with a non-freejoint, no joint, and multiple joints (cannot set position but read!)
+
+	MujocoSim::requestExternalShutdown();
+	mj_thread->join();
+}
+
+TEST_F(MujocoRosBaseFixture, get_geom_properties)
+{
+	nh->setParam("unpause", false);
+
+	mujoco_ros_msgs::SetGeomProperties srv;
+	srv.request.set_type                  = true;
+	srv.request.set_mass                  = true;
+	srv.request.set_size                  = true;
+	srv.request.set_friction              = true;
+	srv.request.properties.env_id         = 0;
+	srv.request.properties.name           = "ball";
+	srv.request.properties.type.value     = mujoco_ros_msgs::GeomType::BOX;
+	srv.request.properties.body_mass      = 0.299;
+	srv.request.properties.size_0         = 0.01;
+	srv.request.properties.size_1         = 0.01;
+	srv.request.properties.size_2         = 0.01;
+	srv.request.properties.friction_slide = 1.;
+	srv.request.properties.friction_spin  = 1.;
+	srv.request.properties.friction_roll  = 1.;
+	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
+	EXPECT_TRUE(srv.response.success);
+
+	mujoco_ros_msgs::GetGeomProperties g_srv;
+	// wrong env_id
+	g_srv.request.env_id    = 1;
+	g_srv.request.geom_name = "ball";
+	MujocoSim::detail::getGeomPropertiesCB(g_srv.request, g_srv.response);
+	EXPECT_FALSE(g_srv.response.success);
+
+	// wrong geom name
+	g_srv.request.env_id    = 0;
+	g_srv.request.geom_name = "unknown";
+	MujocoSim::detail::getGeomPropertiesCB(g_srv.request, g_srv.response);
+	EXPECT_FALSE(g_srv.response.success);
+
+	g_srv.request.geom_name = "ball";
+	MujocoSim::detail::getGeomPropertiesCB(g_srv.request, g_srv.response);
+	EXPECT_TRUE(g_srv.response.success);
+
+	EXPECT_EQ(srv.request.properties.env_id, g_srv.response.properties.env_id);
+	EXPECT_EQ(srv.request.properties.name, g_srv.response.properties.name);
+	EXPECT_EQ(srv.request.properties.type.value, g_srv.response.properties.type.value);
+	EXPECT_EQ(srv.request.properties.body_mass, g_srv.response.properties.body_mass);
+	EXPECT_EQ(srv.request.properties.size_0, g_srv.response.properties.size_0);
+	EXPECT_EQ(srv.request.properties.size_1, g_srv.response.properties.size_1);
+	EXPECT_EQ(srv.request.properties.size_2, g_srv.response.properties.size_2);
+	EXPECT_EQ(srv.request.properties.friction_slide, g_srv.response.properties.friction_slide);
+	EXPECT_EQ(srv.request.properties.friction_spin, g_srv.response.properties.friction_spin);
+	EXPECT_EQ(srv.request.properties.friction_roll, g_srv.response.properties.friction_roll);
+
+	MujocoSim::requestExternalShutdown();
+	mj_thread->join();
 }
 
 } // namespace unit_testing
