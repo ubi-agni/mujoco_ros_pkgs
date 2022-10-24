@@ -2473,7 +2473,7 @@ bool setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req, mujoco_ros_msgs
 				if (valid_pose) {
 					mjtNum quat[4] = { target_pose.pose.orientation.w, target_pose.pose.orientation.x,
 						                target_pose.pose.orientation.y, target_pose.pose.orientation.z };
-					mj_normalizeQuat(env->model.get(), quat);
+					mju_normalize4(quat);
 
 					ROS_DEBUG_STREAM_NAMED("mujoco",
 					                       "Setting body pose to "
