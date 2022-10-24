@@ -181,6 +181,7 @@ static double last_rendered_ = 0;
 // ROS callback for sim time publisher on /clock
 void publishSimTime(mjtNum time);
 static ros::Publisher pub_clock_;
+static bool use_sim_time_;
 static boost::shared_ptr<ros::NodeHandle> nh_;
 
 // ROS TF2

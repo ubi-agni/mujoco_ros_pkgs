@@ -167,14 +167,21 @@ void init(std::string modelfile)
 {
 	// use_sim_time should be set in roslaunch before running any node.
 	// Otherwise nodes might behave unintendedly. Hence, issue an error in this case.
-	bool use_sim_time_set;
-	if (!ros::param::get("/use_sim_time", use_sim_time_set) || !use_sim_time_set) {
-		ROS_FATAL_NAMED("mujoco", "/use_sim_time ROS param is not true. Make sure it is set before starting any node, "
+	if (!ros::param::get("/use_sim_time", use_sim_time_)) {
+		ROS_FATAL_NAMED("mujoco", "/use_sim_time ROS param is unset. This node requires you to explicitly set it to true "
+		                          "or false. Also Make sure it is set before starting any node, "
 		                          "otherwise nodes might behave unexpectedly.");
 		return;
 	}
 
+	ROS_DEBUG_COND_NAMED(!use_sim_time_, "mujoco",
+	                     "use_sim_time set to false. Not publishing simulation time as ROS time!");
+
 	nh_.reset(new ros::NodeHandle("~"));
+
+	if (use_sim_time_) {
+		pub_clock_ = nh_->advertise<rosgraph_msgs::Clock>("/clock", 1);
+	}
 
 	settings_.exitrequest = 0;
 
@@ -194,8 +201,6 @@ void init(std::string modelfile)
 	} else {
 		sim_mode_ = simMode::SINGLE;
 	}
-
-	pub_clock_ = nh_->advertise<rosgraph_msgs::Clock>("/clock", 1);
 
 	nh_->param<bool>("benchmark_time", benchmark_env_time_, false);
 
@@ -396,6 +401,9 @@ namespace detail {
 
 void publishSimTime(mjtNum time)
 {
+	if (!use_sim_time_) {
+		return;
+	}
 	ros::Time::setNow(ros::Time(time));
 	rosgraph_msgs::Clock ros_time;
 	ros_time.clock.fromSec(time);
