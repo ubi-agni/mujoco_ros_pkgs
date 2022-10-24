@@ -337,6 +337,11 @@ void requestExternalShutdown(void)
 void resetSim()
 {
 	if (main_env_->model) {
+		// sim_mtx is already locked and we wait a little to ensure no old tf messages are being sent after the reset
+		ROS_DEBUG_NAMED("mujoco", "Sleeping to give tf message transport enough time");
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		ROS_DEBUG_NAMED("mujoco", "Starting reset");
+
 		mj_resetData(main_env_->model.get(), main_env_->data.get());
 		loadInitialJointStates(main_env_->model, main_env_->data);
 		main_env_->reset();
