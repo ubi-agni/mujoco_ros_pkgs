@@ -351,6 +351,7 @@ void resetSim()
 		sensorUpdate(main_env_->model, main_env_->data);
 		updateSettings(main_env_->model);
 	}
+	settings_.resetrequest = 0;
 }
 
 void synchedMultiSimStep()
@@ -413,6 +414,10 @@ void eventloop(void)
 				loadModel();
 			} else if (settings_.loadrequest > 1) {
 				settings_.loadrequest = 1;
+			}
+
+			if (settings_.resetrequest == 1) {
+				resetSim();
 			}
 
 			if (vis_) {
@@ -1139,7 +1144,7 @@ void uiEvent(mjuiState *state)
 		else if (it && it->sectionid == SECT_SIMULATION) {
 			switch (it->itemid) {
 				case 1: // reset
-					resetSim();
+					settings_.resetrequest = 1;
 					break;
 
 				case 2: // Reload
@@ -2323,7 +2328,7 @@ bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPau
 
 bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
 {
-	resetSim();
+	settings_.resetrequest = 1;
 	return true;
 }
 
