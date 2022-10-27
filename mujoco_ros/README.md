@@ -55,6 +55,9 @@ where `PATH/TO/MUJOCO/DIR` is `~/.mujoco/mujoco222` if you used the recommended 
 4. Build with `catkin_build` or `catkin b`.
 5. Source your workspace and try `roslaunch mujoco_ros demo.launch` to test if it runs.
 
+> **Warning**
+> To prevent action servers ignoring actions for a limited time after resetting the simulation, until https://github.com/ros/actionlib/pull/203 is merged, you need to build the PR branch and any packages implementing action servers (like MoveIt) yourself. Additionally, for the Franka Emika Panda robot, until https://github.com/frankaemika/franka_ros/pull/292 is merged, you need to build the PR branch yourself, otherwise controlling the robot after time resets is buggy.
+
 # Licensing
 
 This work is licensed under the BSD 3-Clause License (see LICENSE).
