@@ -339,12 +339,28 @@ void requestExternalShutdown(void)
 	settings_.exitrequest = 1;
 }
 
+void processAllRosMessages(const ros::WallDuration &timeout = ros::WallDuration(), ros::CallbackQueue *q = nullptr)
+{
+	if (!q)
+		q = ros::getGlobalCallbackQueue();
+
+	ros::WallTime deadline      = ros::WallTime::now() + ros::WallDuration();
+	ros::WallDuration remaining = timeout;
+	ros::CallbackQueue::CallOneResult result;
+	do {
+		result    = q->callOne(remaining);
+		remaining = deadline - ros::WallTime::now();
+		if (result == ros::CallbackQueue::Disabled)
+			return;
+	} while (remaining > ros::WallDuration());
+}
+
 void resetSim()
 {
 	if (main_env_->model) {
 		// sim_mtx is already locked
 		ROS_DEBUG_NAMED("mujoco", "Sleeping to ensure all (old) ROS messages are sent");
-		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		processAllRosMessages(ros::WallDuration(0.1));
 		ROS_DEBUG_NAMED("mujoco", "Starting reset");
 
 		mj_resetData(main_env_->model.get(), main_env_->data.get());
@@ -355,6 +371,7 @@ void resetSim()
 		profilerUpdate(main_env_->model, main_env_->data);
 		sensorUpdate(main_env_->model, main_env_->data);
 		updateSettings(main_env_->model);
+		processAllRosMessages(); // ensure all pending ROS messages are sent
 	}
 	settings_.resetrequest = 0;
 }
@@ -384,6 +401,7 @@ void synchedMultiSimStep()
 
 	// Publish new synchronized sim time
 	publishSimTime(main_env_->data->time);
+	processAllRosMessages(); // ensure all pending ROS messages are sent
 
 	if (benchmark_env_time_) {
 		t1             = std::chrono::high_resolution_clock::now();
@@ -507,6 +525,7 @@ void simulate(void)
 					mj_step(model.get(), data.get());
 					publishSimTime(data->time);
 					lastStageCallback(data.get());
+					processAllRosMessages(); // ensure all pending ROS messages are sent
 
 					// Count steps until termination
 					if (num_steps > 0) {
@@ -528,6 +547,7 @@ void simulate(void)
 						mj_step(model.get(), data.get());
 						publishSimTime(data->time);
 						lastStageCallback(data.get());
+						processAllRosMessages(); // ensure all pending ROS messages are sent
 
 						// Count steps until termination
 						if (num_steps > 0) {
@@ -563,6 +583,7 @@ void simulate(void)
 					mj_step(model.get(), data.get());
 					publishSimTime(data->time);
 					lastStageCallback(data.get());
+					processAllRosMessages(); // ensure all pending ROS messages are sent
 
 					settings_.manual_env_steps--;
 				} else {
