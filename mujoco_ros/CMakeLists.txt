@@ -24,6 +24,7 @@ find_package(catkin REQUIRED
     tf2
     tf2_ros
     tf2_geometry_msgs
+    image_transport
 )
 
 catkin_package(
@@ -35,6 +36,7 @@ catkin_package(
     tf2
     tf2_ros
     tf2_geometry_msgs
+    image_transport
   INCLUDE_DIRS include ${mujoco_INCLUDE_DIRS}
   LIBRARIES ${PROJECT_NAME} ${mujoco_LIBRARIES}
 )
@@ -48,6 +50,7 @@ add_library(${PROJECT_NAME}
   src/mujoco_sim.cpp
   src/uitools.c
   src/plugin_utils.cpp
+  src/render_utils.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}

@@ -38,15 +38,60 @@
 
 #include <mujoco/mujoco.h>
 
+#include <ros/ros.h>
+#include <image_transport/image_transport.h>
+
+#include <GLFW/glfw3.h>
+
 static constexpr int kBufSize = 1000;
 
 namespace MujocoSim {
+
+namespace render_utils {
+
+typedef enum bufferState_ : uint8_t
+{
+	INITIALIZED = 0,
+	REQUESTED,
+	READY,
+	SENT
+} bufferState;
+
+typedef enum streamType_ : uint8_t
+{
+	RGB       = 1,
+	DEPTH     = 1 << 1,
+	SEGMENTED = 1 << 1 << 1,
+
+	// Combined types to be cast safe
+	RGB_D   = 3,
+	RGB_S   = 5,
+	DEPTH_S = 6,
+	RGB_D_S = 7
+} streamType;
+
+struct VisualStruct
+{
+	mjvScene scn                           = {};
+	mjvCamera cam                          = {};
+	mjvOption vopt                         = {};
+	mjrContext con                         = {};
+	mjrRect viewport                       = {};
+	boost::shared_ptr<unsigned char[]> rgb = {};
+	boost::shared_ptr<float[]> depth       = {};
+	GLFWwindow *window                     = nullptr;
+};
+
+struct CamStream;
+typedef boost::shared_ptr<CamStream> CamStreamPtr;
+
+} // namespace render_utils
 
 /**
  * @brief Helper enum to enable/disable features of the respective sim mode.
  *
  */
-typedef enum simMode_
+typedef enum simMode_ : uint8_t
 {
 	SINGLE = 0,
 	PARALLEL

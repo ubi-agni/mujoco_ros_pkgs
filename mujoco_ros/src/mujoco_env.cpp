@@ -39,6 +39,7 @@
 #include <mujoco_ros_msgs/BootstrapNS.h>
 #include <mujoco_ros_msgs/ShutdownNS.h>
 #include <mujoco_ros/mujoco_env.h>
+#include <mujoco_ros/render_utils.h>
 
 #include <sstream>
 
@@ -130,6 +131,99 @@ void MujocoEnv::reload()
 			cb_ready_plugins.push_back(plugin);
 		}
 	}
+
+	ROS_DEBUG_STREAM_NAMED("mujoco_env", "Done (re)loading MujocoPlugins [" << name << "]");
+
+	ROS_DEBUG_STREAM_NAMED("mujoco_env", "Resetting offscreen rendering utils [" << name << "]");
+	if (vis.window != NULL) {
+		ROS_DEBUG_NAMED("mujoco_env", "\tDestroying old offscreen buffer window");
+		glfwDestroyWindow(vis.window);
+	}
+
+	ROS_DEBUG_NAMED("mujoco_env", "\tCreating new offscreen buffer window");
+	glfwWindowHint(GLFW_DOUBLEBUFFER, 0);
+	glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+	vis.window = glfwCreateWindow(800, 800, ("invisible window " + name).c_str(), nullptr, nullptr);
+	if (!vis.window) {
+		ROS_ERROR_NAMED("mujoco_env", "Could not create GLFW window!");
+		mju_error("Could not create GLFW window");
+	}
+	// make context current
+	glfwMakeContextCurrent(vis.window);
+	glfwSwapInterval(0);
+
+	// init vis data structure
+	mjv_defaultCamera(&(vis.cam));
+	ROS_DEBUG_NAMED("mujoco_env", "\tInitialized camera");
+	mjv_defaultOption(&(vis.vopt));
+	ROS_DEBUG_NAMED("mujoco_env", "\tInitialized v-options");
+	mjv_defaultScene(&(vis.scn));
+	ROS_DEBUG_NAMED("mujoco_env", "\tInitialized default scene");
+	mjr_defaultContext(&(vis.con));
+	ROS_DEBUG_NAMED("mujoco_env", "\tInitialized default context");
+
+	// // Create scene and context
+	mjv_makeScene(model.get(), &(vis.scn), render_utils::maxgeom_);
+	ROS_DEBUG_NAMED("mujoco_env", "\tApplied model to scene");
+	mjr_makeContext(model.get(), &(vis.con), 50 * (settings_.font + 1));
+	ROS_DEBUG_NAMED("mujoco_env", "\tApplied model to context");
+	vis.viewport = mjr_maxViewport(&(vis.con));
+	ROS_DEBUG_NAMED("mujoco_env", "\tComputed context viewport");
+
+	vis.rgb.reset(new unsigned char[vis.viewport.width * vis.viewport.height * 3],
+	              std::default_delete<unsigned char[]>());
+	vis.depth.reset(new float[vis.viewport.width * vis.viewport.height], std::default_delete<float[]>());
+
+	image_transport::ImageTransport it(*nh);
+	bool config_exists, use_segid;
+	render_utils::streamType stream_type;
+	std::string cam_name, cam_config_path;
+	double pub_freq;
+
+	// // TODO(dleins): move camera pub config to URDF/SRDF config once it's ready
+	config_exists = nh->searchParam("cam_config", cam_config_path) || ros::param::search("cam_config", cam_config_path);
+	ROS_DEBUG_STREAM_COND_NAMED(config_exists, "mujoco_env", "Found camera config under path: " << cam_config_path);
+
+	ROS_DEBUG_STREAM_NAMED("mujoco_env", "Model has " << model->ncam << " cameras");
+
+	render_utils::CamStreamPtr stream_ptr;
+	for (int cam_id = 0; cam_id < model->ncam; cam_id++) {
+		cam_name = mj_id2name(model.get(), mjOBJ_CAMERA, cam_id);
+		ROS_DEBUG_STREAM_NAMED("mujoco_env",
+		                       "Found camera '" << cam_name << "' with id " << cam_id << ". Setting up publishers...");
+		if (config_exists) {
+			stream_type = render_utils::streamType(
+			    nh->param<int>(cam_config_path + "/" + cam_name + "/stream_type", render_utils::streamType::RGB));
+			pub_freq  = nh->param<float>(cam_config_path + "/" + cam_name + "/frequency", 15);
+			use_segid = nh->param<bool>(cam_config_path + "/" + cam_name + "/use_segid", true);
+		} else {
+			ROS_DEBUG_NAMED("mujoco_env", "\tUsing camera stream default config");
+			stream_type = render_utils::streamType::RGB;
+			pub_freq    = 15;
+			use_segid   = true;
+		}
+
+		image_transport::Publisher rgb, depth, segment;
+		if (stream_type & render_utils::streamType::RGB) {
+			ROS_DEBUG_NAMED("mujoco_env", "\tCreating rgb publisher");
+			rgb = it.advertise("cameras/" + cam_name + "/rgb", 1);
+		}
+		if (stream_type & render_utils::streamType::DEPTH) {
+			ROS_DEBUG_NAMED("mujoco_env", "\tCreating depth publisher");
+			depth = it.advertise("cameras/" + cam_name + "/depth", 1);
+		}
+		if (stream_type & render_utils::streamType::SEGMENTED) {
+			ROS_DEBUG_NAMED("mujoco_env", "\tCreating segmentation publisher");
+			segment = it.advertise("cameras/" + cam_name + "/segmented", 1);
+		}
+
+		ROS_DEBUG_STREAM_NAMED("mujoco_env", "\tSetting up camera stream(s) of type '"
+		                                         << stream_type << "' with a publish rate of " << pub_freq
+		                                         << " Hz for camera named " << cam_name);
+
+		stream_ptr.reset(new render_utils::CamStream(cam_id, stream_type, rgb, depth, segment, use_segid, pub_freq));
+		cam_streams.push_back(stream_ptr);
+	}
 }
 
 void MujocoEnv::reset()
@@ -158,13 +252,12 @@ void MujocoEnv::runPassiveCbs()
 	}
 }
 
-// TODO: Change once rendering is moved to external functionality
-void MujocoEnv::runRenderCbs(mjvScene *scene)
+void MujocoEnv::runRenderCbs()
 {
 	if (plugins.empty())
 		return;
 	for (const auto &plugin : cb_ready_plugins) {
-		plugin->renderCallback(model, data, scene);
+		plugin->renderCallback(model, data, &(vis.scn));
 	}
 }
 
@@ -181,6 +274,10 @@ MujocoEnv::~MujocoEnv()
 	plugins.clear();
 	model.reset();
 	data.reset();
+	vis.rgb.reset();
+	vis.depth.reset();
+	mjr_freeContext(&(vis.con));
+	mjv_freeScene(&(vis.scn));
 	ctrlnoise = nullptr;
 	nh.reset();
 }

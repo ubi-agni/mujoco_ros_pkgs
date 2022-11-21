@@ -123,6 +123,13 @@ public:
 	ros::NodeHandlePtr nh;
 	/// Env namespace
 	std::string name;
+	/// struct holding objects needed for rendering
+	render_utils::VisualStruct vis;
+	/// CamStream objects for other cameras
+	std::vector<render_utils::CamStreamPtr> cam_streams;
+	/// Enum to communicate with rendering thread
+	std::atomic<render_utils::bufferState> buffer_state = { render_utils::bufferState::INITIALIZED }; // atomic to be
+	                                                                                                  // thread safe
 
 	/**
 	 * @brief Calls reload functions of all members depeding on mjData.
@@ -140,7 +147,7 @@ public:
 
 	void runControlCbs();
 	void runPassiveCbs();
-	void runRenderCbs(mjvScene *scene);
+	void runRenderCbs();
 	void runLastStageCbs();
 
 protected:
