@@ -88,6 +88,7 @@ static GLFWwindow *main_window_ = nullptr;
 static mjvScene free_scene_;
 static mjrContext free_context_;
 static mjvCamera free_camera_;
+static mjvOption vopt_;
 
 static mjuiState uistate_ = {};
 static mjUI ui0_          = {};

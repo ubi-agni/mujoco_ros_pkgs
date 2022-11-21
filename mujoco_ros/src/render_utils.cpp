@@ -191,6 +191,7 @@ void initVisible()
 	mjv_defaultScene(&free_scene_);
 	mjr_defaultContext(&free_context_);
 	mjv_defaultCamera(&free_camera_);
+	mjv_defaultOption(&vopt_);
 
 	// Create scene and context
 	mjv_makeScene(NULL, &free_scene_, render_utils::maxgeom_);
@@ -426,9 +427,7 @@ void onModelLoad(MujocoEnvPtr env, bool align)
 	glfwMakeContextCurrent(main_window_);
 	mjr_makeContext(env->model.get(), &free_context_, 50 * (settings_.font + 1));
 
-	// mjv_updateScene(env->model.get(), env->data.get(), &(env->vis.vopt), NULL, &(env->vis.cam), mjCAT_ALL,
-	// &free_scene_);
-	mjv_updateScene(env->model.get(), env->data.get(), &(env->vis.vopt), &pert_, &free_camera_, mjCAT_ALL, &free_scene_);
+	mjv_updateScene(env->model.get(), env->data.get(), &vopt_, &pert_, &free_camera_, mjCAT_ALL, &free_scene_);
 
 	char title[200] = "Simulate : ";
 	mju::strcat_arr(title, env->model->names);
@@ -883,9 +882,9 @@ void makeRendering(MujocoEnvPtr env, int oldstate)
 	mjuiDef defRendering[] = {
 		{ mjITEM_SECTION, "Rendering", oldstate, nullptr, "AR" },
 		{ mjITEM_SELECT, "Camera", 2, &(settings_.camera), "Free\nTracking" },
-		{ mjITEM_SELECT, "Label", 2, &(env->vis.vopt.label),
+		{ mjITEM_SELECT, "Label", 2, &(vopt_.label),
 		  "None\nBody\nJoint\nGeom\nSite\nCamera\nLight\nTendon\nActuator\nConstraint\nSkin\nSelection\nSel Pnt\nForce" },
-		{ mjITEM_SELECT, "Frame", 2, &(env->vis.vopt.frame), "None\nBody\nGeom\nSite\nCamera\nLight\nWorld" },
+		{ mjITEM_SELECT, "Frame", 2, &(vopt_.frame), "None\nBody\nGeom\nSite\nCamera\nLight\nWorld" },
 		{ mjITEM_BUTTON, "Copy camera", 2, nullptr, "" },
 		{
 		    mjITEM_SEPARATOR,
@@ -932,7 +931,7 @@ void makeRendering(MujocoEnvPtr env, int oldstate)
 
 		// set shortcut and data
 		mju::sprintf_arr(defFlag[0].other, " %s", mjVISSTRING[i][2]);
-		defFlag[0].pdata = env->vis.vopt.flags + i;
+		defFlag[0].pdata = vopt_.flags + i;
 		mjui_add(&ui0_, defFlag);
 	}
 	mjui_add(&ui0_, defOpenGL);
@@ -940,7 +939,7 @@ void makeRendering(MujocoEnvPtr env, int oldstate)
 		mju::strcpy_arr(defFlag[0].name, mjRNDSTRING[i][0]);
 		if (mjRNDSTRING[i][2][0])
 			mju::sprintf_arr(defFlag[0].other, " %s", mjRNDSTRING[i][2]);
-		defFlag[0].pdata = env->vis.scn.flags + i;
+		defFlag[0].pdata = free_scene_.flags + i;
 		mjui_add(&ui0_, defFlag);
 	}
 }
@@ -950,40 +949,40 @@ void makeGroup(MujocoEnvPtr env, int oldstate)
 {
 	mjuiDef defGroup[] = { { mjITEM_SECTION, "Group enable", oldstate, nullptr, "AG" },
 		                    { mjITEM_SEPARATOR, "Geom groups", 1 },
-		                    { mjITEM_CHECKBYTE, "Geom 0", 2, env->vis.vopt.geomgroup, " 0" },
-		                    { mjITEM_CHECKBYTE, "Geom 1", 2, env->vis.vopt.geomgroup + 1, " 1" },
-		                    { mjITEM_CHECKBYTE, "Geom 2", 2, env->vis.vopt.geomgroup + 2, " 2" },
-		                    { mjITEM_CHECKBYTE, "Geom 3", 2, env->vis.vopt.geomgroup + 3, " 3" },
-		                    { mjITEM_CHECKBYTE, "Geom 4", 2, env->vis.vopt.geomgroup + 4, " 4" },
-		                    { mjITEM_CHECKBYTE, "Geom 5", 2, env->vis.vopt.geomgroup + 5, " 5" },
+		                    { mjITEM_CHECKBYTE, "Geom 0", 2, vopt_.geomgroup, " 0" },
+		                    { mjITEM_CHECKBYTE, "Geom 1", 2, vopt_.geomgroup + 1, " 1" },
+		                    { mjITEM_CHECKBYTE, "Geom 2", 2, vopt_.geomgroup + 2, " 2" },
+		                    { mjITEM_CHECKBYTE, "Geom 3", 2, vopt_.geomgroup + 3, " 3" },
+		                    { mjITEM_CHECKBYTE, "Geom 4", 2, vopt_.geomgroup + 4, " 4" },
+		                    { mjITEM_CHECKBYTE, "Geom 5", 2, vopt_.geomgroup + 5, " 5" },
 		                    { mjITEM_SEPARATOR, "Site groups", 1 },
-		                    { mjITEM_CHECKBYTE, "Site 0", 2, env->vis.vopt.sitegroup, "S0" },
-		                    { mjITEM_CHECKBYTE, "Site 1", 2, env->vis.vopt.sitegroup + 1, "S1" },
-		                    { mjITEM_CHECKBYTE, "Site 2", 2, env->vis.vopt.sitegroup + 2, "S2" },
-		                    { mjITEM_CHECKBYTE, "Site 3", 2, env->vis.vopt.sitegroup + 3, "S3" },
-		                    { mjITEM_CHECKBYTE, "Site 4", 2, env->vis.vopt.sitegroup + 4, "S4" },
-		                    { mjITEM_CHECKBYTE, "Site 5", 2, env->vis.vopt.sitegroup + 5, "S5" },
+		                    { mjITEM_CHECKBYTE, "Site 0", 2, vopt_.sitegroup, "S0" },
+		                    { mjITEM_CHECKBYTE, "Site 1", 2, vopt_.sitegroup + 1, "S1" },
+		                    { mjITEM_CHECKBYTE, "Site 2", 2, vopt_.sitegroup + 2, "S2" },
+		                    { mjITEM_CHECKBYTE, "Site 3", 2, vopt_.sitegroup + 3, "S3" },
+		                    { mjITEM_CHECKBYTE, "Site 4", 2, vopt_.sitegroup + 4, "S4" },
+		                    { mjITEM_CHECKBYTE, "Site 5", 2, vopt_.sitegroup + 5, "S5" },
 		                    { mjITEM_SEPARATOR, "Joint groups", 1 },
-		                    { mjITEM_CHECKBYTE, "Joint 0", 2, env->vis.vopt.jointgroup, "" },
-		                    { mjITEM_CHECKBYTE, "Joint 1", 2, env->vis.vopt.jointgroup + 1, "" },
-		                    { mjITEM_CHECKBYTE, "Joint 2", 2, env->vis.vopt.jointgroup + 2, "" },
-		                    { mjITEM_CHECKBYTE, "Joint 3", 2, env->vis.vopt.jointgroup + 3, "" },
-		                    { mjITEM_CHECKBYTE, "Joint 4", 2, env->vis.vopt.jointgroup + 4, "" },
-		                    { mjITEM_CHECKBYTE, "Joint 5", 2, env->vis.vopt.jointgroup + 5, "" },
+		                    { mjITEM_CHECKBYTE, "Joint 0", 2, vopt_.jointgroup, "" },
+		                    { mjITEM_CHECKBYTE, "Joint 1", 2, vopt_.jointgroup + 1, "" },
+		                    { mjITEM_CHECKBYTE, "Joint 2", 2, vopt_.jointgroup + 2, "" },
+		                    { mjITEM_CHECKBYTE, "Joint 3", 2, vopt_.jointgroup + 3, "" },
+		                    { mjITEM_CHECKBYTE, "Joint 4", 2, vopt_.jointgroup + 4, "" },
+		                    { mjITEM_CHECKBYTE, "Joint 5", 2, vopt_.jointgroup + 5, "" },
 		                    { mjITEM_SEPARATOR, "Tendon groups", 1 },
-		                    { mjITEM_CHECKBYTE, "Tendon 0", 2, env->vis.vopt.tendongroup, "" },
-		                    { mjITEM_CHECKBYTE, "Tendon 1", 2, env->vis.vopt.tendongroup + 1, "" },
-		                    { mjITEM_CHECKBYTE, "Tendon 2", 2, env->vis.vopt.tendongroup + 2, "" },
-		                    { mjITEM_CHECKBYTE, "Tendon 3", 2, env->vis.vopt.tendongroup + 3, "" },
-		                    { mjITEM_CHECKBYTE, "Tendon 4", 2, env->vis.vopt.tendongroup + 4, "" },
-		                    { mjITEM_CHECKBYTE, "Tendon 5", 2, env->vis.vopt.tendongroup + 5, "" },
+		                    { mjITEM_CHECKBYTE, "Tendon 0", 2, vopt_.tendongroup, "" },
+		                    { mjITEM_CHECKBYTE, "Tendon 1", 2, vopt_.tendongroup + 1, "" },
+		                    { mjITEM_CHECKBYTE, "Tendon 2", 2, vopt_.tendongroup + 2, "" },
+		                    { mjITEM_CHECKBYTE, "Tendon 3", 2, vopt_.tendongroup + 3, "" },
+		                    { mjITEM_CHECKBYTE, "Tendon 4", 2, vopt_.tendongroup + 4, "" },
+		                    { mjITEM_CHECKBYTE, "Tendon 5", 2, vopt_.tendongroup + 5, "" },
 		                    { mjITEM_SEPARATOR, "Actuator groups", 1 },
-		                    { mjITEM_CHECKBYTE, "Actuator 0", 2, env->vis.vopt.actuatorgroup, "" },
-		                    { mjITEM_CHECKBYTE, "Actuator 1", 2, env->vis.vopt.actuatorgroup + 1, "" },
-		                    { mjITEM_CHECKBYTE, "Actuator 2", 2, env->vis.vopt.actuatorgroup + 2, "" },
-		                    { mjITEM_CHECKBYTE, "Actuator 3", 2, env->vis.vopt.actuatorgroup + 3, "" },
-		                    { mjITEM_CHECKBYTE, "Actuator 4", 2, env->vis.vopt.actuatorgroup + 4, "" },
-		                    { mjITEM_CHECKBYTE, "Actuator 5", 2, env->vis.vopt.actuatorgroup + 5, "" },
+		                    { mjITEM_CHECKBYTE, "Actuator 0", 2, vopt_.actuatorgroup, "" },
+		                    { mjITEM_CHECKBYTE, "Actuator 1", 2, vopt_.actuatorgroup + 1, "" },
+		                    { mjITEM_CHECKBYTE, "Actuator 2", 2, vopt_.actuatorgroup + 2, "" },
+		                    { mjITEM_CHECKBYTE, "Actuator 3", 2, vopt_.actuatorgroup + 3, "" },
+		                    { mjITEM_CHECKBYTE, "Actuator 4", 2, vopt_.actuatorgroup + 4, "" },
+		                    { mjITEM_CHECKBYTE, "Actuator 5", 2, vopt_.actuatorgroup + 5, "" },
 		                    { mjITEM_END } };
 
 	mjui_add(&ui0_, defGroup);
@@ -1009,7 +1008,7 @@ void makeJoint(MujocoEnvPtr env, int oldstate)
 	for (i = 0; i < env->model->njnt && itemcnt < mjMAXUIITEM; i++) {
 		if ((env->model->jnt_type[i] == mjJNT_HINGE || env->model->jnt_type[i] == mjJNT_SLIDE)) {
 			// skip if joint group is disabled
-			if (!env->vis.vopt.jointgroup[mjMAX(0, mjMIN(mjNGROUP - 1, env->model->jnt_group[i]))]) {
+			if (!vopt_.jointgroup[mjMAX(0, mjMIN(mjNGROUP - 1, env->model->jnt_group[i]))]) {
 				continue;
 			}
 
@@ -1056,7 +1055,7 @@ void makeControl(MujocoEnvPtr env, int oldstate)
 	int itemcnt = 1;
 	for (i = 0; i < env->model->nu && itemcnt < mjMAXUIITEM; i++) {
 		// Skip if actuator group is disabled
-		if (!env->vis.vopt.actuatorgroup[mjMAX(0, mjMIN(mjNGROUP - 1, env->model->actuator_group[i]))]) {
+		if (!vopt_.actuatorgroup[mjMAX(0, mjMIN(mjNGROUP - 1, env->model->actuator_group[i]))]) {
 			continue;
 		}
 
@@ -1596,7 +1595,7 @@ void uiEvent(mjuiState *state)
 			mjtNum selpnt[3];
 			int selgeom, selskin;
 			int selbody =
-			    mjv_select(env->model.get(), env->data.get(), &(env->vis.vopt), (mjtNum)r.width / (mjtNum)r.height,
+			    mjv_select(env->model.get(), env->data.get(), &vopt_, (mjtNum)r.width / (mjtNum)r.height,
 			               (mjtNum)(state->x - r.left) / (mjtNum)r.width, (mjtNum)(state->y - r.bottom) / (mjtNum)r.height,
 			               &free_scene_, selpnt, &selgeom, &selskin);
 
@@ -1689,8 +1688,8 @@ void prepareOnScreen(const ros::WallDuration &r_interval)
 	}
 
 	// Update scene
-	mjv_updateScene(main_env_->model.get(), main_env_->data.get(), &(main_env_->vis.vopt), &pert_, &free_camera_,
-	                mjCAT_ALL, &free_scene_);
+	mjv_updateScene(main_env_->model.get(), main_env_->data.get(), &vopt_, &pert_, &free_camera_, mjCAT_ALL,
+	                &free_scene_);
 
 	// Update watch
 	if (settings_.ui0 && ui0_.sect[SECT_WATCH].state) {
