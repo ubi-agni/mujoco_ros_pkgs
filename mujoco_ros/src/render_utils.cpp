@@ -190,6 +190,7 @@ void initVisible()
 
 	mjv_defaultScene(&free_scene_);
 	mjr_defaultContext(&free_context_);
+	mjv_defaultCamera(&free_camera_);
 
 	// Create scene and context
 	mjv_makeScene(NULL, &free_scene_, render_utils::maxgeom_);
@@ -241,9 +242,6 @@ void initVisual()
 
 	if (!settings_.headless) {
 		initVisible();
-		mjv_defaultScene(&free_scene_);
-		mjv_makeScene(NULL, &free_scene_, maxgeom_);
-		mjv_defaultCamera(&free_camera_);
 	}
 }
 
