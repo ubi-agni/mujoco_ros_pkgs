@@ -169,6 +169,8 @@ void MujocoEnv::initializeRenderResources()
 
 	ROS_DEBUG_STREAM_NAMED("mujoco_env", "Model has " << model->ncam << " cameras");
 
+	cam_streams.clear();
+
 	render_utils::CamStreamPtr stream_ptr;
 	for (int cam_id = 0; cam_id < model->ncam; cam_id++) {
 		cam_name = mj_id2name(model.get(), mjOBJ_CAMERA, cam_id);
