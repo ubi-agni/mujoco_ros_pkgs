@@ -326,8 +326,8 @@ void offScreenRenderEnv(MujocoEnvPtr env)
 	}
 
 	std::lock_guard<std::mutex> lk(render_mtx);
-
 	glfwMakeContextCurrent(env->vis.window);
+	mjr_setBuffer(mjFB_OFFSCREEN, &env->vis.con);
 
 	int type_backup        = env->vis.cam.type;
 	int cam_id_backup      = env->vis.cam.fixedcamid;
