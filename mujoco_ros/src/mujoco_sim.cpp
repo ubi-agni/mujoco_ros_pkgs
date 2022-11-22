@@ -559,11 +559,10 @@ void simulate(void)
 				}
 			} else if (sim_mode_ == simMode::PARALLEL) { // settings_.run = 1 && parallel
 				if (settings_.manual_env_steps != 0) {
-					// TODO(dleins): Should perturbations be applied in multi-env?
 					// clear old perturbations, apply new
-					// mju_zero(data->xfrc_applied, 6 * model->nbody);
-					// mjv_applyPerturbPose(model.get(), data.get(), &pert, 0); // Move mocap bodies only
-					// mjv_applyPerturbForce(model.get(), data.get(), &pert);
+					mju_zero(data->xfrc_applied, 6 * model->nbody);
+					mjv_applyPerturbPose(model.get(), data.get(), &mjsru::pert_, 0); // Move mocap bodies only
+					mjv_applyPerturbForce(model.get(), data.get(), &mjsru::pert_);
 
 					synchedMultiSimStep();
 					settings_.manual_env_steps--;
