@@ -115,26 +115,9 @@ void MujocoEnvParallel::bootstrapNamespace()
 		ROS_ERROR_STREAM_NAMED("mujoco_env", "Error while bootstrapping ROS environment for namespace '" << name << "'");
 }
 
-void MujocoEnv::reload()
+void MujocoEnv::initializeRenderResources()
 {
-	ROS_DEBUG_STREAM_NAMED("mujoco_env", "(re)loading MujocoPlugins ... [" << name << "]");
-	cb_ready_plugins.clear();
-	plugins.clear();
-
-	XmlRpc::XmlRpcValue plugin_config;
-	if (plugin_utils::parsePlugins(nh, plugin_config)) {
-		plugin_utils::registerPlugins(nh, plugin_config, plugins);
-	}
-
-	for (const auto &plugin : plugins) {
-		if (plugin->safe_load(model, data)) {
-			cb_ready_plugins.push_back(plugin);
-		}
-	}
-
-	ROS_DEBUG_STREAM_NAMED("mujoco_env", "Done (re)loading MujocoPlugins [" << name << "]");
-
-	ROS_DEBUG_STREAM_NAMED("mujoco_env", "Resetting offscreen rendering utils [" << name << "]");
+	ROS_DEBUG_STREAM_NAMED("mujoco_env", "Initializing offscreen rendering utils [" << name << "]");
 	if (vis.window != NULL) {
 		ROS_DEBUG_NAMED("mujoco_env", "\tDestroying old offscreen buffer window");
 		glfwDestroyWindow(vis.window);
@@ -224,6 +207,25 @@ void MujocoEnv::reload()
 		stream_ptr.reset(new render_utils::CamStream(cam_id, stream_type, rgb, depth, segment, use_segid, pub_freq));
 		cam_streams.push_back(stream_ptr);
 	}
+}
+
+void MujocoEnv::reload()
+{
+	ROS_DEBUG_STREAM_NAMED("mujoco_env", "(re)loading MujocoPlugins ... [" << name << "]");
+	cb_ready_plugins.clear();
+	plugins.clear();
+
+	XmlRpc::XmlRpcValue plugin_config;
+	if (plugin_utils::parsePlugins(nh, plugin_config)) {
+		plugin_utils::registerPlugins(nh, plugin_config, plugins);
+	}
+
+	for (const auto &plugin : plugins) {
+		if (plugin->safe_load(model, data)) {
+			cb_ready_plugins.push_back(plugin);
+		}
+	}
+	ROS_DEBUG_STREAM_NAMED("mujoco_env", "Done (re)loading MujocoPlugins [" << name << "]");
 }
 
 void MujocoEnv::reset()

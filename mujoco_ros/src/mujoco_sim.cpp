@@ -376,18 +376,7 @@ void eventloop(void)
 	ros::WallDuration fps_cap(mjsru::render_ui_rate_upper_bound_); // Cap to 60 FPS
 	while (ros::ok() && ((!settings_.exitrequest && (settings_.headless || !mjsru::isWindowClosing())))) {
 		{
-			std::unique_lock lk(sim_mtx, std::defer_lock);
-			while (!lk.try_lock()) {
-				// Be ready to render cameras offscreen as soon as requested by simulate
-				if (sim_mode_ == simMode::PARALLEL) {
-					for (auto &env : env_list_) {
-						mjsru::offScreenRenderEnv(env);
-					}
-				} else {
-					mjsru::offScreenRenderEnv(main_env_);
-				}
-				std::this_thread::sleep_for(std::chrono::nanoseconds(5));
-			}
+			std::lock_guard<std::mutex> lk(sim_mtx);
 			now = ros::WallTime::now();
 
 			if (settings_.loadrequest == 1) {
@@ -485,6 +474,13 @@ void simulate(void)
 		}
 
 		if (model && data) {
+			if (settings_.visualInitrequest || settings_.render_offscreen) {
+				if (sim_mode_ == simMode::SINGLE) {
+					main_env_->initializeRenderResources();
+				}
+				settings_.visualInitrequest = 0;
+			}
+
 			std::lock_guard<std::mutex> lk(sim_mtx);
 			if (settings_.run && sim_mode_ == simMode::SINGLE) {
 				ros::WallTime tmstart = ros::WallTime::now();
@@ -525,7 +521,7 @@ void simulate(void)
 					mj_step(model.get(), data.get());
 					publishSimTime(data->time);
 					lastStageCallback(data.get());
-					mjsru::waitUntilEnvCamerasRendered(main_env_);
+					mjsru::offScreenRenderEnv(main_env_);
 
 					// Count steps until termination
 					if (num_steps > 0) {
@@ -547,7 +543,7 @@ void simulate(void)
 						mj_step(model.get(), data.get());
 						publishSimTime(data->time);
 						lastStageCallback(data.get());
-						mjsru::waitUntilEnvCamerasRendered(main_env_);
+						mjsru::offScreenRenderEnv(main_env_);
 
 						// Count steps until termination
 						if (num_steps > 0) {
@@ -584,7 +580,7 @@ void simulate(void)
 					mj_step(model.get(), data.get());
 					publishSimTime(data->time);
 					lastStageCallback(data.get());
-					mjsru::waitUntilEnvCamerasRendered(main_env_);
+					mjsru::offScreenRenderEnv(main_env_);
 
 					settings_.manual_env_steps--;
 				} else { // Wating in paused mode
@@ -592,7 +588,7 @@ void simulate(void)
 
 					// Run mj_forward, to update rendering and joint sliders
 					mj_forward(model.get(), data.get());
-					mjsru::waitUntilEnvCamerasRendered(main_env_);
+					mjsru::offScreenRenderEnv(main_env_);
 				}
 			}
 		} // end if(model && data) unlocks sim_mtx
@@ -613,6 +609,7 @@ void simulate(void)
 
 void envStepLoop(MujocoEnvParallelPtr env)
 {
+	env->initializeRenderResources();
 	while (!settings_.exitrequest && not env->stop_loop) {
 		if (settings_.ctrlnoisestd) {
 			// Convert rate and scale to discrete time given current timestep
@@ -639,7 +636,7 @@ void envStepLoop(MujocoEnvParallelPtr env)
 		// Run mj_step
 		mj_step(env->model.get(), env->data.get());
 		lastStageCallback(env->data.get());
-		mjsru::waitUntilEnvCamerasRendered(env);
+		mjsru::offScreenRenderEnv(env);
 	}
 	ROS_DEBUG_STREAM_COND_NAMED(settings_.exitrequest, "envStepLoop",
 	                            "halted because of exit request [" << env->name << "]");
@@ -685,6 +682,8 @@ void loadModel(void)
 		main_env_->model.reset(mnew);
 		environments::assignData(mj_makeData(mnew), main_env_);
 		setupEnv(main_env_);
+		// Request that off-screen rendering resources are initialized in simulate thread
+		settings_.visualInitrequest = 1;
 	} else {
 		for (const auto &env : env_list_) {
 			ROS_DEBUG_STREAM_NAMED("mujoco", "Setting up env '" << env->name << "' ...");

@@ -244,6 +244,7 @@ typedef struct _settings
 	int key               = 0;
 	int loadrequest       = 0;
 	int resetrequest      = 0;
+	int visualInitrequest = 0;
 	int slow_down         = 1;
 	bool speed_changed    = true;
 	double ctrlnoisestd   = 0.0;

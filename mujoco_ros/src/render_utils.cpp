@@ -321,11 +321,10 @@ void renderAndPubEnv(MujocoEnvPtr env, bool rgb, bool depth, const image_transpo
 
 void offScreenRenderEnv(MujocoEnvPtr env)
 {
-	if (env->buffer_state != REQUESTED) {
+	if (!env->vis.window) {
 		return;
 	}
 
-	std::lock_guard<std::mutex> lk(render_mtx);
 	glfwMakeContextCurrent(env->vis.window);
 	mjr_setBuffer(mjFB_OFFSCREEN, &env->vis.con);
 
@@ -339,7 +338,6 @@ void offScreenRenderEnv(MujocoEnvPtr env)
 		env->vis.cam.fixedcamid = stream->cam_id;
 
 		if (ros::Duration(1 / stream->pub_freq) >= ros::Time::now() - stream->last_pub) {
-			env->buffer_state = bufferState::READY;
 			continue;
 		}
 
@@ -386,26 +384,10 @@ void offScreenRenderEnv(MujocoEnvPtr env)
 		}
 	}
 
-	env->buffer_state = bufferState::SENT;
-
 	env->vis.cam.type                 = type_backup;
 	env->vis.cam.fixedcamid           = cam_id_backup;
 	env->vis.scn.flags[mjRND_SEGMENT] = segment_backup;
 	env->vis.scn.flags[mjRND_IDCOLOR] = segid_backup;
-}
-
-void waitUntilEnvCamerasRendered(MujocoEnvPtr env, const ros::WallDuration &timeout)
-{
-	env->buffer_state = bufferState::REQUESTED;
-
-	ros::WallTime break_time = ros::WallTime::now() + timeout;
-
-	while (env->buffer_state == bufferState::REQUESTED && break_time > ros::WallTime::now()) {
-		std::this_thread::sleep_for(std::chrono::nanoseconds(10));
-	}
-
-	ROS_ERROR_COND_NAMED(env->buffer_state == bufferState::REQUESTED, "mujoco_render",
-	                     "Buffers were not filled with image data, ran into timeout!");
 }
 
 void onModelLoad(MujocoEnvPtr env, bool align)

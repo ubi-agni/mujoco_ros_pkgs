@@ -49,14 +49,6 @@ namespace MujocoSim {
 
 namespace render_utils {
 
-typedef enum bufferState_ : uint8_t
-{
-	INITIALIZED = 0,
-	REQUESTED,
-	READY,
-	SENT
-} bufferState;
-
 typedef enum streamType_ : uint8_t
 {
 	RGB       = 1,

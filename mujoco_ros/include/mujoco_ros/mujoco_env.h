@@ -113,6 +113,8 @@ public:
 
 	MujocoEnv(const MujocoEnv &) = delete;
 
+	void initializeRenderResources(void);
+
 	/// Pointer to mjModel
 	mjModelPtr model;
 	/// Pointer to mjData
@@ -127,9 +129,6 @@ public:
 	render_utils::VisualStruct vis;
 	/// CamStream objects for other cameras
 	std::vector<render_utils::CamStreamPtr> cam_streams;
-	/// Enum to communicate with rendering thread
-	std::atomic<render_utils::bufferState> buffer_state = { render_utils::bufferState::INITIALIZED }; // atomic to be
-	                                                                                                  // thread safe
 
 	/**
 	 * @brief Calls reload functions of all members depeding on mjData.
