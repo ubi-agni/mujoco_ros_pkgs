@@ -184,8 +184,7 @@ static std::vector<ros::ServiceServer> service_servers_;
 static std::unique_ptr<actionlib::SimpleActionServer<mujoco_ros_msgs::StepAction>> action_step_;
 
 // constants
-const double syncmisalign_  = 0.1; // maximum time mis-alignment before re-sync
-const double refreshfactor_ = 0.7; // fraction of refresh available for simulation
+const double syncMisalign_ = 0.1; // maximum time mis-alignment before re-sync
 
 void loadModel(void);
 void loadInitialJointStates(mjModelPtr model, mjDataPtr data);
@@ -230,6 +229,10 @@ typedef struct _settings
 	// multi env
 	std::atomic_int manual_env_steps = { 0 };
 
+	// Time statistics
+	float measured_slow_down = 1.0;
+	int rt_index             = 1;
+
 	// option
 	int spacing    = 0;
 	int color      = 0;
@@ -248,7 +251,6 @@ typedef struct _settings
 	bool headless         = false;
 	bool render_offscreen = false;
 	int key               = 0;
-	int slow_down         = 1;
 	double ctrlnoisestd   = 0.0;
 	double ctrlnoiserate  = 0.0;
 
@@ -265,6 +267,10 @@ typedef struct _settings
 } Settings;
 
 extern Settings settings_;
+
+static constexpr float percentRealTime[] = { -1, // unbound
+	                                          100, 80, 66,  50,  40, 33, 25,  20, 16, 13,  10,  8,  6.6, 5.0, 4, 3.3,
+	                                          2.5, 2,  1.6, 1.3, 1,  .8, .66, .5, .4, .33, .25, .2, .16, .13, .1 };
 
 } // end namespace detail
 } // end namespace MujocoSim

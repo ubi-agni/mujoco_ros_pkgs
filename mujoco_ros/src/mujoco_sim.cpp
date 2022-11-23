@@ -457,8 +457,10 @@ void simulate(void)
 	ROS_DEBUG_STREAM_COND_NAMED(num_steps > 0, "mujoco", "Simulation will terminate after " << num_steps << " steps");
 
 	// cpu-sim syncronization point
-	ros::WallTime cpusync(0); // last sync time in WallTime
-	mjtNum simsync = 0; // last sync time in sim time
+	ros::WallTime syncCPU(0); // last sync time in WallTime
+	double elapsedCPU(0);
+	mjtNum syncSim    = 0; // last sync time in sim time
+	mjtNum elapsedSim = 0;
 
 	mjModelPtr model;
 	mjDataPtr data;
@@ -483,7 +485,12 @@ void simulate(void)
 
 			std::lock_guard<std::mutex> lk(sim_mtx);
 			if (settings_.run.load() && sim_mode_ == simMode::SINGLE) {
-				ros::WallTime tmstart = ros::WallTime::now();
+				// Wall time at the start of this iteration
+				ros::WallTime startCPU = ros::WallTime::now();
+
+				// Elapsed Wall and simulation time since last sync
+				elapsedSim = data->time - syncSim;
+				elapsedCPU = (startCPU - syncCPU).toSec();
 
 				// Inject noise
 				if (settings_.ctrlnoisestd) {
@@ -499,17 +506,16 @@ void simulate(void)
 					}
 				}
 
-				// Out-of-sync
-				// delta between sim time and wallTime passed between last sync
-				mjtNum offset = mju_abs((data->time * settings_.slow_down - simsync) - (tmstart - cpusync).toSec());
-				if (offset > syncmisalign_ * settings_.slow_down || // offset greater than threshold
-				    settings_.speed_changed.load() || // speed change misaligns simtime
-				    data->time * settings_.slow_down < simsync || // simsync not initialized properly (can this be reached?)
-				    tmstart < cpusync) { // cpusync not initialized properly (can this be reached?)
-					// Re-sync
+				double slow_down = 100 / percentRealTime[settings_.rt_index];
 
-					cpusync = tmstart;
-					simsync = data->time * settings_.slow_down;
+				mjtNum misaligned = mju_abs(elapsedCPU / slow_down - elapsedSim) > syncMisalign_;
+
+				// Out-of-sync
+				if (elapsedSim < 0 || elapsedCPU < 0 || syncCPU.toSec() == 0 || misaligned ||
+				    settings_.speed_changed.load()) {
+					// Re-sync
+					syncCPU = startCPU;
+					syncSim = data->time;
 					settings_.speed_changed.store(false);
 
 					// Clear old perturbations, apply new
@@ -528,18 +534,27 @@ void simulate(void)
 						num_steps--;
 						ROS_INFO_COND_NAMED(num_steps == 0, "mujoco", "running last sim step before termination!");
 					}
-				} else { // in-sync
-					// Step while simtime lags behind cputime , and within safefactor
-					while ((data->time * settings_.slow_down - simsync) < (ros::WallTime::now() - cpusync).toSec() &&
-					       (ros::WallTime::now() - tmstart).toSec() < mjsru::render_ui_rate_lower_bound_ &&
+				} else { // in-sync: step until ahead of CPU
+					bool measured  = false;
+					mjtNum prevSim = data->time;
+
+					// If real-time is bound, run until sim steps are in sync with CPU steps, otherwise run as fast as
+					// possible
+					while ((settings_.rt_index == 0 ||
+					        (data->time - syncSim) * slow_down < (ros::WallTime::now() - syncCPU).toSec()) &&
+					       (ros::WallTime::now() - startCPU).toSec() < mjsru::render_ui_rate_lower_bound_ &&
 					       (num_steps == -1 || num_steps > 0) && !settings_.exitrequest.load()) {
+						if (!measured && elapsedSim) {
+							settings_.measured_slow_down = elapsedCPU / elapsedSim;
+							measured                     = true;
+						}
+
 						// clear old perturbations, apply new
 						mju_zero(data->xfrc_applied, 6 * model->nbody);
 						mjv_applyPerturbPose(model.get(), data.get(), &mjsru::pert_, 0); // Move mocap bodies only
 						mjv_applyPerturbForce(model.get(), data.get(), &mjsru::pert_);
 
 						// Run mj_step
-						mjtNum prevtm = data->time * settings_.slow_down;
 						mj_step(model.get(), data.get());
 						publishSimTime(data->time);
 						lastStageCallback(data.get());
@@ -552,7 +567,7 @@ void simulate(void)
 						}
 
 						// break on reset
-						if (data->time * settings_.slow_down < prevtm) {
+						if (data->time < prevSim) {
 							break;
 						}
 					}
@@ -704,6 +719,33 @@ void loadModel(void)
 	bool realign = mju::strcmp_arr(filename_, previous_filename_);
 	if (realign) {
 		mju::strcpy_arr(previous_filename_, filename_);
+	}
+
+	// set real time index
+	int numclicks   = sizeof(percentRealTime) / sizeof(percentRealTime[0]);
+	float min_error = 1e6;
+	float desired;
+#if mjVERSION_HEADER < 230
+	nh_->param<float>("realtime", desired, 1.0);
+#else
+	nh_->param<float>("realtime", desired, main_env_->model->vis.global.realtime);
+#endif
+
+	if (desired == -1) {
+		settings_.rt_index = 0;
+	} else if (desired <= 0 or desired > 1) {
+		ROS_WARN_NAMED("mujoco", "Desired realtime should be greater than 0 and not greater than 1 or set to -1 to run "
+		                         "at the fastest time possible. Setting to 1");
+		settings_.rt_index = 1;
+	} else {
+		desired = mju_log(100 * desired);
+		for (int click = 0; click < numclicks; click++) {
+			float error = mju_abs(mju_log(percentRealTime[click]) - desired);
+			if (error < min_error) {
+				min_error          = error;
+				settings_.rt_index = click;
+			}
+		}
 	}
 
 	mjsru::onModelLoad(main_env_, realign);

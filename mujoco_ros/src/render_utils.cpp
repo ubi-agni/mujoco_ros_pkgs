@@ -109,10 +109,24 @@ void render(GLFWwindow *window)
 		mjr_overlay(mjFONT_BIG, mjGRID_TOPRIGHT, smallrect, settings_.loadrequest.load() ? "loading" : "pause", NULL,
 		            &free_context_);
 
+	float desired_realtime = percentRealTime[settings_.rt_index];
+	float actual_realtime  = 100 / settings_.measured_slow_down;
+
+	float rt_offset = mju_abs(actual_realtime - desired_realtime);
+	bool misaligned = settings_.run.load() && rt_offset > 0.1 * desired_realtime;
+
 	// show realtime label
-	if (settings_.run.load() && settings_.slow_down != 1) {
-		std::string realtime_label = "1/" + std::to_string(settings_.slow_down) + "x";
-		mjr_overlay(mjFONT_BIG, mjGRID_TOPRIGHT, smallrect, realtime_label.c_str(), NULL, &free_context_);
+	if (desired_realtime != 100. || misaligned) {
+		char rt_label[30];
+		int labelsize;
+		if (desired_realtime != -1) {
+			labelsize = std::snprintf(rt_label, sizeof(rt_label), "%g%%", desired_realtime);
+		} else {
+			labelsize   = 1;
+			rt_label[0] = '+';
+		}
+		std::snprintf(rt_label + labelsize, sizeof(rt_label) - labelsize, " (%-4.1f%%)", actual_realtime);
+		mjr_overlay(mjFONT_BIG, mjGRID_TOPRIGHT, smallrect, rt_label, NULL, &free_context_);
 	}
 
 	// show ui 0
@@ -742,10 +756,9 @@ void infotext(MujocoEnvPtr env, char (&title)[kBufSize], char (&content)[kBufSiz
 	}
 	solerr = mju_log10(mju_max(mjMINVAL, solerr));
 
-	const std::string realtime_nominator = settings_.slow_down == 1 ? "" : "1/";
-	mju::strcpy_arr(title, "Time\nSize\nCPU\nSolver\nFPS\nstack\nconbuf\nefcbuf");
-	mju::sprintf_arr(content, "%-9.3f %s%d x\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%.0f\n%.3f\n%.3f\n%.3f",
-	                 env->data->time, realtime_nominator.c_str(), settings_.slow_down, env->data->nefc, env->data->ncon,
+	mju::strcpy_arr(title, "Time\nSize\nCPU\nSolver\nFPS\nstack\nnconbuf\nefcbuf");
+	mju::sprintf_arr(content, "%-9.3f\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%.0f\n%.3f\n%.3f\n%.3f", env->data->time,
+	                 env->data->nefc, env->data->ncon,
 	                 settings_.run.load() ?
 	                     env->data->timer[mjTIMER_STEP].duration / mjMAX(1, env->data->timer[mjTIMER_STEP].number) :
 	                     env->data->timer[mjTIMER_FORWARD].duration / mjMAX(1, env->data->timer[mjTIMER_FORWARD].number),
@@ -1517,15 +1530,17 @@ void uiEvent(mjuiState *state)
 				break;
 
 			case '-': //  Slow down
-				if (settings_.slow_down < max_slow_down_ && !state->shift) {
-					settings_.slow_down *= 2;
+			{
+				int num_clicks = sizeof(percentRealTime) / sizeof(percentRealTime[0]);
+				if (settings_.rt_index < num_clicks - 1 && !state->shift) {
+					settings_.rt_index++;
 					settings_.speed_changed.store(true);
 				}
-				break;
+			} break;
 
 			case '=': // Speed up
-				if (settings_.slow_down > 1 && !state->shift) {
-					settings_.slow_down /= 2;
+				if (settings_.rt_index > 0 && !state->shift) {
+					settings_.rt_index--;
 					settings_.speed_changed.store(true);
 				}
 				break;
