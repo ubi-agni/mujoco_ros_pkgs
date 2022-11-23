@@ -1,13 +1,19 @@
 <?xml version="1.0"?>
 <launch>
 
-  <arg name="verbose"      default="false"  doc="Should more debug output be printed?" />
-  <arg name="unpause"     default="false"  doc="Should the simulation be unpaused on start?" />
-  <arg name="modelfile"   default="$(find mujoco_ros)/test/empty_world.xml" doc="MuJoCo xml file to load. Should define robot model and world." />
-  <arg name="headless"   default="false" doc="Should the simulation be rendered." />
-  <arg name="num_sim_steps"   default="-1" doc="Number of simulation steps to run. Set to '-1' to run indefinitely." />
+  <arg name="verbose"              default="false"                                   doc="Should more debug output be printed?" />
+  <arg name="unpause"              default="false"                                   doc="Should the simulation be unpaused on start?" />
+  <arg name="modelfile"            default="$(find mujoco_ros)/test/empty_world.xml" doc="MuJoCo xml file to load. Should define robot model and world." />
+  <arg name="headless"             default="false"                                   doc="Should the simulation be rendered." />
+  <arg name="num_sim_steps"        default="-1"                                      doc="Number of simulation steps to run. Set to '-1' to run indefinitely." />
+  <arg name="use_sim_time"                                                           doc="Should mujoco ublish its simulation time as ros time?" />
+  <arg name="wait_for_xml"         default="false"                                   doc="Should mujoco_ros wait for a modelfile on the parameter server" />
+  <arg name="mujoco_plugin_config" default=""                                        doc="Optionally provide the path to a yaml with plugin configurations to load" />
+  <arg name="realtime"             default="1.0"                                     doc="Desired realtime factor. Set to '-1' to run as fast as possbile " />
+  <arg name="render_offscreen"     default="true"                                    doc="Should camera streams be rendered and published?" />
+  <arg name="debug"                default="false"                                   doc="Should mujoco be started in gdb?" />
 
-  <param name="/use_sim_time" value="true"/>
+  <param name="/use_sim_time" value="$(arg use_sim_time)"/>
 
   <env name="ROSCONSOLE_FORMAT" value="[${severity}] [${time}] [${logger}] [${node}]: ${message}"/>
   <env if="$(arg verbose)" name="ROSCONSOLE_CONFIG_FILE"
@@ -22,11 +28,26 @@
           type: mujoco_ros_control/DefaultRobotHWSim
           control_period: 0.001
   </rosparam> -->
+  <group if="$(eval arg('mujoco_plugin_config') != '')">
+    <rosparam file="$(arg mujoco_plugin_config)" subst_value="true" />
+  </group>
 
-  <node pkg="mujoco_ros" type="mujoco_server" name="mujoco_server" output="screen" >
-    <param name="modelfile" type="str"  value="$(arg modelfile)" />
-    <param name="unpause"   value="$(arg unpause)" />
-    <param name="visualize"   value="$(eval not arg('headless'))" />
-    <param name="num_steps"   value="$(arg num_sim_steps)" />
-  </node>
+  <group if="$(arg debug)">
+    <node pkg="mujoco_ros" type="mujoco_server" name="mujoco_server" output="screen" launch-prefix="gdb -ex run --args" >
+      <param name="modelfile" type="str"  value="$(arg modelfile)" />
+      <param name="unpause"   value="$(arg unpause)" />
+      <param name="visualize" value="$(eval not arg('headless'))" />
+      <param name="num_steps" value="$(arg num_sim_steps)" />
+      <param name="realtime"  value="$(arg realtime)" />
+    </node>
+  </group>
+  <group unless="$(arg debug)">
+    <node pkg="mujoco_ros" type="mujoco_server" name="mujoco_server" output="screen" >
+      <param name="modelfile" type="str"  value="$(arg modelfile)" />
+      <param name="unpause"   value="$(arg unpause)" />
+      <param name="visualize" value="$(eval not arg('headless'))" />
+      <param name="num_steps" value="$(arg num_sim_steps)" />
+      <param name="realtime"  value="$(arg realtime)" />
+    </node>
+  </group>
 </launch>
