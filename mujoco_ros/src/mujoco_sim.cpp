@@ -165,6 +165,9 @@ void init(std::string modelfile)
 
 	settings_.headless = !vis;
 
+	nh_->param<bool>("render_offscreen", settings_.render_offscreen, true);
+	ROS_WARN_COND_NAMED(!settings_.render_offscreen, "mujoco", "Rendering offscreen camera streams is disabled!");
+
 	// Print version, check compatibility
 	ROS_INFO("MuJoCo Pro library version %.2lf\n", 0.01 * mj_version());
 	if (mjVERSION_HEADER != mj_version()) {
@@ -476,8 +479,8 @@ void simulate(void)
 		}
 
 		if (model && data) {
-			if (settings_.visualInitrequest.load() || settings_.render_offscreen) {
-				if (sim_mode_ == simMode::SINGLE) {
+			if (settings_.visualInitrequest.load()) {
+				if (sim_mode_ == simMode::SINGLE && settings_.render_offscreen) {
 					main_env_->initializeRenderResources();
 				}
 				settings_.visualInitrequest.store(0);
@@ -623,7 +626,10 @@ void simulate(void)
 
 void envStepLoop(MujocoEnvParallelPtr env)
 {
-	env->initializeRenderResources();
+	if (settings_.render_offscreen) {
+		env->initializeRenderResources();
+	}
+
 	while (!settings_.exitrequest.load() && not env->stop_loop.load()) {
 		if (settings_.ctrlnoisestd) {
 			// Convert rate and scale to discrete time given current timestep

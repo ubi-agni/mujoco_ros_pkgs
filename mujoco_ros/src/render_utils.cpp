@@ -335,7 +335,7 @@ void renderAndPubEnv(MujocoEnvPtr env, bool rgb, bool depth, const image_transpo
 
 void offScreenRenderEnv(MujocoEnvPtr env)
 {
-	if (!env->vis.window) {
+	if (!env->vis.window || !settings_.render_offscreen) {
 		return;
 	}
 
