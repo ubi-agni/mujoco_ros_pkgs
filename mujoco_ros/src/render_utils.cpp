@@ -83,7 +83,7 @@ void render(GLFWwindow *window)
 		mjr_rectangle(rect, 0.2f, 0.3f, 0.4f, 1);
 
 		// label
-		if (settings_.loadrequest)
+		if (settings_.loadrequest.load())
 			mjr_overlay(mjFONT_BIG, mjGRID_TOPRIGHT, smallrect, "loading", NULL, &free_context_);
 
 		//// We don't want this. A model should be loaded over services or during start
@@ -105,12 +105,12 @@ void render(GLFWwindow *window)
 	mjr_render(rect, &free_scene_, &free_context_);
 
 	// show pause/loading label
-	if (!settings_.run || settings_.loadrequest)
-		mjr_overlay(mjFONT_BIG, mjGRID_TOPRIGHT, smallrect, settings_.loadrequest ? "loading" : "pause", NULL,
+	if (!settings_.run.load() || settings_.loadrequest.load())
+		mjr_overlay(mjFONT_BIG, mjGRID_TOPRIGHT, smallrect, settings_.loadrequest.load() ? "loading" : "pause", NULL,
 		            &free_context_);
 
 	// show realtime label
-	if (settings_.run && settings_.slow_down != 1) {
+	if (settings_.run.load() && settings_.slow_down != 1) {
 		std::string realtime_label = "1/" + std::to_string(settings_.slow_down) + "x";
 		mjr_overlay(mjFONT_BIG, mjGRID_TOPRIGHT, smallrect, realtime_label.c_str(), NULL, &free_context_);
 	}
@@ -744,13 +744,14 @@ void infotext(MujocoEnvPtr env, char (&title)[kBufSize], char (&content)[kBufSiz
 
 	const std::string realtime_nominator = settings_.slow_down == 1 ? "" : "1/";
 	mju::strcpy_arr(title, "Time\nSize\nCPU\nSolver\nFPS\nstack\nconbuf\nefcbuf");
-	mju::sprintf_arr(
-	    content, "%-9.3f %s%d x\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%.0f\n%.3f\n%.3f\n%.3f", env->data->time,
-	    realtime_nominator.c_str(), settings_.slow_down, env->data->nefc, env->data->ncon,
-	    settings_.run ? env->data->timer[mjTIMER_STEP].duration / mjMAX(1, env->data->timer[mjTIMER_STEP].number) :
-	                    env->data->timer[mjTIMER_FORWARD].duration / mjMAX(1, env->data->timer[mjTIMER_FORWARD].number),
-	    solerr, env->data->solver_iter, 1 / interval, env->data->maxuse_stack / (double)env->data->nstack,
-	    env->data->maxuse_con / (double)env->model->nconmax, env->data->maxuse_efc / (double)env->model->njmax);
+	mju::sprintf_arr(content, "%-9.3f %s%d x\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%.0f\n%.3f\n%.3f\n%.3f",
+	                 env->data->time, realtime_nominator.c_str(), settings_.slow_down, env->data->nefc, env->data->ncon,
+	                 settings_.run.load() ?
+	                     env->data->timer[mjTIMER_STEP].duration / mjMAX(1, env->data->timer[mjTIMER_STEP].number) :
+	                     env->data->timer[mjTIMER_FORWARD].duration / mjMAX(1, env->data->timer[mjTIMER_FORWARD].number),
+	                 solerr, env->data->solver_iter, 1 / interval, env->data->maxuse_stack / (double)env->data->nstack,
+	                 env->data->maxuse_con / (double)env->model->nconmax,
+	                 env->data->maxuse_efc / (double)env->model->njmax);
 
 	// Add energy if enabled
 	if (mjENABLED_ros(env->model, mjENBL_ENERGY)) {
@@ -1197,7 +1198,7 @@ int uiPredicate(int category, void *userdata)
 			return (env->model && env->model->nkey);
 
 		case 4:
-			return (env->model && !settings_.run);
+			return (env->model && !settings_.run.load());
 
 		default:
 			return 1;
@@ -1274,7 +1275,7 @@ void uiEvent(mjuiState *state)
 					break;
 
 				case 4: // Quit
-					settings_.exitrequest = 1;
+					settings_.exitrequest.store(1);
 					break;
 			}
 		}
@@ -1329,11 +1330,11 @@ void uiEvent(mjuiState *state)
 		else if (it && it->sectionid == SECT_SIMULATION) {
 			switch (it->itemid) {
 				case 1: // reset
-					settings_.resetrequest = 1;
+					settings_.resetrequest.store(1);
 					break;
 
 				case 2: // Reload
-					settings_.loadrequest = 1;
+					settings_.loadrequest.store(1);
 					break;
 
 				case 3: // Align
@@ -1471,18 +1472,18 @@ void uiEvent(mjuiState *state)
 		switch (state->key) {
 			case ' ': // Mode
 				if (env->model) {
-					settings_.run = 1 - settings_.run;
-					if (settings_.run)
-						settings_.manual_env_steps = 0;
+					settings_.run.store(1 - settings_.run.load());
+					if (settings_.run.load())
+						settings_.manual_env_steps.store(0);
 					pert_.active = 0;
 					mjui_update(-1, -1, &ui0_, state, &free_context_);
 				}
 				break;
 
 			case mjKEY_RIGHT: // Step forward
-				if (env->model && !settings_.run) {
+				if (env->model && !settings_.run.load()) {
 					clearTimers(env->data);
-					settings_.manual_env_steps = 1;
+					settings_.manual_env_steps.store(1);
 				}
 				break;
 
@@ -1492,9 +1493,9 @@ void uiEvent(mjuiState *state)
 				break;
 
 			case mjKEY_DOWN: // Step forward 100
-				if (env->model && !settings_.run) {
+				if (env->model && !settings_.run.load()) {
 					clearTimers(env->data);
-					settings_.manual_env_steps = 100;
+					settings_.manual_env_steps.store(100);
 				}
 				break;
 
@@ -1518,14 +1519,14 @@ void uiEvent(mjuiState *state)
 			case '-': //  Slow down
 				if (settings_.slow_down < max_slow_down_ && !state->shift) {
 					settings_.slow_down *= 2;
-					settings_.speed_changed = true;
+					settings_.speed_changed.store(true);
 				}
 				break;
 
 			case '=': // Speed up
 				if (settings_.slow_down > 1 && !state->shift) {
 					settings_.slow_down /= 2;
-					settings_.speed_changed = true;
+					settings_.speed_changed.store(true);
 				}
 				break;
 		}
@@ -1695,12 +1696,12 @@ void prepareOnScreen(const ros::WallDuration &r_interval)
 	}
 
 	// Update profiler
-	if (settings_.profiler && settings_.run) {
+	if (settings_.profiler && settings_.run.load()) {
 		profilerUpdate(main_env_);
 	}
 
 	// Update sensor
-	if (settings_.sensor && settings_.run) {
+	if (settings_.sensor && settings_.run.load()) {
 		sensorUpdate(main_env_);
 	}
 

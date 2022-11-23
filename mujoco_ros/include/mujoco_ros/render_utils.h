@@ -119,15 +119,6 @@ void deinitVisual(void);
 void offScreenRenderEnv(MujocoEnvPtr env);
 
 /**
- * Waits until all cameras of env are rendered and published occording to their configuration or until timeout is
- * reached.
- *
- * @param env Env that should be waited for.
- * @param timeout Duration to wait for until returning (defaults to 1 second).
- */
-void waitUntilEnvCamerasRendered(MujocoEnvPtr env, const ros::WallDuration &timeout = ros::WallDuration(1.));
-
-/**
  * Update visual elements according to the model loaded by env.
  *
  * @param env Environment providing the model to update visual elements for.

@@ -220,8 +220,15 @@ void onStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal);
 // Sim settings not contained in MuJoCo structures
 typedef struct _settings
 {
-	// file
-	int exitrequest = 0;
+	// atomics for multithreaded access
+	std::atomic_int exitrequest       = { 0 };
+	std::atomic_int visualInitrequest = { 0 };
+	std::atomic_int run               = { 0 };
+	std::atomic_int loadrequest       = { 0 };
+	std::atomic_int resetrequest      = { 0 };
+	std::atomic_bool speed_changed    = { true };
+	// multi env
+	std::atomic_int manual_env_steps = { 0 };
 
 	// option
 	int spacing    = 0;
@@ -240,18 +247,10 @@ typedef struct _settings
 	// simulation
 	bool headless         = false;
 	bool render_offscreen = false;
-	int run               = 0;
 	int key               = 0;
-	int loadrequest       = 0;
-	int resetrequest      = 0;
-	int visualInitrequest = 0;
 	int slow_down         = 1;
-	bool speed_changed    = true;
 	double ctrlnoisestd   = 0.0;
 	double ctrlnoiserate  = 0.0;
-
-	// multi env
-	int manual_env_steps = 0;
 
 	// watch
 	char field[mjMAXUITEXT] = "qpos";
