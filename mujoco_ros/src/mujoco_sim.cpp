@@ -667,7 +667,6 @@ void envStepLoop(MujocoEnvParallelPtr env)
 
 void loadModel(void)
 {
-	settings_.loadrequest.store(0);
 	ROS_DEBUG_NAMED("mujoco", "Loading model...");
 	// Make sure filename is given
 	if (!filename_) {
@@ -758,6 +757,7 @@ void loadModel(void)
 	}
 
 	mjsru::onModelLoad(main_env_, realign);
+	settings_.loadrequest.store(0);
 }
 
 void setupEnv(MujocoEnvPtr env)
