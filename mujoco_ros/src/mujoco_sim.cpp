@@ -323,12 +323,14 @@ void resetSim()
 
 		mj_resetData(main_env_->model.get(), main_env_->data.get());
 		loadInitialJointStates(main_env_->model, main_env_->data);
-		main_env_->reset();
 		mj_forward(main_env_->model.get(), main_env_->data.get());
 		publishSimTime(main_env_->data->time);
-		mjsru::profilerUpdate(main_env_);
-		mjsru::sensorUpdate(main_env_);
-		mjsru::updateSettings(main_env_);
+
+		if (!settings_.headless) {
+			mjsru::profilerUpdate(main_env_);
+			mjsru::sensorUpdate(main_env_);
+			mjsru::updateSettings(main_env_);
+		}
 	}
 	settings_.resetrequest.store(0);
 }
