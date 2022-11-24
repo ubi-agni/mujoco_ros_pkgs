@@ -76,6 +76,7 @@ protected:
 		nh.reset(new ros::NodeHandle("~"));
 		nh->setParam("unpause", true);
 		nh->setParam("visualize", false);
+		nh->setParam("use_sim_time", true);
 	}
 
 	virtual void TearDown() {}
@@ -95,11 +96,16 @@ protected:
 		nh.reset(new ros::NodeHandle("~"));
 		nh->setParam("unpause", false);
 		nh->setParam("visualize", false);
+		nh->setParam("use_sim_time", true);
 
 		std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
 
 		mj_thread = std::unique_ptr<std::thread>(new std::thread(MujocoSim::init, xml_path));
-		std::this_thread::sleep_for(std::chrono::milliseconds(500));
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+		while (MujocoSim::detail::settings_.loadrequest.load() > 0) { // wait for model to be loaded
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
 
 		env = MujocoSim::detail::unit_testing::getmjEnv();
 		d   = env->data;
@@ -139,7 +145,6 @@ TEST_F(MujocoRosCoreFixture, init_with_model)
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
 	std::thread mjThread(MujocoSim::init, xml_path);
 
-	double time = ros::Time::now().toSec();
 	EXPECT_GE(ros::Time::now().toNSec(), 0.0) << "Time should be running!";
 	std::this_thread::sleep_for(std::chrono::seconds(1));
 	MujocoSim::requestExternalShutdown();
@@ -150,11 +155,13 @@ TEST_F(MujocoRosCoreFixture, init_with_model)
 TEST_F(MujocoRosCoreFixture, pause_unpause)
 {
 	nh->setParam("unpause", false);
+
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
 	std::thread mjThread(MujocoSim::init, xml_path);
 
+	std::this_thread::sleep_for(std::chrono::milliseconds(1)); // Give the sim thread enough time to reset ROS time to 0
 	double time = ros::Time::now().toSec();
-	std::this_thread::sleep_for(std::chrono::milliseconds(500));
+	std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	EXPECT_EQ(ros::Time::now().toSec(), time) << "Time should not be running!";
 
 	mujoco_ros_msgs::SetPause srv;
@@ -162,15 +169,15 @@ TEST_F(MujocoRosCoreFixture, pause_unpause)
 
 	MujocoSim::detail::setPauseCB(srv.request, srv.response);
 
-	std::this_thread::sleep_for(std::chrono::milliseconds(500));
+	std::this_thread::sleep_for(std::chrono::milliseconds(50));
 	EXPECT_GT(ros::Time::now().toSec(), time) << "Time should have been moving forward!";
 
 	srv.request.paused = true;
 	MujocoSim::detail::setPauseCB(srv.request, srv.response);
 
-	std::this_thread::sleep_for(std::chrono::milliseconds(500));
+	std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	time = ros::Time::now().toSec();
-	std::this_thread::sleep_for(std::chrono::milliseconds(500));
+	std::this_thread::sleep_for(std::chrono::milliseconds(50));
 	EXPECT_EQ(ros::Time::now().toSec(), time) << "Time should not have moved forward!";
 
 	MujocoSim::requestExternalShutdown();
@@ -180,14 +187,13 @@ TEST_F(MujocoRosCoreFixture, pause_unpause)
 TEST_F(MujocoRosCoreFixture, num_steps)
 {
 	nh->setParam("num_steps", 100);
-	double time = ros::Time::now().toSec();
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
 
 	std::thread mjThread(MujocoSim::init, xml_path);
 	mjThread.join();
 
-	EXPECT_NEAR(ros::Time::now().toSec(), time + 0.001 * 100, 0.0001) << "Time should have stopped after 100 steps";
+	EXPECT_NEAR(ros::Time::now().toSec(), 0.001 * 100, 0.0001) << "Time should have stopped after 100 steps";
 	nh->deleteParam("num_steps");
 }
 
@@ -237,7 +243,11 @@ TEST_F(MujocoRosCoreFixture, custom_initial_joint_states_on_reset)
 	vel_map.insert({ "ball_freejoint", "1.0 2.0 3.0 10 20 30" });
 
 	std::thread mjThread(MujocoSim::init, xml_path);
-	std::this_thread::sleep_for(std::chrono::milliseconds(500));
+	std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+	while (MujocoSim::detail::settings_.loadrequest.load() > 0) { // wait for model to be loaded
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
 
 	MujocoSim::MujocoEnvPtr env = MujocoSim::detail::unit_testing::getmjEnv();
 	MujocoSim::mjDataPtr d      = env->data;
@@ -270,6 +280,12 @@ TEST_F(MujocoRosCoreFixture, custom_initial_joint_states_on_reset)
 
 	std_srvs::Empty srv;
 	MujocoSim::detail::resetCB(srv.request, srv.response);
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+	while (MujocoSim::detail::settings_.resetrequest.load() > 0) { // wait for model to be loaded
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
 
 	compare_qpos(d, m->jnt_qposadr[id_balljoint], "balljoint", { 0.0, 0.707, 0.0, 0.707 }, { 0.0, 9e-4, 0.0, 9e-4 });
 	compare_qpos(d, m->jnt_qposadr[id1], "joint1", { -1.57 });
@@ -309,7 +325,10 @@ TEST_F(MujocoRosCoreFixture, custom_initial_joint_states)
 	nh->setParam("initial_joint_velocities/joint_map", vel_map);
 
 	std::thread mjThread(MujocoSim::init, xml_path);
-	std::this_thread::sleep_for(std::chrono::milliseconds(500));
+	std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	while (MujocoSim::detail::settings_.loadrequest.load() > 0) { // wait for model to be loaded
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
 
 	MujocoSim::MujocoEnvPtr env = MujocoSim::detail::unit_testing::getmjEnv();
 	MujocoSim::mjDataPtr d      = env->data;
