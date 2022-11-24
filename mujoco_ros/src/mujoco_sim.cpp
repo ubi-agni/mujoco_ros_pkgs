@@ -155,6 +155,7 @@ void init(std::string modelfile)
 
 	if (use_sim_time_) {
 		pub_clock_ = nh_->advertise<rosgraph_msgs::Clock>("/clock", 1);
+		publishSimTime(mjtNum(0));
 	}
 
 	settings_.exitrequest.store(0);
