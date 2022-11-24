@@ -118,19 +118,19 @@ void MujocoEnvParallel::bootstrapNamespace()
 void MujocoEnv::initializeRenderResources()
 {
 	ROS_DEBUG_STREAM_NAMED("mujoco_env", "Initializing offscreen rendering utils [" << name << "]");
-	if (vis.window != NULL) {
-		ROS_DEBUG_NAMED("mujoco_env", "\tDestroying old offscreen buffer window");
-		glfwDestroyWindow(vis.window);
+	if (vis.window == NULL) {
+		ROS_DEBUG_NAMED("mujoco_env", "\tCreating new offscreen buffer window");
+		glfwWindowHint(GLFW_DOUBLEBUFFER, 0);
+		glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+		vis.window = glfwCreateWindow(800, 800, ("invisible window " + name).c_str(), nullptr, nullptr);
+		if (!vis.window) {
+			ROS_ERROR_NAMED("mujoco_env", "Could not create GLFW window!");
+			mju_error("Could not create GLFW window");
+		}
+	} else {
+		ROS_DEBUG_NAMED("mujoco_env", "Reusing old offscreen buffer window");
 	}
 
-	ROS_DEBUG_NAMED("mujoco_env", "\tCreating new offscreen buffer window");
-	glfwWindowHint(GLFW_DOUBLEBUFFER, 0);
-	glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-	vis.window = glfwCreateWindow(800, 800, ("invisible window " + name).c_str(), nullptr, nullptr);
-	if (!vis.window) {
-		ROS_ERROR_NAMED("mujoco_env", "Could not create GLFW window!");
-		mju_error("Could not create GLFW window");
-	}
 	// make context current
 	glfwMakeContextCurrent(vis.window);
 	glfwSwapInterval(0);
