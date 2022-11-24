@@ -280,8 +280,6 @@ MujocoEnv::~MujocoEnv()
 	data.reset();
 	vis.rgb.reset();
 	vis.depth.reset();
-	mjr_freeContext(&(vis.con));
-	mjv_freeScene(&(vis.scn));
 	ctrlnoise = nullptr;
 	nh.reset();
 }
