@@ -693,9 +693,13 @@ void loadModel(void)
 	// Compiler warning: print and pause
 	if (error[0]) {
 		// mj_forward() will print the warning message
-		ROS_WARN_NAMED("mujoco", "Model compiled, but simulation warning (paused): \n %s\n\n", error);
-		std::printf("Model compiled, but simulation warning (paused): \n %s\n\n", error);
-		settings_.run.store(0);
+		ROS_WARN_NAMED("mujoco", "Model compiled, but simulation warning: \n %s\n\n", error);
+		std::printf("Model compiled, but simulation warning: \n %s\n\n", error);
+
+		// Only pause if not in headless mode
+		if (!settings_.headless) {
+			settings_.run.store(0);
+		}
 	}
 
 	if (sim_mode_ == simMode::SINGLE) {
