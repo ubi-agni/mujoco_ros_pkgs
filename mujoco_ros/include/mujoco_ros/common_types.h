@@ -68,7 +68,6 @@ struct VisualStruct
 	mjvCamera cam                          = {};
 	mjvOption vopt                         = {};
 	mjrContext con                         = {};
-	mjrRect viewport                       = {};
 	boost::shared_ptr<unsigned char[]> rgb = {};
 	boost::shared_ptr<float[]> depth       = {};
 	GLFWwindow *window                     = nullptr;

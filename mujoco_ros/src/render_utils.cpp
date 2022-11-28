@@ -261,7 +261,7 @@ void initVisual()
 }
 
 void renderAndPubEnv(MujocoEnvPtr env, bool rgb, bool depth, const image_transport::Publisher &pub_rgb,
-                     const image_transport::Publisher &pub_depth)
+                     const image_transport::Publisher &pub_depth, int width, int height)
 {
 	if (!rgb && !depth || // nothing to render
 	    (pub_rgb.getNumSubscribers() == 0 && pub_depth.getNumSubscribers() == 0) || // no subscribers
@@ -270,28 +270,33 @@ void renderAndPubEnv(MujocoEnvPtr env, bool rgb, bool depth, const image_transpo
 		return;
 	}
 
+	// Resize according to camera resolution
+	env->vis.con.offWidth  = width;
+	env->vis.con.offHeight = height;
+	mjrRect viewport       = mjr_maxViewport(&(env->vis.con));
+
 	// Update scene
 	mjv_updateScene(env->model.get(), env->data.get(), &(env->vis.vopt), NULL, &(env->vis.cam), mjCAT_ALL,
 	                &(env->vis.scn));
 	// render to buffer
-	mjr_render(env->vis.viewport, &env->vis.scn, &env->vis.con);
+	mjr_render(viewport, &env->vis.scn, &env->vis.con);
 	// read buffers
 	if (rgb && depth) {
-		mjr_readPixels(env->vis.rgb.get(), env->vis.depth.get(), env->vis.viewport, &env->vis.con);
+		mjr_readPixels(env->vis.rgb.get(), env->vis.depth.get(), viewport, &env->vis.con);
 	} else if (rgb) {
-		mjr_readPixels(env->vis.rgb.get(), NULL, env->vis.viewport, &env->vis.con);
+		mjr_readPixels(env->vis.rgb.get(), NULL, viewport, &env->vis.con);
 	} else if (depth) {
-		mjr_readPixels(NULL, env->vis.depth.get(), env->vis.viewport, &env->vis.con);
+		mjr_readPixels(NULL, env->vis.depth.get(), viewport, &env->vis.con);
 	}
 	glfwSwapBuffers(env->vis.window);
 
 	if (rgb) {
 		sensor_msgs::ImagePtr rgb_im = boost::make_shared<sensor_msgs::Image>();
-		rgb_im->width                = env->vis.viewport.width;
-		rgb_im->height               = env->vis.viewport.height;
+		rgb_im->width                = viewport.width;
+		rgb_im->height               = viewport.height;
 		rgb_im->encoding             = sensor_msgs::image_encodings::RGB8;
-		rgb_im->step                 = env->vis.viewport.width * 3 * sizeof(unsigned char);
-		size_t size                  = rgb_im->step * env->vis.viewport.height;
+		rgb_im->step                 = viewport.width * 3 * sizeof(unsigned char);
+		size_t size                  = rgb_im->step * viewport.height;
 		rgb_im->data.resize(size);
 
 		memcpy((char *)(&rgb_im->data[0]), env->vis.rgb.get(), size);
@@ -307,11 +312,11 @@ void renderAndPubEnv(MujocoEnvPtr env, bool rgb, bool depth, const image_transpo
 
 	if (depth) {
 		sensor_msgs::ImagePtr depth_im = boost::make_shared<sensor_msgs::Image>();
-		depth_im->width                = env->vis.viewport.width;
-		depth_im->height               = env->vis.viewport.height;
+		depth_im->width                = viewport.width;
+		depth_im->height               = viewport.height;
 		depth_im->encoding             = sensor_msgs::image_encodings::TYPE_32FC1;
-		depth_im->step                 = env->vis.viewport.width * sizeof(float);
-		size_t size                    = depth_im->step * env->vis.viewport.height;
+		depth_im->step                 = viewport.width * sizeof(float);
+		size_t size                    = depth_im->step * viewport.height;
 		depth_im->data.resize(size);
 
 		uint16_t *dest_uint = (uint16_t *)(&depth_im->data[0]);
@@ -363,38 +368,39 @@ void offScreenRenderEnv(MujocoEnvPtr env)
 			// RGB and DEPTH
 			env->vis.scn.flags[mjRND_SEGMENT] = 0;
 			renderAndPubEnv(env, (stream->stream_type & streamType::RGB), (stream->stream_type & streamType::DEPTH),
-			                stream->rgb_pub, stream->depth_pub);
+			                stream->rgb_pub, stream->depth_pub, stream->width, stream->height);
 
 			if (stream->stream_type & streamType::SEGMENTED) {
 				// SEGMENTED additional to RGB and DEPTH
 				env->vis.scn.flags[mjRND_IDCOLOR] = stream->use_segid;
 				env->vis.scn.flags[mjRND_SEGMENT] = 1;
-				renderAndPubEnv(env, true, false, stream->segment_pub, stream->depth_pub);
+				renderAndPubEnv(env, true, false, stream->segment_pub, stream->depth_pub, stream->width, stream->height);
 			}
 
 		} else if (stream->stream_type & streamType::SEGMENTED && stream->stream_type & streamType::DEPTH) {
 			// SEGMENTED and DEPTH
 			env->vis.scn.flags[mjRND_IDCOLOR] = stream->use_segid;
 			env->vis.scn.flags[mjRND_SEGMENT] = 1;
-			renderAndPubEnv(env, true, true, stream->segment_pub, stream->depth_pub);
-		} else if (stream->stream_type & streamType::RGB && stream->stream_type & streamType::SEGMENTED) {
+			renderAndPubEnv(env, true, true, stream->segment_pub, stream->depth_pub, stream->width, stream->height);
+		} else if (stream->stream_type & streamType::RGB && stream->stream_type & streamType::SEGMENTED, stream->width,
+		           stream->height) {
 			// RGB and SEGMENTED (needs two calls because both go into the rgb buffer)
 			env->vis.scn.flags[mjRND_SEGMENT] = 0;
-			renderAndPubEnv(env, true, false, stream->rgb_pub, stream->depth_pub);
+			renderAndPubEnv(env, true, false, stream->rgb_pub, stream->depth_pub, stream->width, stream->height);
 
 			env->vis.scn.flags[mjRND_IDCOLOR] = stream->use_segid;
 			env->vis.scn.flags[mjRND_SEGMENT] = 1;
-			renderAndPubEnv(env, true, false, stream->segment_pub, stream->depth_pub);
+			renderAndPubEnv(env, true, false, stream->segment_pub, stream->depth_pub, stream->width, stream->height);
 		} else if (stream->stream_type & streamType::RGB) {
 			// ONLY RGB
 			env->vis.scn.flags[mjRND_SEGMENT] = 0;
-			renderAndPubEnv(env, true, false, stream->rgb_pub, stream->depth_pub);
+			renderAndPubEnv(env, true, false, stream->rgb_pub, stream->depth_pub, stream->width, stream->height);
 		} else {
 			// Only DEPTH or only SEGMENTED
 			env->vis.scn.flags[mjRND_IDCOLOR] = stream->use_segid;
 			env->vis.scn.flags[mjRND_SEGMENT] = 1;
 			renderAndPubEnv(env, (stream->stream_type & streamType::SEGMENTED), (stream->stream_type & streamType::DEPTH),
-			                stream->segment_pub, stream->depth_pub);
+			                stream->segment_pub, stream->depth_pub, stream->width, stream->height);
 		}
 	}
 

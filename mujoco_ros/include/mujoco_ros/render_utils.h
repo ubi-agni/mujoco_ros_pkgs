@@ -180,9 +180,11 @@ void renderMain();
 struct CamStream
 {
 public:
-	CamStream(uint8_t cam_id, streamType stream_type, image_transport::Publisher rgb, image_transport::Publisher depth,
-	          image_transport::Publisher segment, bool use_segid, float pub_freq)
+	CamStream(uint8_t cam_id, int width, int height, streamType stream_type, image_transport::Publisher rgb,
+	          image_transport::Publisher depth, image_transport::Publisher segment, bool use_segid, float pub_freq)
 	    : cam_id(cam_id)
+	    , width(width)
+	    , height(height)
 	    , stream_type(stream_type)
 	    , rgb_pub(rgb)
 	    , depth_pub(depth)
@@ -200,6 +202,7 @@ public:
 	image_transport::Publisher segment_pub;
 	bool use_segid = true;
 	float pub_freq = 15;
+	int width, height;
 	ros::Time last_pub;
 };
 
