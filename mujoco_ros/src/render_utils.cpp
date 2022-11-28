@@ -1376,6 +1376,7 @@ void uiEvent(mjuiState *state)
 					         3 * env->model->nmocap);
 					mju_copy(env->data->mocap_quat, env->model->key_mquat + i * 4 * env->model->nmocap,
 					         4 * env->model->nmocap);
+					mju_copy(env->data->ctrl, env->model->key_ctrl + i * env->model->nu, env->model->nu);
 					mj_forward(env->model.get(), env->data.get());
 					profilerUpdate(env);
 					sensorUpdate(env);
