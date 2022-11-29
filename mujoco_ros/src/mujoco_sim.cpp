@@ -574,13 +574,15 @@ void simulate(void)
 			}
 		} // unlocks sim_mtx
 
-		std::string modelfile;
-		nh_->getParam("modelfile", modelfile);
-		if (!modelfile.empty() && strcmp(filename_, modelfile.c_str())) {
-			ROS_DEBUG_STREAM_NAMED("mujoco", "Got new modelfile from param server! Requesting load ...");
-			std::strcpy(filename_, modelfile.c_str());
-			settings_.loadrequest = 2;
-		}
+		// TODO(dleins): This instantly loads the default modelfile when an xml is provided via parameter server
+		// This should be handled differently, maybe only by service call?
+		// std::string modelfile;
+		// nh_->getParam("modelfile", modelfile);
+		// if (!modelfile.empty() && strcmp(filename_, modelfile.c_str())) {
+		// 	ROS_DEBUG_STREAM_NAMED("mujoco", "Got new modelfile from param server! Requesting load ...");
+		// 	std::strcpy(filename_, modelfile.c_str());
+		// 	settings_.loadrequest = 2;
+		// }
 	}
 	// Requests eventloop shutdown in case we ran out of simulation steps to use
 	settings_.exitrequest = 1;
