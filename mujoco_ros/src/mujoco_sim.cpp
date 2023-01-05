@@ -2310,6 +2310,7 @@ void setupCallbacks()
 	service_servers_.push_back(nh_->advertiseService("set_body_state", setBodyStateCB));
 	service_servers_.push_back(nh_->advertiseService("get_body_state", getBodyStateCB));
 	service_servers_.push_back(nh_->advertiseService("set_geom_properties", setGeomPropertiesCB));
+	service_servers_.push_back(nh_->advertiseService("get_geom_properties", getGeomPropertiesCB));
 
 	action_step_ =
 	    std::make_unique<actionlib::SimpleActionServer<mujoco_ros_msgs::StepAction>>(*nh_, "step", onStepGoal, false);
