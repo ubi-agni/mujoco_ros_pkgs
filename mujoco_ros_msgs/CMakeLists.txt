@@ -19,6 +19,7 @@ add_message_files(
 
 add_service_files(
   FILES
+    SetFloat.srv
     SetPause.srv
     BootstrapNS.srv
     ShutdownNS.srv
