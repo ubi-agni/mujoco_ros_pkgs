@@ -172,7 +172,8 @@ void init(std::string modelfile)
 	// Print version, check compatibility
 	ROS_INFO("MuJoCo Pro library version %.2lf\n", 0.01 * mj_version());
 	if (mjVERSION_HEADER != mj_version()) {
-		ROS_ERROR_NAMED("mujoco", "Headers and library have different versions");
+		ROS_ERROR_STREAM_NAMED("mujoco", "Headers and library have different versions (headers: "
+		                                     << mjVERSION_HEADER << " vs. lib: " << mj_version() << ")");
 		mju_error("Headers and library have different versions");
 	}
 
