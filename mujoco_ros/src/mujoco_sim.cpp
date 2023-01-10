@@ -1309,6 +1309,8 @@ bool setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request &req,
 		ROS_DEBUG_NAMED("mujoco", "Copied qpos state back to data");
 	}
 
+	env->notifyGeomChanged(geom_id);
+
 	resp.success = true;
 	return true;
 }

@@ -149,6 +149,8 @@ public:
 	void runRenderCbs();
 	void runLastStageCbs();
 
+	void notifyGeomChanged(const int geom_id);
+
 protected:
 	XmlRpc::XmlRpcValue rpc_plugin_config;
 	std::vector<MujocoPluginPtr> plugins;

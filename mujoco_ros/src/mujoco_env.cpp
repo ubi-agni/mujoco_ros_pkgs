@@ -286,6 +286,13 @@ void MujocoEnv::runLastStageCbs()
 	}
 }
 
+void MujocoEnv::notifyGeomChanged(const int geom_id)
+{
+	for (const auto &plugin : cb_ready_plugins) {
+		plugin->onGeomChanged(model, data, geom_id);
+	}
+}
+
 MujocoEnv::~MujocoEnv()
 {
 	cb_ready_plugins.clear();

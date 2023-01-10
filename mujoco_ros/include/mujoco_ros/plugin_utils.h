@@ -121,6 +121,15 @@ public:
 	 */
 	virtual void lastStageCallback(mjModelPtr model, mjDataPtr data){};
 
+	/**
+	 * @brief Override this callback to add custom behavior when a geom has been changed in the model.
+	 *
+	 * @param[in] model pointer to mjModel.
+	 * @param[in] data pointer to mjData.
+	 * @param[in] geom_id id of the geom thas has been changed.
+	 */
+	virtual void onGeomChanged(mjModelPtr model, mjDataPtr data, const int geom_id){};
+
 protected:
 	/**
 	 * @brief Called once the world is loaded.
