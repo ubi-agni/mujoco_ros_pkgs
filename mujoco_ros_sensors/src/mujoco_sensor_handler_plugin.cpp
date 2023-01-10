@@ -49,25 +49,18 @@
 
 namespace mujoco_ros_sensors {
 
-MujocoRosSensorsPlugin::~MujocoRosSensorsPlugin()
-{
-	// Kill deferred thread, if it is still blocking
-	pthread_cancel(deferred_load_thread_.native_handle());
-};
+MujocoRosSensorsPlugin::~MujocoRosSensorsPlugin(){};
 
 bool MujocoRosSensorsPlugin::load(MujocoSim::mjModelPtr model, MujocoSim::mjDataPtr data)
 {
 	ROS_INFO_NAMED("sensors_plugin", "Loading sensors plugin ...");
-	deferred_load_thread_ = boost::thread(boost::bind(&MujocoRosSensorsPlugin::initSensors, this, model, data));
+	initSensors(model, data);
 
 	return true;
 }
 
 void MujocoRosSensorsPlugin::lastStageCallback(MujocoSim::mjModelPtr model, MujocoSim::mjDataPtr data)
 {
-	if (!got_transform_)
-		return;
-
 	ros::Publisher pub;
 	std::string frame_id, sensor_name;
 
@@ -305,8 +298,6 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 				break;
 		}
 	}
-
-	got_transform_ = true;
 }
 
 // Nothing to do on reset
@@ -314,9 +305,7 @@ void MujocoRosSensorsPlugin::reset(){};
 
 // void MujocoRosSensorsPlugin::reload()
 // {
-// 	got_transform_ = false;
 // 	sensor_map_.clear();
-// 	deferred_load_thread_ = boost::thread(boost::bind(&MujocoRosSensorsPlugin::initSensors, this, model, data));
 // }
 
 } // namespace mujoco_ros_sensors

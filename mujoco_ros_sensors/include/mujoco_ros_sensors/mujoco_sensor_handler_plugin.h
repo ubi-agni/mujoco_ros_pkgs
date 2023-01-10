@@ -61,10 +61,6 @@ private:
 	void initSensors(MujocoSim::mjModelPtr model, MujocoSim::mjDataPtr data);
 
 	std::map<std::string, std::pair<ros::Publisher, std::string>> sensor_map_;
-	bool got_transform_ = false;
-
-	// deferred load in case ros is blocking
-	boost::thread deferred_load_thread_;
 };
 
 const char *const SENSOR_STRING[] = { [mjSENS_TOUCH]          = "touch",
