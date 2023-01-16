@@ -101,13 +101,14 @@ protected:
 		std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
 
 		mj_thread = std::unique_ptr<std::thread>(new std::thread(MujocoSim::init, xml_path));
-		std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
+		while (MujocoSim::detail::settings_.loadrequest.load() == 0) { // wait for request to be made
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
 		while (MujocoSim::detail::settings_.loadrequest.load() > 0) { // wait for model to be loaded
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
 
-		env = MujocoSim::detail::unit_testing::getmjEnv();
+		env = MujocoSim::detail::main_env_;
 		d   = env->data;
 		m   = env->model;
 	}
@@ -243,13 +244,14 @@ TEST_F(MujocoRosCoreFixture, custom_initial_joint_states_on_reset)
 	vel_map.insert({ "ball_freejoint", "1.0 2.0 3.0 10 20 30" });
 
 	std::thread mjThread(MujocoSim::init, xml_path);
-	std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-	while (MujocoSim::detail::settings_.loadrequest.load() > 0) { // wait for model to be loaded
+	while (MujocoSim::detail::settings_.loadrequest.load() == 0) { // wait for request to be made
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
+	while (MujocoSim::detail::settings_.loadrequest.load() > 0) { // wait for model to be loaded
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
 
-	MujocoSim::MujocoEnvPtr env = MujocoSim::detail::unit_testing::getmjEnv();
+	MujocoSim::MujocoEnvPtr env = MujocoSim::detail::main_env_;
 	MujocoSim::mjDataPtr d      = env->data;
 	MujocoSim::mjModelPtr m     = env->model;
 
@@ -325,12 +327,14 @@ TEST_F(MujocoRosCoreFixture, custom_initial_joint_states)
 	nh->setParam("initial_joint_velocities/joint_map", vel_map);
 
 	std::thread mjThread(MujocoSim::init, xml_path);
-	std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	while (MujocoSim::detail::settings_.loadrequest.load() == 0) { // wait for request to be made
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
 	while (MujocoSim::detail::settings_.loadrequest.load() > 0) { // wait for model to be loaded
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 
-	MujocoSim::MujocoEnvPtr env = MujocoSim::detail::unit_testing::getmjEnv();
+	MujocoSim::MujocoEnvPtr env = MujocoSim::detail::main_env_;
 	MujocoSim::mjDataPtr d      = env->data;
 	MujocoSim::mjModelPtr m     = env->model;
 

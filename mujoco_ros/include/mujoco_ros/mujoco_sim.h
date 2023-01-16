@@ -150,17 +150,6 @@ static std::vector<MujocoEnvPtr> env_list_;
 // Time benchmarking bool for multienv performance measuring
 static bool benchmark_env_time_;
 
-// Helper function for unit tests to access the env
-namespace unit_testing {
-/**
- * @brief Gets the current MujocoEnv. This function is meant for unit testing only and might return a nullpointer if
- * used wrongly.
- *
- * @return Pointer to the current MujocoEnv.
- */
-MujocoEnvPtr getmjEnv();
-} // namespace unit_testing
-
 // MuJoCo virtual filesystem to store mjcf in-memory.
 static mjVFS vfs_;
 

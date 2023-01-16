@@ -42,9 +42,6 @@
 #include <mujoco_ros/common_types.h>
 #include <mujoco_ros/plugin_utils.h>
 
-namespace unit_testing {
-class MujocoRosFixture;
-}
 namespace MujocoSim {
 
 namespace environments {
@@ -157,7 +154,6 @@ protected:
 
 private:
 	std::vector<MujocoPluginPtr> cb_ready_plugins;
-	friend class ::unit_testing::MujocoRosFixture;
 };
 
 struct MujocoEnvParallel : MujocoEnv

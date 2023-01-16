@@ -73,11 +73,6 @@ namespace mjsru = ::MujocoSim::render_utils;
 Settings MujocoSim::detail::settings_;
 MujocoEnvPtr MujocoSim::detail::main_env_;
 
-MujocoSim::MujocoEnvPtr MujocoSim::detail::unit_testing::getmjEnv()
-{
-	return main_env_;
-}
-
 int jointName2id(mjModel *m, const std::string &joint_name, const std::string &robot_namespace /* = std::string()*/)
 {
 	int result = mj_name2id(m, mjOBJ_JOINT, joint_name.c_str());
