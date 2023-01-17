@@ -15,6 +15,7 @@ add_message_files(
     BodyState.msg
     GeomProperties.msg
     GeomType.msg
+    SensorNoiseModel.msg
 )
 
 add_service_files(
@@ -28,6 +29,7 @@ add_service_files(
     SetGeomProperties.srv
     GetGeomProperties.srv
     ResetBodyQPos.srv
+    RegisterSensorNoiseModels.srv
 )
 
 add_action_files(
