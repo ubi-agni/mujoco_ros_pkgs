@@ -155,6 +155,14 @@ void init(std::string modelfile)
 
 	settings_.exitrequest.store(0);
 
+	nh_->param<bool>("eval_mode", settings_.eval_mode, false);
+
+	if (settings_.eval_mode) {
+		ROS_WARN_NAMED("mujoco", "Evalutaion mode is active");
+	} else {
+		ROS_WARN_NAMED("mujoco", "Train mode is active");
+	}
+
 	bool vis;
 	nh_->param<bool>("visualize", vis, true);
 	ROS_INFO_COND_NAMED(!vis, "mujoco", "Running in headless mode");

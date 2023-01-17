@@ -242,6 +242,9 @@ typedef struct _settings
 	int key               = 0;
 	double ctrlnoisestd   = 0.0;
 	double ctrlnoiserate  = 0.0;
+	// Flag to toggle a more restrictive evaluation mode
+	// otherwise ground truth topics are available for e.g. model training
+	bool eval_mode = false;
 
 	// watch
 	char field[mjMAXUITEXT] = "qpos";

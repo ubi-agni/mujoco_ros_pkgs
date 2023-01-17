@@ -12,6 +12,7 @@
   <arg name="realtime"             default="1.0"                                     doc="Desired realtime factor. Set to '-1' to run as fast as possbile " />
   <arg name="render_offscreen"     default="true"                                    doc="Should camera streams be rendered and published?" />
   <arg name="debug"                default="false"                                   doc="Should mujoco be started in gdb?" />
+  <arg name="eval_mode"            default="false"                                   doc="Should mujoco be started in evaluation mode?" />
 
   <param name="/use_sim_time" value="$(arg use_sim_time)"/>
 
@@ -39,6 +40,7 @@
       <param name="visualize" value="$(eval not arg('headless'))" />
       <param name="num_steps" value="$(arg num_sim_steps)" />
       <param name="realtime"  value="$(arg realtime)" />
+      <param name="eval_mode"  value="$(arg eval_mode)" />
     </node>
   </group>
   <group unless="$(arg debug)">
@@ -48,6 +50,7 @@
       <param name="visualize" value="$(eval not arg('headless'))" />
       <param name="num_steps" value="$(arg num_sim_steps)" />
       <param name="realtime"  value="$(arg realtime)" />
+      <param name="eval_mode"  value="$(arg eval_mode)" />
     </node>
   </group>
 </launch>
