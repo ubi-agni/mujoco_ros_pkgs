@@ -42,8 +42,39 @@
 
 #include <mujoco_ros/common_types.h>
 #include <mujoco_ros/plugin_utils.h>
+#include <mujoco_ros/mujoco_sim.h>
+
+#include <mujoco_ros_msgs/RegisterSensorNoiseModels.h>
+
+#include <random>
 
 namespace mujoco_ros_sensors {
+
+struct SensorConfig
+{
+public:
+	SensorConfig() : frame_id(""){};
+	SensorConfig(const std::string frame_id) : frame_id(frame_id){};
+
+	void setFrameId(const std::string frame_id) { this->frame_id = frame_id; };
+
+	void registerPub(ros::Publisher pub) { value_pub = pub; };
+
+	void registerGTPub(ros::Publisher pub) { gt_pub = pub; };
+
+	std::string frame_id;
+
+	ros::Publisher gt_pub;
+	ros::Publisher value_pub;
+
+	// Noise params
+	double mean[3];
+	double sigma[3];
+
+	uint8_t is_set = 0; // 0 for unset, otherwise binary code for combination of dims
+};
+
+typedef std::shared_ptr<SensorConfig> SensorConfigPtr;
 
 class MujocoRosSensorsPlugin : public MujocoSim::MujocoPlugin
 {
@@ -59,8 +90,15 @@ public:
 
 private:
 	void initSensors(MujocoSim::mjModelPtr model, MujocoSim::mjDataPtr data);
+	std::mt19937 rand_generator = std::mt19937(std::random_device{}());
+	std::normal_distribution<double> noise_dist;
 
-	std::map<std::string, std::pair<ros::Publisher, std::string>> sensor_map_;
+	std::map<std::string, SensorConfigPtr> sensor_map_;
+
+	ros::ServiceServer register_noise_model_server_;
+
+	bool registerNoiseModelsCB(mujoco_ros_msgs::RegisterSensorNoiseModels::Request &req,
+	                           mujoco_ros_msgs::RegisterSensorNoiseModels::Response &rep);
 };
 
 const char *const SENSOR_STRING[] = { [mjSENS_TOUCH]          = "touch",

@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   mujoco_ros
   mujoco_ros_msgs
   tf2
+  tf2_geometry_msgs
   tf2_ros
 )
 
@@ -20,6 +21,7 @@ catkin_package(
   mujoco_ros
   mujoco_ros_msgs
   tf2
+  tf2_geometry_msgs
   tf2_ros
  LIBRARIES ${PROJECT_NAME}
 )
@@ -69,11 +71,6 @@ install(FILES
 ## Testing ##
 #############
 
-## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_mujoco_ros_sensors.cpp)
-# if(TARGET ${PROJECT_NAME}-test)
-#   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
-# endif()
-
-## Add folders to be run by python nosetests
-# catkin_add_nosetests(test)
+if(CATKIN_ENABLE_TESTING)
+  add_subdirectory(test)
+endif()
