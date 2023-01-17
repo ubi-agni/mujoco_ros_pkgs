@@ -1,2 +1,4 @@
 bool paused
+string admin_hash
 ---
+bool success

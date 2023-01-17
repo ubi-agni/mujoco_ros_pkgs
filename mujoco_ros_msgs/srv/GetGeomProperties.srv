@@ -1,5 +1,6 @@
 uint8 env_id
 string geom_name
+string admin_hash
 ---
 mujoco_ros_msgs/GeomProperties properties
 bool success

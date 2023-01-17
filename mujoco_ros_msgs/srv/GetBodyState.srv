@@ -1,5 +1,6 @@
 uint8 env_id
 string name
+string admin_hash
 ---
 mujoco_ros_msgs/BodyState state
 bool success

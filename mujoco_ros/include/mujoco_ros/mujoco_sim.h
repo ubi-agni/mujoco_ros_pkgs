@@ -245,6 +245,7 @@ typedef struct _settings
 	// Flag to toggle a more restrictive evaluation mode
 	// otherwise ground truth topics are available for e.g. model training
 	bool eval_mode = false;
+	char admin_hash[64];
 
 	// watch
 	char field[mjMAXUITEXT] = "qpos";

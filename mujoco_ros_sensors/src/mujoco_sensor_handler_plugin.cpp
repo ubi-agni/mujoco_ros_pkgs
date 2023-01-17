@@ -79,8 +79,18 @@ bool MujocoRosSensorsPlugin::load(MujocoSim::mjModelPtr model, MujocoSim::mjData
 }
 
 bool MujocoRosSensorsPlugin::registerNoiseModelsCB(mujoco_ros_msgs::RegisterSensorNoiseModels::Request &req,
-                                                   mujoco_ros_msgs::RegisterSensorNoiseModels::Response &rep)
+                                                   mujoco_ros_msgs::RegisterSensorNoiseModels::Response &resp)
 {
+	if (MujocoSim::detail::settings_.eval_mode) {
+		ROS_DEBUG_NAMED("mujoco", "Evaluation mode is active. Checking hash validity");
+		if (MujocoSim::detail::settings_.admin_hash != req.admin_hash) {
+			ROS_ERROR_NAMED("mujoco", "Hash mismatch, no permission to change noise model!");
+			resp.success = false;
+			return true;
+		}
+		ROS_DEBUG_NAMED("mujoco", "Hash valid, request authorized.");
+	}
+
 	SensorConfigPtr config;
 	int noise_idx;
 	for (const mujoco_ros_msgs::SensorNoiseModel &noise_model : req.noise_models) {
@@ -120,7 +130,7 @@ bool MujocoRosSensorsPlugin::registerNoiseModelsCB(mujoco_ros_msgs::RegisterSens
 		config->is_set = config->is_set | noise_model.set_flag;
 	}
 
-	rep.success = true;
+	resp.success = true;
 
 	return true;
 }

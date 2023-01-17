@@ -156,9 +156,18 @@ void init(std::string modelfile)
 	settings_.exitrequest.store(0);
 
 	nh_->param<bool>("eval_mode", settings_.eval_mode, false);
-
 	if (settings_.eval_mode) {
-		ROS_WARN_NAMED("mujoco", "Evalutaion mode is active");
+		ROS_WARN_NAMED("mujoco", "Evalutaion mode is active. Looking for admin hash...");
+		std::string hash;
+		nh_->param<std::string>("admin_hash", hash, "");
+		if (hash == "") {
+			ROS_ERROR_NAMED("mujoco", "Evaluation mode requires a hash to verify critical operations are allowed. No hash "
+			                          "was provided, aborting launch.");
+			mju_error("Evaluation mode requires a hash to verify critical operations are allowed. No hash was provided, "
+			          "aborting launch.");
+		} else {
+			std::strcpy(settings_.admin_hash, hash.c_str());
+		}
 	} else {
 		ROS_WARN_NAMED("mujoco", "Train mode is active");
 	}
@@ -931,9 +940,21 @@ bool shutdownCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
 bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &resp)
 {
 	ROS_DEBUG_STREAM("PauseCB called with: " << (bool)req.paused);
+
+	if (settings_.eval_mode && req.paused) {
+		ROS_DEBUG_NAMED("mujoco", "Evaluation mode is active. Checking hash validity");
+		if (settings_.admin_hash != req.admin_hash) {
+			ROS_ERROR_NAMED("mujoco", "Hash mismatch, no permission to pause simulation!");
+			resp.success = false;
+			return true;
+		}
+		ROS_DEBUG_NAMED("mujoco", "Hash valid, request authorized.");
+	}
+
 	settings_.run.store(!req.paused);
 	if (settings_.run.load())
 		settings_.manual_env_steps.store(0);
+	resp.success = true;
 	return true;
 }
 
@@ -982,6 +1003,18 @@ void onStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal)
 
 bool setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req, mujoco_ros_msgs::SetBodyState::Response &resp)
 {
+	if (settings_.eval_mode) {
+		ROS_DEBUG_NAMED("mujoco", "Evaluation mode is active. Checking hash validity");
+		if (settings_.admin_hash != req.admin_hash) {
+			ROS_ERROR_NAMED("mujoco", "Hash mismatch, no permission to set body state!");
+			resp.success = false;
+			resp.status_message =
+			    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to set body state!");
+			return true;
+		}
+		ROS_DEBUG_NAMED("mujoco", "Hash valid, request authorized.");
+	}
+
 	uint env_id = (req.state.env_id);
 	ROS_DEBUG_STREAM_NAMED("mujoco", "Searching for env '/env" << env_id << "'");
 	MujocoEnvPtr env = environments::getEnvById(env_id);
@@ -1147,6 +1180,18 @@ bool setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req, mujoco_ros_msgs
 
 bool getBodyStateCB(mujoco_ros_msgs::GetBodyState::Request &req, mujoco_ros_msgs::GetBodyState::Response &resp)
 {
+	if (settings_.eval_mode) {
+		ROS_DEBUG_NAMED("mujoco", "Evaluation mode is active. Checking hash validity");
+		if (settings_.admin_hash != req.admin_hash) {
+			ROS_ERROR_NAMED("mujoco", "Hash mismatch, no permission to get body state!");
+			resp.status_message =
+			    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to get body state!");
+			resp.success = false;
+			return true;
+		}
+		ROS_DEBUG_NAMED("mujoco", "Hash valid, request authorized.");
+	}
+
 	uint env_id = (req.env_id);
 	ROS_DEBUG_STREAM_NAMED("mujoco", "Searching for env '/env" << env_id << "'");
 	MujocoEnvPtr env = environments::getEnvById(env_id);
@@ -1237,6 +1282,18 @@ bool getBodyStateCB(mujoco_ros_msgs::GetBodyState::Request &req, mujoco_ros_msgs
 bool setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request &req,
                          mujoco_ros_msgs::SetGeomProperties::Response &resp)
 {
+	if (settings_.eval_mode) {
+		ROS_DEBUG_NAMED("mujoco", "Evaluation mode is active. Checking hash validity");
+		if (settings_.admin_hash != req.admin_hash) {
+			ROS_ERROR_NAMED("mujoco", "Hash mismatch, no permission to set geom properties!");
+			resp.status_message =
+			    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to set geom properties!");
+			resp.success = false;
+			return true;
+		}
+		ROS_DEBUG_NAMED("mujoco", "Hash valid, request authorized.");
+	}
+
 	uint env_id = (req.properties.env_id);
 	ROS_DEBUG_STREAM_NAMED("mujoco", "Searching for env '/env" << env_id << "'");
 	MujocoEnvPtr env = environments::getEnvById(env_id);
@@ -1321,6 +1378,18 @@ bool setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request &req,
 bool getGeomPropertiesCB(mujoco_ros_msgs::GetGeomProperties::Request &req,
                          mujoco_ros_msgs::GetGeomProperties::Response &resp)
 {
+	if (settings_.eval_mode) {
+		ROS_DEBUG_NAMED("mujoco", "Evaluation mode is active. Checking hash validity");
+		if (settings_.admin_hash != req.admin_hash) {
+			ROS_ERROR_NAMED("mujoco", "Hash mismatch, no permission to get geom properties!");
+			resp.status_message =
+			    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to get geom properties!");
+			resp.success = false;
+			return true;
+		}
+		ROS_DEBUG_NAMED("mujoco", "Hash valid, request authorized.");
+	}
+
 	uint env_id = (req.env_id);
 	ROS_DEBUG_STREAM_NAMED("mujoco", "Searching for env '/env" << env_id << "'");
 	MujocoEnvPtr env = environments::getEnvById(env_id);

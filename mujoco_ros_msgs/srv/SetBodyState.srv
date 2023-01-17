@@ -3,6 +3,7 @@ bool set_pose
 bool set_twist
 bool set_mass
 bool reset_qpos
+string admin_hash
 ---
 bool success
 string status_message
