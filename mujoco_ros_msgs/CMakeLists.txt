@@ -11,6 +11,7 @@ find_package(catkin REQUIRED
 
 add_message_files(
   FILES
+    StateUint.msg
     ScalarStamped.msg
     BodyState.msg
     GeomProperties.msg
@@ -20,6 +21,7 @@ add_message_files(
 
 add_service_files(
   FILES
+    GetStateUint.srv
     SetFloat.srv
     SetPause.srv
     BootstrapNS.srv
