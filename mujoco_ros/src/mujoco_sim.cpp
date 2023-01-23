@@ -60,6 +60,8 @@
 #include <rosgraph_msgs/Clock.h>
 #include <boost/filesystem.hpp>
 
+#include <mujoco_ros_msgs/GetStateUint.h>
+
 #include <iostream>
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
@@ -921,6 +923,22 @@ void setupCallbacks()
 	service_servers_.push_back(nh_->advertiseService("get_body_state", getBodyStateCB));
 	service_servers_.push_back(nh_->advertiseService("set_geom_properties", setGeomPropertiesCB));
 	service_servers_.push_back(nh_->advertiseService("get_geom_properties", getGeomPropertiesCB));
+	service_servers_.push_back(
+	    nh_->advertiseService<mujoco_ros_msgs::GetStateUint::Request, mujoco_ros_msgs::GetStateUint::Response>(
+	        "get_loadingrequest_state", [&](auto &request, auto &response) {
+		        uint8_t status       = settings_.loadrequest.load();
+		        response.state.value = status;
+
+		        std::string description;
+		        if (status == 0)
+			        description = "Sim ready";
+		        else if (status == 1)
+			        description = "Loading in progress";
+		        else if (status == 2)
+			        description = "Loadingrequest issued";
+		        response.state.description = description;
+		        return true;
+	        }));
 
 	action_step_ =
 	    std::make_unique<actionlib::SimpleActionServer<mujoco_ros_msgs::StepAction>>(*nh_, "step", onStepGoal, false);
