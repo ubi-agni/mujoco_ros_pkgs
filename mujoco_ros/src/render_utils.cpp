@@ -247,6 +247,9 @@ void initVisual()
 {
 	if (!glfwInit()) {
 		ROS_ERROR_NAMED("mujoco", "Could not initialize GLFW");
+		const char *error[30];
+		glfwGetError(error);
+		ROS_DEBUG_STREAM_NAMED("mujoco", "Detailed GLFW error message: " << *error);
 		mju_error("Could not initialize GLFW");
 	}
 	ROS_DEBUG_NAMED("render", "glfwInit successful");
