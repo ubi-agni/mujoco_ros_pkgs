@@ -53,7 +53,6 @@ namespace mujoco_ros_sensors {
 
 MujocoRosSensorsPlugin::~MujocoRosSensorsPlugin()
 {
-	ROS_ERROR("Called destructor of sensor plugin!");
 	sensor_map_.clear();
 	ROS_DEBUG_STREAM_NAMED("sensors", "Shutting down service " << register_noise_model_server_.getService());
 	register_noise_model_server_.shutdown();
