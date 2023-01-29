@@ -85,7 +85,7 @@ namespace MujocoSim {
 #define mjENABLED_ros(model, x) (model->opt.enableflags & (x))
 #define mjDISABLED_ros(model, x) (model->opt.disableflags & (x))
 
-void init(std::string modelfile);
+void init(std::string modelfile, const std::string &admin_hash);
 
 void requestExternalShutdown(void);
 

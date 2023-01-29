@@ -35,6 +35,9 @@
 /* Authors: David P. Leins */
 
 #include <mujoco_ros/mujoco_sim.h>
+#include <boost/program_options.hpp>
+
+namespace po = boost::program_options;
 
 int main(int argc, char **argv)
 {
@@ -44,6 +47,28 @@ int main(int argc, char **argv)
 	spinner.start();
 
 	ros::NodeHandle nh = ros::NodeHandle("~");
+
+	std::string admin_hash("");
+
+	po::options_description options;
+	options.add_options() // clang-format off
+      ("help,h", "Produce this help message")
+      ("admin-hash", po::value<std::string>(&admin_hash),"Set the admin hash for eval mode.");
+	// clang-format on
+	po::variables_map vm;
+
+	try {
+		po::store(po::parse_command_line(argc, argv, options), vm);
+		po::notify(vm);
+
+		if (vm.count("help")) {
+			std::cout << "command line options:\n" << options;
+			return false;
+		}
+	} catch (std::exception &e) {
+		ROS_ERROR("Error parsing command line: %s", e.what());
+		return false;
+	}
 
 	bool vis = true;
 
@@ -81,7 +106,7 @@ int main(int argc, char **argv)
 		ROS_WARN("No modelfile was provided, launching empty simulation!");
 	}
 
-	MujocoSim::init(filename);
+	MujocoSim::init(filename, admin_hash);
 	ROS_INFO("Franka MuJoCo node is terminating");
 
 	spinner.stop();

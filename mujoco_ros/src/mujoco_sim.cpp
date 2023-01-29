@@ -134,7 +134,7 @@ void setupVFS(const std::string &filename, const std::string &content /* = std::
 	}
 }
 
-void init(std::string modelfile)
+void init(std::string modelfile, const std::string &admin_hash)
 {
 	// use_sim_time should be set in roslaunch before running any node.
 	// Otherwise nodes might behave unintendedly. Hence, issue an error in this case.
@@ -160,15 +160,13 @@ void init(std::string modelfile)
 	nh_->param<bool>("eval_mode", settings_.eval_mode, false);
 	if (settings_.eval_mode) {
 		ROS_WARN_NAMED("mujoco", "Evalutaion mode is active. Looking for admin hash...");
-		std::string hash;
-		nh_->param<std::string>("admin_hash", hash, "");
-		if (hash == "") {
+		if (admin_hash == "") {
 			ROS_ERROR_NAMED("mujoco", "Evaluation mode requires a hash to verify critical operations are allowed. No hash "
 			                          "was provided, aborting launch.");
 			mju_error("Evaluation mode requires a hash to verify critical operations are allowed. No hash was provided, "
 			          "aborting launch.");
 		} else {
-			std::strcpy(settings_.admin_hash, hash.c_str());
+			std::strcpy(settings_.admin_hash, admin_hash.c_str());
 		}
 	} else {
 		ROS_WARN_NAMED("mujoco", "Train mode is active");

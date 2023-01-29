@@ -13,7 +13,7 @@
   <arg name="render_offscreen"     default="true"                                    doc="Should camera streams be rendered and published?" />
   <arg name="debug"                default="false"                                   doc="Should mujoco be started in gdb?" />
   <arg name="eval_mode"            default="false"                                   doc="Should mujoco be started in evaluation mode?" />
-  <arg name="admin_hash"           default=""                                        doc="Hash to verify critical operations in evaluation mode" />
+  <arg name="admin_hash"           default="''"                                      doc="Hash to verify critical operations in evaluation mode" />
 
   <param name="/use_sim_time" value="$(arg use_sim_time)"/>
 
@@ -35,25 +35,23 @@
   </group>
 
   <group if="$(arg debug)">
-    <node pkg="mujoco_ros" type="mujoco_server" name="mujoco_server" output="screen" launch-prefix="gdb -ex run --args" >
+    <node pkg="mujoco_ros" type="mujoco_server" name="mujoco_server" output="screen" launch-prefix="gdb -ex run --args" args="--admin-hash $(arg admin_hash)" >
       <param name="modelfile" type="str"  value="$(arg modelfile)" />
       <param name="unpause"   value="$(arg unpause)" />
       <param name="visualize" value="$(eval not arg('headless'))" />
       <param name="num_steps" value="$(arg num_sim_steps)" />
       <param name="realtime"  value="$(arg realtime)" />
       <param name="eval_mode"  value="$(arg eval_mode)" />
-      <param name="admin_hash"  value="$(arg admin_hash)" />
     </node>
   </group>
   <group unless="$(arg debug)">
-    <node pkg="mujoco_ros" type="mujoco_server" name="mujoco_server" output="screen" >
+    <node pkg="mujoco_ros" type="mujoco_server" name="mujoco_server" output="screen" args="--admin-hash $(arg admin_hash)" >
       <param name="modelfile" type="str"  value="$(arg modelfile)" />
       <param name="unpause"   value="$(arg unpause)" />
       <param name="visualize" value="$(eval not arg('headless'))" />
       <param name="num_steps" value="$(arg num_sim_steps)" />
       <param name="realtime"  value="$(arg realtime)" />
       <param name="eval_mode"  value="$(arg eval_mode)" />
-      <param name="admin_hash"  value="$(arg admin_hash)" />
     </node>
   </group>
 </launch>
