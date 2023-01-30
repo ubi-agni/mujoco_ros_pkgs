@@ -111,19 +111,16 @@ bool MujocoRosSensorsPlugin::registerNoiseModelsCB(mujoco_ros_msgs::RegisterSens
 		if (noise_model.set_flag & 0x01) {
 			config->mean[noise_idx]  = noise_model.mean[noise_idx];
 			config->sigma[noise_idx] = noise_model.std[noise_idx];
-			ROS_ERROR_STREAM("Mean0 now " << config->mean[noise_idx] << "; Std0 " << config->sigma[noise_idx]);
 			noise_idx += 1;
 		}
 		if (noise_model.set_flag & 0x02) {
 			config->mean[noise_idx]  = noise_model.mean[noise_idx];
 			config->sigma[noise_idx] = noise_model.std[noise_idx];
-			ROS_ERROR_STREAM("Mean1 now " << config->mean[noise_idx] << "; Std1 " << config->sigma[noise_idx]);
 			noise_idx += 1;
 		}
 		if (noise_model.set_flag & 0x04) {
 			config->mean[noise_idx]  = noise_model.mean[noise_idx];
 			config->sigma[noise_idx] = noise_model.std[noise_idx];
-			ROS_ERROR_STREAM("Mean2 now " << config->mean[noise_idx] << "; Std2 " << config->sigma[noise_idx]);
 		}
 
 		config->is_set = config->is_set | noise_model.set_flag;
