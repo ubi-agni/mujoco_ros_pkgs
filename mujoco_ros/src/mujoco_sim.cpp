@@ -921,6 +921,8 @@ void setupCallbacks()
 	service_servers_.push_back(nh_->advertiseService("get_body_state", getBodyStateCB));
 	service_servers_.push_back(nh_->advertiseService("set_geom_properties", setGeomPropertiesCB));
 	service_servers_.push_back(nh_->advertiseService("get_geom_properties", getGeomPropertiesCB));
+	service_servers_.push_back(nh_->advertiseService("set_gravity", setGravityCB));
+	service_servers_.push_back(nh_->advertiseService("get_gravity", getGravityCB));
 	service_servers_.push_back(
 	    nh_->advertiseService<mujoco_ros_msgs::GetStateUint::Request, mujoco_ros_msgs::GetStateUint::Response>(
 	        "get_loadingrequest_state", [&](auto &request, auto &response) {
@@ -1443,6 +1445,76 @@ bool getGeomPropertiesCB(mujoco_ros_msgs::GetGeomProperties::Request &req,
 	resp.properties.size_1 = env->model->geom_size[geom_id * 3 + 1];
 	resp.properties.size_2 = env->model->geom_size[geom_id * 3 + 2];
 
+	resp.success = true;
+	return true;
+}
+
+bool setGravityCB(mujoco_ros_msgs::SetGravity::Request &req, mujoco_ros_msgs::SetGravity::Response &resp)
+{
+	if (settings_.eval_mode) {
+		ROS_DEBUG_NAMED("mujoco", "Evaluation mode is active. Checking hash validity");
+		if (settings_.admin_hash != req.admin_hash) {
+			ROS_ERROR_NAMED("mujoco", "Hash mismatch, no permission to set gravity!");
+			resp.status_message =
+			    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to set gravity!");
+			resp.success = false;
+			return true;
+		}
+		ROS_DEBUG_NAMED("mujoco", "Hash valid, request authorized.");
+	}
+
+	uint env_id = (req.env_id);
+	ROS_DEBUG_STREAM_NAMED("mujoco", "Searching for env '/env" << env_id << "'");
+	MujocoEnvPtr env = environments::getEnvById(env_id);
+
+	if (env == nullptr) {
+		std::string error_msg("Could not find environment with id " + env_id);
+		ROS_WARN_STREAM_NAMED("mujoco", error_msg);
+		resp.status_message = static_cast<decltype(resp.status_message)>(error_msg);
+		resp.success        = false;
+		return true;
+	}
+
+	// Lock mutex to get data within one step
+	std::lock_guard<std::mutex> lk(sim_mtx);
+	for (int i = 0; i < 3; ++i) {
+		env->model->opt.gravity[i] = req.gravity[i];
+	}
+	resp.success = true;
+	return true;
+}
+
+bool getGravityCB(mujoco_ros_msgs::GetGravity::Request &req, mujoco_ros_msgs::GetGravity::Response &resp)
+{
+	if (settings_.eval_mode) {
+		ROS_DEBUG_NAMED("mujoco", "Evaluation mode is active. Checking hash validity");
+		if (settings_.admin_hash != req.admin_hash) {
+			ROS_ERROR_NAMED("mujoco", "Hash mismatch, no permission to get gravity!");
+			resp.status_message =
+			    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to get gravity!");
+			resp.success = false;
+			return true;
+		}
+		ROS_DEBUG_NAMED("mujoco", "Hash valid, request authorized.");
+	}
+
+	uint env_id = (req.env_id);
+	ROS_DEBUG_STREAM_NAMED("mujoco", "Searching for env '/env" << env_id << "'");
+	MujocoEnvPtr env = environments::getEnvById(env_id);
+
+	if (env == nullptr) {
+		std::string error_msg("Could not find environment with id " + env_id);
+		ROS_WARN_STREAM_NAMED("mujoco", error_msg);
+		resp.status_message = static_cast<decltype(resp.status_message)>(error_msg);
+		resp.success        = false;
+		return true;
+	}
+
+	// Lock mutex to get data within one step
+	std::lock_guard<std::mutex> lk(sim_mtx);
+	for (int i = 0; i < 3; ++i) {
+		resp.gravity[i] = env->model->opt.gravity[i];
+	}
 	resp.success = true;
 	return true;
 }

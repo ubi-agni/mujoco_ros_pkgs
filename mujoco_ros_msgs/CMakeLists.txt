@@ -32,6 +32,8 @@ add_service_files(
     GetGeomProperties.srv
     ResetBodyQPos.srv
     RegisterSensorNoiseModels.srv
+    SetGravity.srv
+    GetGravity.srv
 )
 
 add_action_files(
