@@ -99,7 +99,7 @@ void render(GLFWwindow *window)
 		// finalize
 		glfwSwapBuffers(window);
 	} else {
-		renderCallback(main_env_->data.get());
+		renderCallback(main_env_->data.get(), &free_scene_);
 	}
 	// render scene
 	mjr_render(rect, &free_scene_, &free_context_);
@@ -155,6 +155,14 @@ void render(GLFWwindow *window)
 
 	// finalize
 	glfwSwapBuffers(window);
+}
+
+void renderCallback(mjData *data, mjvScene *scene)
+{
+	MujocoEnvPtr env = environments::getEnv(data);
+	if (env) {
+		env->runRenderCbs(scene);
+	}
 }
 
 bool isWindowClosing()

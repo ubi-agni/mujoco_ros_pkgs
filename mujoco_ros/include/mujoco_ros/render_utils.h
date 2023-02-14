@@ -177,6 +177,14 @@ void prepareOnScreen(const ros::WallDuration &r_interval);
  */
 void renderMain();
 
+/**
+ * Run render callback of a specific data instance to render additional content to the provided scene.
+ *
+ * @param[in] data pointer to the data instance that should render content.
+ * @param[in] scene pointer to the scene which should be rendered to.
+ */
+void renderCallback(mjData *data, mjvScene *scene);
+
 struct CamStream
 {
 public:

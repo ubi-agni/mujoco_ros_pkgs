@@ -188,7 +188,6 @@ void envStepLoop(MujocoEnvParallelPtr env);
 // Plugin callback proxies
 void controlCallback(const mjModel *model, mjData *data);
 void passiveCallback(const mjModel *model, mjData *data);
-void renderCallback(mjData *data);
 void lastStageCallback(mjData *data);
 
 // Service calls

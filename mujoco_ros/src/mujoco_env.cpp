@@ -270,12 +270,12 @@ void MujocoEnv::runPassiveCbs()
 	}
 }
 
-void MujocoEnv::runRenderCbs()
+void MujocoEnv::runRenderCbs(mjvScene *scene)
 {
 	if (plugins.empty())
 		return;
 	for (const auto &plugin : cb_ready_plugins) {
-		plugin->renderCallback(model, data, &(vis.scn));
+		plugin->renderCallback(model, data, scene);
 	}
 }
 

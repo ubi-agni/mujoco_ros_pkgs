@@ -143,7 +143,7 @@ public:
 
 	void runControlCbs();
 	void runPassiveCbs();
-	void runRenderCbs();
+	void runRenderCbs(mjvScene *scene);
 	void runLastStageCbs();
 
 	void notifyGeomChanged(const int geom_id);

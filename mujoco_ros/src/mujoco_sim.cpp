@@ -452,14 +452,6 @@ void passiveCallback(const mjModel * /*model*/, mjData *data)
 	}
 }
 
-void renderCallback(mjData *data)
-{
-	MujocoEnvPtr env = environments::getEnv(data);
-	if (env) {
-		env->runRenderCbs();
-	}
-}
-
 void lastStageCallback(mjData *data)
 {
 	MujocoEnvPtr env = environments::getEnv(data);
