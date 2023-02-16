@@ -100,7 +100,7 @@ protected:
 
 		std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
 
-		mj_thread = std::unique_ptr<std::thread>(new std::thread(MujocoSim::init, xml_path));
+		mj_thread = std::unique_ptr<std::thread>(new std::thread(MujocoSim::init, xml_path, ""));
 		while (MujocoSim::detail::settings_.loadrequest.load() == 0) { // wait for request to be made
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
@@ -144,7 +144,7 @@ void compare_qvel(MujocoSim::mjDataPtr d, int dof_adr, std::string joint_name, s
 TEST_F(MujocoRosCoreFixture, init_with_model)
 {
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
-	std::thread mjThread(MujocoSim::init, xml_path);
+	std::thread mjThread(MujocoSim::init, xml_path, "");
 
 	EXPECT_GE(ros::Time::now().toNSec(), 0.0) << "Time should be running!";
 	std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -158,7 +158,7 @@ TEST_F(MujocoRosCoreFixture, pause_unpause)
 	nh->setParam("unpause", false);
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
-	std::thread mjThread(MujocoSim::init, xml_path);
+	std::thread mjThread(MujocoSim::init, xml_path, "");
 
 	std::this_thread::sleep_for(std::chrono::milliseconds(1)); // Give the sim thread enough time to reset ROS time to 0
 	double time = ros::Time::now().toSec();
@@ -191,7 +191,7 @@ TEST_F(MujocoRosCoreFixture, num_steps)
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
 
-	std::thread mjThread(MujocoSim::init, xml_path);
+	std::thread mjThread(MujocoSim::init, xml_path, "");
 	mjThread.join();
 
 	EXPECT_NEAR(ros::Time::now().toSec(), 0.001 * 100, 0.0001) << "Time should have stopped after 100 steps";
@@ -243,7 +243,7 @@ TEST_F(MujocoRosCoreFixture, custom_initial_joint_states_on_reset)
 	vel_map.insert({ "joint2", "1.05" });
 	vel_map.insert({ "ball_freejoint", "1.0 2.0 3.0 10 20 30" });
 
-	std::thread mjThread(MujocoSim::init, xml_path);
+	std::thread mjThread(MujocoSim::init, xml_path, "");
 	while (MujocoSim::detail::settings_.loadrequest.load() == 0) { // wait for request to be made
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
@@ -326,7 +326,7 @@ TEST_F(MujocoRosCoreFixture, custom_initial_joint_states)
 	nh->setParam("initial_joint_positions/joint_map", pos_map);
 	nh->setParam("initial_joint_velocities/joint_map", vel_map);
 
-	std::thread mjThread(MujocoSim::init, xml_path);
+	std::thread mjThread(MujocoSim::init, xml_path, "");
 	while (MujocoSim::detail::settings_.loadrequest.load() == 0) { // wait for request to be made
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}

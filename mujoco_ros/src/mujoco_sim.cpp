@@ -134,7 +134,7 @@ void setupVFS(const std::string &filename, const std::string &content /* = std::
 	}
 }
 
-void init(std::string modelfile, const std::string &admin_hash)
+void init(std::string modelfile, std::string admin_hash /* = std::string()*/)
 {
 	// use_sim_time should be set in roslaunch before running any node.
 	// Otherwise nodes might behave unintendedly. Hence, issue an error in this case.

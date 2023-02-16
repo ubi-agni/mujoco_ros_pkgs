@@ -92,7 +92,7 @@ protected:
 
 		std::string xml_path = ros::package::getPath("mujoco_ros_sensors") + "/test/sensors_world.xml";
 
-		mj_thread = std::unique_ptr<std::thread>(new std::thread(MujocoSim::init, xml_path));
+		mj_thread = std::unique_ptr<std::thread>(new std::thread(MujocoSim::init, xml_path, ""));
 		while (MujocoSim::detail::settings_.loadrequest.load() == 0) { // wait for request to be made
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
@@ -131,7 +131,7 @@ protected:
 
 		std::string xml_path = ros::package::getPath("mujoco_ros_sensors") + "/test/sensors_world.xml";
 
-		mj_thread = std::unique_ptr<std::thread>(new std::thread(MujocoSim::init, xml_path));
+		mj_thread = std::unique_ptr<std::thread>(new std::thread(MujocoSim::init, xml_path, ""));
 		while (MujocoSim::detail::settings_.loadrequest.load() == 0) { // wait for request to be made
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
