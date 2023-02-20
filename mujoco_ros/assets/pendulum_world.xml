@@ -1,0 +1,40 @@
+<mujoco model="3DOF">
+    <option collision="all" timestep="0.001" gravity="0 0 -9.81" cone="elliptic" />
+    <compiler angle="radian" />
+
+    <visual>
+        <headlight ambient="0.4 0.4 0.4" diffuse="0.4 0.4 0.4" specular="0.0 0.0 0.0" active="1" />
+    </visual>
+
+    <asset>
+        <texture builtin="checker" height="512" name="texplane" rgb1=".2 .3 .4" rgb2=".1 .15 .2" type="2d" width="512" />
+        <material name="MatPlane" reflectance="0.5" shininess="0.01" specular="0.1" texrepeat="1 1" texture="texplane" texuniform="true" />
+    </asset>
+
+    <worldbody>
+        <light pos="0 0 1000" castshadow="false" />
+        <geom name="ground_plane" type="plane" size="5 5 10" material="MatPlane" rgba="1 1 1 1"/>
+
+        <body name="base_link">
+            <geom type="capsule" fromto="0 0 1  0 0 0.6" size="0.06"/>
+            <joint name="balljoint" type="ball" pos="0 0 1"/>
+            <body name="middle_link">
+                <geom type="capsule" fromto="0 0 0.6  0.0 0 0.3" size="0.04"/>
+                <joint name="joint1" type="hinge" pos="0 0 0.6" axis="0 1 0"/>
+                <!-- <joint name="joint2" type="hinge" pos="0 0 0.6" axis="1 0 0"/> -->
+                <body name="end_link">
+                    <geom name="EE" type="capsule" fromto="0 0 0.3  0.0 0 0.1" size="0.02"/>
+                    <joint name="joint2" type="hinge" pos="0.0 0 0.3" axis="0 1 0"/>
+                </body>
+            </body>
+        </body>
+        <body name="body_ball" pos="1 0 0.06" >
+            <freejoint name="ball_freejoint"/>
+            <geom name="ball" type="sphere" size="0.05" rgba="1.0 0.55 0.0 0.2" mass="0.1"/>
+        </body>
+        <body name="immovable" pos="0.56428 0.221972 0.6">
+            <geom type="box" size=".0125 .016 .032" rgba=".5 .5 .5 1" />
+            <inertial pos="0 0 0" mass="0.1024" diaginertia="4.369e-5 4.028e-5 1.407e-5"/>
+        </body>
+    </worldbody>
+</mujoco>
