@@ -21,7 +21,7 @@
 
   <arg name="modelfile"            default="$(find mujoco_ros)/assets/pendulum_world.xml"        doc="MuJoCo xml file to load. Should define robot model and world." />
   <arg name="initial_joint_states" default="$(find mujoco_ros)/config/initial_joint_states.yaml" doc="Provide a filepath containing initial joint states to load." />
-  <arg name="console_config_file"  default="$(find mujoco_ros)/setme/rosconsole.config"         doc="Path to ROS console config used when verbose logging is active." />
+  <arg name="console_config_file"  default="$(find mujoco_ros)/config/rosconsole.config"         doc="Path to ROS console config used when verbose logging is active." />
 
   <!-- Parallel Mode Arguments -->
   <arg name="bootstrap_launchfile" default="$(find mujoco_ros)/launch/bringup_panda.launch"      doc="Which launchfile should be run for each namespace." />
