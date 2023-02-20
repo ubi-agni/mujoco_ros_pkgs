@@ -172,13 +172,19 @@ void init(std::string modelfile, std::string admin_hash /* = std::string()*/)
 		ROS_WARN_NAMED("mujoco", "Train mode is active");
 	}
 
-	bool vis;
+	bool vis, no_x;
 	nh_->param<bool>("visualize", vis, true);
-	ROS_INFO_COND_NAMED(!vis, "mujoco", "Running in headless mode");
-
-	settings_.headless = !vis;
-
 	nh_->param<bool>("render_offscreen", settings_.render_offscreen, true);
+	nh_->param<bool>("no_x", no_x, false);
+
+	if (no_x) {
+		ROS_WARN_NAMED("mujoco", "No X is active. Disabling visualization and offscreen rendering ...");
+		vis                        = false;
+		settings_.render_offscreen = false;
+	}
+
+	ROS_INFO_COND_NAMED(!vis, "mujoco", "Running in headless mode");
+	settings_.headless = !vis;
 	ROS_WARN_COND_NAMED(!settings_.render_offscreen, "mujoco", "Rendering offscreen camera streams is disabled!");
 
 	// Print version, check compatibility
@@ -252,7 +258,9 @@ void init(std::string modelfile, std::string admin_hash /* = std::string()*/)
 		}
 	}
 
-	mjsru::initVisual();
+	if (!no_x) {
+		mjsru::initVisual();
+	}
 
 	if (!modelfile.empty()) {
 		std::strcpy(filename_, modelfile.c_str());
