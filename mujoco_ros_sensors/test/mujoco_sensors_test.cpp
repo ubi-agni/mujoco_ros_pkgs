@@ -87,7 +87,7 @@ protected:
 		nh.reset(new ros::NodeHandle("~"));
 		nh->setParam("eval_mode", false);
 		nh->setParam("unpause", true);
-		nh->setParam("visualize", false);
+		nh->setParam("no_x", true);
 		nh->setParam("use_sim_time", true);
 
 		std::string xml_path = ros::package::getPath("mujoco_ros_sensors") + "/test/sensors_world.xml";
@@ -126,7 +126,7 @@ protected:
 		nh.reset(new ros::NodeHandle("~"));
 		nh->setParam("eval_mode", true);
 		nh->setParam("unpause", true);
-		nh->setParam("visualize", false);
+		nh->setParam("no_x", true);
 		nh->setParam("use_sim_time", true);
 
 		std::string xml_path = ros::package::getPath("mujoco_ros_sensors") + "/test/sensors_world.xml";

@@ -75,7 +75,7 @@ protected:
 	{
 		nh.reset(new ros::NodeHandle("~"));
 		nh->setParam("unpause", true);
-		nh->setParam("visualize", false);
+		nh->setParam("no_x", true);
 		nh->setParam("use_sim_time", true);
 	}
 
@@ -95,7 +95,7 @@ protected:
 	{
 		nh.reset(new ros::NodeHandle("~"));
 		nh->setParam("unpause", false);
-		nh->setParam("visualize", false);
+		nh->setParam("no_x", true);
 		nh->setParam("use_sim_time", true);
 
 		std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
