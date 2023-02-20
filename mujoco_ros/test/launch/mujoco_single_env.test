@@ -3,7 +3,7 @@
 
   <env name="ROSCONSOLE_FORMAT" value="[${severity}] [${time}] [${logger}] [${node}]: ${message}"/>
   <env name="ROSCONSOLE_CONFIG_FILE"
-       value="$(find mujoco_ros)/rosconsole.config"/>
+       value="$(find mujoco_ros)/config/rosconsole.config"/>
 
   <param name="/use_sim_time" value="true"/>
   <test test-name="mujoco_single_env_test" pkg="mujoco_ros" type="mujoco_single_env_test" />
