@@ -718,7 +718,7 @@ void loadModel(void)
 	if (sim_mode_ == simMode::SINGLE) {
 		ROS_DEBUG_STREAM_NAMED("mujoco", "Setting up env '" << main_env_->name << "' ...");
 		// Delete old model, assign new
-		main_env_->model.reset(mnew);
+		main_env_->model.reset(mnew, [](mjModel *m) { mj_deleteModel(m); });
 		environments::assignData(mj_makeData(mnew), main_env_);
 		setupEnv(main_env_);
 		// Request that off-screen rendering resources are initialized in simulate thread
@@ -731,7 +731,7 @@ void loadModel(void)
 				parallel_env->stop_loop.store(true);
 				parallel_env->loop_thread->join();
 			}
-			env->model.reset(mnew);
+			env->model.reset(mnew, [](mjModel *m) { mj_deleteModel(m); });
 			environments::assignData(mj_makeData(mnew), env);
 			setupEnv(env);
 			parallel_env->stop_loop.store(false);

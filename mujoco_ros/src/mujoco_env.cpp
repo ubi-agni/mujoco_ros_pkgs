@@ -49,7 +49,7 @@ namespace environments {
 
 void assignData(mjData *data, MujocoEnvPtr env)
 {
-	env->data.reset(data);
+	env->data.reset(data, [](mjData *d) { mj_deleteData(d); });
 	env_map_[data] = env;
 }
 
