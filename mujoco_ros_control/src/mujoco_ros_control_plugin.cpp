@@ -145,13 +145,22 @@ bool MujocoRosControlPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr 
 	return true;
 }
 
-void MujocoRosControlPlugin::controlCallback(MujocoSim::mjModelPtr /*model*/, MujocoSim::mjDataPtr /*data*/)
+void MujocoRosControlPlugin::controlCallback(MujocoSim::mjModelPtr /*model*/, MujocoSim::mjDataPtr data)
 {
 	ros::Time sim_time_ros = ros::Time::now();
+
+	ROS_WARN_STREAM_COND_NAMED(sim_time_ros < ros::Time(data->time), "mujoco_ros_control",
+	                           "ROS time not in sync with mjData! (" << sim_time_ros << " < " << ros::Time(data->time)
+	                                                                 << ")");
 	if (sim_time_ros < last_update_sim_time_ros_) {
 		ROS_INFO_NAMED("mujoco_ros_control", "Resetting mujoco_ros_control due to time reset");
-		last_update_sim_time_ros_ = ros::Time();
-		last_write_sim_time_ros_  = ros::Time();
+		ROS_DEBUG_STREAM_NAMED("mujoco_ros_control",
+		                       "sim time is " << sim_time_ros << " while last time was " << last_update_sim_time_ros_);
+		last_update_sim_time_ros_ = sim_time_ros;
+		last_write_sim_time_ros_  = sim_time_ros;
+		ROS_WARN_STREAM_COND_NAMED(sim_time_ros < ros::Time::now(), "mujoco_ros_control",
+		                           "Current time moved forward within control update! " << sim_time_ros << " -> "
+		                                                                                << ros::Time::now());
 	}
 
 	ros::Duration sim_period = sim_time_ros - last_update_sim_time_ros_;
