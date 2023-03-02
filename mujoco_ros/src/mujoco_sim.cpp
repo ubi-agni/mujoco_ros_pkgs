@@ -312,6 +312,9 @@ void init(std::string modelfile, std::string admin_hash /* = std::string()*/)
 	action_step_.reset();
 
 	ROS_DEBUG_NAMED("mujoco", "Cleanup done");
+	tf_bufferPtr_.reset();
+	tf_listenerPtr_.reset();
+	nh_.reset();
 }
 
 void setJointPosition(mjModelPtr model, mjDataPtr data, const double &pos, const int &joint_id,
