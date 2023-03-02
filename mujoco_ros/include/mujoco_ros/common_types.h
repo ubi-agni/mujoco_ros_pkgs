@@ -71,6 +71,21 @@ struct VisualStruct
 	boost::shared_ptr<unsigned char[]> rgb = {};
 	boost::shared_ptr<float[]> depth       = {};
 	GLFWwindow *window                     = nullptr;
+
+	~VisualStruct()
+	{
+		if (&scn != nullptr) {
+			ROS_DEBUG("Freeing scene in vis");
+			mjv_freeScene(&scn);
+		}
+		if (&con != nullptr) {
+			ROS_DEBUG("Freeing context in vis");
+			mjr_freeContext(&con);
+		}
+		if (window != nullptr) {
+			glfwDestroyWindow(window);
+		}
+	};
 };
 
 struct CamStream;
