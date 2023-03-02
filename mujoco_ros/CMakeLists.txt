@@ -1,7 +1,15 @@
 cmake_minimum_required(VERSION 3.11)
+include(CMakePrintHelpers)
 
-# INTERPROCEDURAL_OPTIMIZATION is enforced when enabled.
-set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
+cmake_print_variables(ENABLE_SANITIZER)
+cmake_print_variables(NO_OPTIM)
+
+# Disable optimization to prevent false-positives with memory analisys tools
+if (NOT ENABLE_SANITIZER AND NOT NO_OPTIM)
+  # INTERPROCEDURAL_OPTIMIZATION is enforced when enabled.
+  set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
+endif()
+
 # Use GLVND instead of Legacy OpenGL
 set(CMAKE_POLICY_DEFAULT_CMP0072 NEW)
 
@@ -9,6 +17,22 @@ project(mujoco_ros)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+
+# Disable optimization to prevent false-positives with memory analisys tools (e.g. asan or valgrind)
+if (ENABLE_SANITIZER OR NO_OPTIM)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -fno-inline")
+  set(CMAKE_BUILD_TYPE "RelWithDebInfo")
+endif()
+
+cmake_print_variables(CMAKE_CXX_FLAGS)
+cmake_print_variables(CMAKE_BUILD_TYPE)
+
+if (ENABLE_SANITIZER)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
+  add_link_options(-fsanitize=address)
+endif()
+
 
 # Find MuJoCo
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")

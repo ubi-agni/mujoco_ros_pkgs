@@ -4,6 +4,21 @@ project(mujoco_ros_control)
 
 set( CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined" )
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+
+# Disable optimization to prevent false-positives with memory analisys tools (e.g. asan or valgrind)
+if (ENABLE_SANITIZER OR NO_OPTIM)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -fno-inline")
+  set(CMAKE_BUILD_TYPE "RelWithDebInfo")
+endif()
+
+if (ENABLE_SANITIZER)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
+  add_link_options(-fsanitize=address)
+endif()
+
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   pluginlib
