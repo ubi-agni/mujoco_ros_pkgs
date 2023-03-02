@@ -172,8 +172,12 @@ bool isWindowClosing()
 
 void deinitVisual()
 {
-	if (!settings_.headless)
+	if (!settings_.headless) {
 		uiClearCallback(main_window_);
+		mjv_freeScene(&free_scene_);
+		mjr_freeContext(&free_context_);
+		glfwDestroyWindow(main_window_);
+	}
 	main_env_.reset();
 }
 
