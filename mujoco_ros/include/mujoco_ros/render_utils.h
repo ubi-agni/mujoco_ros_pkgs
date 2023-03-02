@@ -203,6 +203,19 @@ public:
 		last_pub = ros::Time::now();
 	}
 
+	~CamStream()
+	{
+		if (&rgb_pub != nullptr) {
+			rgb_pub.shutdown();
+		}
+		if (&depth_pub != nullptr) {
+			depth_pub.shutdown();
+		}
+		if (&segment_pub != nullptr) {
+			segment_pub.shutdown();
+		}
+	};
+
 	uint8_t cam_id;
 	streamType stream_type = streamType::RGB;
 	image_transport::Publisher rgb_pub;
