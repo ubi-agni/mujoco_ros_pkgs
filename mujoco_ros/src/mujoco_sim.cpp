@@ -449,10 +449,16 @@ void publishSimTime(mjtNum time)
 	if (!use_sim_time_) {
 		return;
 	}
-	ros::Time::setNow(ros::Time(time));
-	rosgraph_msgs::Clock ros_time;
-	ros_time.clock.fromSec(time);
+	// This is the fastes option for intra-node time updates
+	// however, together with non-blocking publish it breaks stuff
+	// ros::Time::setNow(ros::Time(time));
+	rosgraph_msgs::ClockPtr ros_time(new rosgraph_msgs::Clock);
+	ros_time->clock.fromSec(time);
 	pub_clock_.publish(ros_time);
+	// Current workaround to simulate a blocking time update
+	while (ros::Time::now() < ros::Time(time)) {
+		std::this_thread::yield();
+	}
 }
 
 void controlCallback(const mjModel * /*model*/, mjData *data)
