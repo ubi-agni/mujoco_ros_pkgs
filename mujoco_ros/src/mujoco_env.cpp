@@ -295,13 +295,13 @@ void MujocoEnv::notifyGeomChanged(const int geom_id)
 
 MujocoEnv::~MujocoEnv()
 {
+	free(ctrlnoise);
 	cb_ready_plugins.clear();
 	plugins.clear();
 	model.reset();
 	data.reset();
 	vis.rgb.reset();
 	vis.depth.reset();
-	ctrlnoise = nullptr;
 	nh.reset();
 }
 
