@@ -11,6 +11,8 @@
   <arg name="eval_mode"            default="false" doc="Whether to run mujoco_ros in evaluation mode." />
   <arg name="admin_hash"           default="''"    doc="Hash to verify critical operations in evaluation mode." />
   <arg name="debug"                default="false" doc="Whether to run with gdb." />
+  <arg name="valgrind"             default="false" doc="Whether to run with valgrind" />
+  <arg name="valgrind_args"        default=""      doc="arguments for valgrind" />
   <arg name="wait_for_xml"         default="false" doc="Whether mujoco_ros should wait for an xml in the parameter server." />
   <arg name="realtime"             default=""      doc="Fraction of desired realtime (0,1]. -1 to run as fast as possible." />
   <arg name="profile"              default="false" doc="Whether mujoco_ros should be profiled." />
@@ -60,26 +62,47 @@
   </group>
 
   <group unless="$(arg debug)">
-    <group if="$(arg profile)">
-      <env name="CPUPROFILE" value="/tmp/profile.out" />
+    <group if="$(arg valgrind)">
+      <node pkg="mujoco_ros" type="mujoco_server" name="mujoco_server" output="screen" args="--admin-hash $(arg admin_hash)" launch-prefix="valgrind $(arg valgrind_args)" >
+        <param name="ns"                   value="$(arg ns)" />
+        <param name="unpause"              value="$(arg unpause)" />
+        <param name="visualize"            value="$(eval not arg('headless'))" />
+        <param name="render_offscreen"     value="$(arg render_offscreen)" />
+        <param name="no_x"                 value="$(arg no_x)" />
+        <param name="num_steps"            value="$(arg num_sim_steps)" />
+        <param name="eval_mode"            value="$(arg eval_mode)" />
+        <param name="modelfile"            value="$(arg modelfile)" />
+        <param name="wait_for_xml"         value="$(arg wait_for_xml)" />
+        <param name="realtime"             value="$(arg realtime)" />
+        <param name="benchmark_time"       value="$(arg benchmark_time)" />
+        <param name="num_simulations"      value="$(arg num_instances)" />
+        <param name="bootstrap_launchfile" value="$(arg bootstrap_launchfile)" />
+        <rosparam param="bootstrap_launchargs" subst_value="true">$(arg bootstrap_launchargs)</rosparam>
+        <rosparam file="$(arg initial_joint_states)" subst_value="true" />
+      </node>
     </group>
-    <node pkg="mujoco_ros" type="mujoco_server" name="mujoco_server" output="screen" args="--admin-hash $(arg admin_hash)" >
-      <param name="ns"                   value="$(arg ns)" />
-      <param name="unpause"              value="$(arg unpause)" />
-      <param name="visualize"            value="$(eval not arg('headless'))" />
-      <param name="render_offscreen"     value="$(arg render_offscreen)" />
-      <param name="no_x"                 value="$(arg no_x)" />
-      <param name="num_steps"            value="$(arg num_sim_steps)" />
-      <param name="eval_mode"            value="$(arg eval_mode)" />
-      <param name="modelfile"            value="$(arg modelfile)" />
-      <param name="wait_for_xml"         value="$(arg wait_for_xml)" />
-      <param name="realtime"             value="$(arg realtime)" />
-      <param name="benchmark_time"       value="$(arg benchmark_time)" />
-      <param name="num_simulations"      value="$(arg num_instances)" />
-      <param name="bootstrap_launchfile" value="$(arg bootstrap_launchfile)" />
-      <rosparam param="bootstrap_launchargs" subst_value="true">$(arg bootstrap_launchargs)</rosparam>
-      <rosparam file="$(arg initial_joint_states)" subst_value="true" />
-    </node>
+    <group unless="$(arg valgrind)">
+      <group if="$(arg profile)">
+        <env name="CPUPROFILE" value="/tmp/profile.out" />
+      </group>
+      <node pkg="mujoco_ros" type="mujoco_server" name="mujoco_server" output="screen" args="--admin-hash $(arg admin_hash)" >
+        <param name="ns"                   value="$(arg ns)" />
+        <param name="unpause"              value="$(arg unpause)" />
+        <param name="visualize"            value="$(eval not arg('headless'))" />
+        <param name="render_offscreen"     value="$(arg render_offscreen)" />
+        <param name="no_x"                 value="$(arg no_x)" />
+        <param name="num_steps"            value="$(arg num_sim_steps)" />
+        <param name="eval_mode"            value="$(arg eval_mode)" />
+        <param name="modelfile"            value="$(arg modelfile)" />
+        <param name="wait_for_xml"         value="$(arg wait_for_xml)" />
+        <param name="realtime"             value="$(arg realtime)" />
+        <param name="benchmark_time"       value="$(arg benchmark_time)" />
+        <param name="num_simulations"      value="$(arg num_instances)" />
+        <param name="bootstrap_launchfile" value="$(arg bootstrap_launchfile)" />
+        <rosparam param="bootstrap_launchargs" subst_value="true">$(arg bootstrap_launchargs)</rosparam>
+        <rosparam file="$(arg initial_joint_states)" subst_value="true" />
+      </node>
+    </group>
   </group>
 
 </launch>
