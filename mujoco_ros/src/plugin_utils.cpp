@@ -68,7 +68,7 @@ bool parsePlugins(const ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &plugin_confi
 
 void registerPlugins(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config_rpc, std::vector<MujocoPluginPtr> &plugins)
 {
-	for (uint i = 0; i < config_rpc.size(); i++) {
+	for (int8_t i = 0; i < config_rpc.size(); i++) {
 		if (config_rpc[i].getType() != XmlRpc::XmlRpcValue::TypeStruct) {
 			ROS_ERROR_STREAM_NAMED("mujoco_ros_plugin_loader", "Error while parsing MujocoPlugins rosparam: wrong type.");
 			ROS_DEBUG_STREAM_NAMED("mujoco_ros_plugin_loader", "Children of 'MujocoPlugins' should be of type '"

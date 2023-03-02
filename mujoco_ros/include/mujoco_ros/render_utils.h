@@ -185,6 +185,13 @@ void renderMain();
  */
 void renderCallback(mjData *data, mjvScene *scene);
 
+namespace {
+void initVisible();
+void render(GLFWwindow *window);
+void renderAndPubEnv(MujocoEnvPtr env, bool rgb, bool depth, const image_transport::Publisher &pub_rgb,
+                     const image_transport::Publisher &pub_depth, int width, int height);
+} // end unnamed namespace
+
 struct CamStream
 {
 public:
@@ -217,13 +224,13 @@ public:
 	};
 
 	uint8_t cam_id;
+	int width, height;
 	streamType stream_type = streamType::RGB;
 	image_transport::Publisher rgb_pub;
 	image_transport::Publisher depth_pub;
 	image_transport::Publisher segment_pub;
 	bool use_segid = true;
 	float pub_freq = 15;
-	int width, height;
 	ros::Time last_pub;
 };
 

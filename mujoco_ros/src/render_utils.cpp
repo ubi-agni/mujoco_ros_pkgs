@@ -58,6 +58,7 @@ namespace MujocoSim::render_utils {
 // Definition of externally declared perturbation
 mjvPerturb pert_;
 
+namespace {
 void render(GLFWwindow *window)
 {
 	std::lock_guard<std::mutex> lk(render_mtx);
@@ -157,30 +158,6 @@ void render(GLFWwindow *window)
 	glfwSwapBuffers(window);
 }
 
-void renderCallback(mjData *data, mjvScene *scene)
-{
-	MujocoEnvPtr env = environments::getEnv(data);
-	if (env) {
-		env->runRenderCbs(scene);
-	}
-}
-
-bool isWindowClosing()
-{
-	return glfwWindowShouldClose(main_window_);
-}
-
-void deinitVisual()
-{
-	if (!settings_.headless) {
-		uiClearCallback(main_window_);
-		mjv_freeScene(&free_scene_);
-		mjr_freeContext(&free_context_);
-		glfwDestroyWindow(main_window_);
-	}
-	main_env_.reset();
-}
-
 void initVisible()
 {
 	// multisampling
@@ -255,30 +232,10 @@ void initVisible()
 	uiModify(main_window_, &ui1_, &uistate_, &free_context_);
 }
 
-void initVisual()
-{
-	if (!glfwInit()) {
-		ROS_ERROR_NAMED("mujoco", "Could not initialize GLFW");
-		const char *error[30];
-		glfwGetError(error);
-		ROS_DEBUG_STREAM_NAMED("mujoco", "Detailed GLFW error message: " << *error);
-		mju_error("Could not initialize GLFW");
-	}
-	ROS_DEBUG_NAMED("render", "glfwInit successful");
-	mjcb_time = timer;
-
-	profilerInit();
-	sensorInit();
-
-	if (!settings_.headless) {
-		initVisible();
-	}
-}
-
 void renderAndPubEnv(MujocoEnvPtr env, bool rgb, bool depth, const image_transport::Publisher &pub_rgb,
                      const image_transport::Publisher &pub_depth, int width, int height)
 {
-	if (!rgb && !depth || // nothing to render
+	if ((!rgb && !depth) || // nothing to render
 	    (pub_rgb.getNumSubscribers() == 0 && pub_depth.getNumSubscribers() == 0) || // no subscribers
 	    (!depth && pub_rgb.getNumSubscribers() == 0) || // would only render rgb, but has no subscribers
 	    (!rgb && pub_depth.getNumSubscribers() == 0)) { // would only render depth, but has no subscribers
@@ -316,7 +273,7 @@ void renderAndPubEnv(MujocoEnvPtr env, bool rgb, bool depth, const image_transpo
 
 		memcpy((char *)(&rgb_im->data[0]), env->vis.rgb.get(), size);
 
-		for (int r = 0; r < rgb_im->height / 2; ++r) {
+		for (uint r = 0; r < rgb_im->height / 2; ++r) {
 			unsigned char *top_row    = &rgb_im->data[3 * rgb_im->width * r];
 			unsigned char *bottom_row = &rgb_im->data[3 * rgb_im->width * (rgb_im->height - 1 - r)];
 			std::swap_ranges(top_row, top_row + 3 * rgb_im->width, bottom_row);
@@ -350,6 +307,51 @@ void renderAndPubEnv(MujocoEnvPtr env, bool rgb, bool depth, const image_transpo
 		}
 
 		pub_depth.publish(depth_im);
+	}
+}
+} // end unnamed namespace
+
+void renderCallback(mjData *data, mjvScene *scene)
+{
+	MujocoEnvPtr env = environments::getEnv(data);
+	if (env) {
+		env->runRenderCbs(scene);
+	}
+}
+
+bool isWindowClosing()
+{
+	return glfwWindowShouldClose(main_window_);
+}
+
+void deinitVisual()
+{
+	if (!settings_.headless) {
+		uiClearCallback(main_window_);
+		mjv_freeScene(&free_scene_);
+		mjr_freeContext(&free_context_);
+		glfwDestroyWindow(main_window_);
+	}
+	main_env_.reset();
+}
+
+void initVisual()
+{
+	if (!glfwInit()) {
+		ROS_ERROR_NAMED("mujoco", "Could not initialize GLFW");
+		const char *error[30];
+		glfwGetError(error);
+		ROS_DEBUG_STREAM_NAMED("mujoco", "Detailed GLFW error message: " << *error);
+		mju_error("Could not initialize GLFW");
+	}
+	ROS_DEBUG_NAMED("render", "glfwInit successful");
+	mjcb_time = timer;
+
+	profilerInit();
+	sensorInit();
+
+	if (!settings_.headless) {
+		initVisible();
 	}
 }
 
@@ -894,7 +896,8 @@ void makePhysics(MujocoEnvPtr env, int oldstate)
 // Make rendering section of UI
 void makeRendering(MujocoEnvPtr env, int oldstate)
 {
-	int i, j;
+	int i;
+	unsigned long int j;
 
 	mjuiDef defRendering[] = {
 		{ mjITEM_SECTION, "Rendering", oldstate, nullptr, "AR" },
