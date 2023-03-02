@@ -1,7 +1,9 @@
-cmake_minimum_required(VERSION 3.4)
+cmake_minimum_required(VERSION 3.11)
 
 # INTERPROCEDURAL_OPTIMIZATION is enforced when enabled.
 set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
+# Use GLVND instead of Legacy OpenGL
+set(CMAKE_POLICY_DEFAULT_CMP0072 NEW)
 
 project(mujoco_ros)
 
