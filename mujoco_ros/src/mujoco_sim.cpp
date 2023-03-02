@@ -1146,11 +1146,11 @@ bool setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req, mujoco_ros_msgs
 						                target_pose.pose.orientation.y, target_pose.pose.orientation.z };
 					mju_normalize4(quat);
 
-					ROS_DEBUG_STREAM_NAMED("mujoco",
-					                       "Setting body pose to "
-					                           << target_pose.pose.position.x << ", " << target_pose.pose.position.y << ", "
-					                           << target_pose.pose.position.z << ", " << quat[0] << ", " << quat[1] << ", "
-					                           << quat[2] << ", " << quat[3] << ", " << quat[4] << " (xyz wxyz)");
+					ROS_DEBUG_STREAM_NAMED("mujoco", "Setting body pose to " << target_pose.pose.position.x << ", "
+					                                                         << target_pose.pose.position.y << ", "
+					                                                         << target_pose.pose.position.z << ", "
+					                                                         << quat[0] << ", " << quat[1] << ", " << quat[2]
+					                                                         << ", " << quat[3] << " (xyz wxyz)");
 
 					env->data->qpos[jnt_qposadr]     = target_pose.pose.position.x;
 					env->data->qpos[jnt_qposadr + 1] = target_pose.pose.position.y;
