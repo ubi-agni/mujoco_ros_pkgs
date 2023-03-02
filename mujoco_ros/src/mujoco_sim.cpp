@@ -212,6 +212,8 @@ void init(std::string modelfile, std::string admin_hash /* = std::string()*/)
 	if (sim_mode_ == simMode::SINGLE) {
 		std::string main_env_namespace;
 		nh_->param<std::string>("ns", main_env_namespace, "/");
+		if (main_env_namespace == "")
+			main_env_namespace = "/";
 		main_env_.reset(new MujocoEnv(main_env_namespace));
 
 		if (unpause) {
