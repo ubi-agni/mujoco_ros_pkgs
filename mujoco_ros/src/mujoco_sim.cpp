@@ -303,6 +303,12 @@ void init(std::string modelfile, std::string admin_hash /* = std::string()*/)
 	mjsru::deinitVisual();
 	plugin_utils::unloadPluginloader();
 
+	mj_deleteVFS(&vfs_);
+
+	if (use_sim_time_) {
+		pub_clock_.shutdown();
+	}
+
 	for (auto ss : service_servers_) {
 		ROS_DEBUG_STREAM_NAMED("mujoco", "Shutting down service " << ss.getService());
 		ss.shutdown();
