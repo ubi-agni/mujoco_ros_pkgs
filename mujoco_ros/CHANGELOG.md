@@ -9,6 +9,9 @@
 * Removed parallel env mode
 * Bump MuJoCo required version to 2.3.2
 
+### Fixed
+* Stepping action server is now sensitive to preemts caused by reload/reset/shutdown and will inform clients in time instead of just severing the connection.
+
 <a name="0.4.0"></a>
 ## [0.4.0] - 2023-03-16
 

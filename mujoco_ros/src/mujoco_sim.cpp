@@ -881,7 +881,8 @@ void onStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal)
 
 	result.success = true;
 	while (settings_.manual_env_steps.load() > 0) {
-		if (action_step_->isPreemptRequested() || !ros::ok()) {
+		if (action_step_->isPreemptRequested() || !ros::ok() || settings_.exitrequest.load() > 0 ||
+		    settings_.loadrequest.load() > 0 || settings_.resetrequest.load() > 0) {
 			ROS_WARN_STREAM_NAMED("mujoco", "Simulation step action preempted");
 			result.success = false;
 			action_step_->setPreempted(result);
