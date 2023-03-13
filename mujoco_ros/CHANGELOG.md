@@ -19,6 +19,9 @@
 >>>>>>> fix: Roll back collision functions on reload
 * An invalid model will not result in trying to reload indefinitely anymore.
 
+### Fixed
+* Stepping action server is now sensitive to preemts caused by reload/reset/shutdown and will inform clients in time instead of just severing the connection.
+
 <a name="0.4.0"></a>
 ## [0.4.0] - 2023-03-16
 
