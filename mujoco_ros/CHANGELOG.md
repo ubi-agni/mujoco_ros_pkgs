@@ -1,39 +1,141 @@
-# Unreleased
+<a name="0.4.0"></a>
+## [0.4.0] - 2023-03-16
 
-## Changes
-1. Better setup and cleanup in init function. This enables running the application multiple times (consecutively) when used as library:
-  - exitrequest is set to 0 on start.
-  - if ros time is not zero, the simulation is initialized with the current ros time as start time.
-  - run i.e. the pause flag is now explicitly set according to the unpause ros param.
-  - The services are explicitly unregistered on shutdown and the static services list is cleared.
-2. Async spinner is now manually shutdown and ros::shutdown is called on server node termination.
-3. Added unit tests for `mujoco_ros` single environment library functions.
-4. Added possibility to set initial joint positions and velocities for ball and free joints (i.e. joints with more than one DoF) and edited tests to reflect the changes.
-5. Changed the way single and parallel env is handled. Instead of using separate functions, most library function check the running simulation type (PARALLEL or SINGLE). In case of parallel env execution, The mj_env_ (renamed to main_env_) variable now contains a pointer to the selected main environment, which will be used for rendering, if enabled.
+### Added
+* NO_OPTIM and ENABLE_SANITIZER cmake options for valgrind/asan dev build optimization.
+* Central launchfile for the server to include from other packages.
+* `no_x` parameter to completely disable OpenGL.
+* Service calls to set and get gravity.
+* Service call to fetch loadrequest state over ROS.
+* Option to disable offscreen rendering.
+* Made camera stream resolutions configurable.
+* Callback to notify plugins of a geom change at runtime.
 
-## Fixes
-1. Fixed step counter ignoring multiple steps during synchronization if desynchronized.
-2. Fixed wrong declaration of publishSimTime in header.
-3. Fixed bootstrap_launchargs not being passed on to the ns_bootstrapping node
+### Changed
+* Use same package version for all packages in mujoco_ros_pkgs, following common versioning conventions.
+
+### Fixed
+* Time reset issue caused by delayed ros clock message processing.
+* Out of bounds quaternion array access in debug print.
+* Make sure env name is not an empty string.
+* Memory leaks caused by wrong mjModelPtr and mjDataPtr deallocation.
+* Sensor tests.
+* Disable x usage in tests.
+* Now reusing offscreen buffer glfw window on reset.
+* Freeing textures from GPU manually causing an error.
+* Stopping simulation on model compilation warning if in headless mode.
+* Not setting ctrl signal when loading a keyframe.
+* Render callbacks using the wrong scene (#17).
+
+### Refactored
+* Updated and improved tests.
+* More thorough memory deallocation.
+
+Contributors: @DavidPL1, @fpatzelt
+
+<a name="0.3.1"></a>
+## [0.3.1] - 2023-01-17
+
+### Added
+* Service call for reset.
+* Unit tests for single environment library functions.
+* Added support for multi-DoF for initial positions and velocities (#3).
+* Added support for supplying a model as rosparam (generated e.g. by urdf2mjcf).
+* Ensures compatibility with MuJoCo 2.2.2.
+* Adds interprocedural optimization compile policy.
+* Service call to get/set bodys with freejoints.
+* Service call to set geom properties (mass, friction, size, geom_type).
+* Allows using wall time instead of ROS time (set `/use_sim_time` to false).
+* Adds additional "unbound" speed mode to run as fast as possbile.
+* Adds offscreen rendering RGB, depth, and/or segmentation mask images.
+* Added `eval/train` mode settings.
+* Added `admin_hash` for permission checks in eval mode.
 
 
+### Changed
+* `SINGLE` and `PARALLEL` mode are distinguished by a mode variable in shared code instead of requiring separate lib function calls.
+* Step service call changed to be an action call.
+* **cmake**: Renamed mujoco_INCLUDE_DIR -> mujoco_INCLUDE_DIRS.
+* Time is set to 0 on reset.
+* Adds more general debug info.
 
-# 3.0.0
 
-## Changes
-1. Changed how `MujocoEnv` is initialized/loaded/reloaded/resetted.
+### Fixed
+* Not counting multiple steps in CPU sync.
+* Step counting depending on `num_sim_steps` enabled or disabled.
+* Wrong declaration of `publishSimTime`.
+* Pose quaternion is now normalized before application to prevent setting invalid quaternions in `SetModelState`.
+* catkin_lint / cmake issues.
+* Missing package.xml dependencies.
+* Set clock publisher queue to 1 (#7).
+* Internal ROS time updates (#8).
+* Transitive dependency propagation with catkin.
+* Avoid publishing /clock twice per cycle.
+* Makes sure destructors of plugins and envs are called on shutdown (#12).
+* Instantly replacing a rosparam loaded xml.
+* `get_geom_properties` service not being advertised (#16).
+* Cross-thread ints and bools are now atomic.
+* slow_down not being applied.
+* Missing test world.
 
-The `mujoco\_server` node will search for a `ns` (robot namespace) parameter, which defaults to "/", i.e. ROS root (no sub-namespace). The single `MujocoEnv` receives this namespace to initialize a ros `NodeHandle` in its assigned namespace. By passing a pointer of the handle to its plugins, the plugins can fetch the namespace from the handle or simply use the handle to register topics and services in the correct namespace.
 
-Introduced new reset and reload function in `MujocoEnv` that trigger the respective functions of its members.
-Plugin parsing and initialization moved to `MujocoEnv`.
+### Performance Improvements
+* Improved multi-threading concept for `PARALLEL` mode.
 
-Due to the changes in `MujocoPlugin`, plugins need to be rebuilt (hence the major version bump).
 
-2. Added some more documentation.
-3. Added `lastStageCallback` function to `MujocoPlugin` which can be used to define behavior which should be run at the end of a simulation step. Note that this function gets called by the `mujoco\_ros` simulation loop and not by the mujoco engine, hence it won't be called in between engine sub-steps.
-4. Changed mjENABLED_ros/mjDISABLED_ros definitions to not rely on static context.
+### Refactored
+* Init function improvement and cleanup.
+* Improved `Get/SetModelState` service:
+  - Flags are now used to specify which parts of the state message are used to update the state.
+* Mutex usage.
+* Rendering functionallity making it much more runtime efficient.
 
-## Fixes
-1. Removed `collision_function` typedef, which is a duplicate defenition of mjfCollision.
-2. Removed `runContactFilterCbs` from `MujocoEnv`, since contact filter callbacks fully override the standard behavior. For contact filtering a similar approach to collision function registration should be used.
+Contributors: @DavidPL1, @rhaschke, @fpatzelt, @lbergmann
+
+<a name="0.3.0"></a>
+## [0.3.0] - 2022-06-10
+
+### Added
+* Added configurable initial joint velocities.
+* `MujocoEnv` uses namespacing coherent with ROS namespaces.
+* Added `lastStageCallback` to define behavior for plugins at the very end of a simulation step.
+
+### Fixed
+* Moved mjENABLED_ros/mjDISABLED_ros definitions to non-static context (#2).
+* Removed `collision_function` typedef (duplicate of `mjfCollision`).
+
+### Removed
+* Removed `runContactFilterCbs` since setting a contact filter callback fully overrides default behavior.
+
+
+Contributors: @DavidPL1, @balandbal
+
+<a name="0.2.0"></a>
+## 0.2.0 - 2022-05-30
+
+### Added
+* Plugin loading.
+* Service call to shutdown.
+* Service call to pause/unpause.
+* Headless mode and number of steps to run before termination as optional argument.
+* Safety wrappers for plugin loading and execution.
+* Exporting mujoco_ros as library for external usage.
+* Introduced parallel environments.
+
+### Changed
+* Now using boost::shared_ptr for mjModel and mjData instances.
+* Added licensing information.
+* Added build instructions.
+* How plugins are retrieved from the parameter server.
+
+### Fixed
+* Several bugs related to ROS time publishing.
+* Disabled backward stepping (impractical with ROS time).
+* Setting initial joint positions.
+
+Contributors: @DavidPL1
+
+[0.4.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.3.1...0.4.0
+[0.3.1]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.3.0...0.3.1
+[0.3.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.2.0...0.3.0
+[0.2.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/6c8bbe2...0.2.0

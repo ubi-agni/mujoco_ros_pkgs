@@ -1,4 +1,4 @@
-# 3.0.0
+# 0.3.0
 ## Changes
 1. Updated `MujocoRosControlPlugin` according to changes in `MujocoPlugin` made in `mujoco\_ros` version 3.0.0.
 
