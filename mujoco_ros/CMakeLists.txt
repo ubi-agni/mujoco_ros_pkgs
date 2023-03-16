@@ -36,7 +36,7 @@ endif()
 
 # Find MuJoCo
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
-find_package(mujoco REQUIRED)
+find_package(mujoco 2.3.2 REQUIRED)
 find_library(GLFW libglfw.so.3)
 
 ## Find catkin macros and libraries
