@@ -97,10 +97,6 @@ static std::condition_variable step_signal_;
 static std::mutex readyness_mtx;
 static int ready_threads_;
 
-static simMode sim_mode_;
-// To keep track of the amount of parallel environments
-static int num_simulations_;
-
 int jointName2id(mjModel *m, const std::string &joint_name, const std::string &robot_namespace = std::string());
 
 void setJointPosition(mjModelPtr model, mjDataPtr data, const double &pos, const int &joint_id,
@@ -121,16 +117,12 @@ static std::set<std::pair<int, int>> custom_collisions_;
 void registerCollisionFunc(int geom_type1, int geom_type2, mjfCollision collision_cb);
 
 /**
+
+/**
  * @brief Reset the simulation.
  *
  */
 void resetSim();
-
-/**
- * @brief Step through all simulated environments in a synchronized manner.
- *
- */
-void synchedMultiSimStep();
 
 /**
  * @brief Setup default VFS and save the current mujoco model in memory.
@@ -183,7 +175,6 @@ void setupEnv(MujocoEnvPtr env);
 // Threads
 void simulate(void);
 void eventloop(void);
-void envStepLoop(MujocoEnvParallelPtr env);
 
 // Plugin callback proxies
 void controlCallback(const mjModel *model, mjData *data);

@@ -156,34 +156,4 @@ private:
 	std::vector<MujocoPluginPtr> cb_ready_plugins;
 };
 
-struct MujocoEnvParallel : MujocoEnv
-{
-public:
-	/**
-	 * @brief Construct a new Mujoco Env object
-	 *
-	 * @param[in] ros_ns namespace of the environment used in ros.
-	 * @param[in] launchfile (optional) launchfile that will be started to bootstrap a ros environment for the
-	 * namespace.
-	 * @param[in] launch_args (optional) arguments to start the supplied launchfile with.
-	 */
-	MujocoEnvParallel(const std::string &ros_ns, const std::string &launchfile = "",
-	                  const std::vector<std::string> &launch_args = std::vector<std::string>());
-	MujocoEnvParallel(const MujocoEnvParallel &) = delete;
-	~MujocoEnvParallel();
-
-	// Env loop stepping thread
-	std::thread *loop_thread = nullptr;
-	// Bool to notify loop thread it should be stopped.
-	std::atomic_bool stop_loop;
-
-	std::string launchfile;
-	std::vector<std::string> launch_args;
-
-	/**
-	 * @brief Runs the launchfile with the supplied list of arguments, if any was given.
-	 */
-	void bootstrapNamespace();
-};
-
 } // end namespace MujocoSim

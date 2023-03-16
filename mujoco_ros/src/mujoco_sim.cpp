@@ -196,68 +196,29 @@ void init(std::string modelfile, std::string admin_hash /* = std::string()*/)
 	}
 
 	// Check which sim mode to use
-	nh_->param<int>("num_simulations", num_simulations_, 1);
-	if (num_simulations_ > 1) {
-		env_list_.resize(num_simulations_);
-		sim_mode_      = simMode::PARALLEL;
-		ready_threads_ = 0;
-	} else {
-		sim_mode_ = simMode::SINGLE;
+	int num_simulations;
+	nh_->param<int>("num_simulations", num_simulations, 1);
+	if (num_simulations > 1) {
+		ROS_FATAL_NAMED("mujoco", "PARALLEL mode is not available anymore, because of several issues. Parallel "
+		                          "processing will return in a later release.");
+		settings_.exitrequest.store(1);
 	}
 
 	nh_->param<bool>("benchmark_time", benchmark_env_time_, false);
 
 	bool unpause;
 	nh_->param<bool>("unpause", unpause, true);
-	if (sim_mode_ == simMode::SINGLE) {
-		std::string main_env_namespace;
-		nh_->param<std::string>("ns", main_env_namespace, "/");
-		if (main_env_namespace == "")
-			main_env_namespace = "/";
-		main_env_.reset(new MujocoEnv(main_env_namespace));
+	std::string main_env_namespace;
+	nh_->param<std::string>("ns", main_env_namespace, "/");
+	if (main_env_namespace == "")
+		main_env_namespace = "/";
+	main_env_.reset(new MujocoEnv(main_env_namespace));
 
-		if (unpause) {
-			settings_.run.store(1);
-		} else {
-			ROS_DEBUG_NAMED("mujoco", "Starting in paused state");
-			settings_.run.store(0);
-		}
+	if (unpause) {
+		settings_.run.store(1);
 	} else {
+		ROS_DEBUG_NAMED("mujoco", "Starting in paused state");
 		settings_.run.store(0);
-		ROS_DEBUG_NAMED("mujoco", "Multi env sim mode starting in mandatory pause mode.");
-
-		std::string bootstrap_launchfile;
-		std::vector<std::string> bootstrap_launchargs;
-
-		nh_->param<std::string>("bootstrap_launchfile", bootstrap_launchfile, "");
-		nh_->param<std::vector<std::string>>("bootstrap_launchargs", bootstrap_launchargs, std::vector<std::string>());
-
-		if (!bootstrap_launchfile.empty()) {
-			ROS_INFO_STREAM_NAMED("mujoco",
-			                      "Using '" << bootstrap_launchfile << "' as environment bootstrapping launchfile");
-			if (!bootstrap_launchargs.empty()) {
-				std::string bootstrap_launchargs_string;
-				for (const auto &s : bootstrap_launchargs) {
-					bootstrap_launchargs_string += s + " ";
-				}
-				ROS_DEBUG_STREAM_NAMED("mujoco", "Got launchargs: " << bootstrap_launchargs_string);
-			} else {
-				ROS_DEBUG_NAMED("mujoco", "No bootstrap args provided");
-			}
-		} else {
-			ROS_WARN_NAMED("mujoco", "No bootstrapping launchfile provided, was this on purpose?");
-		}
-
-		MujocoEnvParallelPtr env_ptr;
-		for (int i = 0; i < num_simulations_; i++) {
-			// Creation of envs in the init is better to avoid destruction and re-creation of envs in the loading function.
-			bootstrap_launchargs.push_back("ns:=env" + std::to_string(i));
-			env_ptr.reset(new MujocoEnvParallel("env" + std::to_string(i), bootstrap_launchfile, bootstrap_launchargs));
-			bootstrap_launchargs.pop_back();
-			env_list_[i] = env_ptr;
-			if (i == 0)
-				main_env_ = env_ptr;
-		}
 	}
 
 	if (!no_x) {
@@ -283,19 +244,7 @@ void init(std::string modelfile, std::string admin_hash /* = std::string()*/)
 	settings_.exitrequest.store(1);
 	simthread.join();
 
-	if (sim_mode_ == simMode::PARALLEL) {
-		step_signal_.notify_all();
-		for (const auto &env : env_list_) {
-			MujocoEnvParallelPtr parallel_env = boost::static_pointer_cast<MujocoEnvParallel>(env);
-			if (parallel_env->loop_thread != nullptr) {
-				parallel_env->loop_thread->join();
-				ROS_DEBUG_STREAM_NAMED("mujoco", "Joined loop thread of " << env->name);
-				environments::unregisterEnv(env->data.get());
-			}
-		}
-	} else {
-		environments::unregisterEnv(main_env_->data.get());
-	}
+	environments::unregisterEnv(main_env_->data.get());
 
 	env_list_.clear();
 
@@ -365,44 +314,6 @@ void resetSim()
 		}
 	}
 	settings_.resetrequest.store(0);
-}
-
-void synchedMultiSimStep()
-{
-	std::chrono::_V2::system_clock::time_point t0, t1;
-
-	if (benchmark_env_time_)
-		t0 = std::chrono::high_resolution_clock::now();
-
-	bool waiting = true;
-	uint trys    = 1;
-
-	while (waiting && trys < 1000 && !settings_.exitrequest.load()) {
-		{
-			std::unique_lock<std::mutex> lk(readyness_mtx);
-			waiting = ready_threads_ != num_simulations_;
-
-			if (not waiting || settings_.exitrequest.load()) {
-				step_signal_.notify_all();
-				ready_threads_ -= num_simulations_;
-			}
-			trys += 1;
-		}
-	}
-
-	// Publish new synchronized sim time
-	publishSimTime(main_env_->data->time);
-
-	if (benchmark_env_time_) {
-		t1             = std::chrono::high_resolution_clock::now();
-		uint curr_step = (main_env_->data->time / main_env_->model->opt.timestep);
-
-		std::chrono::duration<double, std::milli> ms_double = t1 - t0;
-
-		ROS_DEBUG_STREAM_COND_NAMED(curr_step % 100 == 0 || curr_step == 1, "mujoco",
-		                            "One step with " << num_simulations_ << " instances took " << ms_double.count()
-		                                             << " ms ");
-	}
 }
 
 namespace detail {
@@ -513,14 +424,14 @@ void simulate(void)
 
 		if (model && data) {
 			if (settings_.visualInitrequest.load()) {
-				if (sim_mode_ == simMode::SINGLE && settings_.render_offscreen) {
+				if (settings_.render_offscreen) {
 					main_env_->initializeRenderResources();
 				}
 				settings_.visualInitrequest.store(0);
 			}
 
 			std::lock_guard<std::mutex> lk(sim_mtx);
-			if (settings_.run.load() && sim_mode_ == simMode::SINGLE) {
+			if (settings_.run.load()) {
 				// Wall time at the start of this iteration
 				ros::WallTime startCPU = ros::WallTime::now();
 
@@ -608,19 +519,7 @@ void simulate(void)
 						}
 					}
 				}
-			} else if (sim_mode_ == simMode::PARALLEL) { // settings_.run = 1 && parallel
-				if (settings_.manual_env_steps.load() != 0) {
-					// clear old perturbations, apply new
-					mju_zero(data->xfrc_applied, 6 * model->nbody);
-					mjv_applyPerturbPose(model.get(), data.get(), &mjsru::pert_, 0); // Move mocap bodies only
-					mjv_applyPerturbForce(model.get(), data.get(), &mjsru::pert_);
-
-					synchedMultiSimStep();
-					settings_.manual_env_steps.store(settings_.manual_env_steps.load() - 1);
-				} else { // Paused in PARALLEL mode
-					std::this_thread::sleep_for(std::chrono::milliseconds(1));
-				}
-			} else { // Paused in single env mode
+			} else { // Paused
 				if (settings_.manual_env_steps.load() > 0) { // Action call or arrow keys used for stepping
 					mju_zero(data->xfrc_applied, 6 * model->nbody);
 					mjv_applyPerturbPose(model.get(), data.get(), &mjsru::pert_, 0); // Move mocap bodies only
@@ -655,44 +554,6 @@ void simulate(void)
 	}
 	// Requests eventloop shutdown in case we ran out of simulation steps to use
 	settings_.exitrequest.store(1);
-}
-
-void envStepLoop(MujocoEnvParallelPtr env)
-{
-	if (settings_.render_offscreen) {
-		env->initializeRenderResources();
-	}
-
-	while (!settings_.exitrequest.load() && not env->stop_loop.load()) {
-		if (settings_.ctrlnoisestd) {
-			// Convert rate and scale to discrete time given current timestep
-			mjtNum rate  = mju_exp(-env->model->opt.timestep / settings_.ctrlnoiserate);
-			mjtNum scale = settings_.ctrlnoisestd * mju_sqrt(1 - rate * rate);
-
-			for (int i = 0; i < env->model->nu; i++) {
-				// Update noise
-				env->ctrlnoise[i] = rate * env->ctrlnoise[i] + scale * mju_standardNormal(nullptr);
-				// Apply noise
-				env->data->ctrl[i] = env->ctrlnoise[i];
-			}
-		}
-
-		{
-			// ROS_DEBUG_STREAM_NAMED("envStepLoop", "Increasing number of ready threads to " << ready_threads_+1 << " ["
-			// << env->name << "]"); ROS_DEBUG_STREAM_NAMED("envStepLoop", "Waiting for signal... [" << env->name << "]");
-			std::unique_lock<std::mutex> lk(readyness_mtx);
-			ready_threads_ += 1;
-			step_signal_.wait(lk);
-		}
-		if (env->stop_loop.load() || settings_.exitrequest.load())
-			break;
-		// Run mj_step
-		mj_step(env->model.get(), env->data.get());
-		lastStageCallback(env->data.get());
-		mjsru::offScreenRenderEnv(env);
-	}
-	ROS_DEBUG_STREAM_COND_NAMED(settings_.exitrequest.load(), "envStepLoop",
-	                            "halted because of exit request [" << env->name << "]");
 }
 
 void loadModel(void)
@@ -732,30 +593,13 @@ void loadModel(void)
 		}
 	}
 
-	if (sim_mode_ == simMode::SINGLE) {
-		ROS_DEBUG_STREAM_NAMED("mujoco", "Setting up env '" << main_env_->name << "' ...");
-		// Delete old model, assign new
-		main_env_->model.reset(mnew, [](mjModel *m) { mj_deleteModel(m); });
-		environments::assignData(mj_makeData(mnew), main_env_);
-		setupEnv(main_env_);
-		// Request that off-screen rendering resources are initialized in simulate thread
-		settings_.visualInitrequest.store(1);
-	} else {
-		for (const auto &env : env_list_) {
-			ROS_DEBUG_STREAM_NAMED("mujoco", "Setting up env '" << env->name << "' ...");
-			MujocoEnvParallelPtr parallel_env = boost::static_pointer_cast<MujocoEnvParallel>(env);
-			if (parallel_env->loop_thread != nullptr) {
-				parallel_env->stop_loop.store(true);
-				parallel_env->loop_thread->join();
-			}
-			env->model.reset(mnew, [](mjModel *m) { mj_deleteModel(m); });
-			environments::assignData(mj_makeData(mnew), env);
-			setupEnv(env);
-			parallel_env->stop_loop.store(false);
-			ROS_DEBUG_STREAM_NAMED("mujoco", "Starting thread for " << parallel_env->name);
-			parallel_env->loop_thread = new std::thread(envStepLoop, parallel_env);
-		}
-	}
+	ROS_DEBUG_STREAM_NAMED("mujoco", "Setting up env '" << main_env_->name << "' ...");
+	// Delete old model, assign new
+	main_env_->model.reset(mnew, [](mjModel *m) { mj_deleteModel(m); });
+	environments::assignData(mj_makeData(mnew), main_env_);
+	setupEnv(main_env_);
+	// Request that off-screen rendering resources are initialized in simulate thread
+	settings_.visualInitrequest.store(1);
 
 	// Align and scale view unless reloading the same file
 	bool realign = mju::strcmp_arr(filename_, previous_filename_);
@@ -930,8 +774,7 @@ void loadInitialJointStates(mjModelPtr model, mjDataPtr data)
 
 void setupCallbacks()
 {
-	if (sim_mode_ == simMode::SINGLE)
-		service_servers_.push_back(nh_->advertiseService("set_pause", setPauseCB));
+	service_servers_.push_back(nh_->advertiseService("set_pause", setPauseCB));
 	service_servers_.push_back(nh_->advertiseService("shutdown", shutdownCB));
 	service_servers_.push_back(nh_->advertiseService("reset", resetCB));
 	service_servers_.push_back(nh_->advertiseService("set_body_state", setBodyStateCB));

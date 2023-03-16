@@ -94,16 +94,6 @@ typedef boost::shared_ptr<CamStream> CamStreamPtr;
 } // namespace render_utils
 
 /**
- * @brief Helper enum to enable/disable features of the respective sim mode.
- *
- */
-typedef enum simMode_ : uint8_t
-{
-	SINGLE = 0,
-	PARALLEL
-} simMode;
-
-/**
  * @def mjModelPtr
  * @brief boost::shared_ptr to mjModel
  */
@@ -125,17 +115,11 @@ typedef boost::shared_ptr<MujocoPlugin> MujocoPluginPtr;
 
 // MujocoEnvironment
 struct MujocoEnv;
-struct MujocoEnvParallel;
 
 /**
  * @def MujocoEnvPtr
  * @brief boost::shared_ptr to MujocoEnv
  */
 typedef boost::shared_ptr<MujocoEnv> MujocoEnvPtr;
-/**
- * @def MujocoEnvParallelPtr
- * @brief boost::shared_ptr to MujocoEnvParallel
- */
-typedef boost::shared_ptr<MujocoEnvParallel> MujocoEnvParallelPtr;
 
 } // namespace MujocoSim

@@ -2,6 +2,7 @@
 ## Unreleased
 
 ### Changed
+* Removed parallel env mode
 * Bump MuJoCo required version to 2.3.2
 
 <a name="0.4.0"></a>

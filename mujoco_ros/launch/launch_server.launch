@@ -17,17 +17,12 @@
   <arg name="realtime"             default=""      doc="Fraction of desired realtime (0,1]. -1 to run as fast as possible." />
   <arg name="profile"              default="false" doc="Whether mujoco_ros should be profiled." />
   <arg name="num_sim_steps"        default="-1" />
-  <arg name="benchmark_time"       default="false" doc="Whether parallel-env time should be benchmarked." />
-  <arg name="num_instances"        default="1"     doc="Number of simulations to run (> 1 starts parallel mode)." />
+  <arg name="num_instances"        default="1"     doc="Number of simulations to run (DEPRECATED)." />
   <arg name="mujoco_plugin_config" default=""      doc="Optionally provide the path to a yaml with plugin configurations to load." />
 
   <arg name="modelfile"            default="$(find mujoco_ros)/assets/pendulum_world.xml"        doc="MuJoCo xml file to load. Should define robot model and world." />
   <arg name="initial_joint_states" default="$(find mujoco_ros)/config/initial_joint_states.yaml" doc="Provide a filepath containing initial joint states to load." />
   <arg name="console_config_file"  default="$(find mujoco_ros)/config/rosconsole.config"         doc="Path to ROS console config used when verbose logging is active." />
-
-  <!-- Parallel Mode Arguments -->
-  <arg name="bootstrap_launchfile" default="$(find mujoco_ros)/launch/bringup_panda.launch"      doc="Which launchfile should be run for each namespace." />
-  <arg name="bootstrap_launchargs" default="[rviz:=false]" />
 
   <arg name="use_sim_time" />
 
@@ -53,10 +48,7 @@
         <param name="modelfile"            value="$(arg modelfile)" />
         <param name="wait_for_xml"         value="$(arg wait_for_xml)" />
         <param name="realtime"             value="$(arg realtime)" />
-        <param name="benchmark_time"       value="$(arg benchmark_time)" />
         <param name="num_simulations"      value="$(arg num_instances)" />
-        <param name="bootstrap_launchfile" value="$(arg bootstrap_launchfile)" />
-        <rosparam param="bootstrap_launchargs" subst_value="true">$(arg bootstrap_launchargs)</rosparam>
         <rosparam file="$(arg initial_joint_states)" subst_value="true" />
       </node>
   </group>
@@ -74,10 +66,7 @@
         <param name="modelfile"            value="$(arg modelfile)" />
         <param name="wait_for_xml"         value="$(arg wait_for_xml)" />
         <param name="realtime"             value="$(arg realtime)" />
-        <param name="benchmark_time"       value="$(arg benchmark_time)" />
         <param name="num_simulations"      value="$(arg num_instances)" />
-        <param name="bootstrap_launchfile" value="$(arg bootstrap_launchfile)" />
-        <rosparam param="bootstrap_launchargs" subst_value="true">$(arg bootstrap_launchargs)</rosparam>
         <rosparam file="$(arg initial_joint_states)" subst_value="true" />
       </node>
     </group>
@@ -96,10 +85,7 @@
         <param name="modelfile"            value="$(arg modelfile)" />
         <param name="wait_for_xml"         value="$(arg wait_for_xml)" />
         <param name="realtime"             value="$(arg realtime)" />
-        <param name="benchmark_time"       value="$(arg benchmark_time)" />
         <param name="num_simulations"      value="$(arg num_instances)" />
-        <param name="bootstrap_launchfile" value="$(arg bootstrap_launchfile)" />
-        <rosparam param="bootstrap_launchargs" subst_value="true">$(arg bootstrap_launchargs)</rosparam>
         <rosparam file="$(arg initial_joint_states)" subst_value="true" />
       </node>
     </group>

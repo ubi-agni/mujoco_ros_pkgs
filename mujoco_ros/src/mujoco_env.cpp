@@ -89,32 +89,6 @@ void unregisterEnv(uint id)
 
 } // end namespace environments
 
-MujocoEnvParallel::MujocoEnvParallel(const std::string &ros_ns, const std::string &launchfile,
-                                     const std::vector<std::string> &launch_args)
-    : MujocoEnv(ros_ns), launchfile(launchfile), launch_args(launch_args)
-{
-	if (!launchfile.empty())
-		bootstrapNamespace();
-}
-
-void MujocoEnvParallel::bootstrapNamespace()
-{
-	mujoco_ros_msgs::BootstrapNS bootstrap_msg;
-	bootstrap_msg.request.ros_namespace = name;
-	bootstrap_msg.request.launchfile    = launchfile;
-	bootstrap_msg.request.args          = launch_args;
-
-	if (!ros::service::waitForService("/bootstrap_ns", ros::Duration(5))) {
-		ROS_ERROR_NAMED("mujoco_env",
-		                "Timeout while waiting for namespace bootstrapping node under topic '/bootstrap_ns'. "
-		                "Is it started correctly?");
-		return;
-	}
-
-	if (!ros::service::call("/bootstrap_ns", bootstrap_msg))
-		ROS_ERROR_STREAM_NAMED("mujoco_env", "Error while bootstrapping ROS environment for namespace '" << name << "'");
-}
-
 void MujocoEnv::initializeRenderResources()
 {
 	image_transport::ImageTransport it(*nh);
@@ -303,14 +277,6 @@ MujocoEnv::~MujocoEnv()
 	vis.rgb.reset();
 	vis.depth.reset();
 	nh.reset();
-}
-
-MujocoEnvParallel::~MujocoEnvParallel()
-{
-	mujoco_ros_msgs::ShutdownNS shutdown_msg;
-	shutdown_msg.request.ros_namespace = name;
-
-	ros::service::call("/shutdown_ns", shutdown_msg);
 }
 
 } // namespace MujocoSim
