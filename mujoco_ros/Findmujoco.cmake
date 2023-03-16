@@ -28,5 +28,12 @@ if(NOT mujoco_FOUND)
 	endif()
 endif()
 
+if (mujoco_FIND_VERSION)
+	if (NOT mujoco_VERSION OR NOT mujoco_FIND_VERSION_MAJOR EQUAL mujoco_VERSION_MAJOR OR mujoco_FIND_VERSION_MINOR GREATER mujoco_VERSION_MINOR OR mujoco_FIND_VERSION_PATCH GREATER mujoco_VERSION_PATCH)
+		message(FATAL_ERROR "Requested MuJoCo version ${mujoco_FIND_VERSION} but found incompatible version ${mujoco_VERSION}")
+		unset(mujoco_FOUND)
+	endif()
+endif()
+
 set(mujoco_LIBRARIES mujoco::mujoco)
 get_target_property(mujoco_INCLUDE_DIRS mujoco::mujoco INTERFACE_INCLUDE_DIRECTORIES)
