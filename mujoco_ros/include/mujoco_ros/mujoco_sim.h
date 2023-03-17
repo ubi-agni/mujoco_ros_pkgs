@@ -80,6 +80,8 @@
 #include <actionlib/server/simple_action_server.h>
 #include <std_srvs/Empty.h>
 
+#include <tf2_ros/static_transform_broadcaster.h>
+
 namespace mju = ::mujoco::sample_util;
 
 namespace MujocoSim {
@@ -116,7 +118,18 @@ static std::set<std::pair<int, int>> custom_collisions_;
  */
 void registerCollisionFunc(int geom_type1, int geom_type2, mjfCollision collision_cb);
 
+// Keep track of static transforms to publish.
+static std::vector<geometry_msgs::TransformStamped> static_transforms_;
+
+// Central broadcaster for all static transforms
+static boost::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_broadcaster_;
+
 /**
+ * @brief Register a static transform to be published by the simulation.
+ *
+ * @param [in] transform const pointer to transform that will be published.
+ */
+void registerStaticTransform(geometry_msgs::TransformStamped transfrom);
 
 /**
  * @brief Reset the simulation.

@@ -39,7 +39,9 @@
 #include <mujoco_ros_msgs/BootstrapNS.h>
 #include <mujoco_ros_msgs/ShutdownNS.h>
 #include <mujoco_ros/mujoco_env.h>
-#include <mujoco_ros/render_utils.h>
+
+#include <mujoco_ros/rendering/utils.h>
+#include <mujoco_ros/rendering/camera.h>
 
 #include <sstream>
 
@@ -93,7 +95,7 @@ void MujocoEnv::initializeRenderResources()
 {
 	image_transport::ImageTransport it(*nh);
 	bool config_exists, use_segid;
-	render_utils::streamType stream_type;
+	rendering::streamType stream_type;
 	std::string cam_name, cam_config_path;
 	double pub_freq;
 	int max_res_h = 0, max_res_w = 0;
@@ -111,15 +113,15 @@ void MujocoEnv::initializeRenderResources()
 
 	cam_streams.clear();
 
-	render_utils::CamStreamPtr stream_ptr;
+	rendering::CameraStreamPtr stream_ptr;
 	int res_h, res_w;
 	for (int cam_id = 0; cam_id < model->ncam; cam_id++) {
 		cam_name = mj_id2name(model.get(), mjOBJ_CAMERA, cam_id);
 		ROS_DEBUG_STREAM_NAMED("mujoco_env",
 		                       "Found camera '" << cam_name << "' with id " << cam_id << ". Setting up publishers...");
 
-		stream_type = render_utils::streamType(
-		    nh->param<int>(cam_config_path + "/" + cam_name + "/stream_type", render_utils::streamType::RGB));
+		stream_type = rendering::streamType(
+		    nh->param<int>(cam_config_path + "/" + cam_name + "/stream_type", rendering::streamType::RGB));
 		pub_freq  = nh->param<float>(cam_config_path + "/" + cam_name + "/frequency", 15);
 		use_segid = nh->param<bool>(cam_config_path + "/" + cam_name + "/use_segid", true);
 		res_w     = nh->param<int>(cam_config_path + "/" + cam_name + "/width", 720);
@@ -128,27 +130,8 @@ void MujocoEnv::initializeRenderResources()
 		max_res_h = std::max(res_h, max_res_h);
 		max_res_w = std::max(res_w, max_res_w);
 
-		image_transport::Publisher rgb, depth, segment;
-		if (stream_type & render_utils::streamType::RGB) {
-			ROS_DEBUG_NAMED("mujoco_env", "\tCreating rgb publisher");
-			rgb = it.advertise("cameras/" + cam_name + "/rgb", 1);
-		}
-		if (stream_type & render_utils::streamType::DEPTH) {
-			ROS_DEBUG_NAMED("mujoco_env", "\tCreating depth publisher");
-			depth = it.advertise("cameras/" + cam_name + "/depth", 1);
-		}
-		if (stream_type & render_utils::streamType::SEGMENTED) {
-			ROS_DEBUG_NAMED("mujoco_env", "\tCreating segmentation publisher");
-			segment = it.advertise("cameras/" + cam_name + "/segmented", 1);
-		}
-
-		ROS_DEBUG_STREAM_NAMED("mujoco_env", "\tSetting up camera stream(s) of type '"
-		                                         << stream_type << "' with a publish rate of " << pub_freq
-		                                         << " Hz for camera named " << cam_name << " with resolution "
-		                                         << max_res_w << "x" << max_res_h);
-
-		stream_ptr.reset(
-		    new render_utils::CamStream(cam_id, res_w, res_h, stream_type, rgb, depth, segment, use_segid, pub_freq));
+		stream_ptr.reset(new rendering::CameraStream(cam_id, cam_name, res_w, res_h, stream_type, use_segid, pub_freq,
+		                                             &it, nh, model, data));
 		cam_streams.push_back(stream_ptr);
 	}
 
@@ -189,7 +172,7 @@ void MujocoEnv::initializeRenderResources()
 	ROS_DEBUG_NAMED("mujoco_env", "\tInitialized default context");
 
 	// // Create scene and context
-	mjv_makeScene(model.get(), &(vis.scn), render_utils::maxgeom_);
+	mjv_makeScene(model.get(), &(vis.scn), rendering::maxgeom_);
 	ROS_DEBUG_NAMED("mujoco_env", "\tApplied model to scene");
 	mjr_makeContext(model.get(), &(vis.con), 50 * (settings_.font + 1));
 	ROS_DEBUG_NAMED("mujoco_env", "\tApplied model to context");

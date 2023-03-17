@@ -63,11 +63,16 @@
 #include <mujoco_ros/common_types.h>
 #include <mujoco_ros/mujoco_sim.h>
 
+#include <mujoco_ros/rendering/camera.h>
+
+#include <sensor_msgs/CameraInfo.h>
+#include <camera_info_manager/camera_info_manager.h>
+
 namespace mju = ::mujoco::sample_util;
 
 using namespace MujocoSim::detail;
 
-namespace MujocoSim::render_utils {
+namespace MujocoSim::rendering {
 
 // Extern declaration for global access
 extern mjvPerturb pert_;
@@ -188,51 +193,15 @@ void renderCallback(mjData *data, mjvScene *scene);
 namespace {
 void initVisible();
 void render(GLFWwindow *window);
-void renderAndPubEnv(MujocoEnvPtr env, bool rgb, bool depth, const image_transport::Publisher &pub_rgb,
-                     const image_transport::Publisher &pub_depth, int width, int height);
+
+/**
+ * If anyone is subscribed to the respective topics, renders RGB (segmented or normal color) and DEPTH image and
+ * publishes the image(s).
+ * @return `true` if anything was published, `false` else.
+ */
+bool renderAndPubEnv(MujocoEnvPtr env, bool rgb, bool depth, const image_transport::Publisher &pub_rgb,
+                     const image_transport::Publisher &pub_depth, int width, int height, const std::string cam_name);
 } // end unnamed namespace
-
-struct CamStream
-{
-public:
-	CamStream(uint8_t cam_id, int width, int height, streamType stream_type, image_transport::Publisher rgb,
-	          image_transport::Publisher depth, image_transport::Publisher segment, bool use_segid, float pub_freq)
-	    : cam_id(cam_id)
-	    , width(width)
-	    , height(height)
-	    , stream_type(stream_type)
-	    , rgb_pub(rgb)
-	    , depth_pub(depth)
-	    , segment_pub(segment)
-	    , use_segid(use_segid)
-	    , pub_freq(pub_freq)
-	{
-		last_pub = ros::Time::now();
-	}
-
-	~CamStream()
-	{
-		if (&rgb_pub != nullptr) {
-			rgb_pub.shutdown();
-		}
-		if (&depth_pub != nullptr) {
-			depth_pub.shutdown();
-		}
-		if (&segment_pub != nullptr) {
-			segment_pub.shutdown();
-		}
-	};
-
-	uint8_t cam_id;
-	int width, height;
-	streamType stream_type = streamType::RGB;
-	image_transport::Publisher rgb_pub;
-	image_transport::Publisher depth_pub;
-	image_transport::Publisher segment_pub;
-	bool use_segid = true;
-	float pub_freq = 15;
-	ros::Time last_pub;
-};
 
 // section ids
 enum
@@ -348,4 +317,4 @@ const char help_title[] = "Play / Pause\n"
                           "Show UI shortcuts\n"
                           "Expand/collapse all";
 
-} // namespace MujocoSim::render_utils
+} // namespace MujocoSim::rendering

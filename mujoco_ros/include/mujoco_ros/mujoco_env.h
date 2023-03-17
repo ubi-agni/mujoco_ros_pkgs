@@ -123,9 +123,9 @@ public:
 	/// Env namespace
 	std::string name;
 	/// struct holding objects needed for rendering
-	render_utils::VisualStruct vis;
-	/// CamStream objects for other cameras
-	std::vector<render_utils::CamStreamPtr> cam_streams;
+	rendering::VisualStruct vis;
+	/// CameraStream objects for other cameras
+	std::vector<rendering::CameraStreamPtr> cam_streams;
 
 	/**
 	 * @brief Calls reload functions of all members depeding on mjData.

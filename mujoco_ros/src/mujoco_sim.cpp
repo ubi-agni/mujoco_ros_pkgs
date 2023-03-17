@@ -50,7 +50,7 @@
 
 #include <mujoco_ros/mujoco_sim.h>
 #include <mujoco_ros/plugin_utils.h>
-#include <mujoco_ros/render_utils.h>
+#include <mujoco_ros/rendering/utils.h>
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
@@ -69,7 +69,7 @@ namespace MujocoSim {
 
 using namespace detail;
 
-namespace mjsru = ::MujocoSim::render_utils;
+namespace mjsr = ::MujocoSim::rendering;
 
 // Define extern declared globals
 Settings MujocoSim::detail::settings_;
@@ -97,6 +97,26 @@ void registerCollisionFunc(int geom_type1, int geom_type2, mjfCollision collisio
 		custom_collisions_.insert(std::pair(geom_type1, geom_type2));
 	}
 	mjCOLLISIONFUNC[geom_type1][geom_type2] = collision_cb;
+}
+
+void registerStaticTransform(geometry_msgs::TransformStamped transform)
+{
+	ROS_DEBUG_STREAM_NAMED("mujoco", "Registering static transform for frame " << transform.child_frame_id);
+	for (std::vector<geometry_msgs::TransformStamped>::iterator it = static_transforms_.begin();
+	     it != static_transforms_.end();) {
+		if (it->child_frame_id == transform.child_frame_id) {
+			ROS_WARN_STREAM_NAMED("mujoco", "Static transform for child '"
+			                                    << transform.child_frame_id
+			                                    << "' already registered. Will overwrite old transform!");
+			static_transforms_.erase(it);
+			break;
+		}
+		++it;
+	}
+
+	static_transforms_.push_back(transform);
+
+	static_broadcaster_->sendTransform(static_transforms_);
 }
 
 void setupVFS(const std::string &filename, const std::string &content /* = std::string()*/)
@@ -195,6 +215,8 @@ void init(std::string modelfile, std::string admin_hash /* = std::string()*/)
 		mju_error("Headers and library have different versions");
 	}
 
+	static_broadcaster_.reset(new tf2_ros::StaticTransformBroadcaster());
+
 	// Check which sim mode to use
 	int num_simulations;
 	nh_->param<int>("num_simulations", num_simulations, 1);
@@ -222,7 +244,7 @@ void init(std::string modelfile, std::string admin_hash /* = std::string()*/)
 	}
 
 	if (!no_x) {
-		mjsru::initVisual();
+		mjsr::initVisual();
 	}
 
 	if (!modelfile.empty()) {
@@ -247,11 +269,12 @@ void init(std::string modelfile, std::string admin_hash /* = std::string()*/)
 	environments::unregisterEnv(main_env_->data.get());
 
 	env_list_.clear();
+	static_transforms_.clear();
 
 	ROS_DEBUG_NAMED("mujoco", "Sim thread terminated");
 
 	main_env_.reset();
-	mjsru::deinitVisual();
+	mjsr::deinitVisual();
 	plugin_utils::unloadPluginloader();
 
 	mj_deleteVFS(&vfs_);
@@ -271,6 +294,7 @@ void init(std::string modelfile, std::string admin_hash /* = std::string()*/)
 	ROS_DEBUG_NAMED("mujoco", "Cleanup done");
 	tf_bufferPtr_.reset();
 	tf_listenerPtr_.reset();
+	static_broadcaster_.reset();
 	nh_.reset();
 }
 
@@ -308,9 +332,9 @@ void resetSim()
 		publishSimTime(main_env_->data->time);
 
 		if (!settings_.headless) {
-			mjsru::profilerUpdate(main_env_);
-			mjsru::sensorUpdate(main_env_);
-			mjsru::updateSettings(main_env_);
+			mjsr::profilerUpdate(main_env_);
+			mjsr::sensorUpdate(main_env_);
+			mjsr::updateSettings(main_env_);
 		}
 	}
 	settings_.resetrequest.store(0);
@@ -322,8 +346,8 @@ void eventloop(void)
 {
 	ros::WallTime t_last(0);
 	ros::WallTime now(0);
-	ros::WallDuration fps_cap(mjsru::render_ui_rate_upper_bound_); // Cap to 60 FPS
-	while (ros::ok() && ((!settings_.exitrequest.load() && (settings_.headless || !mjsru::isWindowClosing())))) {
+	ros::WallDuration fps_cap(mjsr::render_ui_rate_upper_bound_); // Cap to 60 FPS
+	while (ros::ok() && ((!settings_.exitrequest.load() && (settings_.headless || !mjsr::isWindowClosing())))) {
 		{
 			std::lock_guard<std::mutex> lk(sim_mtx);
 			now = ros::WallTime::now();
@@ -343,14 +367,14 @@ void eventloop(void)
 				glfwPollEvents();
 
 				// Prepare to render
-				mjsru::prepareOnScreen(t_last - now);
+				mjsr::prepareOnScreen(t_last - now);
 				t_last = now;
 			}
 		} // unlocks sim_mtx
 
 		// render while sim is running
 		if (!settings_.headless) {
-			mjsru::renderMain();
+			mjsr::renderMain();
 		}
 	}
 }
@@ -467,14 +491,14 @@ void simulate(void)
 
 					// Clear old perturbations, apply new
 					mju_zero(data->xfrc_applied, 6 * model->nbody);
-					mjv_applyPerturbPose(model.get(), data.get(), &mjsru::pert_, 0); // Move mocap bodies only
-					mjv_applyPerturbForce(model.get(), data.get(), &mjsru::pert_);
+					mjv_applyPerturbPose(model.get(), data.get(), &mjsr::pert_, 0); // Move mocap bodies only
+					mjv_applyPerturbForce(model.get(), data.get(), &mjsr::pert_);
 
 					// Run single step, let next iteration deal with timing
 					mj_step(model.get(), data.get());
 					publishSimTime(data->time);
 					lastStageCallback(data.get());
-					mjsru::offScreenRenderEnv(main_env_);
+					mjsr::offScreenRenderEnv(main_env_);
 
 					// Count steps until termination
 					if (num_steps > 0) {
@@ -489,7 +513,7 @@ void simulate(void)
 					// possible
 					while ((settings_.rt_index == 0 ||
 					        (data->time - syncSim) * slow_down < (ros::WallTime::now() - syncCPU).toSec()) &&
-					       (ros::WallTime::now() - startCPU).toSec() < mjsru::render_ui_rate_lower_bound_ &&
+					       (ros::WallTime::now() - startCPU).toSec() < mjsr::render_ui_rate_lower_bound_ &&
 					       (num_steps == -1 || num_steps > 0) && !settings_.exitrequest.load()) {
 						if (!measured && elapsedSim) {
 							settings_.measured_slow_down = elapsedCPU / elapsedSim;
@@ -498,14 +522,14 @@ void simulate(void)
 
 						// clear old perturbations, apply new
 						mju_zero(data->xfrc_applied, 6 * model->nbody);
-						mjv_applyPerturbPose(model.get(), data.get(), &mjsru::pert_, 0); // Move mocap bodies only
-						mjv_applyPerturbForce(model.get(), data.get(), &mjsru::pert_);
+						mjv_applyPerturbPose(model.get(), data.get(), &mjsr::pert_, 0); // Move mocap bodies only
+						mjv_applyPerturbForce(model.get(), data.get(), &mjsr::pert_);
 
 						// Run mj_step
 						mj_step(model.get(), data.get());
 						publishSimTime(data->time);
 						lastStageCallback(data.get());
-						mjsru::offScreenRenderEnv(main_env_);
+						mjsr::offScreenRenderEnv(main_env_);
 
 						// Count steps until termination
 						if (num_steps > 0) {
@@ -522,22 +546,22 @@ void simulate(void)
 			} else { // Paused
 				if (settings_.manual_env_steps.load() > 0) { // Action call or arrow keys used for stepping
 					mju_zero(data->xfrc_applied, 6 * model->nbody);
-					mjv_applyPerturbPose(model.get(), data.get(), &mjsru::pert_, 0); // Move mocap bodies only
-					mjv_applyPerturbForce(model.get(), data.get(), &mjsru::pert_);
+					mjv_applyPerturbPose(model.get(), data.get(), &mjsr::pert_, 0); // Move mocap bodies only
+					mjv_applyPerturbForce(model.get(), data.get(), &mjsr::pert_);
 
 					// Run single step
 					mj_step(model.get(), data.get());
 					publishSimTime(data->time);
 					lastStageCallback(data.get());
-					mjsru::offScreenRenderEnv(main_env_);
+					mjsr::offScreenRenderEnv(main_env_);
 
 					settings_.manual_env_steps.store(settings_.manual_env_steps.load() - 1);
 				} else { // Wating in paused mode
-					mjv_applyPerturbPose(model.get(), data.get(), &mjsru::pert_, 1); // Move mocap and dynamic bodies
+					mjv_applyPerturbPose(model.get(), data.get(), &mjsr::pert_, 1); // Move mocap and dynamic bodies
 
 					// Run mj_forward, to update rendering and joint sliders
 					mj_forward(model.get(), data.get());
-					mjsru::offScreenRenderEnv(main_env_);
+					mjsr::offScreenRenderEnv(main_env_);
 				}
 			}
 		} // end if(model && data) unlocks sim_mtx
@@ -611,11 +635,7 @@ void loadModel(void)
 	int numclicks   = sizeof(percentRealTime) / sizeof(percentRealTime[0]);
 	float min_error = 1e6;
 	float desired;
-#if mjVERSION_HEADER < 230
-	nh_->param<float>("realtime", desired, 1.0);
-#else
 	nh_->param<float>("realtime", desired, main_env_->model->vis.global.realtime);
-#endif
 
 	if (desired == -1) {
 		settings_.rt_index = 0;
@@ -634,7 +654,7 @@ void loadModel(void)
 		}
 	}
 
-	mjsru::onModelLoad(main_env_, realign);
+	mjsr::onModelLoad(main_env_, realign);
 	settings_.loadrequest.store(0);
 }
 

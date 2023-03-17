@@ -47,7 +47,7 @@ static constexpr int kBufSize = 1000;
 
 namespace MujocoSim {
 
-namespace render_utils {
+namespace rendering {
 
 typedef enum streamType_ : uint8_t
 {
@@ -88,10 +88,10 @@ struct VisualStruct
 	};
 };
 
-struct CamStream;
-typedef boost::shared_ptr<CamStream> CamStreamPtr;
+class CameraStream;
+typedef boost::shared_ptr<CameraStream> CameraStreamPtr;
 
-} // namespace render_utils
+} // namespace rendering
 
 /**
  * @def mjModelPtr

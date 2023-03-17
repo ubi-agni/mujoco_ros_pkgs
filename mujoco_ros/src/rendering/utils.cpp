@@ -34,7 +34,9 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <mujoco_ros/render_utils.h>
+/* Authors: David P. Leins */
+
+#include <mujoco_ros/rendering/utils.h>
 
 #include <atomic>
 #include <chrono>
@@ -53,7 +55,7 @@
 
 using namespace MujocoSim::detail;
 
-namespace MujocoSim::render_utils {
+namespace MujocoSim::rendering {
 
 // Definition of externally declared perturbation
 mjvPerturb pert_;
@@ -197,7 +199,7 @@ void initVisible()
 	mjv_defaultOption(&vopt_);
 
 	// Create scene and context
-	mjv_makeScene(NULL, &free_scene_, render_utils::maxgeom_);
+	mjv_makeScene(NULL, &free_scene_, rendering::maxgeom_);
 	mjr_makeContext(NULL, &free_context_, 50 * (settings_.font + 1));
 
 	// set GLFW callbacks
@@ -232,14 +234,15 @@ void initVisible()
 	uiModify(main_window_, &ui1_, &uistate_, &free_context_);
 }
 
-void renderAndPubEnv(MujocoEnvPtr env, bool rgb, bool depth, const image_transport::Publisher &pub_rgb,
-                     const image_transport::Publisher &pub_depth, int width, int height)
+bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const image_transport::Publisher &pub_rgb,
+                     const image_transport::Publisher &pub_depth, const int width, const int height,
+                     const std::string cam_name)
 {
 	if ((!rgb && !depth) || // nothing to render
 	    (pub_rgb.getNumSubscribers() == 0 && pub_depth.getNumSubscribers() == 0) || // no subscribers
 	    (!depth && pub_rgb.getNumSubscribers() == 0) || // would only render rgb, but has no subscribers
 	    (!rgb && pub_depth.getNumSubscribers() == 0)) { // would only render depth, but has no subscribers
-		return;
+		return false;
 	}
 
 	// Resize according to camera resolution
@@ -264,6 +267,8 @@ void renderAndPubEnv(MujocoEnvPtr env, bool rgb, bool depth, const image_transpo
 
 	if (rgb) {
 		sensor_msgs::ImagePtr rgb_im = boost::make_shared<sensor_msgs::Image>();
+		rgb_im->header.frame_id      = cam_name + "_optical_frame";
+		rgb_im->header.stamp         = ros::Time::now();
 		rgb_im->width                = viewport.width;
 		rgb_im->height               = viewport.height;
 		rgb_im->encoding             = sensor_msgs::image_encodings::RGB8;
@@ -284,6 +289,8 @@ void renderAndPubEnv(MujocoEnvPtr env, bool rgb, bool depth, const image_transpo
 
 	if (depth) {
 		sensor_msgs::ImagePtr depth_im = boost::make_shared<sensor_msgs::Image>();
+		depth_im->header.frame_id      = cam_name + "_optical_frame";
+		depth_im->header.stamp         = ros::Time::now();
 		depth_im->width                = viewport.width;
 		depth_im->height               = viewport.height;
 		depth_im->encoding             = sensor_msgs::image_encodings::TYPE_32FC1;
@@ -308,6 +315,7 @@ void renderAndPubEnv(MujocoEnvPtr env, bool rgb, bool depth, const image_transpo
 
 		pub_depth.publish(depth_im);
 	}
+	return true;
 }
 } // end unnamed namespace
 
@@ -381,43 +389,56 @@ void offScreenRenderEnv(MujocoEnvPtr env)
 
 		stream->last_pub = ros::Time::now();
 
+		bool rendered = false;
+
 		if (stream->stream_type & streamType::RGB && stream->stream_type & streamType::DEPTH) {
 			// RGB and DEPTH
 			env->vis.scn.flags[mjRND_SEGMENT] = 0;
-			renderAndPubEnv(env, (stream->stream_type & streamType::RGB), (stream->stream_type & streamType::DEPTH),
-			                stream->rgb_pub, stream->depth_pub, stream->width, stream->height);
+			rendered =
+			    renderAndPubEnv(env, (stream->stream_type & streamType::RGB), (stream->stream_type & streamType::DEPTH),
+			                    stream->rgb_pub, stream->depth_pub, stream->width, stream->height, stream->cam_name);
 
 			if (stream->stream_type & streamType::SEGMENTED) {
 				// SEGMENTED additional to RGB and DEPTH
 				env->vis.scn.flags[mjRND_IDCOLOR] = stream->use_segid;
 				env->vis.scn.flags[mjRND_SEGMENT] = 1;
-				renderAndPubEnv(env, true, false, stream->segment_pub, stream->depth_pub, stream->width, stream->height);
+				rendered = renderAndPubEnv(env, true, false, stream->segment_pub, stream->depth_pub, stream->width,
+				                           stream->height, stream->cam_name);
 			}
 
 		} else if (stream->stream_type & streamType::SEGMENTED && stream->stream_type & streamType::DEPTH) {
 			// SEGMENTED and DEPTH
 			env->vis.scn.flags[mjRND_IDCOLOR] = stream->use_segid;
 			env->vis.scn.flags[mjRND_SEGMENT] = 1;
-			renderAndPubEnv(env, true, true, stream->segment_pub, stream->depth_pub, stream->width, stream->height);
+			rendered = renderAndPubEnv(env, true, true, stream->segment_pub, stream->depth_pub, stream->width,
+			                           stream->height, stream->cam_name);
 		} else if (stream->stream_type & streamType::RGB && stream->stream_type & streamType::SEGMENTED, stream->width,
 		           stream->height) {
 			// RGB and SEGMENTED (needs two calls because both go into the rgb buffer)
 			env->vis.scn.flags[mjRND_SEGMENT] = 0;
-			renderAndPubEnv(env, true, false, stream->rgb_pub, stream->depth_pub, stream->width, stream->height);
+			rendered = renderAndPubEnv(env, true, false, stream->rgb_pub, stream->depth_pub, stream->width, stream->height,
+			                           stream->cam_name);
 
 			env->vis.scn.flags[mjRND_IDCOLOR] = stream->use_segid;
 			env->vis.scn.flags[mjRND_SEGMENT] = 1;
-			renderAndPubEnv(env, true, false, stream->segment_pub, stream->depth_pub, stream->width, stream->height);
+			rendered = rendered || renderAndPubEnv(env, true, false, stream->segment_pub, stream->depth_pub, stream->width,
+			                                       stream->height, stream->cam_name);
 		} else if (stream->stream_type & streamType::RGB) {
 			// ONLY RGB
 			env->vis.scn.flags[mjRND_SEGMENT] = 0;
-			renderAndPubEnv(env, true, false, stream->rgb_pub, stream->depth_pub, stream->width, stream->height);
+			rendered = renderAndPubEnv(env, true, false, stream->rgb_pub, stream->depth_pub, stream->width, stream->height,
+			                           stream->cam_name);
 		} else {
 			// Only DEPTH or only SEGMENTED
 			env->vis.scn.flags[mjRND_IDCOLOR] = stream->use_segid;
 			env->vis.scn.flags[mjRND_SEGMENT] = 1;
-			renderAndPubEnv(env, (stream->stream_type & streamType::SEGMENTED), (stream->stream_type & streamType::DEPTH),
-			                stream->segment_pub, stream->depth_pub, stream->width, stream->height);
+			rendered                          = renderAndPubEnv(env, (stream->stream_type & streamType::SEGMENTED),
+                                    (stream->stream_type & streamType::DEPTH), stream->segment_pub, stream->depth_pub,
+                                    stream->width, stream->height, stream->cam_name);
+		}
+
+		if (rendered) {
+			stream->publishCameraInfo();
 		}
 	}
 
@@ -1754,4 +1775,4 @@ void renderMain()
 	render(main_window_);
 }
 
-} // namespace MujocoSim::render_utils
+} // namespace MujocoSim::rendering

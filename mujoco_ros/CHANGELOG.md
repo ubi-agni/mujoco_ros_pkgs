@@ -1,6 +1,10 @@
 <a name="Unreleased"></a>
 ## Unreleased
 
+### Added
+* Camera parameters are now available via camera info topics.
+* Camera frames are now available in the TF trees.
+
 ### Changed
 * Removed parallel env mode
 * Bump MuJoCo required version to 2.3.2

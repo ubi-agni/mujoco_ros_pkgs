@@ -51,6 +51,8 @@ find_package(catkin REQUIRED
     tf2_ros
     tf2_geometry_msgs
     image_transport
+    camera_info_manager
+    sensor_msgs
 )
 
 catkin_package(
@@ -63,6 +65,8 @@ catkin_package(
     tf2_ros
     tf2_geometry_msgs
     image_transport
+    camera_info_manager
+    sensor_msgs
   INCLUDE_DIRS include ${mujoco_INCLUDE_DIRS}
   LIBRARIES ${PROJECT_NAME} ${mujoco_LIBRARIES}
 )
@@ -76,7 +80,8 @@ add_library(${PROJECT_NAME}
   src/mujoco_sim.cpp
   src/uitools.c
   src/plugin_utils.cpp
-  src/render_utils.cpp
+  src/rendering/utils.cpp
+  src/rendering/camera.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}
