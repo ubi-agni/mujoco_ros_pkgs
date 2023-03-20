@@ -2,6 +2,7 @@
 ## Unreleased
 
 ### Added
+* Reload service call to either reload current model or supply a new model to load.
 * Camera parameters are now available via camera info topics.
 * Camera frames are now available in the TF trees.
 

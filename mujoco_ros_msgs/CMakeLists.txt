@@ -34,6 +34,7 @@ add_service_files(
     RegisterSensorNoiseModels.srv
     SetGravity.srv
     GetGravity.srv
+    Reload.srv
 )
 
 add_action_files(

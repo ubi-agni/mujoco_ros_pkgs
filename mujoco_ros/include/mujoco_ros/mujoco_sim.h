@@ -70,6 +70,7 @@
 #include <mujoco_ros_msgs/SetPause.h>
 #include <mujoco_ros_msgs/StepAction.h>
 #include <mujoco_ros_msgs/StepGoal.h>
+#include <mujoco_ros_msgs/Reload.h>
 #include <mujoco_ros_msgs/SetBodyState.h>
 #include <mujoco_ros_msgs/GetBodyState.h>
 #include <mujoco_ros_msgs/SetGeomProperties.h>
@@ -198,6 +199,7 @@ void lastStageCallback(mjData *data);
 void setupCallbacks();
 bool shutdownCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
 bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &resp);
+bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Response &resp);
 bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
 bool setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req, mujoco_ros_msgs::SetBodyState::Response &resp);
 bool getBodyStateCB(mujoco_ros_msgs::GetBodyState::Request &req, mujoco_ros_msgs::GetBodyState::Response &resp);

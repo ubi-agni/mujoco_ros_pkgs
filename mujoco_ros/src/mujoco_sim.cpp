@@ -796,6 +796,7 @@ void setupCallbacks()
 {
 	service_servers_.push_back(nh_->advertiseService("set_pause", setPauseCB));
 	service_servers_.push_back(nh_->advertiseService("shutdown", shutdownCB));
+	service_servers_.push_back(nh_->advertiseService("reload", reloadCB));
 	service_servers_.push_back(nh_->advertiseService("reset", resetCB));
 	service_servers_.push_back(nh_->advertiseService("set_body_state", setBodyStateCB));
 	service_servers_.push_back(nh_->advertiseService("get_body_state", getBodyStateCB));
@@ -852,6 +853,59 @@ bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPau
 	settings_.run.store(!req.paused);
 	if (settings_.run.load())
 		settings_.manual_env_steps.store(0);
+	resp.success = true;
+	return true;
+}
+
+bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Response &resp)
+{
+	ROS_DEBUG_NAMED("mujoco", "Requested reload via ROS service call");
+	if (req.model != "") {
+		ROS_DEBUG_NAMED("mujoco", "\tSupplied model to load as argument...");
+		if (settings_.eval_mode) {
+			ROS_DEBUG_NAMED("mujoco", "\tEvaluation mode is active. Checking has validity");
+			if (settings_.admin_hash != req.admin_hash) {
+				ROS_ERROR_NAMED("mujoco", "Insufficient permission to change model in eval mode!");
+				resp.success        = false;
+				resp.status_message = "Insufficient permission to change model in eval mode!";
+				return true;
+			}
+			ROS_DEBUG_NAMED("mujoco", "\tHash valid, request authorized");
+		}
+
+		if (boost::filesystem::is_regular_file(req.model)) {
+			boost::filesystem::path path(req.model);
+			path    = boost::filesystem::absolute(path);
+			int ret = mj_addFileVFS(&vfs_, path.parent_path().c_str(), path.filename().c_str());
+			if (ret == 1) {
+				ROS_ERROR_STREAM_NAMED(
+				    "mujoco", "\tCould not save file "
+				                  << req.model << " to VFS, because it's full! This should not happen, check with dev!");
+				resp.success        = false;
+				resp.status_message = "VFS error";
+				return true;
+			} else if (ret == 2) {
+				ROS_ERROR_STREAM_NAMED("mujoco", "\tCould not save file "
+				                                     << req.model
+				                                     << " to VFS, because the file is already present in VFS!");
+				resp.success        = false;
+				resp.status_message = "VFS error";
+				return true;
+			}
+			ROS_DEBUG_STREAM_NAMED("mujoco",
+			                       "Successfully saved file " << req.model << " in mujoco VFS for accelerated loading");
+			mju::strcpy_arr(filename_, req.model.c_str());
+		} else { // File in memory
+			ROS_DEBUG_STREAM_NAMED("mujoco", "\tProvided model is not a regular file. Treating string as content");
+			mj_makeEmptyFileVFS(&vfs_, "rosparam_content", req.model.size() + 1);
+			int file_idx = mj_findFileVFS(&vfs_, "rosparam_content");
+			memcpy(vfs_.filedata[file_idx], req.model.c_str(), req.model.size() + 1);
+			ROS_DEBUG_STREAM_NAMED("mujoco",
+			                       "\tSuccessfully saved xml content as mujoco VFS file for accelerated loading");
+			mju::strcpy_arr(filename_, "rosparam_content");
+		}
+	}
+	settings_.loadrequest.store(2);
 	resp.success = true;
 	return true;
 }

@@ -1,0 +1,5 @@
+string model
+string admin_hash
+---
+bool success
+string status_message
