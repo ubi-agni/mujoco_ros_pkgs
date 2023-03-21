@@ -602,8 +602,11 @@ void loadModel(void)
 	}
 	if (!mnew) {
 		std::printf("%s\n", error);
+		settings_.loadrequest.store(0);
+		settings_.model_valid.store(false);
 		return;
 	}
+	settings_.model_valid.store(true);
 
 	// Compiler warning: print and pause
 	if (error[0]) {
@@ -906,7 +909,17 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 		}
 	}
 	settings_.loadrequest.store(2);
-	resp.success = true;
+
+	while (settings_.loadrequest.load() > 0) {
+		std::this_thread::sleep_for(std::chrono::nanoseconds(10));
+	}
+
+	if (settings_.model_valid.load()) {
+		resp.success = true;
+	} else {
+		resp.success        = false;
+		resp.status_message = "Model failed to load. Check server log output for details";
+	}
 	return true;
 }
 
