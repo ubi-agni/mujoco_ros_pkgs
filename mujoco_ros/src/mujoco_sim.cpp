@@ -862,8 +862,10 @@ bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPau
 
 bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Response &resp)
 {
+	bool is_file = false;
+
 	ROS_DEBUG_NAMED("mujoco", "Requested reload via ROS service call");
-	if (req.model != "") {
+	if (!req.model.empty()) {
 		ROS_DEBUG_NAMED("mujoco", "\tSupplied model to load as argument...");
 		if (settings_.eval_mode) {
 			ROS_DEBUG_NAMED("mujoco", "\tEvaluation mode is active. Checking has validity");
@@ -876,7 +878,13 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 			ROS_DEBUG_NAMED("mujoco", "\tHash valid, request authorized");
 		}
 
-		if (boost::filesystem::is_regular_file(req.model)) {
+		try {
+			is_file = boost::filesystem::is_regular_file(req.model);
+		} catch (const boost::filesystem::filesystem_error &ex) {
+			ROS_DEBUG_STREAM_NAMED("mujoco", "\t Filesystem error while checking for regular file: " << ex.what());
+		}
+
+		if (is_file) {
 			boost::filesystem::path path(req.model);
 			path    = boost::filesystem::absolute(path);
 			int ret = mj_addFileVFS(&vfs_, path.parent_path().c_str(), path.filename().c_str());
