@@ -862,6 +862,15 @@ bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPau
 
 bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Response &resp)
 {
+	char old_filename[kBufSize] = "";
+
+	int vfs_id              = mj_findFileVFS(&vfs_, filename_);
+	size_t filecontent_size = 0;
+	if (vfs_id > -1) {
+		filecontent_size = vfs_.filesize[vfs_id];
+	}
+	char filedata[filecontent_size] = "";
+	mju::strcpy_arr(old_filename, filename_);
 	bool is_file = false;
 
 	ROS_DEBUG_NAMED("mujoco", "Requested reload via ROS service call");
@@ -907,6 +916,9 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 			                       "Successfully saved file " << req.model << " in mujoco VFS for accelerated loading");
 			mju::strcpy_arr(filename_, req.model.c_str());
 		} else { // File in memory
+			// Backup old content for eventual rollback
+			memcpy(filedata, vfs_.filedata[vfs_id], filecontent_size);
+
 			ROS_DEBUG_STREAM_NAMED("mujoco", "\tProvided model is not a regular file. Treating string as content");
 			mj_makeEmptyFileVFS(&vfs_, "rosparam_content", req.model.size() + 1);
 			int file_idx = mj_findFileVFS(&vfs_, "rosparam_content");
@@ -927,6 +939,20 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 	} else {
 		resp.success        = false;
 		resp.status_message = "Model failed to load. Check server log output for details";
+
+		// Rollback to old model
+		mju::strcpy_arr(filename_, old_filename);
+		is_file = false;
+		try {
+			is_file = boost::filesystem::is_regular_file(req.model);
+		} catch (const boost::filesystem::filesystem_error &ex) {
+			// Error is not important, seems not to be a file
+		}
+		// If it is a file, renaming `filename_` suffices, otherwise we need to re-write the content of the vfs file
+		if (!is_file) {
+			memcpy(vfs_.filedata[vfs_id], filedata, filecontent_size);
+			ROS_DEBUG_NAMED("mujoco", "Rolled back vfs file content");
+		}
 	}
 	return true;
 }
