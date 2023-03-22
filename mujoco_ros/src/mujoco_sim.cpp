@@ -75,6 +75,19 @@ namespace mjsr = ::MujocoSim::rendering;
 Settings MujocoSim::detail::settings_;
 MujocoEnvPtr MujocoSim::detail::main_env_;
 
+// Store default collision functions to restore on reload
+struct CollisionFunctionDefault
+{
+	CollisionFunctionDefault(int geom_type1, int geom_type2, mjfCollision collision_cb)
+	    : geom_type1(geom_type1), geom_type2(geom_type2), collision_cb(collision_cb)
+	{}
+
+	int geom_type1;
+	int geom_type2;
+	mjfCollision collision_cb;
+};
+std::vector<CollisionFunctionDefault> defaultCollisionFunctions;
+
 int jointName2id(mjModel *m, const std::string &joint_name, const std::string &robot_namespace /* = std::string()*/)
 {
 	int result = mj_name2id(m, mjOBJ_JOINT, joint_name.c_str());
@@ -95,6 +108,8 @@ void registerCollisionFunc(int geom_type1, int geom_type2, mjfCollision collisio
 		                                    << " have already been registered. This might lead to unexpected behavior!");
 	} else {
 		custom_collisions_.insert(std::pair(geom_type1, geom_type2));
+		defaultCollisionFunctions.push_back(
+		    CollisionFunctionDefault(geom_type1, geom_type2, mjCOLLISIONFUNC[geom_type1][geom_type2]));
 	}
 	mjCOLLISIONFUNC[geom_type1][geom_type2] = collision_cb;
 }
@@ -226,8 +241,6 @@ void init(std::string modelfile, std::string admin_hash /* = std::string()*/)
 		settings_.exitrequest.store(1);
 	}
 
-	nh_->param<bool>("benchmark_time", benchmark_env_time_, false);
-
 	bool unpause;
 	nh_->param<bool>("unpause", unpause, true);
 	std::string main_env_namespace;
@@ -354,8 +367,22 @@ void eventloop(void)
 
 			if (settings_.loadrequest.load() == 1) {
 				loadModel();
-			} else if (settings_.loadrequest.load() > 1) {
+			} else if (settings_.loadrequest.load() == 2) {
 				settings_.loadrequest.store(1);
+			} else if (settings_.loadrequest.load() > 2) {
+				ROS_DEBUG_NAMED("mujoco", "Resetting collision functions to default");
+				// Reset collision functions
+				for (const auto func : defaultCollisionFunctions) {
+					mjCOLLISIONFUNC[func.geom_type1][func.geom_type2] = func.collision_cb;
+				}
+
+				main_env_->prepareReload();
+
+				defaultCollisionFunctions.clear();
+				custom_collisions_.clear();
+
+				ROS_DEBUG_NAMED("mujoco", "Issuing model load");
+				settings_.loadrequest.store(2);
 			}
 
 			if (settings_.resetrequest.load() == 1) {
@@ -565,16 +592,6 @@ void simulate(void)
 				}
 			}
 		} // end if(model && data) unlocks sim_mtx
-
-		// TODO(dleins): This instantly loads the default modelfile when an xml is provided via parameter server
-		// This should be handled differently, maybe only by service call?
-		// std::string modelfile;
-		// nh_->getParam("modelfile", modelfile);
-		// if (!modelfile.empty() && strcmp(filename_, modelfile.c_str())) {
-		// 	ROS_DEBUG_STREAM_NAMED("mujoco", "Got new modelfile from param server! Requesting load ...");
-		// 	std::strcpy(filename_, modelfile.c_str());
-		// 	settings_.loadrequest.store(2);
-		// }
 	}
 	// Requests eventloop shutdown in case we ran out of simulation steps to use
 	settings_.exitrequest.store(1);
@@ -623,6 +640,7 @@ void loadModel(void)
 	ROS_DEBUG_STREAM_NAMED("mujoco", "Setting up env '" << main_env_->name << "' ...");
 	// Delete old model, assign new
 	main_env_->model.reset(mnew, [](mjModel *m) { mj_deleteModel(m); });
+	environments::unregisterEnv(main_env_->data.get());
 	environments::assignData(mj_makeData(mnew), main_env_);
 	setupEnv(main_env_);
 	// Request that off-screen rendering resources are initialized in simulate thread
@@ -673,7 +691,7 @@ void setupEnv(MujocoEnvPtr env)
 	env->ctrlnoise = (mjtNum *)malloc(sizeof(mjtNum) * env->model->nu);
 	mju_zero(env->ctrlnoise, env->model->nu);
 
-	env->reload();
+	env->load();
 }
 
 void loadInitialJointStates(mjModelPtr model, mjDataPtr data)
@@ -928,7 +946,8 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 			mju::strcpy_arr(filename_, "rosparam_content");
 		}
 	}
-	settings_.loadrequest.store(2);
+	// set to 3 to invoke prepareReload
+	settings_.loadrequest.store(3);
 
 	while (settings_.loadrequest.load() > 0) {
 		std::this_thread::sleep_for(std::chrono::nanoseconds(10));
@@ -953,6 +972,7 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 			memcpy(vfs_.filedata[vfs_id], filedata, filecontent_size);
 			ROS_DEBUG_NAMED("mujoco", "Rolled back vfs file content");
 		}
+		settings_.loadrequest.store(3);
 	}
 	return true;
 }

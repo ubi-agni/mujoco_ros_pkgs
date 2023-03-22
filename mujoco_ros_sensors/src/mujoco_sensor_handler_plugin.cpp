@@ -560,11 +560,6 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 // Nothing to do on reset
 void MujocoRosSensorsPlugin::reset(){};
 
-// void MujocoRosSensorsPlugin::reload()
-// {
-// 	sensor_map_.clear();
-// }
-
 } // namespace mujoco_ros_sensors
 
 PLUGINLIB_EXPORT_CLASS(mujoco_ros_sensors::MujocoRosSensorsPlugin, MujocoSim::MujocoPlugin)

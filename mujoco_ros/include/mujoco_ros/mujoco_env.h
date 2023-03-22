@@ -128,10 +128,12 @@ public:
 	std::vector<rendering::CameraStreamPtr> cam_streams;
 
 	/**
-	 * @brief Calls reload functions of all members depeding on mjData.
+	 * @brief Calls load functions of all members depeding on mjData.
 	 * This function is called when a new mjData object is assigned to the environment.
 	 */
-	void reload();
+	void load();
+
+	void prepareReload();
 
 	/**
 	 * @brief Calls reset functions of all members depending on mjData.

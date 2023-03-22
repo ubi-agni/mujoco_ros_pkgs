@@ -45,7 +45,7 @@ namespace MujocoSim {
 class MujocoPlugin
 {
 public:
-	virtual ~MujocoPlugin() {}
+	virtual ~MujocoPlugin() { ROS_DEBUG_STREAM("Deleted plugin of type " << rosparam_config_["type"]); }
 
 	// Called directly after plugin creation
 	void init(const XmlRpc::XmlRpcValue &config, ros::NodeHandlePtr nh)

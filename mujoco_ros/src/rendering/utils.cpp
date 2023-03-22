@@ -1392,7 +1392,7 @@ void uiEvent(mjuiState *state)
 					break;
 
 				case 2: // Reload
-					settings_.loadrequest.store(1);
+					settings_.loadrequest.store(3);
 					break;
 
 				case 3: // Align

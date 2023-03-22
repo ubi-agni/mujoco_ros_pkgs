@@ -11,7 +11,11 @@
 * Bump MuJoCo required version to 2.3.2
 
 ### Fixed
+<<<<<<< HEAD
 * Stepping action server is now sensitive to preemts caused by reload/reset/shutdown and will inform clients in time instead of just severing the connection.
+=======
+* Missing roll back of collision functions to default on reload caused calling unloaded code.
+>>>>>>> fix: Roll back collision functions on reload
 * An invalid model will not result in trying to reload indefinitely anymore.
 
 <a name="0.4.0"></a>

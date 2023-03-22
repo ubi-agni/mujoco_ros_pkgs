@@ -182,9 +182,9 @@ void MujocoEnv::initializeRenderResources()
 	vis.depth.reset(new float[buffer_size], std::default_delete<float[]>());
 }
 
-void MujocoEnv::reload()
+void MujocoEnv::load()
 {
-	ROS_DEBUG_STREAM_NAMED("mujoco_env", "(re)loading MujocoPlugins ... [" << name << "]");
+	ROS_DEBUG_STREAM_NAMED("mujoco_env", "loading MujocoPlugins ... [" << name << "]");
 	cb_ready_plugins.clear();
 	plugins.clear();
 
@@ -198,7 +198,7 @@ void MujocoEnv::reload()
 			cb_ready_plugins.push_back(plugin);
 		}
 	}
-	ROS_DEBUG_STREAM_NAMED("mujoco_env", "Done (re)loading MujocoPlugins [" << name << "]");
+	ROS_DEBUG_STREAM_NAMED("mujoco_env", "Done loading MujocoPlugins [" << name << "]");
 }
 
 void MujocoEnv::reset()
@@ -248,6 +248,17 @@ void MujocoEnv::notifyGeomChanged(const int geom_id)
 	for (const auto &plugin : cb_ready_plugins) {
 		plugin->onGeomChanged(model, data, geom_id);
 	}
+}
+
+void MujocoEnv::prepareReload()
+{
+	model.reset();
+	data.reset();
+	vis.rgb.reset();
+	vis.depth.reset();
+	cb_ready_plugins.clear();
+	plugins.clear();
+	cam_streams.clear();
 }
 
 MujocoEnv::~MujocoEnv()
