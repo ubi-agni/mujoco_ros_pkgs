@@ -18,6 +18,15 @@ project(mujoco_ros)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(EXTRA_COMPILE_OPTIONS
+  -Werror
+  -Wall
+  -Wimplicit-fallthrough
+  -Wunused
+  -Wno-int-in-bool-context
+  -Wno-sign-compare
+  -Wno-unknown-pragmas
+)
 
 # Disable optimization to prevent false-positives with memory analisys tools (e.g. asan or valgrind)
 if (ENABLE_SANITIZER OR NO_OPTIM)
