@@ -610,7 +610,7 @@ void loadModel(void)
 	mjModel *mnew   = 0;
 	if (mju::strlen_arr(filename_) > 4 && !std::strncmp(filename_ + mju::strlen_arr(filename_) - 4, ".mjb",
 	                                                    mju::sizeof_arr(filename_) - mju::strlen_arr(filename_) + 4)) {
-		mnew = mj_loadModel(filename_, NULL);
+		mnew = mj_loadModel(filename_, nullptr);
 		if (!mnew) {
 			mju::strcpy_arr(error, "could not load binary model");
 		}

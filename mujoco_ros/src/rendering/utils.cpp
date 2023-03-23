@@ -87,7 +87,7 @@ void render(GLFWwindow *window)
 
 		// label
 		if (settings_.loadrequest.load())
-			mjr_overlay(mjFONT_BIG, mjGRID_TOPRIGHT, smallrect, "loading", NULL, &free_context_);
+			mjr_overlay(mjFONT_BIG, mjGRID_TOPRIGHT, smallrect, "loading", nullptr, &free_context_);
 
 		//// We don't want this. A model should be loaded over services or during start
 		// else
@@ -176,7 +176,7 @@ void initVisible()
 	vmode_ = *glfwGetVideoMode(glfwGetPrimaryMonitor());
 
 	// create window
-	main_window_ = glfwCreateWindow((2 * vmode_.width) / 3, (2 * vmode_.height) / 3, "Simulate", NULL, NULL);
+	main_window_ = glfwCreateWindow((2 * vmode_.width) / 3, (2 * vmode_.height) / 3, "Simulate", nullptr, nullptr);
 
 	if (!main_window_) {
 		glfwTerminate();
@@ -204,8 +204,8 @@ void initVisible()
 	mjv_defaultOption(&vopt_);
 
 	// Create scene and context
-	mjv_makeScene(NULL, &free_scene_, rendering::maxgeom_);
-	mjr_makeContext(NULL, &free_context_, 50 * (settings_.font + 1));
+	mjv_makeScene(nullptr, &free_scene_, rendering::maxgeom_);
+	mjr_makeContext(nullptr, &free_context_, 50 * (settings_.font + 1));
 
 	// set GLFW callbacks
 	uiSetCallback(main_window_, &uistate_, uiEvent, uiLayout);
@@ -256,7 +256,7 @@ bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const i
 	mjrRect viewport       = mjr_maxViewport(&(env->vis.con));
 
 	// Update scene
-	mjv_updateScene(env->model.get(), env->data.get(), &(env->vis.vopt), NULL, &(env->vis.cam), mjCAT_ALL,
+	mjv_updateScene(env->model.get(), env->data.get(), &(env->vis.vopt), nullptr, &(env->vis.cam), mjCAT_ALL,
 	                &(env->vis.scn));
 	// render to buffer
 	mjr_render(viewport, &env->vis.scn, &env->vis.con);
@@ -264,9 +264,9 @@ bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const i
 	if (rgb && depth) {
 		mjr_readPixels(env->vis.rgb.get(), env->vis.depth.get(), viewport, &env->vis.con);
 	} else if (rgb) {
-		mjr_readPixels(env->vis.rgb.get(), NULL, viewport, &env->vis.con);
+		mjr_readPixels(env->vis.rgb.get(), nullptr, viewport, &env->vis.con);
 	} else if (depth) {
-		mjr_readPixels(NULL, env->vis.depth.get(), viewport, &env->vis.con);
+		mjr_readPixels(nullptr, env->vis.depth.get(), viewport, &env->vis.con);
 	}
 	glfwSwapBuffers(env->vis.window);
 
@@ -1256,7 +1256,7 @@ int uiPredicate(int category, void *userdata)
 	MujocoEnvPtr env = *(MujocoEnvPtr *)userdata;
 	switch (category) {
 		case 2: // require model
-			return (env->model != NULL);
+			return (env->model != nullptr);
 
 		case 3: //
 			return (env->model && env->model->nkey);
@@ -1327,7 +1327,7 @@ void uiEvent(mjuiState *state)
 					break;
 
 				case 1: // Save mjb
-					mj_saveModel(env->model.get(), "mjmodel.mjb", NULL, 0);
+					mj_saveModel(env->model.get(), "mjmodel.mjb", nullptr, 0);
 					break;
 
 				case 2: // print model
@@ -1364,8 +1364,8 @@ void uiEvent(mjuiState *state)
 				case 9: // Full screen
 					if (glfwGetWindowMonitor(main_window_)) {
 						// restore window from saved data
-						glfwSetWindowMonitor(main_window_, NULL, windowpos_[0], windowpos_[1], windowsize_[0], windowsize_[1],
-						                     0);
+						glfwSetWindowMonitor(main_window_, nullptr, windowpos_[0], windowpos_[1], windowsize_[0],
+						                     windowsize_[1], 0);
 					} else { // currently windowed: switch to fullscreen
 						// save window data
 						glfwGetWindowPos(main_window_, windowpos_, windowpos_ + 1);
@@ -1506,7 +1506,7 @@ void uiEvent(mjuiState *state)
 		}
 
 		// Stop if UI processed event
-		if (it != NULL || (state->type == mjEVENT_KEY && state->key == 0)) {
+		if (it != nullptr || (state->type == mjEVENT_KEY && state->key == 0)) {
 			return;
 		}
 	}
@@ -1527,7 +1527,7 @@ void uiEvent(mjuiState *state)
 		}
 
 		// Stop if UI processed event
-		if (it != NULL || (state->type == mjEVENT_KEY && state->key == 0)) {
+		if (it != nullptr || (state->type == mjEVENT_KEY && state->key == 0)) {
 			return;
 		}
 	}

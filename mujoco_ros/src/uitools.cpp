@@ -280,15 +280,15 @@ void uiClearCallback(GLFWwindow *wnd)
 	// clear container
 	if (glfwGetWindowUserPointer(wnd)) {
 		mju_free(glfwGetWindowUserPointer(wnd));
-		glfwSetWindowUserPointer(wnd, NULL);
+		glfwSetWindowUserPointer(wnd, nullptr);
 	}
 
 	// clear internal callbacks
-	glfwSetKeyCallback(wnd, NULL);
-	glfwSetCursorPosCallback(wnd, NULL);
-	glfwSetMouseButtonCallback(wnd, NULL);
-	glfwSetScrollCallback(wnd, NULL);
-	glfwSetWindowSizeCallback(wnd, NULL);
+	glfwSetKeyCallback(wnd, nullptr);
+	glfwSetCursorPosCallback(wnd, nullptr);
+	glfwSetMouseButtonCallback(wnd, nullptr);
+	glfwSetScrollCallback(wnd, nullptr);
+	glfwSetWindowSizeCallback(wnd, nullptr);
 }
 
 // Modify UI structure.

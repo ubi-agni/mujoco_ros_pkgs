@@ -78,7 +78,7 @@ catkin_package(
 add_library(${PROJECT_NAME}
   src/mujoco_env.cpp
   src/mujoco_sim.cpp
-  src/uitools.c
+  src/uitools.cpp
   src/plugin_utils.cpp
   src/rendering/utils.cpp
   src/rendering/camera.cpp

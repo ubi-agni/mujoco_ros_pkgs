@@ -272,8 +272,8 @@ TEST_F(MujocoRosTrainFixture, sensor_3DOF)
 	geometry_msgs::Vector3StampedConstPtr msgPtr;
 	msgPtr = ros::topic::waitForMessage<geometry_msgs::Vector3Stamped>("/vel_EE", ros::Duration(0.1));
 
-	EXPECT_TRUE(msgPtr != NULL) << "Could not get message on /vel_EE topic!";
-	EXPECT_TRUE(msgPtr_GT != NULL) << "Could not get message on /vel_EE_GT topic!";
+	EXPECT_TRUE(msgPtr != nullptr) << "Could not get message on /vel_EE topic!";
+	EXPECT_TRUE(msgPtr_GT != nullptr) << "Could not get message on /vel_EE_GT topic!";
 
 	// Without noise should be the same
 	compare_vectors({ msgPtr_GT->vector.x, msgPtr_GT->vector.y, msgPtr_GT->vector.z },
@@ -386,8 +386,8 @@ TEST_F(MujocoRosTrainFixture, framepos)
 	geometry_msgs::PointStampedConstPtr msgPtr;
 	msgPtr = ros::topic::waitForMessage<geometry_msgs::PointStamped>("/immovable_pos", ros::Duration(0.1));
 
-	EXPECT_TRUE(msgPtr != NULL) << "Could not get message on /immovable_pos topic!";
-	EXPECT_TRUE(msgPtr_GT != NULL) << "Could not get message on /immovable_pos_GT topic!";
+	EXPECT_TRUE(msgPtr != nullptr) << "Could not get message on /immovable_pos topic!";
+	EXPECT_TRUE(msgPtr_GT != nullptr) << "Could not get message on /immovable_pos_GT topic!";
 
 	// Without noise should be the same
 	compare_vectors({ msgPtr_GT->point.x, msgPtr_GT->point.y, msgPtr_GT->point.z },
@@ -501,8 +501,8 @@ TEST_F(MujocoRosTrainFixture, scalar_stamped)
 	mujoco_ros_msgs::ScalarStampedConstPtr msgPtr;
 	msgPtr = ros::topic::waitForMessage<mujoco_ros_msgs::ScalarStamped>("/vel_joint2", ros::Duration(0.1));
 
-	EXPECT_TRUE(msgPtr != NULL) << "Could not get message on /vel_joint2 topic!";
-	EXPECT_TRUE(msgPtr_GT != NULL) << "Could not get message on /vel_joint2_GT topic!";
+	EXPECT_TRUE(msgPtr != nullptr) << "Could not get message on /vel_joint2 topic!";
+	EXPECT_TRUE(msgPtr_GT != nullptr) << "Could not get message on /vel_joint2_GT topic!";
 
 	// Without noise should be the same
 	EXPECT_NEAR(msgPtr_GT->value, msgPtr->value, 0.0001) << "Without noise sensor value should equal GT";
@@ -581,8 +581,8 @@ TEST_F(MujocoRosTrainFixture, quaternion)
 	geometry_msgs::QuaternionStampedConstPtr msgPtr;
 	msgPtr = ros::topic::waitForMessage<geometry_msgs::QuaternionStamped>("/immovable_quat", ros::Duration(0.1));
 
-	EXPECT_TRUE(msgPtr != NULL) << "Could not get message on /immovable_pos topic!";
-	EXPECT_TRUE(msgPtr_GT != NULL) << "Could not get message on /immovable_pos_GT topic!";
+	EXPECT_TRUE(msgPtr != nullptr) << "Could not get message on /immovable_pos topic!";
+	EXPECT_TRUE(msgPtr_GT != nullptr) << "Could not get message on /immovable_pos_GT topic!";
 
 	// Without noise should be the same
 	compare_vectors(

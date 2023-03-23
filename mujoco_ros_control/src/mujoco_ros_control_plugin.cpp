@@ -125,7 +125,7 @@ bool MujocoRosControlPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr 
 
 		robot_hw_sim_ = robot_hw_sim_loader_->createInstance(robot_hw_sim_type_str_);
 		urdf::Model urdf_model;
-		const urdf::Model *const urdf_model_ptr = urdf_model.initString(urdf_string) ? &urdf_model : NULL;
+		const urdf::Model *const urdf_model_ptr = urdf_model.initString(urdf_string) ? &urdf_model : nullptr;
 
 		ROS_DEBUG_STREAM_NAMED("mujoco_ros_control",
 		                       "Trying to initialize robot hw sim of type '" << robot_hw_sim_type_str_ << "'");

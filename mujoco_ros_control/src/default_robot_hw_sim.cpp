@@ -351,9 +351,9 @@ void DefaultRobotHWSim::registerJointLimits(const std::string &joint_name,
 	joint_limits_interface::SoftJointLimits soft_limits;
 	bool has_soft_limits = false;
 
-	if (urdf_model != NULL) {
+	if (urdf_model != nullptr) {
 		const urdf::JointConstSharedPtr urdf_joint = urdf_model->getJoint(joint_name);
-		if (urdf_joint != NULL) {
+		if (urdf_joint != nullptr) {
 			*joint_type = urdf_joint->type;
 			// Get limits from the URDF file
 			if (joint_limits_interface::getJointLimits(urdf_joint, limits))

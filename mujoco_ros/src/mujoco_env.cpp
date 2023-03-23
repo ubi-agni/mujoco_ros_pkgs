@@ -144,7 +144,7 @@ void MujocoEnv::initializeRenderResources()
 	}
 
 	ROS_DEBUG_STREAM_NAMED("mujoco_env", "Initializing offscreen rendering utils [" << name << "]");
-	if (vis.window == NULL) {
+	if (vis.window == nullptr) {
 		ROS_DEBUG_NAMED("mujoco_env", "\tCreating new offscreen buffer window");
 		glfwWindowHint(GLFW_DOUBLEBUFFER, 0);
 		glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
