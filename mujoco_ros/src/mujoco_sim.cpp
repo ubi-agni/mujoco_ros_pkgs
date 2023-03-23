@@ -492,8 +492,8 @@ void simulate(void)
 
 				// Inject noise
 				if (settings_.ctrlnoisestd) {
-					// Convert rate and scale to discrete time given current timestep
-					mjtNum rate  = mju_exp(-model->opt.timestep / settings_.ctrlnoiserate);
+					// Convert rate and scale to discrete time given current timestep (Ornstein-Uhlenbeck)
+					mjtNum rate  = mju_exp(-model->opt.timestep / mju_max(settings_.ctrlnoiserate, mjMINVAL));
 					mjtNum scale = settings_.ctrlnoisestd * mju_sqrt(1 - rate * rate);
 
 					for (int i = 0; i < model->nu; i++) {
