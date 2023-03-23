@@ -718,7 +718,7 @@ void sensorInit(void)
 	mju::strcpy_arr(figsensor_.title, "Sensor data");
 
 	// y-tick number format
-	mju::strcpy_arr(figsensor_.yformat, "%0f");
+	mju::strcpy_arr(figsensor_.yformat, "%.1f");
 
 	// grid size
 	figsensor_.gridsize[0] = 2;
