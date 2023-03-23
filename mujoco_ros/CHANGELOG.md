@@ -8,7 +8,7 @@
 
 ### Changed
 * Removed parallel env mode
-* Bump MuJoCo required version to 2.3.2
+* Bump MuJoCo required version to 2.3.3
 
 ### Fixed
 <<<<<<< HEAD
