@@ -7,6 +7,7 @@
 * Camera frames are now available in the TF trees.
 
 ### Changed
+* Updated UI functionalities to match simulate version 2.3.3.
 * Removed parallel env mode
 * Bump MuJoCo required version to 2.3.3
 

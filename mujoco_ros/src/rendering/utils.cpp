@@ -982,6 +982,12 @@ void makeRendering(MujocoEnvPtr env, int oldstate)
 		defFlag[0].pdata = vopt_.flags + i;
 		mjui_add(&ui0_, defFlag);
 	}
+
+	env->model->vis.global.treedepth = 0;
+	mjuiDef defTree[] = { { mjITEM_SLIDERINT, "Tree depth", 2, &env->model->vis.global.treedepth, "-1 15" },
+		                   { mjITEM_END } };
+	mjui_add(&ui0_, defTree);
+
 	mjui_add(&ui0_, defOpenGL);
 	for (i = 0; i < mjNRNDFLAG; i++) {
 		mju::strcpy_arr(defFlag[0].name, mjRNDSTRING[i][0]);
