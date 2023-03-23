@@ -831,12 +831,15 @@ void setupCallbacks()
 		        uint8_t status       = settings_.loadrequest.load();
 		        response.state.value = status;
 
+		        if (status == 0 && settings_.visualInitrequest.load() > 0)
+			        status = 1; // Init visual components still pending
+
 		        std::string description;
 		        if (status == 0)
 			        description = "Sim ready";
 		        else if (status == 1)
 			        description = "Loading in progress";
-		        else if (status == 2)
+		        else if (status >= 2)
 			        description = "Loadingrequest issued";
 		        response.state.description = description;
 		        return true;
