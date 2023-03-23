@@ -869,7 +869,8 @@ void makePhysics(MujocoEnvPtr env, int oldstate)
 	int i;
 
 	mjuiDef defPhysics[]     = { { mjITEM_SECTION, "Physics", oldstate, nullptr, "AP" },
-                            { mjITEM_SELECT, "Integrator", 2, &(env->model->opt.integrator), "Euler\nRK4" },
+                            { mjITEM_SELECT, "Integrator", 2, &(env->model->opt.integrator),
+                              "Euler\nRK4\nimplicit\nimplicitfast" },
                             { mjITEM_SELECT, "Collision", 2, &(env->model->opt.collision), "All\nPair\nDynamic" },
                             { mjITEM_SELECT, "Cone", 2, &(env->model->opt.cone), "Pyramidal\nElliptic" },
                             { mjITEM_SELECT, "Jacobian", 2, &(env->model->opt.jacobian), "Dense\nSparse\nAuto" },
