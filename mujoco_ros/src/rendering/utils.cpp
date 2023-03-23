@@ -800,15 +800,16 @@ void infotext(MujocoEnvPtr env, char (&title)[kBufSize], char (&content)[kBufSiz
 	}
 	solerr = mju_log10(mju_max(mjMINVAL, solerr));
 
-	mju::strcpy_arr(title, "Time\nSize\nCPU\nSolver\nFPS\nstack\nnconbuf\nefcbuf");
-	mju::sprintf_arr(content, "%-9.3f\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%.0f\n%.3f\n%.3f\n%.3f", env->data->time,
+	mju::strcpy_arr(title, "Time\nSize\nCPU\nSolver\nFPS\nMemory");
+	mju::sprintf_arr(content, "%-9.3f\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%.0f\n%.2g of %s", env->data->time,
 	                 env->data->nefc, env->data->ncon,
 	                 settings_.run.load() ?
 	                     env->data->timer[mjTIMER_STEP].duration / mjMAX(1, env->data->timer[mjTIMER_STEP].number) :
 	                     env->data->timer[mjTIMER_FORWARD].duration / mjMAX(1, env->data->timer[mjTIMER_FORWARD].number),
-	                 solerr, env->data->solver_iter, 1 / interval, env->data->maxuse_stack / (double)env->data->nstack,
+	                 solerr, env->data->solver_iter, 1 / interval,
+	                 env->data->maxuse_arena / (double)(env->data->nstack * sizeof(mjtNum)),
 	                 env->data->maxuse_con / (double)env->model->nconmax,
-	                 env->data->maxuse_efc / (double)env->model->njmax);
+	                 mju_writeNumBytes(env->data->nstack * sizeof(mjtNum)));
 
 	// Add energy if enabled
 	if (mjENABLED_ros(env->model, mjENBL_ENERGY)) {
