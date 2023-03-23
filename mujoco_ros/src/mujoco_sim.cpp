@@ -941,6 +941,7 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 			memcpy(filedata, vfs_.filedata[vfs_id], filecontent_size);
 
 			ROS_DEBUG_STREAM_NAMED("mujoco", "\tProvided model is not a regular file. Treating string as content");
+			mj_deleteFileVFS(&vfs_, "rosparam_content");
 			mj_makeEmptyFileVFS(&vfs_, "rosparam_content", req.model.size() + 1);
 			int file_idx = mj_findFileVFS(&vfs_, "rosparam_content");
 			memcpy(vfs_.filedata[file_idx], req.model.c_str(), req.model.size() + 1);
