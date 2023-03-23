@@ -108,9 +108,9 @@ void render(GLFWwindow *window)
 	mjr_render(rect, &free_scene_, &free_context_);
 
 	// show pause/loading label
+	std::string pauseloadlabel;
 	if (!settings_.run.load() || settings_.loadrequest.load())
-		mjr_overlay(mjFONT_BIG, mjGRID_TOPRIGHT, smallrect, settings_.loadrequest.load() ? "loading" : "pause", NULL,
-		            &free_context_);
+		pauseloadlabel = settings_.loadrequest.load() ? "loading" : "pause";
 
 	float desired_realtime = percentRealTime[settings_.rt_index];
 	float actual_realtime  = 100 / settings_.measured_slow_down;
@@ -119,8 +119,8 @@ void render(GLFWwindow *window)
 	bool misaligned = settings_.run.load() && rt_offset > 0.1 * desired_realtime;
 
 	// show realtime label
+	char rt_label[30] = { '\0' };
 	if (desired_realtime != 100. || misaligned) {
-		char rt_label[30];
 		int labelsize;
 		if (desired_realtime != -1) {
 			labelsize = std::snprintf(rt_label, sizeof(rt_label), "%g%%", desired_realtime);
@@ -129,7 +129,12 @@ void render(GLFWwindow *window)
 			rt_label[0] = '+';
 		}
 		std::snprintf(rt_label + labelsize, sizeof(rt_label) - labelsize, " (%-4.1f%%)", actual_realtime);
-		mjr_overlay(mjFONT_BIG, mjGRID_TOPRIGHT, smallrect, rt_label, NULL, &free_context_);
+	}
+
+	if (!pauseloadlabel.empty() || rt_label[0]) {
+		std::string newline      = !pauseloadlabel.empty() && rt_label[0] ? "\n" : "";
+		std::string topleftlabel = rt_label + newline + pauseloadlabel;
+		mjr_overlay(mjFONT_BIG, mjGRID_TOPLEFT, smallrect, topleftlabel.c_str(), nullptr, &free_context_);
 	}
 
 	// show ui 0
