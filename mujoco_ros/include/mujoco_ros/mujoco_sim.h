@@ -222,8 +222,8 @@ typedef struct _settings
 	std::atomic_int run               = { 0 };
 	std::atomic_int loadrequest       = { 0 };
 	std::atomic_int resetrequest      = { 0 };
-	std::atomic_bool speed_changed    = { true };
-	std::atomic_bool model_valid      = { false }; // keep track if the current file to load works or fails to load
+	std::atomic_int speed_changed     = { true };
+	std::atomic_int model_valid       = { false }; // keep track if the current file to load works or fails to load
 	// multi env
 	std::atomic_int manual_env_steps = { 0 };
 
