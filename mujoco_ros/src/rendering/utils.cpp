@@ -926,21 +926,21 @@ void makeRendering(MujocoEnvPtr env, int oldstate)
 	int i;
 	unsigned long int j;
 
-	mjuiDef defRendering[] = {
-		{ mjITEM_SECTION, "Rendering", oldstate, nullptr, "AR" },
-		{ mjITEM_SELECT, "Camera", 2, &(settings_.camera), "Free\nTracking" },
-		{ mjITEM_SELECT, "Label", 2, &(vopt_.label),
-		  "None\nBody\nJoint\nGeom\nSite\nCamera\nLight\nTendon\nActuator\nConstraint\nSkin\nSelection\nSel Pnt\nForce" },
-		{ mjITEM_SELECT, "Frame", 2, &(vopt_.frame), "None\nBody\nGeom\nSite\nCamera\nLight\nWorld" },
-		{ mjITEM_BUTTON, "Copy camera", 2, nullptr, "" },
-		{
-		    mjITEM_SEPARATOR,
-		    "Model Elements",
-		    1,
-		},
-		{ mjITEM_END }
-	};
-	mjuiDef defOpenGL[] = { { mjITEM_SEPARATOR, "OpenGL Effects", 1 }, { mjITEM_END } };
+	mjuiDef defRendering[] = { { mjITEM_SECTION, "Rendering", oldstate, nullptr, "AR" },
+		                        { mjITEM_SELECT, "Camera", 2, &(settings_.camera), "Free\nTracking" },
+		                        { mjITEM_SELECT, "Label", 2, &(vopt_.label),
+		                          "None\nBody\nJoint\nGeom\nSite\nCamera\nLight\nTendon\nActuator\nConstraint\nSkin\nSele"
+		                          "ction\nSel Pnt\nContact\nForce" },
+		                        { mjITEM_SELECT, "Frame", 2, &(vopt_.frame),
+		                          "None\nBody\nGeom\nSite\nCamera\nLight\nWorld" },
+		                        { mjITEM_BUTTON, "Copy camera", 2, nullptr, "" },
+		                        {
+		                            mjITEM_SEPARATOR,
+		                            "Model Elements",
+		                            1,
+		                        },
+		                        { mjITEM_END } };
+	mjuiDef defOpenGL[]    = { { mjITEM_SEPARATOR, "OpenGL Effects", 1 }, { mjITEM_END } };
 
 	// add model cameras, up to UI limit
 	for (i = 0; i < mjMIN(env->model->ncam, mjMAXUIMULTI - 2); i++) {
