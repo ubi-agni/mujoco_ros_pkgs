@@ -911,7 +911,7 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 		try {
 			is_file = boost::filesystem::is_regular_file(req.model);
 		} catch (const boost::filesystem::filesystem_error &ex) {
-			ROS_DEBUG_STREAM_NAMED("mujoco", "\t Filesystem error while checking for regular file: " << ex.what());
+			ROS_DEBUG_STREAM_NAMED("mujoco", "\t Filesystem error while checking for regular file: " << ex.code());
 		}
 
 		if (is_file) {
@@ -950,11 +950,28 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 			mju::strcpy_arr(filename_, "rosparam_content");
 		}
 	}
-	// set to 3 to invoke prepareReload
-	settings_.loadrequest.store(3);
 
-	while (settings_.loadrequest.load() > 0) {
-		std::this_thread::sleep_for(std::chrono::nanoseconds(10));
+	mjModel *mnew;
+	char error[500] = "";
+	// check if model xml is okay
+	if (mju::strlen_arr(filename_) > 4 && !std::strncmp(filename_ + mju::strlen_arr(filename_) - 4, ".mjb",
+	                                                    mju::sizeof_arr(filename_) - mju::strlen_arr(filename_) + 4)) {
+		mnew = mj_loadModel(filename_, nullptr);
+	} else {
+		mnew = mj_loadXML(filename_, &vfs_, error, 500);
+	}
+
+	bool prev_valid = settings_.model_valid.load();
+	// if model can be parsed try loading it
+	if (mnew) {
+		// set to 3 to invoke prepareReload
+		settings_.loadrequest.store(3);
+
+		while (settings_.loadrequest.load() > 0) {
+			std::this_thread::sleep_for(std::chrono::nanoseconds(10));
+		}
+	} else {
+		settings_.model_valid.store(0);
 	}
 
 	if (settings_.model_valid.load()) {
@@ -962,6 +979,8 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 	} else {
 		resp.success        = false;
 		resp.status_message = "Model failed to load. Check server log output for details";
+
+		ROS_ERROR_NAMED("mujoco", "New model failed to load. Continuing with old model");
 
 		// Rollback to old model
 		mju::strcpy_arr(filename_, old_filename);
