@@ -1,5 +1,5 @@
-<a name="Unreleased"></a>
-## Unreleased
+<a name="0.5.0"></a>
+## [0.5.0] - 2023-03-24
 
 ### Added
 * Reload service call to either reload current model or supply a new model to load.
@@ -12,15 +12,14 @@
 * Bump MuJoCo required version to 2.3.3
 
 ### Fixed
-<<<<<<< HEAD
 * Stepping action server is now sensitive to preemts caused by reload/reset/shutdown and will inform clients in time instead of just severing the connection.
-=======
 * Missing roll back of collision functions to default on reload caused calling unloaded code.
->>>>>>> fix: Roll back collision functions on reload
 * An invalid model will not result in trying to reload indefinitely anymore.
 
 ### Fixed
 * Stepping action server is now sensitive to preemts caused by reload/reset/shutdown and will inform clients in time instead of just severing the connection.
+
+Contributors: @DavidPL1, @fpatzelt
 
 <a name="0.4.0"></a>
 ## [0.4.0] - 2023-03-16
@@ -159,7 +158,8 @@ Contributors: @DavidPL1, @balandbal
 
 Contributors: @DavidPL1
 
-[Unreleased]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.4.0...HEAD
+[Unreleased]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.5.0...HEAD
+[0.5.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.4.0...0.5.0
 [0.4.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.3.1...0.4.0
 [0.3.1]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.3.0...0.3.1
 [0.3.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.2.0...0.3.0
