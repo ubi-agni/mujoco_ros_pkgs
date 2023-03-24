@@ -991,11 +991,13 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 			// Error is not important, seems not to be a file
 		}
 		// If it is a file, renaming `filename_` suffices, otherwise we need to re-write the content of the vfs file
-		if (!is_file) {
+		if (!is_file && filecontent_size > 0) {
+			mj_deleteFileVFS(&vfs_, "rosparam_content");
+			mj_makeEmptyFileVFS(&vfs_, "rosparam_content", filecontent_size);
 			memcpy(vfs_.filedata[vfs_id], filedata, filecontent_size);
 			ROS_DEBUG_NAMED("mujoco", "Rolled back vfs file content");
 		}
-		settings_.loadrequest.store(3);
+		settings_.model_valid.store(prev_valid);
 	}
 	return true;
 }
