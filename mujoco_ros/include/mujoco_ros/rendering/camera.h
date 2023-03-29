@@ -86,23 +86,13 @@ public:
 	image_transport::Publisher depth_pub;
 	image_transport::Publisher segment_pub;
 
-	// mjtNum cam_optical_quat[4] = {1.0, 0.0, 0.0, 0.0};
-	// geometry_msgs::TransformStamped cam_transform;
-	// ros::ServiceServer quatserver;
-	// ros::Publisher pub_rel_tf;
-	// ros::Publisher pub_rel;
-	// ros::Publisher pub_cart;
-
 	void publishCameraInfo();
-	// bool setCamQuatCB(mujoco_ros_msgs::SetBodyState::Request &req, mujoco_ros_msgs::SetBodyState::Response &resp);
 
 private:
 	boost::shared_ptr<camera_info_manager::CameraInfoManager> camera_info_manager_;
 
 	void publishCameraInfo(ros::Publisher camera_info_publisher);
 	void publishCameraInfo(ros::Time &last_update_time);
-
-	// bool getCamTransform(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
 };
 
 } // end namespace rendering

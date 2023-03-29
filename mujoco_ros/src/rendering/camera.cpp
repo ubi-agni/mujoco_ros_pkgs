@@ -132,18 +132,13 @@ CameraStream::CameraStream(const uint8_t cam_id, const std::string cam_name, con
 	ci.width           = width;
 	ci.height          = height;
 
-	mjtNum extrinsic[12] = { focal_scaling,
-		                      0.0,
-		                      (width - 1) / 2.0,
-		                      0, // cam_pos[0],
-		                      0.0,
-		                      focal_scaling,
-		                      (height - 1) / 2.0,
-		                      0, // cam_pos[1],
-		                      0.0,
-		                      0.0,
-		                      1.0,
-		                      0 }; // cam_pos[2]};
+	// clang-format off
+	mjtNum extrinsic[12] = {
+		focal_scaling, 	0.0, 			(width - 1) / 2.0, 	0.0,
+		0.0, 			focal_scaling, 	(height - 1) / 2.0, 0.0,
+		0.0, 			0.0, 			1.0, 				0.0
+	};
+	// clang-format on
 
 	// Copy extrinsic camera matrix to camera info
 	mju_copy(ci.P.c_array(), extrinsic, 12);
@@ -155,59 +150,7 @@ CameraStream::CameraStream(const uint8_t cam_id, const std::string cam_name, con
 
 	camera_info_manager_->setCameraInfo(ci);
 	camera_info_pub_ = nh->advertise<sensor_msgs::CameraInfo>("camera_info", 1, true);
-
-	// quatserver = nh->advertiseService("get_cam_info", &CameraStream::setCamQuatCB, this);
-	// quatserver = nh->advertiseService("get_cam_info", &CameraStream::getCamTransform, this);
 }
-
-// bool CameraStream::getCamTransform(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp) {
-
-//     mjtNum xpos[3];
-//     mju_copy(xpos, MujocoSim::detail::main_env_->data->cam_xpos+cam_id*3, 3);
-//     mjtNum rel_pos[3];
-//     mju_copy(rel_pos, MujocoSim::detail::main_env_->model->cam_pos+cam_id*3, 3);
-
-//     mjtNum xquat[4];
-//     mjtNum xmat[9];
-//     mju_copy(xmat, MujocoSim::detail::main_env_->data->cam_xmat+cam_id*9, 9);
-//     mju_mat2Quat(xquat, xmat);
-//     mjtNum rel_quat[4];
-//     mju_copy(rel_quat, MujocoSim::detail::main_env_->model->cam_quat+cam_id*4, 4);
-
-//     geometry_msgs::PoseStamped p_rel, p_rel_tf, p_cart;
-//     p_cart.header.stamp = ros::Time::now();
-//     p_cart.header.frame_id = "world";
-//     p_cart.pose.position.x = xpos[0];
-//     p_cart.pose.position.y = xpos[1];
-//     p_cart.pose.position.z = xpos[2];
-//     p_cart.pose.orientation.w = xquat[0];
-//     p_cart.pose.orientation.x = xquat[1];
-//     p_cart.pose.orientation.y = xquat[2];
-//     p_cart.pose.orientation.z = xquat[3];
-
-//     pub_cart.publish(p_cart);
-
-//     p_rel.header.stamp = ros::Time::now();
-//     p_rel.header.frame_id = cam_name+"_optical_frame";
-//     p_rel.pose.position.x = 0;//rel_pos[0];
-//     p_rel.pose.position.y = 0;//rel_pos[1];
-//     p_rel.pose.position.z = 0;//rel_pos[2];
-//     p_rel.pose.orientation.w = 1;//rel_quat[0];
-//     p_rel.pose.orientation.x = 0;//rel_quat[1];
-//     p_rel.pose.orientation.y = 0;//rel_quat[2];
-//     p_rel.pose.orientation.z = 0;//rel_quat[3];
-
-//     pub_rel.publish(p_rel);
-
-//     p_rel_tf = MujocoSim::detail::tf_bufferPtr_->transform(p_rel, "world");
-
-//     pub_rel_tf.publish(p_rel_tf);
-
-//     ROS_INFO_STREAM(p_cart << "\n" << p_rel << "\n" << p_rel_tf);
-
-//     return true;
-
-// }
 
 void CameraStream::publishCameraInfo()
 {
