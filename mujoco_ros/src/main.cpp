@@ -36,17 +36,27 @@
 
 #include <mujoco_ros/mujoco_sim.h>
 #include <boost/program_options.hpp>
+#include <signal.h>
+
+void sigint_handler(int sig)
+{
+	MujocoSim::requestExternalShutdown(true);
+	ros::shutdown();
+}
 
 namespace po = boost::program_options;
 
 int main(int argc, char **argv)
 {
 	ros::init(argc, argv, "Mujoco");
+	ros::start();
 
 	ros::AsyncSpinner spinner(4);
 	spinner.start();
 
 	ros::NodeHandle nh = ros::NodeHandle("~");
+
+	signal(SIGINT, sigint_handler);
 
 	std::string admin_hash("");
 
@@ -106,11 +116,12 @@ int main(int argc, char **argv)
 		ROS_WARN("No modelfile was provided, launching empty simulation!");
 	}
 
-	MujocoSim::init(filename, admin_hash);
+	std::thread app_thread(MujocoSim::init, filename, admin_hash);
+	app_thread.join();
+
 	ROS_INFO("MuJoCo ROS Simulation Server node is terminating");
 
 	spinner.stop();
-
 	ros::shutdown();
-	return 0;
+	exit(0);
 }

@@ -1,6 +1,9 @@
 <a name="Unreleased"></a>
 ## [Unreleased]
 
+### Added
+* Signal handling to gracefully exit on SIGINT and SIGTERM.
+
 ### Changed
 * Set GUI default to show info overlay and hide UI1.
 
