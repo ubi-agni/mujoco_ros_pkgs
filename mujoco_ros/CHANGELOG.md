@@ -1,9 +1,11 @@
 <a name="Unreleased"></a>
 ## [Unreleased]
 
+### Changed
+* Set GUI default to show info overlay and hide UI1.
+
 ### Fixed
 * Now publishing clock on reload.
-
 
 <a name="0.5.0"></a>
 ## [0.5.0] - 2023-03-24

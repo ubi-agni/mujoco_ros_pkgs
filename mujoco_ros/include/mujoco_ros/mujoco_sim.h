@@ -236,9 +236,9 @@ typedef struct _settings
 	int color      = 0;
 	int font       = 0;
 	int ui0        = 1;
-	int ui1        = 1;
+	int ui1        = 0;
 	int help       = 0;
-	int info       = 0;
+	int info       = 1;
 	int profiler   = 0;
 	int sensor     = 0;
 	int fullscreen = 0;
