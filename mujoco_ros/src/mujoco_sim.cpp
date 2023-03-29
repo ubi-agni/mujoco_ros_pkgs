@@ -643,6 +643,7 @@ void loadModel(void)
 	environments::unregisterEnv(main_env_->data.get());
 	environments::assignData(mj_makeData(mnew), main_env_);
 	setupEnv(main_env_);
+	publishSimTime(main_env_->data->time);
 	// Request that off-screen rendering resources are initialized in simulate thread
 	settings_.visualInitrequest.store(1);
 

@@ -1,3 +1,10 @@
+<a name="Unreleased"></a>
+## [Unreleased]
+
+### Fixed
+* Now publishing clock on reload.
+
+
 <a name="0.5.0"></a>
 ## [0.5.0] - 2023-03-24
 
