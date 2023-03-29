@@ -107,7 +107,7 @@ int main(int argc, char **argv)
 	}
 
 	MujocoSim::init(filename, admin_hash);
-	ROS_INFO("Franka MuJoCo node is terminating");
+	ROS_INFO("MuJoCo ROS Simulation Server node is terminating");
 
 	spinner.stop();
 
