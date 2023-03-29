@@ -309,6 +309,8 @@ void init(std::string modelfile, std::string admin_hash /* = std::string()*/)
 	tf_listenerPtr_.reset();
 	static_broadcaster_.reset();
 	nh_.reset();
+
+	shutdown_complete_ = true;
 }
 
 void setJointPosition(mjModelPtr model, mjDataPtr data, const double &pos, const int &joint_id,
@@ -326,9 +328,13 @@ void setJointVelocity(mjModelPtr model, mjDataPtr data, const double &vel, const
 	data->qfrc_applied[model->jnt_dofadr[joint_id] + jnt_axis] = 0;
 }
 
-void requestExternalShutdown(void)
+void requestExternalShutdown(const bool &blocking /*= false*/)
 {
 	settings_.exitrequest.store(1);
+
+	while (blocking && !shutdown_complete_) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
 }
 
 void resetSim()
