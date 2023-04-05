@@ -696,7 +696,7 @@ void setupEnv(MujocoEnvPtr env)
 	ROS_DEBUG_NAMED("mujoco", "resetting noise ...");
 	// Allocate ctrlnoise
 	free(env->ctrlnoise_);
-	env->ctrlnoise_ = (mjtNum *)malloc(sizeof(mjtNum) * env->model_->nu);
+	env->ctrlnoise_ = static_cast<mjtNum *>(malloc(sizeof(mjtNum) * env->model_->nu));
 	mju_zero(env->ctrlnoise_, env->model_->nu);
 
 	env->load();
@@ -870,7 +870,7 @@ bool shutdownCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
 
 bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &resp)
 {
-	ROS_DEBUG_STREAM("PauseCB called with: " << (bool)req.paused);
+	ROS_DEBUG_STREAM("PauseCB called with: " << static_cast<bool>(req.paused));
 
 	if (settings_.eval_mode && req.paused) {
 		ROS_DEBUG_NAMED("mujoco", "Evaluation mode is active. Checking hash validity");

@@ -281,7 +281,7 @@ bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const i
 		size_t size                  = rgb_im->step * viewport.height;
 		rgb_im->data.resize(size);
 
-		memcpy((char *)(&rgb_im->data[0]), env->vis_.rgb.get(), size);
+		memcpy(reinterpret_cast<char *>(&rgb_im->data[0]), env->vis_.rgb.get(), size);
 
 		for (uint r = 0; r < rgb_im->height / 2; ++r) {
 			unsigned char *top_row    = &rgb_im->data[3 * rgb_im->width * r];
@@ -303,8 +303,8 @@ bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const i
 		size_t size                    = depth_im->step * viewport.height;
 		depth_im->data.resize(size);
 
-		uint16_t *dest_uint = (uint16_t *)(&depth_im->data[0]);
-		float *dest_float   = (float *)(&depth_im->data[0]);
+		uint16_t *dest_uint = reinterpret_cast<uint16_t *>(&depth_im->data[0]);
+		float *dest_float   = reinterpret_cast<float *>(&depth_im->data[0]);
 		uint64_t index      = 0;
 
 		float e = env->model_->stat.extent;
@@ -586,8 +586,8 @@ void profilerInit(void)
 	// init x axis on history figures (do not show yet)
 	for (n = 0; n < 6; n++)
 		for (i = 0; i < mjMAXLINEPNT; i++) {
-			figtimer_.linedata[n][2 * i] = (float)-i;
-			figsize_.linedata[n][2 * i]  = (float)-i;
+			figtimer_.linedata[n][2 * i] = static_cast<float>(-i);
+			figsize_.linedata[n][2 * i]  = static_cast<float>(-i);
 		}
 }
 
@@ -609,18 +609,18 @@ void profilerUpdate(MujocoEnvPtr env)
 	}
 	for (i = 0; i < figconstraint_.linepnt[0]; i++) {
 		// x
-		figconstraint_.linedata[0][2 * i] = (float)i;
-		figconstraint_.linedata[1][2 * i] = (float)i;
-		figconstraint_.linedata[2][2 * i] = (float)i;
-		figconstraint_.linedata[3][2 * i] = (float)i;
-		figconstraint_.linedata[4][2 * i] = (float)i;
+		figconstraint_.linedata[0][2 * i] = static_cast<float>(i);
+		figconstraint_.linedata[1][2 * i] = static_cast<float>(i);
+		figconstraint_.linedata[2][2 * i] = static_cast<float>(i);
+		figconstraint_.linedata[3][2 * i] = static_cast<float>(i);
+		figconstraint_.linedata[4][2 * i] = static_cast<float>(i);
 
 		// y
-		figconstraint_.linedata[0][2 * i + 1] = (float)env->data_->nefc;
-		figconstraint_.linedata[1][2 * i + 1] = (float)env->data_->solver[i].nactive;
-		figconstraint_.linedata[2][2 * i + 1] = (float)env->data_->solver[i].nchange;
-		figconstraint_.linedata[3][2 * i + 1] = (float)env->data_->solver[i].neval;
-		figconstraint_.linedata[4][2 * i + 1] = (float)env->data_->solver[i].nupdate;
+		figconstraint_.linedata[0][2 * i + 1] = static_cast<float>(env->data_->nefc);
+		figconstraint_.linedata[1][2 * i + 1] = static_cast<float>(env->data_->solver[i].nactive);
+		figconstraint_.linedata[2][2 * i + 1] = static_cast<float>(env->data_->solver[i].nchange);
+		figconstraint_.linedata[3][2 * i + 1] = static_cast<float>(env->data_->solver[i].neval);
+		figconstraint_.linedata[4][2 * i + 1] = static_cast<float>(env->data_->solver[i].nupdate);
 	}
 
 	// update cost figure
@@ -635,14 +635,17 @@ void profilerUpdate(MujocoEnvPtr env)
 
 	for (i = 0; i < figcost_.linepnt[0]; i++) {
 		// x
-		figcost_.linedata[0][2 * i] = (float)i;
-		figcost_.linedata[1][2 * i] = (float)i;
-		figcost_.linedata[2][2 * i] = (float)i;
+		figcost_.linedata[0][2 * i] = static_cast<float>(i);
+		figcost_.linedata[1][2 * i] = static_cast<float>(i);
+		figcost_.linedata[2][2 * i] = static_cast<float>(i);
 
 		// y
-		figcost_.linedata[0][2 * i + 1] = (float)mju_log10(mju_max(mjMINVAL, env->data_->solver[i].improvement));
-		figcost_.linedata[1][2 * i + 1] = (float)mju_log10(mju_max(mjMINVAL, env->data_->solver[i].gradient));
-		figcost_.linedata[2][2 * i + 1] = (float)mju_log10(mju_max(mjMINVAL, env->data_->solver[i].lineslope));
+		figcost_.linedata[0][2 * i + 1] =
+		    static_cast<float>(mju_log10(mju_max(mjMINVAL, env->data_->solver[i].improvement)));
+		figcost_.linedata[1][2 * i + 1] =
+		    static_cast<float>(mju_log10(mju_max(mjMINVAL, env->data_->solver[i].gradient)));
+		figcost_.linedata[2][2 * i + 1] =
+		    static_cast<float>(mju_log10(mju_max(mjMINVAL, env->data_->solver[i].lineslope)));
 	}
 
 	// get timers: total, collision, prepare, solve, other
@@ -653,10 +656,11 @@ void profilerUpdate(MujocoEnvPtr env)
 		number = env->data_->timer[mjTIMER_FORWARD].number;
 	}
 	number         = mjMAX(1, number);
-	float tdata[5] = { (float)(total / number), (float)(env->data_->timer[mjTIMER_POS_COLLISION].duration / number),
-		                (float)(env->data_->timer[mjTIMER_POS_MAKE].duration / number) +
-		                    (float)(env->data_->timer[mjTIMER_POS_PROJECT].duration / number),
-		                (float)(env->data_->timer[mjTIMER_CONSTRAINT].duration / number), 0 };
+	float tdata[5] = { static_cast<float>(total / number),
+		                static_cast<float>(env->data_->timer[mjTIMER_POS_COLLISION].duration / number),
+		                static_cast<float>(env->data_->timer[mjTIMER_POS_MAKE].duration / number) +
+		                    static_cast<float>(env->data_->timer[mjTIMER_POS_PROJECT].duration / number),
+		                static_cast<float>(env->data_->timer[mjTIMER_CONSTRAINT].duration / number), 0 };
 	tdata[4]       = tdata[0] - tdata[1] - tdata[2] - tdata[3];
 
 	// update figtimer_
@@ -673,9 +677,11 @@ void profilerUpdate(MujocoEnvPtr env)
 	}
 
 	// get sizes: nv, nbody, nefc, sqrt(nnz), ncont, iter
-	float sdata[6] = { (float)env->model_->nv,  (float)env->model_->nbody,
-		                (float)env->data_->nefc, (float)mju_sqrt((mjtNum)env->data_->solver_nnz),
-		                (float)env->data_->ncon, (float)env->data_->solver_iter };
+	float sdata[6] = {
+		static_cast<float>(env->model_->nv),  static_cast<float>(env->model_->nbody),
+		static_cast<float>(env->data_->nefc), static_cast<float>(mju_sqrt(static_cast<mjtNum>(env->data_->solver_nnz))),
+		static_cast<float>(env->data_->ncon), static_cast<float>(env->data_->solver_iter)
+	};
 
 	// update figsize_
 	pnt = mjMIN(201, figsize_.linepnt[0] + 1);
@@ -765,12 +771,12 @@ void sensorUpdate(MujocoEnvPtr env)
 				break;
 
 			// x
-			figsensor_.linedata[lineid][2 * p + 4 * i]     = (float)(adr + i);
-			figsensor_.linedata[lineid][2 * p + 4 * i + 2] = (float)(adr + i);
+			figsensor_.linedata[lineid][2 * p + 4 * i]     = static_cast<float>(adr + i);
+			figsensor_.linedata[lineid][2 * p + 4 * i + 2] = static_cast<float>(adr + i);
 
 			// y
 			figsensor_.linedata[lineid][2 * p + 4 * i + 1] = 0;
-			figsensor_.linedata[lineid][2 * p + 4 * i + 3] = (float)(env->data_->sensordata[adr + i] / cutoff);
+			figsensor_.linedata[lineid][2 * p + 4 * i + 3] = static_cast<float>(env->data_->sensordata[adr + i] / cutoff);
 		}
 
 		// update linepnt
@@ -806,15 +812,16 @@ void infotext(MujocoEnvPtr env, char (&title)[kBufSize], char (&content)[kBufSiz
 	solerr = mju_log10(mju_max(mjMINVAL, solerr));
 
 	mju::strcpy_arr(title, "Time\nSize\nCPU\nSolver\nFPS\nMemory");
-	mju::sprintf_arr(
-	    content, "%-9.3f\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%.0f\n%.2g of %s", env->data_->time, env->data_->nefc,
-	    env->data_->ncon,
-	    settings_.run.load() ?
-	        env->data_->timer[mjTIMER_STEP].duration / mjMAX(1, env->data_->timer[mjTIMER_STEP].number) :
-	        env->data_->timer[mjTIMER_FORWARD].duration / mjMAX(1, env->data_->timer[mjTIMER_FORWARD].number),
-	    solerr, env->data_->solver_iter, 1 / interval,
-	    env->data_->maxuse_arena / (double)(env->data_->nstack * sizeof(mjtNum)),
-	    env->data_->maxuse_con / (double)env->model_->nconmax, mju_writeNumBytes(env->data_->nstack * sizeof(mjtNum)));
+	mju::sprintf_arr(content, "%-9.3f\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%.0f\n%.2g of %s", env->data_->time,
+	                 env->data_->nefc, env->data_->ncon,
+	                 settings_.run.load() ?
+	                     env->data_->timer[mjTIMER_STEP].duration / mjMAX(1, env->data_->timer[mjTIMER_STEP].number) :
+	                     env->data_->timer[mjTIMER_FORWARD].duration /
+	                         mjMAX(1, env->data_->timer[mjTIMER_FORWARD].number),
+	                 solerr, env->data_->solver_iter, 1 / interval,
+	                 env->data_->maxuse_arena / static_cast<double>(env->data_->nstack * sizeof(mjtNum)),
+	                 env->data_->maxuse_con / static_cast<double>(env->model_->nconmax),
+	                 mju_writeNumBytes(env->data_->nstack * sizeof(mjtNum)));
 
 	// Add energy if enabled
 	if (mjENABLED_ros(env->model_, mjENBL_ENERGY)) {
@@ -835,7 +842,7 @@ void infotext(MujocoEnvPtr env, char (&title)[kBufSize], char (&content)[kBufSiz
 // Sprintf forwarding, to avoid compiler warning in x-macro
 void printField(char (&str)[mjMAXUINAME], void *ptr)
 {
-	mju::sprintf_arr(str, "%g", *(mjtNum *)ptr);
+	mju::sprintf_arr(str, "%g", *static_cast<mjtNum *>(ptr));
 }
 
 // Update watch
@@ -1202,7 +1209,7 @@ void copyKey(MujocoEnvPtr env)
 // millisecond timer, for MuJoCo built-in profiler
 mjtNum timer(void)
 {
-	return (mjtNum)(1000 * glfwGetTime());
+	return static_cast<mjtNum>(1000 * glfwGetTime());
 }
 
 // Clear all timers
@@ -1260,7 +1267,7 @@ void updateSettings(MujocoEnvPtr env)
 
 int uiPredicate(int category, void *userdata)
 {
-	MujocoEnvPtr env = *(MujocoEnvPtr *)userdata;
+	MujocoEnvPtr env = *static_cast<MujocoEnvPtr *>(userdata);
 	switch (category) {
 		case 2: // require model
 			return (env->model_ != nullptr);
@@ -1280,7 +1287,7 @@ int uiPredicate(int category, void *userdata)
 void uiLayout(mjuiState *state)
 {
 	mjrRect *rect    = state->rect;
-	MujocoEnvPtr env = *(MujocoEnvPtr *)state->userdata;
+	MujocoEnvPtr env = *static_cast<MujocoEnvPtr *>(state->userdata);
 
 	// set number of rectangles
 	state->nrect = 4;
@@ -1317,7 +1324,7 @@ void uiEvent(mjuiState *state)
 
 	int i;
 	char err[200];
-	MujocoEnvPtr env = *(MujocoEnvPtr *)state->userdata;
+	MujocoEnvPtr env = *static_cast<MujocoEnvPtr *>(state->userdata);
 
 	// call UI 0 if event is directed to it
 	if ((state->dragrect == ui0_.rectid) || (state->dragrect == 0 && state->mouserect == ui0_.rectid) ||
@@ -1651,10 +1658,11 @@ void uiEvent(mjuiState *state)
 			mjrRect r = state->rect[3];
 			mjtNum selpnt[3];
 			int selgeom, selskin;
-			int selbody =
-			    mjv_select(env->model_.get(), env->data_.get(), &vopt_, (mjtNum)r.width / (mjtNum)r.height,
-			               (mjtNum)(state->x - r.left) / (mjtNum)r.width, (mjtNum)(state->y - r.bottom) / (mjtNum)r.height,
-			               &free_scene_, selpnt, &selgeom, &selskin);
+			int selbody = mjv_select(env->model_.get(), env->data_.get(), &vopt_,
+			                         static_cast<mjtNum>(r.width) / static_cast<mjtNum>(r.height),
+			                         static_cast<mjtNum>(state->x - r.left) / static_cast<mjtNum>(r.width),
+			                         static_cast<mjtNum>(state->y - r.bottom) / static_cast<mjtNum>(r.height),
+			                         &free_scene_, selpnt, &selgeom, &selskin);
 
 			// Set lookat point, start tracking is requested
 			if (selmode == 2 || selmode == 3) {

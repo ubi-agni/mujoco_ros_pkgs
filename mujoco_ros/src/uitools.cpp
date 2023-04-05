@@ -22,7 +22,7 @@
 static void uiUpdateState(GLFWwindow *wnd)
 {
 	// extract data from user pointer
-	uiUserPointer *ptr = (uiUserPointer *)glfwGetWindowUserPointer(wnd);
+	uiUserPointer *ptr = static_cast<uiUserPointer *>(glfwGetWindowUserPointer(wnd));
 	mjuiState *state   = ptr->state;
 
 	// mouse buttons
@@ -72,7 +72,7 @@ static void uiKeyboard(GLFWwindow *wnd, int key, int scancode, int act, int mods
 	}
 
 	// extract data from user pointer
-	uiUserPointer *ptr = (uiUserPointer *)glfwGetWindowUserPointer(wnd);
+	uiUserPointer *ptr = static_cast<uiUserPointer *>(glfwGetWindowUserPointer(wnd));
 	mjuiState *state   = ptr->state;
 
 	// update state
@@ -91,7 +91,7 @@ static void uiKeyboard(GLFWwindow *wnd, int key, int scancode, int act, int mods
 static void uiMouseButton(GLFWwindow *wnd, int button, int act, int mods)
 {
 	// extract data from user pointer
-	uiUserPointer *ptr = (uiUserPointer *)glfwGetWindowUserPointer(wnd);
+	uiUserPointer *ptr = static_cast<uiUserPointer *>(glfwGetWindowUserPointer(wnd));
 	mjuiState *state   = ptr->state;
 
 	// update state
@@ -155,7 +155,7 @@ static void uiMouseButton(GLFWwindow *wnd, int button, int act, int mods)
 static void uiMouseMove(GLFWwindow *wnd, double xpos, double ypos)
 {
 	// extract data from user pointer
-	uiUserPointer *ptr = (uiUserPointer *)glfwGetWindowUserPointer(wnd);
+	uiUserPointer *ptr = static_cast<uiUserPointer *>(glfwGetWindowUserPointer(wnd));
 	mjuiState *state   = ptr->state;
 
 	// no buttons down: nothing to do
@@ -177,7 +177,7 @@ static void uiMouseMove(GLFWwindow *wnd, double xpos, double ypos)
 static void uiScroll(GLFWwindow *wnd, double xoffset, double yoffset)
 {
 	// extract data from user pointer
-	uiUserPointer *ptr = (uiUserPointer *)glfwGetWindowUserPointer(wnd);
+	uiUserPointer *ptr = static_cast<uiUserPointer *>(glfwGetWindowUserPointer(wnd));
 	mjuiState *state   = ptr->state;
 
 	// update state
@@ -196,7 +196,7 @@ static void uiScroll(GLFWwindow *wnd, double xoffset, double yoffset)
 static void uiResize(GLFWwindow *wnd, int width, int height)
 {
 	// extract data from user pointer
-	uiUserPointer *ptr = (uiUserPointer *)glfwGetWindowUserPointer(wnd);
+	uiUserPointer *ptr = static_cast<uiUserPointer *>(glfwGetWindowUserPointer(wnd));
 	mjuiState *state   = ptr->state;
 
 	// set layout
@@ -227,13 +227,13 @@ int uiFontScale(GLFWwindow *wnd)
 	int width_win, width_buf, height;
 	glfwGetWindowSize(wnd, &width_win, &height);
 	glfwGetFramebufferSize(wnd, &width_buf, &height);
-	double b2w = (double)width_buf / (double)width_win;
+	double b2w = static_cast<double>(width_buf) / static_cast<double>(width_win);
 
 	// compute PPI
 	int width_MM, height_MM;
 	glfwGetMonitorPhysicalSize(glfwGetPrimaryMonitor(), &width_MM, &height_MM);
 	int width_vmode = glfwGetVideoMode(glfwGetPrimaryMonitor())->width;
-	double PPI      = 25.4 * b2w * (double)width_vmode / (double)width_MM;
+	double PPI      = 25.4 * b2w * static_cast<double>(width_vmode) / static_cast<double>(width_MM);
 
 	// estimate font scaling, guard against unrealistic PPI
 	int fs;
@@ -254,7 +254,7 @@ int uiFontScale(GLFWwindow *wnd)
 void uiSetCallback(GLFWwindow *wnd, mjuiState *state, uiEventFn uiEvent, uiLayoutFn uiLayout)
 {
 	// make container with user-supplied objects and set window pointer
-	uiUserPointer *ptr = (uiUserPointer *)mju_malloc(sizeof(uiUserPointer));
+	uiUserPointer *ptr = static_cast<uiUserPointer *>(mju_malloc(sizeof(uiUserPointer)));
 	ptr->state         = state;
 	ptr->uiEvent       = uiEvent;
 	ptr->uiLayout      = uiLayout;
@@ -264,7 +264,7 @@ void uiSetCallback(GLFWwindow *wnd, mjuiState *state, uiEventFn uiEvent, uiLayou
 	int width_win, width_buf, height;
 	glfwGetWindowSize(wnd, &width_win, &height);
 	glfwGetFramebufferSize(wnd, &width_buf, &height);
-	ptr->buffer2window = (double)width_buf / (double)width_win;
+	ptr->buffer2window = static_cast<double>(width_buf) / static_cast<double>(width_win);
 
 	// set internal callbacks
 	glfwSetKeyCallback(wnd, uiKeyboard);

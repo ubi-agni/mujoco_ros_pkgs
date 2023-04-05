@@ -92,7 +92,7 @@ bool registerPlugin(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config, std::vec
 		                                            "should provide a 'type' member!");
 		return false;
 	}
-	type = (std::string)config["type"];
+	type = static_cast<std::string>(config["type"]);
 
 	ROS_DEBUG_STREAM_NAMED("mujoco_ros_plugin_loader", "Registering plugin of type " << type);
 
