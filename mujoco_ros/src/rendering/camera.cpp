@@ -47,15 +47,15 @@ CameraStream::CameraStream(const uint8_t cam_id, const std::string cam_name, con
                            const streamType stream_type, const bool use_segid, const float pub_freq,
                            image_transport::ImageTransport *it, ros::NodeHandlePtr parent_nh,
                            const MujocoSim::mjModelPtr model, MujocoSim::mjDataPtr data)
-    : cam_id(cam_id)
-    , cam_name(cam_name)
-    , width(width)
-    , height(height)
-    , stream_type(stream_type)
-    , use_segid(use_segid)
-    , pub_freq(pub_freq)
+    : cam_id_(cam_id)
+    , cam_name_(cam_name)
+    , width_(width)
+    , height_(height)
+    , stream_type_(stream_type)
+    , use_segid_(use_segid)
+    , pub_freq_(pub_freq)
 {
-	last_pub = ros::Time::now();
+	last_pub_ = ros::Time::now();
 	ros::NodeHandlePtr nh(new ros::NodeHandle(*(parent_nh.get()), "cameras/" + cam_name));
 
 	// pub_rel    = nh->advertise<geometry_msgs::PoseStamped>("campose_rel", 1, true);
@@ -64,15 +64,15 @@ CameraStream::CameraStream(const uint8_t cam_id, const std::string cam_name, con
 
 	if (stream_type & streamType::RGB) {
 		ROS_DEBUG_NAMED("mujoco_env", "\tCreating rgb publisher");
-		rgb_pub = it->advertise("cameras/" + cam_name + "/rgb", 1);
+		rgb_pub_ = it->advertise("cameras/" + cam_name + "/rgb", 1);
 	}
 	if (stream_type & streamType::DEPTH) {
 		ROS_DEBUG_NAMED("mujoco_env", "\tCreating depth publisher");
-		depth_pub = it->advertise("cameras/" + cam_name + "/depth", 1);
+		depth_pub_ = it->advertise("cameras/" + cam_name + "/depth", 1);
 	}
 	if (stream_type & streamType::SEGMENTED) {
 		ROS_DEBUG_NAMED("mujoco_env", "\tCreating segmentation publisher");
-		segment_pub = it->advertise("cameras/" + cam_name + "/segmented", 1);
+		segment_pub_ = it->advertise("cameras/" + cam_name + "/segmented", 1);
 	}
 
 	ROS_DEBUG_STREAM_NAMED("mujoco_env", "\tSetting up camera stream(s) of type '"

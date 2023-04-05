@@ -63,36 +63,36 @@ public:
 
 	~CameraStream()
 	{
-		if (&rgb_pub != nullptr) {
-			rgb_pub.shutdown();
+		if (&rgb_pub_ != nullptr) {
+			rgb_pub_.shutdown();
 		}
-		if (&depth_pub != nullptr) {
-			depth_pub.shutdown();
+		if (&depth_pub_ != nullptr) {
+			depth_pub_.shutdown();
 		}
-		if (&segment_pub != nullptr) {
-			segment_pub.shutdown();
+		if (&segment_pub_ != nullptr) {
+			segment_pub_.shutdown();
 		}
 	};
 
-	uint8_t cam_id;
-	std::string cam_name;
-	int width, height;
-	streamType stream_type = streamType::RGB;
-	bool use_segid         = true;
-	float pub_freq         = 15;
-	ros::Time last_pub;
+	uint8_t cam_id_;
+	std::string cam_name_;
+	int width_, height_;
+	streamType stream_type_ = streamType::RGB;
+	bool use_segid_         = true;
+	float pub_freq_         = 15;
+	ros::Time last_pub_;
 	ros::Publisher camera_info_pub_;
-	image_transport::Publisher rgb_pub;
-	image_transport::Publisher depth_pub;
-	image_transport::Publisher segment_pub;
+	image_transport::Publisher rgb_pub_;
+	image_transport::Publisher depth_pub_;
+	image_transport::Publisher segment_pub_;
 
 	void publishCameraInfo();
 
 private:
 	boost::shared_ptr<camera_info_manager::CameraInfoManager> camera_info_manager_;
 
-	void publishCameraInfo(ros::Publisher camera_info_publisher);
-	void publishCameraInfo(ros::Time &last_update_time);
+	// void publishCameraInfo(ros::Publisher camera_info_publisher);
+	// void publishCameraInfo(ros::Time &last_update_time);
 };
 
 } // end namespace rendering

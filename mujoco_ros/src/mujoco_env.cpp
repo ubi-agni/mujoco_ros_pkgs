@@ -51,7 +51,7 @@ namespace environments {
 
 void assignData(mjData *data, MujocoEnvPtr env)
 {
-	env->data.reset(data, [](mjData *d) { mj_deleteData(d); });
+	env->data_.reset(data, [](mjData *d) { mj_deleteData(d); });
 	env_map_[data] = env;
 }
 
@@ -66,7 +66,7 @@ MujocoEnvPtr getEnv(mjData *data)
 MujocoEnvPtr getEnvById(uint id)
 {
 	for (std::pair<mjData *, MujocoEnvPtr> element : env_map_) {
-		if (element.second->name == "/env" + id || (element.second->name == "/" && id == 0)) {
+		if (element.second->name_ == "/env" + id || (element.second->name_ == "/" && id == 0)) {
 			return element.second;
 		}
 	}
@@ -83,8 +83,8 @@ void unregisterEnv(mjData *data)
 void unregisterEnv(uint id)
 {
 	for (std::pair<mjData *, MujocoEnvPtr> element : env_map_) {
-		if (element.second->name == "/env" + id || (element.second->name == "/" && id == 0)) {
-			env_map_.erase(element.second->data.get());
+		if (element.second->name_ == "/env" + id || (element.second->name_ == "/" && id == 0)) {
+			env_map_.erase(element.second->data_.get());
 		}
 	}
 }
@@ -93,7 +93,7 @@ void unregisterEnv(uint id)
 
 void MujocoEnv::initializeRenderResources()
 {
-	image_transport::ImageTransport it(*nh);
+	image_transport::ImageTransport it(*this->nh_);
 	bool config_exists, use_segid;
 	rendering::streamType stream_type;
 	std::string cam_name, cam_config_path;
@@ -101,55 +101,57 @@ void MujocoEnv::initializeRenderResources()
 	int max_res_h = 0, max_res_w = 0;
 
 	// // TODO(dleins): move camera pub config to URDF/SRDF config once it's ready
-	config_exists = nh->searchParam("cam_config", cam_config_path) || ros::param::search("cam_config", cam_config_path);
+	config_exists =
+	    this->nh_->searchParam("cam_config", cam_config_path) || ros::param::search("cam_config", cam_config_path);
 	ROS_DEBUG_STREAM_COND_NAMED(config_exists, "mujoco_env", "Found camera config under path: " << cam_config_path);
 
-	if (model->ncam == 0) {
+	if (this->model_->ncam == 0) {
 		ROS_DEBUG_NAMED("mujoco_env", "Model has no cameras, skipping offscreen render utils init");
 		return;
 	}
 
-	ROS_DEBUG_STREAM_NAMED("mujoco_env", "Model has " << model->ncam << " cameras");
+	ROS_DEBUG_STREAM_NAMED("mujoco_env", "Model has " << this->model_->ncam << " cameras");
 
-	cam_streams.clear();
+	this->cam_streams_.clear();
 
 	rendering::CameraStreamPtr stream_ptr;
 	int res_h, res_w;
-	for (int cam_id = 0; cam_id < model->ncam; cam_id++) {
-		cam_name = mj_id2name(model.get(), mjOBJ_CAMERA, cam_id);
+	for (int cam_id = 0; cam_id < this->model_->ncam; cam_id++) {
+		cam_name = mj_id2name(this->model_.get(), mjOBJ_CAMERA, cam_id);
 		ROS_DEBUG_STREAM_NAMED("mujoco_env",
 		                       "Found camera '" << cam_name << "' with id " << cam_id << ". Setting up publishers...");
 
 		stream_type = rendering::streamType(
-		    nh->param<int>(cam_config_path + "/" + cam_name + "/stream_type", rendering::streamType::RGB));
-		pub_freq  = nh->param<float>(cam_config_path + "/" + cam_name + "/frequency", 15);
-		use_segid = nh->param<bool>(cam_config_path + "/" + cam_name + "/use_segid", true);
-		res_w     = nh->param<int>(cam_config_path + "/" + cam_name + "/width", 720);
-		res_h     = nh->param<int>(cam_config_path + "/" + cam_name + "/height", 480);
+		    this->nh_->param<int>(cam_config_path + "/" + cam_name + "/stream_type", rendering::streamType::RGB));
+		pub_freq  = this->nh_->param<float>(cam_config_path + "/" + cam_name + "/frequency", 15);
+		use_segid = this->nh_->param<bool>(cam_config_path + "/" + cam_name + "/use_segid", true);
+		res_w     = this->nh_->param<int>(cam_config_path + "/" + cam_name + "/width", 720);
+		res_h     = this->nh_->param<int>(cam_config_path + "/" + cam_name + "/height", 480);
 
 		max_res_h = std::max(res_h, max_res_h);
 		max_res_w = std::max(res_w, max_res_w);
 
 		stream_ptr.reset(new rendering::CameraStream(cam_id, cam_name, res_w, res_h, stream_type, use_segid, pub_freq,
-		                                             &it, nh, model, data));
-		cam_streams.push_back(stream_ptr);
+		                                             &it, this->nh_, this->model_, this->data_));
+		this->cam_streams_.push_back(stream_ptr);
 	}
 
-	if (model->vis.global.offheight < max_res_h || model->vis.global.offwidth < max_res_w) {
+	if (this->model_->vis.global.offheight < max_res_h || this->model_->vis.global.offwidth < max_res_w) {
 		ROS_WARN_STREAM_NAMED("mujoco_env", "Model offscreen resolution too small for configured cameras, updating "
 		                                    "offscreen resolution to fit cam config ... ("
 		                                        << max_res_w << "x" << max_res_h << ")");
-		model->vis.global.offheight = max_res_h;
-		model->vis.global.offwidth  = max_res_w;
+		this->model_->vis.global.offheight = max_res_h;
+		this->model_->vis.global.offwidth  = max_res_w;
 	}
 
-	ROS_DEBUG_STREAM_NAMED("mujoco_env", "Initializing offscreen rendering utils [" << name << "]");
-	if (vis.window == nullptr) {
+	ROS_DEBUG_STREAM_NAMED("mujoco_env", "Initializing offscreen rendering utils [" << this->name_ << "]");
+	if (this->vis_.window == nullptr) {
 		ROS_DEBUG_NAMED("mujoco_env", "\tCreating new offscreen buffer window");
 		glfwWindowHint(GLFW_DOUBLEBUFFER, 0);
 		glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-		vis.window = glfwCreateWindow(max_res_h, max_res_w, ("invisible window " + name).c_str(), nullptr, nullptr);
-		if (!vis.window) {
+		this->vis_.window =
+		    glfwCreateWindow(max_res_h, max_res_w, ("invisible window " + this->name_).c_str(), nullptr, nullptr);
+		if (!this->vis_.window) {
 			ROS_ERROR_NAMED("mujoco_env", "Could not create GLFW window!");
 			mju_error("Could not create GLFW window");
 		}
@@ -158,119 +160,117 @@ void MujocoEnv::initializeRenderResources()
 	}
 
 	// make context current
-	glfwMakeContextCurrent(vis.window);
+	glfwMakeContextCurrent(this->vis_.window);
 	glfwSwapInterval(0);
 
 	// init vis data structure
-	mjv_defaultCamera(&(vis.cam));
+	mjv_defaultCamera(&(this->vis_.cam));
 	ROS_DEBUG_NAMED("mujoco_env", "\tInitialized camera");
-	mjv_defaultOption(&(vis.vopt));
+	mjv_defaultOption(&(this->vis_.vopt));
 	ROS_DEBUG_NAMED("mujoco_env", "\tInitialized v-options");
-	mjv_defaultScene(&(vis.scn));
+	mjv_defaultScene(&(this->vis_.scn));
 	ROS_DEBUG_NAMED("mujoco_env", "\tInitialized default scene");
-	mjr_defaultContext(&(vis.con));
+	mjr_defaultContext(&(this->vis_.con));
 	ROS_DEBUG_NAMED("mujoco_env", "\tInitialized default context");
 
 	// // Create scene and context
-	mjv_makeScene(model.get(), &(vis.scn), rendering::maxgeom_);
+	mjv_makeScene(this->model_.get(), &(this->vis_.scn), rendering::maxgeom_);
 	ROS_DEBUG_NAMED("mujoco_env", "\tApplied model to scene");
-	mjr_makeContext(model.get(), &(vis.con), 50 * (settings_.font + 1));
+	mjr_makeContext(this->model_.get(), &(this->vis_.con), 50 * (settings_.font + 1));
 	ROS_DEBUG_NAMED("mujoco_env", "\tApplied model to context");
 
 	int buffer_size = max_res_w * max_res_h;
-	vis.rgb.reset(new unsigned char[buffer_size * 3], std::default_delete<unsigned char[]>());
-	vis.depth.reset(new float[buffer_size], std::default_delete<float[]>());
+	this->vis_.rgb.reset(new unsigned char[buffer_size * 3], std::default_delete<unsigned char[]>());
+	this->vis_.depth.reset(new float[buffer_size], std::default_delete<float[]>());
 }
 
 void MujocoEnv::load()
 {
-	ROS_DEBUG_STREAM_NAMED("mujoco_env", "loading MujocoPlugins ... [" << name << "]");
-	cb_ready_plugins.clear();
-	plugins.clear();
+	ROS_DEBUG_STREAM_NAMED("mujoco_env", "loading MujocoPlugins ... [" << this->name_ << "]");
+	this->cb_ready_plugins_.clear();
+	this->plugins_.clear();
 
 	XmlRpc::XmlRpcValue plugin_config;
-	if (plugin_utils::parsePlugins(nh, plugin_config)) {
-		plugin_utils::registerPlugins(nh, plugin_config, plugins);
+	if (plugin_utils::parsePlugins(this->nh_, plugin_config)) {
+		plugin_utils::registerPlugins(this->nh_, plugin_config, this->plugins_);
 	}
 
-	for (const auto &plugin : plugins) {
-		if (plugin->safe_load(model, data)) {
-			cb_ready_plugins.push_back(plugin);
+	for (const auto &plugin : this->plugins_) {
+		if (plugin->safe_load(this->model_, this->data_)) {
+			this->cb_ready_plugins_.push_back(plugin);
 		}
 	}
-	ROS_DEBUG_STREAM_NAMED("mujoco_env", "Done loading MujocoPlugins [" << name << "]");
+	ROS_DEBUG_STREAM_NAMED("mujoco_env", "Done loading MujocoPlugins [" << this->name_ << "]");
 }
 
 void MujocoEnv::reset()
 {
-	for (const auto &plugin : plugins) {
+	for (const auto &plugin : this->plugins_) {
 		plugin->safe_reset();
 	}
 }
 
 const std::vector<MujocoPluginPtr> MujocoEnv::getPlugins()
 {
-	return plugins;
+	return this->plugins_;
 }
 
 void MujocoEnv::runControlCbs()
 {
-	for (const auto &plugin : cb_ready_plugins) {
-		plugin->controlCallback(model, data);
+	for (const auto &plugin : this->cb_ready_plugins_) {
+		plugin->controlCallback(this->model_, this->data_);
 	}
 }
 
 void MujocoEnv::runPassiveCbs()
 {
-	for (const auto &plugin : cb_ready_plugins) {
-		plugin->passiveCallback(model, data);
+	for (const auto &plugin : this->cb_ready_plugins_) {
+		plugin->passiveCallback(this->model_, this->data_);
 	}
 }
 
 void MujocoEnv::runRenderCbs(mjvScene *scene)
 {
-	if (plugins.empty())
-		return;
-	for (const auto &plugin : cb_ready_plugins) {
-		plugin->renderCallback(model, data, scene);
+	for (const auto &plugin : this->cb_ready_plugins_) {
+		plugin->renderCallback(this->model_, this->data_, scene);
 	}
 }
 
 void MujocoEnv::runLastStageCbs()
 {
-	for (const auto &plugin : cb_ready_plugins) {
-		plugin->lastStageCallback(model, data);
+	for (const auto &plugin : this->cb_ready_plugins_) {
+		plugin->lastStageCallback(this->model_, this->data_);
 	}
 }
 
 void MujocoEnv::notifyGeomChanged(const int geom_id)
 {
-	for (const auto &plugin : cb_ready_plugins) {
-		plugin->onGeomChanged(model, data, geom_id);
+	for (const auto &plugin : this->cb_ready_plugins_) {
+		plugin->onGeomChanged(this->model_, this->data_, geom_id);
 	}
 }
 
 void MujocoEnv::prepareReload()
 {
-	model.reset();
-	data.reset();
-	vis.rgb.reset();
-	vis.depth.reset();
-	cb_ready_plugins.clear();
-	plugins.clear();
-	cam_streams.clear();
+	this->model_.reset();
+	this->data_.reset();
+	this->vis_.rgb.reset();
+	this->vis_.depth.reset();
+	this->cb_ready_plugins_.clear();
+	this->plugins_.clear();
+	this->cam_streams_.clear();
 }
 
 MujocoEnv::~MujocoEnv()
 {
-	free(ctrlnoise);
-	cb_ready_plugins.clear();
-	plugins.clear();
-	model.reset();
-	data.reset();
-	vis.rgb.reset();
-	vis.depth.reset();
-	nh.reset();
+	free(this->ctrlnoise_);
+	this->cb_ready_plugins_.clear();
+	this->plugins_.clear();
+	this->model_.reset();
+	this->data_.reset();
+	this->vis_.rgb.reset();
+	this->vis_.depth.reset();
+	this->nh_.reset();
 }
 
 } // namespace MujocoSim

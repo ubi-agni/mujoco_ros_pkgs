@@ -17,15 +17,21 @@
 
 #include <GLFW/glfw3.h>
 
-namespace mujoco {
+#ifdef __APPLE__
+#define GLFW_EXPOSE_NATIVE_NSGL
+#include <GLFW/glfw3native.h>
+#endif
+
+namespace MujocoSim {
 // Dynamic dispatch table for GLFW functions required by Simulate.
 // This allows us to use GLFW without introducing a link-time dependency on the
 // library, which is useful e.g. when using GLFW via Python.
-struct Glfw
+struct Glfw_
 {
 #define mjGLFW_DECLARE_SYMBOL(func) decltype(&::func) func
 	// go/keep-sorted start
 	mjGLFW_DECLARE_SYMBOL(glfwCreateWindow);
+	mjGLFW_DECLARE_SYMBOL(glfwDestroyWindow);
 	mjGLFW_DECLARE_SYMBOL(glfwGetCursorPos);
 	mjGLFW_DECLARE_SYMBOL(glfwGetFramebufferSize);
 	mjGLFW_DECLARE_SYMBOL(glfwGetKey);
@@ -58,10 +64,15 @@ struct Glfw
 	mjGLFW_DECLARE_SYMBOL(glfwWindowHint);
 	mjGLFW_DECLARE_SYMBOL(glfwWindowShouldClose);
 	// go/keep-sorted end
+
+#ifdef __APPLE__
+	mjGLFW_DECLARE_SYMBOL(glfwGetNSGLContext);
+#endif
+
 #undef mjGLFW_DECLARE_SYMBOL
 };
 
-const struct Glfw &Glfw(void *dlhandle = nullptr);
-} // namespace mujoco
+const struct Glfw_ &Glfw(void *dlhandle = nullptr);
+} // namespace MujocoSim
 
 #endif // MUJOCO_SIMULATE_GLFW_DISPATCH_H_

@@ -100,9 +100,9 @@ public:
 	 *
 	 * @param[in] name namespace of the environment.
 	 */
-	MujocoEnv(std::string name) : name(name)
+	MujocoEnv(std::string name) : name_(name)
 	{
-		nh.reset(new ros::NodeHandle(name));
+		this->nh_.reset(new ros::NodeHandle(name));
 		ROS_DEBUG_STREAM_NAMED("mujoco_env", "New env created with namespace: " << name);
 	};
 
@@ -113,19 +113,19 @@ public:
 	void initializeRenderResources(void);
 
 	/// Pointer to mjModel
-	mjModelPtr model;
+	mjModelPtr model_;
 	/// Pointer to mjData
-	mjDataPtr data;
+	mjDataPtr data_;
 	/// Noise to apply to control signal
-	mjtNum *ctrlnoise = nullptr;
+	mjtNum *ctrlnoise_ = nullptr;
 	/// Pointer to ros nodehandle in env namespace
-	ros::NodeHandlePtr nh;
+	ros::NodeHandlePtr nh_;
 	/// Env namespace
-	std::string name;
+	std::string name_;
 	/// struct holding objects needed for rendering
-	rendering::VisualStruct vis;
+	rendering::VisualStruct vis_;
 	/// CameraStream objects for other cameras
-	std::vector<rendering::CameraStreamPtr> cam_streams;
+	std::vector<rendering::CameraStreamPtr> cam_streams_;
 
 	/**
 	 * @brief Calls load functions of all members depeding on mjData.
@@ -151,11 +151,11 @@ public:
 	void notifyGeomChanged(const int geom_id);
 
 protected:
-	XmlRpc::XmlRpcValue rpc_plugin_config;
-	std::vector<MujocoPluginPtr> plugins;
+	XmlRpc::XmlRpcValue rpc_plugin_config_;
+	std::vector<MujocoPluginPtr> plugins_;
 
 private:
-	std::vector<MujocoPluginPtr> cb_ready_plugins;
+	std::vector<MujocoPluginPtr> cb_ready_plugins_;
 };
 
 } // end namespace MujocoSim

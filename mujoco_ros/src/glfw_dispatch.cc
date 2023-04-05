@@ -26,7 +26,7 @@
 #include <cstdlib>
 #include <iostream>
 
-namespace mujoco {
+namespace MujocoSim {
 
 // return dispatch table for glfw functions
 const struct Glfw &Glfw(void *dlhandle)
@@ -124,4 +124,4 @@ const struct Glfw &Glfw(void *dlhandle)
 	}();
 	return glfw;
 }
-} // namespace mujoco
+} // namespace MujocoSim

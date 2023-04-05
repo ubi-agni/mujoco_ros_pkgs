@@ -79,12 +79,12 @@ MujocoEnvPtr MujocoSim::detail::main_env_;
 struct CollisionFunctionDefault
 {
 	CollisionFunctionDefault(int geom_type1, int geom_type2, mjfCollision collision_cb)
-	    : geom_type1(geom_type1), geom_type2(geom_type2), collision_cb(collision_cb)
+	    : geom_type1_(geom_type1), geom_type2_(geom_type2), collision_cb_(collision_cb)
 	{}
 
-	int geom_type1;
-	int geom_type2;
-	mjfCollision collision_cb;
+	int geom_type1_;
+	int geom_type2_;
+	mjfCollision collision_cb_;
 };
 std::vector<CollisionFunctionDefault> defaultCollisionFunctions;
 
@@ -279,7 +279,7 @@ void init(std::string modelfile, std::string admin_hash /* = std::string()*/)
 	settings_.exitrequest.store(1);
 	simthread.join();
 
-	environments::unregisterEnv(main_env_->data.get());
+	environments::unregisterEnv(main_env_->data_.get());
 
 	env_list_.clear();
 	static_transforms_.clear();
@@ -339,16 +339,16 @@ void requestExternalShutdown(const bool &blocking /*= false*/)
 
 void resetSim()
 {
-	if (main_env_->model) {
+	if (main_env_->model_) {
 		// sim_mtx is already locked
 		ROS_DEBUG_NAMED("mujoco", "Sleeping to ensure all (old) ROS messages are sent");
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		ROS_DEBUG_NAMED("mujoco", "Starting reset");
 
-		mj_resetData(main_env_->model.get(), main_env_->data.get());
-		loadInitialJointStates(main_env_->model, main_env_->data);
-		mj_forward(main_env_->model.get(), main_env_->data.get());
-		publishSimTime(main_env_->data->time);
+		mj_resetData(main_env_->model_.get(), main_env_->data_.get());
+		loadInitialJointStates(main_env_->model_, main_env_->data_);
+		mj_forward(main_env_->model_.get(), main_env_->data_.get());
+		publishSimTime(main_env_->data_->time);
 
 		if (!settings_.headless) {
 			mjsr::profilerUpdate(main_env_);
@@ -368,7 +368,7 @@ void eventloop(void)
 	ros::WallDuration fps_cap(mjsr::render_ui_rate_upper_bound_); // Cap to 60 FPS
 	while (ros::ok() && ((!settings_.exitrequest.load() && (settings_.headless || !mjsr::isWindowClosing())))) {
 		{
-			std::lock_guard<std::mutex> lk(sim_mtx);
+			std::lock_guard<std::mutex> lk_sim(sim_mtx);
 			now = ros::WallTime::now();
 
 			if (settings_.loadrequest.load() == 1) {
@@ -379,7 +379,7 @@ void eventloop(void)
 				ROS_DEBUG_NAMED("mujoco", "Resetting collision functions to default");
 				// Reset collision functions
 				for (const auto func : defaultCollisionFunctions) {
-					mjCOLLISIONFUNC[func.geom_type1][func.geom_type2] = func.collision_cb;
+					mjCOLLISIONFUNC[func.geom_type1_][func.geom_type2_] = func.collision_cb_;
 				}
 
 				main_env_->prepareReload();
@@ -470,8 +470,8 @@ void simulate(void)
 	mjDataPtr data;
 
 	while (!settings_.exitrequest.load() && num_steps != 0) {
-		model = main_env_->model;
-		data  = main_env_->data;
+		model = main_env_->model_;
+		data  = main_env_->data_;
 
 		if (!settings_.run.load() && settings_.busywait) {
 			std::this_thread::yield();
@@ -487,7 +487,7 @@ void simulate(void)
 				settings_.visualInitrequest.store(0);
 			}
 
-			std::lock_guard<std::mutex> lk(sim_mtx);
+			std::lock_guard<std::mutex> lk_sim(sim_mtx);
 			if (settings_.run.load()) {
 				// Wall time at the start of this iteration
 				ros::WallTime startCPU = ros::WallTime::now();
@@ -504,9 +504,9 @@ void simulate(void)
 
 					for (int i = 0; i < model->nu; i++) {
 						// Update noise
-						main_env_->ctrlnoise[i] = rate * main_env_->ctrlnoise[i] + scale * mju_standardNormal(nullptr);
+						main_env_->ctrlnoise_[i] = rate * main_env_->ctrlnoise_[i] + scale * mju_standardNormal(nullptr);
 						// Apply noise
-						main_env_->data->ctrl[i] = main_env_->ctrlnoise[i];
+						main_env_->data_->ctrl[i] = main_env_->ctrlnoise_[i];
 					}
 				}
 
@@ -612,19 +612,20 @@ void loadModel(void)
 	}
 
 	// Load and compile
-	char error[500] = "";
-	mjModel *mnew   = 0;
+	char error_msg[500] = "";
+	mjModel *mnew       = 0;
 	if (mju::strlen_arr(filename_) > 4 && !std::strncmp(filename_ + mju::strlen_arr(filename_) - 4, ".mjb",
 	                                                    mju::sizeof_arr(filename_) - mju::strlen_arr(filename_) + 4)) {
 		mnew = mj_loadModel(filename_, nullptr);
 		if (!mnew) {
-			mju::strcpy_arr(error, "could not load binary model");
+			mju::strcpy_arr(error_msg, "could not load binary model");
 		}
 	} else {
-		mnew = mj_loadXML(filename_, &vfs_, error, 500);
+		mnew = mj_loadXML(filename_, &vfs_, error_msg, 500);
 	}
 	if (!mnew) {
-		std::printf("%s\n", error);
+		ROS_ERROR_NAMED("mujoco", "Model loading failed with error: %s", error_msg);
+		std::printf("%s\n", error_msg);
 		settings_.loadrequest.store(0);
 		settings_.model_valid.store(false);
 		return;
@@ -632,10 +633,10 @@ void loadModel(void)
 	settings_.model_valid.store(true);
 
 	// Compiler warning: print and pause
-	if (error[0]) {
+	if (error_msg[0]) {
 		// mj_forward() will print the warning message
-		ROS_WARN_NAMED("mujoco", "Model compiled, but simulation warning: \n %s\n\n", error);
-		std::printf("Model compiled, but simulation warning: \n %s\n\n", error);
+		ROS_WARN_NAMED("mujoco", "Model compiled, but simulation warning: \n %s\n\n", error_msg);
+		std::printf("Model compiled, but simulation warning: \n %s\n\n", error_msg);
 
 		// Only pause if not in headless mode
 		if (!settings_.headless) {
@@ -643,13 +644,13 @@ void loadModel(void)
 		}
 	}
 
-	ROS_DEBUG_STREAM_NAMED("mujoco", "Setting up env '" << main_env_->name << "' ...");
+	ROS_DEBUG_STREAM_NAMED("mujoco", "Setting up env '" << main_env_->name_ << "' ...");
 	// Delete old model, assign new
-	main_env_->model.reset(mnew, [](mjModel *m) { mj_deleteModel(m); });
-	environments::unregisterEnv(main_env_->data.get());
+	main_env_->model_.reset(mnew, [](mjModel *m) { mj_deleteModel(m); });
+	environments::unregisterEnv(main_env_->data_.get());
 	environments::assignData(mj_makeData(mnew), main_env_);
 	setupEnv(main_env_);
-	publishSimTime(main_env_->data->time);
+	publishSimTime(main_env_->data_->time);
 	// Request that off-screen rendering resources are initialized in simulate thread
 	settings_.visualInitrequest.store(1);
 
@@ -663,7 +664,7 @@ void loadModel(void)
 	int numclicks   = sizeof(percentRealTime) / sizeof(percentRealTime[0]);
 	float min_error = 1e6;
 	float desired;
-	nh_->param<float>("realtime", desired, main_env_->model->vis.global.realtime);
+	nh_->param<float>("realtime", desired, main_env_->model_->vis.global.realtime);
 
 	if (desired == -1) {
 		settings_.rt_index = 0;
@@ -688,15 +689,15 @@ void loadModel(void)
 
 void setupEnv(MujocoEnvPtr env)
 {
-	loadInitialJointStates(env->model, env->data);
+	loadInitialJointStates(env->model_, env->data_);
 
-	mj_forward(env->model.get(), env->data.get());
+	mj_forward(env->model_.get(), env->data_.get());
 
 	ROS_DEBUG_NAMED("mujoco", "resetting noise ...");
 	// Allocate ctrlnoise
-	free(env->ctrlnoise);
-	env->ctrlnoise = (mjtNum *)malloc(sizeof(mjtNum) * env->model->nu);
-	mju_zero(env->ctrlnoise, env->model->nu);
+	free(env->ctrlnoise_);
+	env->ctrlnoise_ = (mjtNum *)malloc(sizeof(mjtNum) * env->model_->nu);
+	mju_zero(env->ctrlnoise_, env->model_->nu);
 
 	env->load();
 }
@@ -1081,11 +1082,11 @@ bool setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req, mujoco_ros_msgs
 		return true;
 	}
 
-	int body_id = mj_name2id(env->model.get(), mjOBJ_BODY, req.state.name.c_str());
+	int body_id = mj_name2id(env->model_.get(), mjOBJ_BODY, req.state.name.c_str());
 	if (body_id == -1) {
 		ROS_WARN_STREAM_NAMED("mujoco", "Could not find model (mujoco body) with name " << req.state.name
 		                                                                                << ". Trying to find geom...");
-		int geom_id = mj_name2id(env->model.get(), mjOBJ_GEOM, req.state.name.c_str());
+		int geom_id = mj_name2id(env->model_.get(), mjOBJ_GEOM, req.state.name.c_str());
 		if (geom_id == -1) {
 			std::string error_msg("Could not find model (not body nor geom) with name " + req.state.name);
 			ROS_WARN_STREAM_NAMED("mujoco", error_msg);
@@ -1093,32 +1094,32 @@ bool setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req, mujoco_ros_msgs
 			resp.success        = false;
 			return true;
 		}
-		body_id = env->model->geom_bodyid[geom_id];
-		ROS_WARN_STREAM_NAMED("mujoco", "found body named '" << mj_id2name(env->model.get(), mjOBJ_BODY, body_id)
+		body_id = env->model_->geom_bodyid[geom_id];
+		ROS_WARN_STREAM_NAMED("mujoco", "found body named '" << mj_id2name(env->model_.get(), mjOBJ_BODY, body_id)
 		                                                     << "' as parent of geom '" << req.state.name << "'");
 	}
 
 	if (req.set_mass) {
-		std::lock_guard<std::mutex> lk(sim_mtx);
-		ROS_DEBUG_STREAM_NAMED("mujoco", "\tReplacing mass '" << env->model->body_mass[body_id] << "' with new mass '"
+		std::lock_guard<std::mutex> lk_sim(sim_mtx);
+		ROS_DEBUG_STREAM_NAMED("mujoco", "\tReplacing mass '" << env->model_->body_mass[body_id] << "' with new mass '"
 		                                                      << req.state.mass << "'");
-		env->model->body_mass[body_id] = req.state.mass;
+		env->model_->body_mass[body_id] = req.state.mass;
 
 		std::lock_guard<std::mutex> lk_render(render_mtx); // Prevent rendering the reset to q0
-		mjtNum *qpos_tmp = mj_stackAlloc(env->data.get(), env->model->nq);
-		mju_copy(qpos_tmp, env->data->qpos, env->model->nq);
+		mjtNum *qpos_tmp = mj_stackAlloc(env->data_.get(), env->model_->nq);
+		mju_copy(qpos_tmp, env->data_->qpos, env->model_->nq);
 		ROS_DEBUG_NAMED("mujoco", "Copied current qpos state");
-		mj_setConst(env->model.get(), env->data.get());
+		mj_setConst(env->model_.get(), env->data_.get());
 		ROS_DEBUG_NAMED("mujoco", "Reset constants because of mass change");
-		mju_copy(env->data->qpos, qpos_tmp, env->model->nq);
+		mju_copy(env->data_->qpos, qpos_tmp, env->model_->nq);
 		ROS_DEBUG_NAMED("mujoco", "Copied qpos state back to data");
 	}
 
-	int jnt_adr     = env->model->body_jntadr[body_id];
-	int jnt_type    = env->model->jnt_type[jnt_adr];
-	int num_jnt     = env->model->body_jntnum[body_id];
-	int jnt_qposadr = env->model->jnt_qposadr[jnt_adr];
-	int jnt_dofadr  = env->model->jnt_dofadr[jnt_adr];
+	int jnt_adr     = env->model_->body_jntadr[body_id];
+	int jnt_type    = env->model_->jnt_type[jnt_adr];
+	int num_jnt     = env->model_->body_jntnum[body_id];
+	int jnt_qposadr = env->model_->jnt_qposadr[jnt_adr];
+	int jnt_dofadr  = env->model_->jnt_dofadr[jnt_adr];
 
 	geometry_msgs::PoseStamped target_pose;
 	geometry_msgs::Twist target_twist;
@@ -1137,14 +1138,14 @@ bool setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req, mujoco_ros_msgs
 			resp.success = false;
 		} else if (num_jnt > 1) {
 			std::string error_msg("Body " + req.state.name + " has more than one joint ('" +
-			                      std::to_string(env->model->body_jntnum[body_id]) +
+			                      std::to_string(env->model_->body_jntnum[body_id]) +
 			                      "'), pose/twist changes to bodies with more than one joint are not supported!");
 			ROS_WARN_STREAM_NAMED("mujoco", error_msg);
 			full_error_msg += error_msg + '\n';
 			resp.success = false;
 		} else {
 			// Lock mutex to prevent updating the body while a step is performed
-			std::lock_guard<std::mutex> lk(sim_mtx);
+			std::lock_guard<std::mutex> lk_sim(sim_mtx);
 			geometry_msgs::PoseStamped init_pose = req.state.pose;
 
 			// Set freejoint position and quaternion
@@ -1175,13 +1176,13 @@ bool setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req, mujoco_ros_msgs
 					                                                         << quat[0] << ", " << quat[1] << ", " << quat[2]
 					                                                         << ", " << quat[3] << " (xyz wxyz)");
 
-					env->data->qpos[jnt_qposadr]     = target_pose.pose.position.x;
-					env->data->qpos[jnt_qposadr + 1] = target_pose.pose.position.y;
-					env->data->qpos[jnt_qposadr + 2] = target_pose.pose.position.z;
-					env->data->qpos[jnt_qposadr + 3] = quat[0];
-					env->data->qpos[jnt_qposadr + 4] = quat[1];
-					env->data->qpos[jnt_qposadr + 5] = quat[2];
-					env->data->qpos[jnt_qposadr + 6] = quat[3];
+					env->data_->qpos[jnt_qposadr]     = target_pose.pose.position.x;
+					env->data_->qpos[jnt_qposadr + 1] = target_pose.pose.position.y;
+					env->data_->qpos[jnt_qposadr + 2] = target_pose.pose.position.z;
+					env->data_->qpos[jnt_qposadr + 3] = quat[0];
+					env->data_->qpos[jnt_qposadr + 4] = quat[1];
+					env->data_->qpos[jnt_qposadr + 5] = quat[2];
+					env->data_->qpos[jnt_qposadr + 6] = quat[3];
 				}
 			}
 
@@ -1190,8 +1191,8 @@ bool setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req, mujoco_ros_msgs
 				ROS_WARN_COND_NAMED(req.set_pose, "mujoco",
 				                    "set_pose and reset_qpos were both passed. reset_qpos will overwrite the custom pose!");
 				ROS_DEBUG_NAMED("mujoco", "Resetting body qpos");
-				mju_copy(env->data->qpos + env->model->jnt_qposadr[jnt_adr],
-				         env->model->qpos0 + env->model->jnt_qposadr[jnt_adr], num_dofs);
+				mju_copy(env->data_->qpos + env->model_->jnt_qposadr[jnt_adr],
+				         env->model_->qpos0 + env->model_->jnt_qposadr[jnt_adr], num_dofs);
 				if (!req.set_twist) {
 					// Reset twist if no desired twist is given (default twist is 0 0 0 0 0 0)
 					req.set_twist   = true;
@@ -1215,12 +1216,12 @@ bool setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req, mujoco_ros_msgs
 					                           << ", " << req.state.twist.twist.linear.z << ", "
 					                           << req.state.twist.twist.angular.x << ", " << req.state.twist.twist.angular.y
 					                           << ", " << req.state.twist.twist.angular.z << " (xyz rpy)");
-					env->data->qvel[jnt_dofadr]     = req.state.twist.twist.linear.x;
-					env->data->qvel[jnt_dofadr + 1] = req.state.twist.twist.linear.y;
-					env->data->qvel[jnt_dofadr + 2] = req.state.twist.twist.linear.z;
-					env->data->qvel[jnt_dofadr + 3] = req.state.twist.twist.angular.x;
-					env->data->qvel[jnt_dofadr + 4] = req.state.twist.twist.angular.y;
-					env->data->qvel[jnt_dofadr + 5] = req.state.twist.twist.angular.z;
+					env->data_->qvel[jnt_dofadr]     = req.state.twist.twist.linear.x;
+					env->data_->qvel[jnt_dofadr + 1] = req.state.twist.twist.linear.y;
+					env->data_->qvel[jnt_dofadr + 2] = req.state.twist.twist.linear.z;
+					env->data_->qvel[jnt_dofadr + 3] = req.state.twist.twist.angular.x;
+					env->data_->qvel[jnt_dofadr + 4] = req.state.twist.twist.angular.y;
+					env->data_->qvel[jnt_dofadr + 5] = req.state.twist.twist.angular.z;
 				}
 			}
 		}
@@ -1257,11 +1258,11 @@ bool getBodyStateCB(mujoco_ros_msgs::GetBodyState::Request &req, mujoco_ros_msgs
 		return true;
 	}
 
-	int body_id = mj_name2id(env->model.get(), mjOBJ_BODY, req.name.c_str());
+	int body_id = mj_name2id(env->model_.get(), mjOBJ_BODY, req.name.c_str());
 	if (body_id == -1) {
 		ROS_WARN_STREAM_NAMED("mujoco",
 		                      "Could not find model (mujoco body) with name " << req.name << ". Trying to find geom...");
-		int geom_id = mj_name2id(env->model.get(), mjOBJ_GEOM, req.name.c_str());
+		int geom_id = mj_name2id(env->model_.get(), mjOBJ_GEOM, req.name.c_str());
 		if (geom_id == -1) {
 			std::string error_msg("Could not find model (not body nor geom) with name " + req.name);
 			ROS_WARN_STREAM_NAMED("mujoco", error_msg);
@@ -1269,63 +1270,63 @@ bool getBodyStateCB(mujoco_ros_msgs::GetBodyState::Request &req, mujoco_ros_msgs
 			resp.success        = false;
 			return true;
 		}
-		body_id = env->model->geom_bodyid[geom_id];
-		ROS_WARN_STREAM_NAMED("mujoco", "found body named '" << mj_id2name(env->model.get(), mjOBJ_BODY, body_id)
+		body_id = env->model_->geom_bodyid[geom_id];
+		ROS_WARN_STREAM_NAMED("mujoco", "found body named '" << mj_id2name(env->model_.get(), mjOBJ_BODY, body_id)
 		                                                     << "' as parent of geom '" << req.name << "'");
 	}
 
-	resp.state.name = mj_id2name(env->model.get(), mjOBJ_BODY, body_id);
-	resp.state.mass = env->model->body_mass[body_id];
+	resp.state.name = mj_id2name(env->model_.get(), mjOBJ_BODY, body_id);
+	resp.state.mass = env->model_->body_mass[body_id];
 
-	int jnt_adr     = env->model->body_jntadr[body_id];
-	int jnt_type    = env->model->jnt_type[jnt_adr];
-	int num_jnt     = env->model->body_jntnum[body_id];
-	int jnt_qposadr = env->model->jnt_qposadr[jnt_adr];
-	int jnt_dofadr  = env->model->jnt_dofadr[jnt_adr];
+	int jnt_adr     = env->model_->body_jntadr[body_id];
+	int jnt_type    = env->model_->jnt_type[jnt_adr];
+	int num_jnt     = env->model_->body_jntnum[body_id];
+	int jnt_qposadr = env->model_->jnt_qposadr[jnt_adr];
+	int jnt_dofadr  = env->model_->jnt_dofadr[jnt_adr];
 
 	geometry_msgs::PoseStamped target_pose;
 	geometry_msgs::Twist target_twist;
 
 	// Stop sim to get data out of the same point in time
-	std::lock_guard<std::mutex> lk(sim_mtx);
+	std::lock_guard<std::mutex> lk_sim(sim_mtx);
 	if (jnt_adr == -1 || jnt_type != mjJNT_FREE || num_jnt > 1) {
 		resp.state.pose.header             = std_msgs::Header();
 		resp.state.pose.header.frame_id    = "world";
-		resp.state.pose.pose.position.x    = env->data->xpos[body_id * 3];
-		resp.state.pose.pose.position.y    = env->data->xpos[body_id * 3 + 1];
-		resp.state.pose.pose.position.z    = env->data->xpos[body_id * 3 + 2];
-		resp.state.pose.pose.orientation.w = env->data->xquat[body_id * 3];
-		resp.state.pose.pose.orientation.x = env->data->xquat[body_id * 3 + 1];
-		resp.state.pose.pose.orientation.y = env->data->xquat[body_id * 3 + 2];
-		resp.state.pose.pose.orientation.z = env->data->xquat[body_id * 3 + 3];
+		resp.state.pose.pose.position.x    = env->data_->xpos[body_id * 3];
+		resp.state.pose.pose.position.y    = env->data_->xpos[body_id * 3 + 1];
+		resp.state.pose.pose.position.z    = env->data_->xpos[body_id * 3 + 2];
+		resp.state.pose.pose.orientation.w = env->data_->xquat[body_id * 3];
+		resp.state.pose.pose.orientation.x = env->data_->xquat[body_id * 3 + 1];
+		resp.state.pose.pose.orientation.y = env->data_->xquat[body_id * 3 + 2];
+		resp.state.pose.pose.orientation.z = env->data_->xquat[body_id * 3 + 3];
 
 		resp.state.twist.header          = std_msgs::Header();
 		resp.state.twist.header.frame_id = "world";
-		resp.state.twist.twist.linear.x  = env->data->cvel[body_id * 6];
-		resp.state.twist.twist.linear.y  = env->data->cvel[body_id * 6 + 1];
-		resp.state.twist.twist.linear.z  = env->data->cvel[body_id * 6 + 2];
-		resp.state.twist.twist.angular.x = env->data->cvel[body_id * 6 + 3];
-		resp.state.twist.twist.angular.y = env->data->cvel[body_id * 6 + 4];
-		resp.state.twist.twist.angular.z = env->data->cvel[body_id * 6 + 5];
+		resp.state.twist.twist.linear.x  = env->data_->cvel[body_id * 6];
+		resp.state.twist.twist.linear.y  = env->data_->cvel[body_id * 6 + 1];
+		resp.state.twist.twist.linear.z  = env->data_->cvel[body_id * 6 + 2];
+		resp.state.twist.twist.angular.x = env->data_->cvel[body_id * 6 + 3];
+		resp.state.twist.twist.angular.y = env->data_->cvel[body_id * 6 + 4];
+		resp.state.twist.twist.angular.z = env->data_->cvel[body_id * 6 + 5];
 	} else {
 		resp.state.pose.header             = std_msgs::Header();
 		resp.state.pose.header.frame_id    = "world";
-		resp.state.pose.pose.position.x    = env->data->qpos[jnt_qposadr];
-		resp.state.pose.pose.position.y    = env->data->qpos[jnt_qposadr + 1];
-		resp.state.pose.pose.position.z    = env->data->qpos[jnt_qposadr + 2];
-		resp.state.pose.pose.orientation.w = env->data->qpos[jnt_qposadr + 3];
-		resp.state.pose.pose.orientation.x = env->data->qpos[jnt_qposadr + 4];
-		resp.state.pose.pose.orientation.y = env->data->qpos[jnt_qposadr + 5];
-		resp.state.pose.pose.orientation.z = env->data->qpos[jnt_qposadr + 6];
+		resp.state.pose.pose.position.x    = env->data_->qpos[jnt_qposadr];
+		resp.state.pose.pose.position.y    = env->data_->qpos[jnt_qposadr + 1];
+		resp.state.pose.pose.position.z    = env->data_->qpos[jnt_qposadr + 2];
+		resp.state.pose.pose.orientation.w = env->data_->qpos[jnt_qposadr + 3];
+		resp.state.pose.pose.orientation.x = env->data_->qpos[jnt_qposadr + 4];
+		resp.state.pose.pose.orientation.y = env->data_->qpos[jnt_qposadr + 5];
+		resp.state.pose.pose.orientation.z = env->data_->qpos[jnt_qposadr + 6];
 
 		resp.state.twist.header          = std_msgs::Header();
 		resp.state.twist.header.frame_id = "world";
-		resp.state.twist.twist.linear.x  = env->data->qvel[jnt_dofadr];
-		resp.state.twist.twist.linear.y  = env->data->qvel[jnt_dofadr + 1];
-		resp.state.twist.twist.linear.z  = env->data->qvel[jnt_dofadr + 2];
-		resp.state.twist.twist.angular.x = env->data->qvel[jnt_dofadr + 3];
-		resp.state.twist.twist.angular.y = env->data->qvel[jnt_dofadr + 4];
-		resp.state.twist.twist.angular.z = env->data->qvel[jnt_dofadr + 5];
+		resp.state.twist.twist.linear.x  = env->data_->qvel[jnt_dofadr];
+		resp.state.twist.twist.linear.y  = env->data_->qvel[jnt_dofadr + 1];
+		resp.state.twist.twist.linear.z  = env->data_->qvel[jnt_dofadr + 2];
+		resp.state.twist.twist.angular.x = env->data_->qvel[jnt_dofadr + 3];
+		resp.state.twist.twist.angular.y = env->data_->qvel[jnt_dofadr + 4];
+		resp.state.twist.twist.angular.z = env->data_->qvel[jnt_dofadr + 5];
 	}
 
 	return true;
@@ -1358,7 +1359,7 @@ bool setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request &req,
 		return true;
 	}
 
-	int geom_id = mj_name2id(env->model.get(), mjOBJ_GEOM, req.properties.name.c_str());
+	int geom_id = mj_name2id(env->model_.get(), mjOBJ_GEOM, req.properties.name.c_str());
 	if (geom_id == -1) {
 		std::string error_msg("Could not find model (mujoco geom) with name " + req.properties.name);
 		ROS_WARN_STREAM_NAMED("mujoco", error_msg);
@@ -1367,57 +1368,57 @@ bool setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request &req,
 		return true;
 	}
 
-	int body_id = env->model->geom_bodyid[geom_id];
+	int body_id = env->model_->geom_bodyid[geom_id];
 
 	// Lock mutex to prevent updating the body while a step is performed
-	std::lock_guard<std::mutex> lk(sim_mtx);
+	std::lock_guard<std::mutex> lk_sim(sim_mtx);
 
 	ROS_DEBUG_STREAM_NAMED("mujoco", "Changing properties of geom '" << req.properties.name.c_str() << "' ...");
 	if (req.set_mass) {
-		ROS_DEBUG_STREAM_NAMED("mujoco", "\tReplacing mass '" << env->model->body_mass[body_id] << "' with new mass '"
+		ROS_DEBUG_STREAM_NAMED("mujoco", "\tReplacing mass '" << env->model_->body_mass[body_id] << "' with new mass '"
 		                                                      << req.properties.body_mass << "'");
-		env->model->body_mass[body_id] = req.properties.body_mass;
+		env->model_->body_mass[body_id] = req.properties.body_mass;
 	}
 	if (req.set_friction) {
-		ROS_DEBUG_STREAM_NAMED("mujoco", "\tReplacing friction '" << env->model->geom_friction[geom_id * 3] << ", "
-		                                                          << env->model->geom_friction[geom_id * 3 + 1] << ", "
-		                                                          << env->model->geom_friction[geom_id * 3 + 2]
+		ROS_DEBUG_STREAM_NAMED("mujoco", "\tReplacing friction '" << env->model_->geom_friction[geom_id * 3] << ", "
+		                                                          << env->model_->geom_friction[geom_id * 3 + 1] << ", "
+		                                                          << env->model_->geom_friction[geom_id * 3 + 2]
 		                                                          << "' with new mass '" << req.properties.friction_slide
 		                                                          << ", " << req.properties.friction_spin << ", "
 		                                                          << req.properties.friction_roll << "'");
-		env->model->geom_friction[geom_id * 3]     = req.properties.friction_slide;
-		env->model->geom_friction[geom_id * 3 + 1] = req.properties.friction_spin;
-		env->model->geom_friction[geom_id * 3 + 2] = req.properties.friction_roll;
+		env->model_->geom_friction[geom_id * 3]     = req.properties.friction_slide;
+		env->model_->geom_friction[geom_id * 3 + 1] = req.properties.friction_spin;
+		env->model_->geom_friction[geom_id * 3 + 2] = req.properties.friction_roll;
 	}
 	if (req.set_type) {
-		ROS_DEBUG_STREAM_NAMED("mujoco", "\tReplacing type '" << env->model->geom_type[geom_id] << "' with new type '"
+		ROS_DEBUG_STREAM_NAMED("mujoco", "\tReplacing type '" << env->model_->geom_type[geom_id] << "' with new type '"
 		                                                      << req.properties.type << "'");
-		env->model->geom_type[geom_id] = req.properties.type.value;
+		env->model_->geom_type[geom_id] = req.properties.type.value;
 	}
 
 	if (req.set_size) {
-		ROS_DEBUG_STREAM_NAMED("mujoco", "\tReplacing size '" << env->model->geom_size[geom_id * 3] << ", "
-		                                                      << env->model->geom_size[geom_id * 3 + 1] << ", "
-		                                                      << env->model->geom_size[geom_id * 3 + 2]
+		ROS_DEBUG_STREAM_NAMED("mujoco", "\tReplacing size '" << env->model_->geom_size[geom_id * 3] << ", "
+		                                                      << env->model_->geom_size[geom_id * 3 + 1] << ", "
+		                                                      << env->model_->geom_size[geom_id * 3 + 2]
 		                                                      << "' with new size '" << req.properties.size_0 << ", "
 		                                                      << req.properties.size_1 << ", " << req.properties.size_2
 		                                                      << "'");
-		env->model->geom_size[geom_id * 3]     = req.properties.size_0;
-		env->model->geom_size[geom_id * 3 + 1] = req.properties.size_1;
-		env->model->geom_size[geom_id * 3 + 2] = req.properties.size_2;
+		env->model_->geom_size[geom_id * 3]     = req.properties.size_0;
+		env->model_->geom_size[geom_id * 3 + 1] = req.properties.size_1;
+		env->model_->geom_size[geom_id * 3 + 2] = req.properties.size_2;
 
-		mj_forward(env->model.get(), env->data.get());
+		mj_forward(env->model_.get(), env->data_.get());
 	}
 
 	if (req.set_type || req.set_mass) {
-		std::lock_guard<std::mutex> lk(render_mtx); // Prevent rendering the reset to q0
+		std::lock_guard<std::mutex> lk_render(render_mtx); // Prevent rendering the reset to q0
 
-		mjtNum *qpos_tmp = mj_stackAlloc(env->data.get(), env->model->nq);
-		mju_copy(qpos_tmp, env->data->qpos, env->model->nq);
+		mjtNum *qpos_tmp = mj_stackAlloc(env->data_.get(), env->model_->nq);
+		mju_copy(qpos_tmp, env->data_->qpos, env->model_->nq);
 		ROS_DEBUG_NAMED("mujoco", "Copied current qpos state");
-		mj_setConst(env->model.get(), env->data.get());
+		mj_setConst(env->model_.get(), env->data_.get());
 		ROS_DEBUG_NAMED("mujoco", "Reset constants");
-		mju_copy(env->data->qpos, qpos_tmp, env->model->nq);
+		mju_copy(env->data_->qpos, qpos_tmp, env->model_->nq);
 		ROS_DEBUG_NAMED("mujoco", "Copied qpos state back to data");
 	}
 
@@ -1454,7 +1455,7 @@ bool getGeomPropertiesCB(mujoco_ros_msgs::GetGeomProperties::Request &req,
 		return true;
 	}
 
-	int geom_id = mj_name2id(env->model.get(), mjOBJ_GEOM, req.geom_name.c_str());
+	int geom_id = mj_name2id(env->model_.get(), mjOBJ_GEOM, req.geom_name.c_str());
 	if (geom_id == -1) {
 		std::string error_msg("Could not find model (mujoco geom) with name " + req.geom_name);
 		ROS_WARN_STREAM_NAMED("mujoco", error_msg);
@@ -1463,21 +1464,21 @@ bool getGeomPropertiesCB(mujoco_ros_msgs::GetGeomProperties::Request &req,
 		return true;
 	}
 
-	int body_id = env->model->geom_bodyid[geom_id];
+	int body_id = env->model_->geom_bodyid[geom_id];
 
 	// Lock mutex to get data within one step
-	std::lock_guard<std::mutex> lk(sim_mtx);
+	std::lock_guard<std::mutex> lk_sim(sim_mtx);
 	resp.properties.name           = req.geom_name;
-	resp.properties.body_mass      = env->model->body_mass[body_id];
-	resp.properties.friction_slide = env->model->geom_friction[geom_id * 3];
-	resp.properties.friction_spin  = env->model->geom_friction[geom_id * 3 + 1];
-	resp.properties.friction_roll  = env->model->geom_friction[geom_id * 3 + 2];
+	resp.properties.body_mass      = env->model_->body_mass[body_id];
+	resp.properties.friction_slide = env->model_->geom_friction[geom_id * 3];
+	resp.properties.friction_spin  = env->model_->geom_friction[geom_id * 3 + 1];
+	resp.properties.friction_roll  = env->model_->geom_friction[geom_id * 3 + 2];
 
-	resp.properties.type.value = env->model->geom_type[geom_id];
+	resp.properties.type.value = env->model_->geom_type[geom_id];
 
-	resp.properties.size_0 = env->model->geom_size[geom_id * 3];
-	resp.properties.size_1 = env->model->geom_size[geom_id * 3 + 1];
-	resp.properties.size_2 = env->model->geom_size[geom_id * 3 + 2];
+	resp.properties.size_0 = env->model_->geom_size[geom_id * 3];
+	resp.properties.size_1 = env->model_->geom_size[geom_id * 3 + 1];
+	resp.properties.size_2 = env->model_->geom_size[geom_id * 3 + 2];
 
 	resp.success = true;
 	return true;
@@ -1510,9 +1511,9 @@ bool setGravityCB(mujoco_ros_msgs::SetGravity::Request &req, mujoco_ros_msgs::Se
 	}
 
 	// Lock mutex to get data within one step
-	std::lock_guard<std::mutex> lk(sim_mtx);
+	std::lock_guard<std::mutex> lk_sim(sim_mtx);
 	for (int i = 0; i < 3; ++i) {
-		env->model->opt.gravity[i] = req.gravity[i];
+		env->model_->opt.gravity[i] = req.gravity[i];
 	}
 	resp.success = true;
 	return true;
@@ -1545,9 +1546,9 @@ bool getGravityCB(mujoco_ros_msgs::GetGravity::Request &req, mujoco_ros_msgs::Ge
 	}
 
 	// Lock mutex to get data within one step
-	std::lock_guard<std::mutex> lk(sim_mtx);
+	std::lock_guard<std::mutex> lk_sim(sim_mtx);
 	for (int i = 0; i < 3; ++i) {
-		resp.gravity[i] = env->model->opt.gravity[i];
+		resp.gravity[i] = env->model_->opt.gravity[i];
 	}
 	resp.success = true;
 	return true;

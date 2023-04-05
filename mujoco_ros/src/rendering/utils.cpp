@@ -81,7 +81,7 @@ void render(GLFWwindow *window)
 	}
 
 	// no model
-	if (!main_env_->model) {
+	if (!main_env_->model_) {
 		// blank screen
 		mjr_rectangle(rect, 0.2f, 0.3f, 0.4f, 1);
 
@@ -91,7 +91,7 @@ void render(GLFWwindow *window)
 
 		//// We don't want this. A model should be loaded over services or during start
 		// else
-		// mjr_overlay(mjFONT_NORMAL, mjGRID_TOPLEFT, rect, "Drag-and-drop model file here", 0, &(env->vis.con));
+		// mjr_overlay(mjFONT_NORMAL, mjGRID_TOPLEFT, rect, "Drag-and-drop model file here", 0, &(env->vis_.con));
 
 		// render uis
 		if (settings_.ui0)
@@ -102,7 +102,7 @@ void render(GLFWwindow *window)
 		// finalize
 		glfwSwapBuffers(window);
 	} else {
-		renderCallback(main_env_->data.get(), &free_scene_);
+		renderCallback(main_env_->data_.get(), &free_scene_);
 	}
 	// render scene
 	mjr_render(rect, &free_scene_, &free_context_);
@@ -251,24 +251,24 @@ bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const i
 	}
 
 	// Resize according to camera resolution
-	env->vis.con.offWidth  = width;
-	env->vis.con.offHeight = height;
-	mjrRect viewport       = mjr_maxViewport(&(env->vis.con));
+	env->vis_.con.offWidth  = width;
+	env->vis_.con.offHeight = height;
+	mjrRect viewport        = mjr_maxViewport(&(env->vis_.con));
 
 	// Update scene
-	mjv_updateScene(env->model.get(), env->data.get(), &(env->vis.vopt), nullptr, &(env->vis.cam), mjCAT_ALL,
-	                &(env->vis.scn));
+	mjv_updateScene(env->model_.get(), env->data_.get(), &(env->vis_.vopt), nullptr, &(env->vis_.cam), mjCAT_ALL,
+	                &(env->vis_.scn));
 	// render to buffer
-	mjr_render(viewport, &env->vis.scn, &env->vis.con);
+	mjr_render(viewport, &env->vis_.scn, &env->vis_.con);
 	// read buffers
 	if (rgb && depth) {
-		mjr_readPixels(env->vis.rgb.get(), env->vis.depth.get(), viewport, &env->vis.con);
+		mjr_readPixels(env->vis_.rgb.get(), env->vis_.depth.get(), viewport, &env->vis_.con);
 	} else if (rgb) {
-		mjr_readPixels(env->vis.rgb.get(), nullptr, viewport, &env->vis.con);
+		mjr_readPixels(env->vis_.rgb.get(), nullptr, viewport, &env->vis_.con);
 	} else if (depth) {
-		mjr_readPixels(nullptr, env->vis.depth.get(), viewport, &env->vis.con);
+		mjr_readPixels(nullptr, env->vis_.depth.get(), viewport, &env->vis_.con);
 	}
-	glfwSwapBuffers(env->vis.window);
+	glfwSwapBuffers(env->vis_.window);
 
 	if (rgb) {
 		sensor_msgs::ImagePtr rgb_im = boost::make_shared<sensor_msgs::Image>();
@@ -281,7 +281,7 @@ bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const i
 		size_t size                  = rgb_im->step * viewport.height;
 		rgb_im->data.resize(size);
 
-		memcpy((char *)(&rgb_im->data[0]), env->vis.rgb.get(), size);
+		memcpy((char *)(&rgb_im->data[0]), env->vis_.rgb.get(), size);
 
 		for (uint r = 0; r < rgb_im->height / 2; ++r) {
 			unsigned char *top_row    = &rgb_im->data[3 * rgb_im->width * r];
@@ -307,14 +307,14 @@ bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const i
 		float *dest_float   = (float *)(&depth_im->data[0]);
 		uint64_t index      = 0;
 
-		float e = env->model->stat.extent;
-		float f = e * env->model->vis.map.zfar;
-		float n = e * env->model->vis.map.znear;
+		float e = env->model_->stat.extent;
+		float f = e * env->model_->vis.map.zfar;
+		float n = e * env->model_->vis.map.znear;
 
 		for (int j = depth_im->height - 1; j >= 0; --j) {
 			for (uint32_t i = 0; i < depth_im->width; i++) {
-				float depth                         = env->vis.depth[index++];
-				dest_float[i + j * depth_im->width] = -f * n / (depth * (f - n) - f);
+				float depth_val                     = env->vis_.depth[index++];
+				dest_float[i + j * depth_im->width] = -f * n / (depth_val * (f - n) - f);
 			}
 		}
 
@@ -370,76 +370,76 @@ void initVisual()
 
 void offScreenRenderEnv(MujocoEnvPtr env)
 {
-	if (!env->vis.window || !settings_.render_offscreen) {
+	if (!env->vis_.window || !settings_.render_offscreen) {
 		return;
 	}
 
-	glfwMakeContextCurrent(env->vis.window);
-	mjr_setBuffer(mjFB_OFFSCREEN, &env->vis.con);
+	glfwMakeContextCurrent(env->vis_.window);
+	mjr_setBuffer(mjFB_OFFSCREEN, &env->vis_.con);
 
-	int type_backup        = env->vis.cam.type;
-	int cam_id_backup      = env->vis.cam.fixedcamid;
-	mjtByte segment_backup = env->vis.scn.flags[mjRND_SEGMENT];
-	mjtByte segid_backup   = env->vis.scn.flags[mjRND_IDCOLOR];
+	int type_backup        = env->vis_.cam.type;
+	int cam_id_backup      = env->vis_.cam.fixedcamid;
+	mjtByte segment_backup = env->vis_.scn.flags[mjRND_SEGMENT];
+	mjtByte segid_backup   = env->vis_.scn.flags[mjRND_IDCOLOR];
 
-	for (auto &stream : env->cam_streams) {
-		env->vis.cam.type       = mjCAMERA_FIXED;
-		env->vis.cam.fixedcamid = stream->cam_id;
+	for (auto &stream : env->cam_streams_) {
+		env->vis_.cam.type       = mjCAMERA_FIXED;
+		env->vis_.cam.fixedcamid = stream->cam_id_;
 
-		if (ros::Duration(1 / stream->pub_freq) >= ros::Time::now() - stream->last_pub) {
+		if (ros::Duration(1 / stream->pub_freq_) >= ros::Time::now() - stream->last_pub_) {
 			continue;
 		}
 
-		int cam_id = stream->cam_id;
+		int cam_id = stream->cam_id_;
 
-		stream->last_pub = ros::Time::now();
+		stream->last_pub_ = ros::Time::now();
 
 		bool rendered = false;
 
-		if (stream->stream_type & streamType::RGB && stream->stream_type & streamType::DEPTH) {
+		if (stream->stream_type_ & streamType::RGB && stream->stream_type_ & streamType::DEPTH) {
 			// RGB and DEPTH
-			env->vis.scn.flags[mjRND_SEGMENT] = 0;
+			env->vis_.scn.flags[mjRND_SEGMENT] = 0;
 			rendered =
-			    renderAndPubEnv(env, (stream->stream_type & streamType::RGB), (stream->stream_type & streamType::DEPTH),
-			                    stream->rgb_pub, stream->depth_pub, stream->width, stream->height, stream->cam_name);
+			    renderAndPubEnv(env, (stream->stream_type_ & streamType::RGB), (stream->stream_type_ & streamType::DEPTH),
+			                    stream->rgb_pub_, stream->depth_pub_, stream->width_, stream->height_, stream->cam_name_);
 
-			if (stream->stream_type & streamType::SEGMENTED) {
+			if (stream->stream_type_ & streamType::SEGMENTED) {
 				// SEGMENTED additional to RGB and DEPTH
-				env->vis.scn.flags[mjRND_IDCOLOR] = stream->use_segid;
-				env->vis.scn.flags[mjRND_SEGMENT] = 1;
-				rendered = renderAndPubEnv(env, true, false, stream->segment_pub, stream->depth_pub, stream->width,
-				                           stream->height, stream->cam_name);
+				env->vis_.scn.flags[mjRND_IDCOLOR] = stream->use_segid_;
+				env->vis_.scn.flags[mjRND_SEGMENT] = 1;
+				rendered = renderAndPubEnv(env, true, false, stream->segment_pub_, stream->depth_pub_, stream->width_,
+				                           stream->height_, stream->cam_name_);
 			}
 
-		} else if (stream->stream_type & streamType::SEGMENTED && stream->stream_type & streamType::DEPTH) {
+		} else if (stream->stream_type_ & streamType::SEGMENTED && stream->stream_type_ & streamType::DEPTH) {
 			// SEGMENTED and DEPTH
-			env->vis.scn.flags[mjRND_IDCOLOR] = stream->use_segid;
-			env->vis.scn.flags[mjRND_SEGMENT] = 1;
-			rendered = renderAndPubEnv(env, true, true, stream->segment_pub, stream->depth_pub, stream->width,
-			                           stream->height, stream->cam_name);
-		} else if (stream->stream_type & streamType::RGB && stream->stream_type & streamType::SEGMENTED, stream->width,
-		           stream->height) {
+			env->vis_.scn.flags[mjRND_IDCOLOR] = stream->use_segid_;
+			env->vis_.scn.flags[mjRND_SEGMENT] = 1;
+			rendered = renderAndPubEnv(env, true, true, stream->segment_pub_, stream->depth_pub_, stream->width_,
+			                           stream->height_, stream->cam_name_);
+		} else if (stream->stream_type_ & streamType::RGB && stream->stream_type_ & streamType::SEGMENTED, stream->width_,
+		           stream->height_) {
 			// RGB and SEGMENTED (needs two calls because both go into the rgb buffer)
-			env->vis.scn.flags[mjRND_SEGMENT] = 0;
-			rendered = renderAndPubEnv(env, true, false, stream->rgb_pub, stream->depth_pub, stream->width, stream->height,
-			                           stream->cam_name);
+			env->vis_.scn.flags[mjRND_SEGMENT] = 0;
+			rendered = renderAndPubEnv(env, true, false, stream->rgb_pub_, stream->depth_pub_, stream->width_,
+			                           stream->height_, stream->cam_name_);
 
-			env->vis.scn.flags[mjRND_IDCOLOR] = stream->use_segid;
-			env->vis.scn.flags[mjRND_SEGMENT] = 1;
-			rendered = rendered || renderAndPubEnv(env, true, false, stream->segment_pub, stream->depth_pub, stream->width,
-			                                       stream->height, stream->cam_name);
-		} else if (stream->stream_type & streamType::RGB) {
+			env->vis_.scn.flags[mjRND_IDCOLOR] = stream->use_segid_;
+			env->vis_.scn.flags[mjRND_SEGMENT] = 1;
+			rendered = rendered || renderAndPubEnv(env, true, false, stream->segment_pub_, stream->depth_pub_,
+			                                       stream->width_, stream->height_, stream->cam_name_);
+		} else if (stream->stream_type_ & streamType::RGB) {
 			// ONLY RGB
-			env->vis.scn.flags[mjRND_SEGMENT] = 0;
-			rendered = renderAndPubEnv(env, true, false, stream->rgb_pub, stream->depth_pub, stream->width, stream->height,
-			                           stream->cam_name);
+			env->vis_.scn.flags[mjRND_SEGMENT] = 0;
+			rendered = renderAndPubEnv(env, true, false, stream->rgb_pub_, stream->depth_pub_, stream->width_,
+			                           stream->height_, stream->cam_name_);
 		} else {
 			// Only DEPTH or only SEGMENTED
-			env->vis.scn.flags[mjRND_IDCOLOR] = stream->use_segid;
-			env->vis.scn.flags[mjRND_SEGMENT] = 1;
-			rendered                          = renderAndPubEnv(env, (stream->stream_type & streamType::SEGMENTED),
-                                    (stream->stream_type & streamType::DEPTH), stream->segment_pub, stream->depth_pub,
-                                    stream->width, stream->height, stream->cam_name);
+			env->vis_.scn.flags[mjRND_IDCOLOR] = stream->use_segid_;
+			env->vis_.scn.flags[mjRND_SEGMENT] = 1;
+			rendered                           = renderAndPubEnv(env, (stream->stream_type_ & streamType::SEGMENTED),
+                                    (stream->stream_type_ & streamType::DEPTH), stream->segment_pub_,
+                                    stream->depth_pub_, stream->width_, stream->height_, stream->cam_name_);
 		}
 
 		if (rendered) {
@@ -447,10 +447,10 @@ void offScreenRenderEnv(MujocoEnvPtr env)
 		}
 	}
 
-	env->vis.cam.type                 = type_backup;
-	env->vis.cam.fixedcamid           = cam_id_backup;
-	env->vis.scn.flags[mjRND_SEGMENT] = segment_backup;
-	env->vis.scn.flags[mjRND_IDCOLOR] = segid_backup;
+	env->vis_.cam.type                 = type_backup;
+	env->vis_.cam.fixedcamid           = cam_id_backup;
+	env->vis_.scn.flags[mjRND_SEGMENT] = segment_backup;
+	env->vis_.scn.flags[mjRND_IDCOLOR] = segid_backup;
 }
 
 void onModelLoad(MujocoEnvPtr env, bool align)
@@ -470,18 +470,18 @@ void onModelLoad(MujocoEnvPtr env, bool align)
 
 	std::lock_guard<std::mutex> lk(render_mtx);
 	glfwMakeContextCurrent(main_window_);
-	mjr_makeContext(env->model.get(), &free_context_, 50 * (settings_.font + 1));
+	mjr_makeContext(env->model_.get(), &free_context_, 50 * (settings_.font + 1));
 
-	mjv_updateScene(env->model.get(), env->data.get(), &vopt_, &pert_, &free_camera_, mjCAT_ALL, &free_scene_);
+	mjv_updateScene(env->model_.get(), env->data_.get(), &vopt_, &pert_, &free_camera_, mjCAT_ALL, &free_scene_);
 
 	char title[200] = "Simulate : ";
-	mju::strcat_arr(title, env->model->names);
+	mju::strcat_arr(title, env->model_->names);
 	glfwSetWindowTitle(main_window_, title);
 
 	// Set keyframe range and divisions
 	ui0_.sect[SECT_SIMULATION].item[5].slider.range[0]  = 0;
-	ui0_.sect[SECT_SIMULATION].item[5].slider.range[1]  = mjMAX(0, env->model->nkey - 1);
-	ui0_.sect[SECT_SIMULATION].item[5].slider.divisions = mjMAX(1, env->model->nkey - 1);
+	ui0_.sect[SECT_SIMULATION].item[5].slider.range[1]  = mjMAX(0, env->model_->nkey - 1);
+	ui0_.sect[SECT_SIMULATION].item[5].slider.divisions = mjMAX(1, env->model_->nkey - 1);
 
 	// Rebuild UI Sections
 	makeSections(env);
@@ -596,15 +596,15 @@ void profilerUpdate(MujocoEnvPtr env)
 	int i, n;
 
 	// update constraint figure
-	figconstraint_.linepnt[0] = mjMIN(mjMIN(env->data->solver_iter, mjNSOLVER), mjMAXLINEPNT);
+	figconstraint_.linepnt[0] = mjMIN(mjMIN(env->data_->solver_iter, mjNSOLVER), mjMAXLINEPNT);
 	for (i = 1; i < 5; i++) {
 		figconstraint_.linepnt[i] = figconstraint_.linepnt[0];
 	}
-	if (env->model->opt.solver == mjSOL_PGS) {
+	if (env->model_->opt.solver == mjSOL_PGS) {
 		figconstraint_.linepnt[3] = 0;
 		figconstraint_.linepnt[4] = 0;
 	}
-	if (env->model->opt.solver == mjSOL_CG) {
+	if (env->model_->opt.solver == mjSOL_CG) {
 		figconstraint_.linepnt[4] = 0;
 	}
 	for (i = 0; i < figconstraint_.linepnt[0]; i++) {
@@ -616,19 +616,19 @@ void profilerUpdate(MujocoEnvPtr env)
 		figconstraint_.linedata[4][2 * i] = (float)i;
 
 		// y
-		figconstraint_.linedata[0][2 * i + 1] = (float)env->data->nefc;
-		figconstraint_.linedata[1][2 * i + 1] = (float)env->data->solver[i].nactive;
-		figconstraint_.linedata[2][2 * i + 1] = (float)env->data->solver[i].nchange;
-		figconstraint_.linedata[3][2 * i + 1] = (float)env->data->solver[i].neval;
-		figconstraint_.linedata[4][2 * i + 1] = (float)env->data->solver[i].nupdate;
+		figconstraint_.linedata[0][2 * i + 1] = (float)env->data_->nefc;
+		figconstraint_.linedata[1][2 * i + 1] = (float)env->data_->solver[i].nactive;
+		figconstraint_.linedata[2][2 * i + 1] = (float)env->data_->solver[i].nchange;
+		figconstraint_.linedata[3][2 * i + 1] = (float)env->data_->solver[i].neval;
+		figconstraint_.linedata[4][2 * i + 1] = (float)env->data_->solver[i].nupdate;
 	}
 
 	// update cost figure
-	figcost_.linepnt[0] = mjMIN(mjMIN(env->data->solver_iter, mjNSOLVER), mjMAXLINEPNT);
+	figcost_.linepnt[0] = mjMIN(mjMIN(env->data_->solver_iter, mjNSOLVER), mjMAXLINEPNT);
 	for (i = 1; i < 3; i++) {
 		figcost_.linepnt[i] = figcost_.linepnt[0];
 	}
-	if (env->model->opt.solver == mjSOL_PGS) {
+	if (env->model_->opt.solver == mjSOL_PGS) {
 		figcost_.linepnt[1] = 0;
 		figcost_.linepnt[2] = 0;
 	}
@@ -640,23 +640,23 @@ void profilerUpdate(MujocoEnvPtr env)
 		figcost_.linedata[2][2 * i] = (float)i;
 
 		// y
-		figcost_.linedata[0][2 * i + 1] = (float)mju_log10(mju_max(mjMINVAL, env->data->solver[i].improvement));
-		figcost_.linedata[1][2 * i + 1] = (float)mju_log10(mju_max(mjMINVAL, env->data->solver[i].gradient));
-		figcost_.linedata[2][2 * i + 1] = (float)mju_log10(mju_max(mjMINVAL, env->data->solver[i].lineslope));
+		figcost_.linedata[0][2 * i + 1] = (float)mju_log10(mju_max(mjMINVAL, env->data_->solver[i].improvement));
+		figcost_.linedata[1][2 * i + 1] = (float)mju_log10(mju_max(mjMINVAL, env->data_->solver[i].gradient));
+		figcost_.linedata[2][2 * i + 1] = (float)mju_log10(mju_max(mjMINVAL, env->data_->solver[i].lineslope));
 	}
 
 	// get timers: total, collision, prepare, solve, other
-	mjtNum total = env->data->timer[mjTIMER_STEP].duration;
-	int number   = env->data->timer[mjTIMER_STEP].number;
+	mjtNum total = env->data_->timer[mjTIMER_STEP].duration;
+	int number   = env->data_->timer[mjTIMER_STEP].number;
 	if (!number) {
-		total  = env->data->timer[mjTIMER_FORWARD].duration;
-		number = env->data->timer[mjTIMER_FORWARD].number;
+		total  = env->data_->timer[mjTIMER_FORWARD].duration;
+		number = env->data_->timer[mjTIMER_FORWARD].number;
 	}
 	number         = mjMAX(1, number);
-	float tdata[5] = { (float)(total / number), (float)(env->data->timer[mjTIMER_POS_COLLISION].duration / number),
-		                (float)(env->data->timer[mjTIMER_POS_MAKE].duration / number) +
-		                    (float)(env->data->timer[mjTIMER_POS_PROJECT].duration / number),
-		                (float)(env->data->timer[mjTIMER_CONSTRAINT].duration / number), 0 };
+	float tdata[5] = { (float)(total / number), (float)(env->data_->timer[mjTIMER_POS_COLLISION].duration / number),
+		                (float)(env->data_->timer[mjTIMER_POS_MAKE].duration / number) +
+		                    (float)(env->data_->timer[mjTIMER_POS_PROJECT].duration / number),
+		                (float)(env->data_->timer[mjTIMER_CONSTRAINT].duration / number), 0 };
 	tdata[4]       = tdata[0] - tdata[1] - tdata[2] - tdata[3];
 
 	// update figtimer_
@@ -673,9 +673,9 @@ void profilerUpdate(MujocoEnvPtr env)
 	}
 
 	// get sizes: nv, nbody, nefc, sqrt(nnz), ncont, iter
-	float sdata[6] = { (float)env->model->nv,  (float)env->model->nbody,
-		                (float)env->data->nefc, (float)mju_sqrt((mjtNum)env->data->solver_nnz),
-		                (float)env->data->ncon, (float)env->data->solver_iter };
+	float sdata[6] = { (float)env->model_->nv,  (float)env->model_->nbody,
+		                (float)env->data_->nefc, (float)mju_sqrt((mjtNum)env->data_->solver_nnz),
+		                (float)env->data_->ncon, (float)env->data_->solver_iter };
 
 	// update figsize_
 	pnt = mjMIN(201, figsize_.linepnt[0] + 1);
@@ -745,15 +745,15 @@ void sensorUpdate(MujocoEnvPtr env)
 	int lineid = 0;
 
 	// loop over sensors
-	for (int n = 0; n < env->model->nsensor; n++) {
+	for (int n = 0; n < env->model_->nsensor; n++) {
 		// go to next line if type is different
-		if (n > 0 && env->model->sensor_type[n] != env->model->sensor_type[n - 1])
+		if (n > 0 && env->model_->sensor_type[n] != env->model_->sensor_type[n - 1])
 			lineid = mjMIN(lineid + 1, maxline - 1);
 
 		// get info about this sensor
-		mjtNum cutoff = (env->model->sensor_cutoff[n] > 0 ? env->model->sensor_cutoff[n] : 1);
-		int adr       = env->model->sensor_adr[n];
-		int dim       = env->model->sensor_dim[n];
+		mjtNum cutoff = (env->model_->sensor_cutoff[n] > 0 ? env->model_->sensor_cutoff[n] : 1);
+		int adr       = env->model_->sensor_adr[n];
+		int dim       = env->model_->sensor_dim[n];
 
 		// data pointer in line
 		int p = figsensor_.linepnt[lineid];
@@ -770,7 +770,7 @@ void sensorUpdate(MujocoEnvPtr env)
 
 			// y
 			figsensor_.linedata[lineid][2 * p + 4 * i + 1] = 0;
-			figsensor_.linedata[lineid][2 * p + 4 * i + 3] = (float)(env->data->sensordata[adr + i] / cutoff);
+			figsensor_.linedata[lineid][2 * p + 4 * i + 3] = (float)(env->data_->sensordata[adr + i] / cutoff);
 		}
 
 		// update linepnt
@@ -796,37 +796,37 @@ void infotext(MujocoEnvPtr env, char (&title)[kBufSize], char (&content)[kBufSiz
 
 	// Compute solver error
 	mjtNum solerr = 0;
-	if (env->data->solver_iter) {
-		int ind = mjMIN(env->data->solver_iter - 1, mjNSOLVER - 1);
-		solerr  = mju_min(env->data->solver[ind].improvement, env->data->solver[ind].gradient);
+	if (env->data_->solver_iter) {
+		int ind = mjMIN(env->data_->solver_iter - 1, mjNSOLVER - 1);
+		solerr  = mju_min(env->data_->solver[ind].improvement, env->data_->solver[ind].gradient);
 		if (solerr == 0) {
-			solerr = mju_max(env->data->solver[ind].improvement, env->data->solver[ind].gradient);
+			solerr = mju_max(env->data_->solver[ind].improvement, env->data_->solver[ind].gradient);
 		}
 	}
 	solerr = mju_log10(mju_max(mjMINVAL, solerr));
 
 	mju::strcpy_arr(title, "Time\nSize\nCPU\nSolver\nFPS\nMemory");
-	mju::sprintf_arr(content, "%-9.3f\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%.0f\n%.2g of %s", env->data->time,
-	                 env->data->nefc, env->data->ncon,
-	                 settings_.run.load() ?
-	                     env->data->timer[mjTIMER_STEP].duration / mjMAX(1, env->data->timer[mjTIMER_STEP].number) :
-	                     env->data->timer[mjTIMER_FORWARD].duration / mjMAX(1, env->data->timer[mjTIMER_FORWARD].number),
-	                 solerr, env->data->solver_iter, 1 / interval,
-	                 env->data->maxuse_arena / (double)(env->data->nstack * sizeof(mjtNum)),
-	                 env->data->maxuse_con / (double)env->model->nconmax,
-	                 mju_writeNumBytes(env->data->nstack * sizeof(mjtNum)));
+	mju::sprintf_arr(
+	    content, "%-9.3f\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%.0f\n%.2g of %s", env->data_->time, env->data_->nefc,
+	    env->data_->ncon,
+	    settings_.run.load() ?
+	        env->data_->timer[mjTIMER_STEP].duration / mjMAX(1, env->data_->timer[mjTIMER_STEP].number) :
+	        env->data_->timer[mjTIMER_FORWARD].duration / mjMAX(1, env->data_->timer[mjTIMER_FORWARD].number),
+	    solerr, env->data_->solver_iter, 1 / interval,
+	    env->data_->maxuse_arena / (double)(env->data_->nstack * sizeof(mjtNum)),
+	    env->data_->maxuse_con / (double)env->model_->nconmax, mju_writeNumBytes(env->data_->nstack * sizeof(mjtNum)));
 
 	// Add energy if enabled
-	if (mjENABLED_ros(env->model, mjENBL_ENERGY)) {
-		mju::sprintf_arr(tmp, "\n%.3f", env->data->energy[0] + env->data->energy[1]);
+	if (mjENABLED_ros(env->model_, mjENBL_ENERGY)) {
+		mju::sprintf_arr(tmp, "\n%.3f", env->data_->energy[0] + env->data_->energy[1]);
 		mju::strcat_arr(content, tmp);
 		mju::strcat_arr(title, "\nEnergy");
 	}
 
 	// Add FwdInv if enabled
-	if (mjENABLED_ros(env->model, mjENBL_FWDINV)) {
-		mju::sprintf_arr(tmp, "\n%.1f %.1f", mju_log10(mju_max(mjMINVAL, env->data->solver_fwdinv[0])),
-		                 mju_log10(mju_max(mjMINVAL, env->data->solver_fwdinv[1])));
+	if (mjENABLED_ros(env->model_, mjENBL_FWDINV)) {
+		mju::sprintf_arr(tmp, "\n%.1f %.1f", mju_log10(mju_max(mjMINVAL, env->data_->solver_fwdinv[0])),
+		                 mju_log10(mju_max(mjMINVAL, env->data_->solver_fwdinv[1])));
 		mju::strcat_arr(content, tmp);
 		mju::strcat_arr(title, "\nFwdInv");
 	}
@@ -846,17 +846,17 @@ void watch(MujocoEnvPtr env)
 	mju::strcpy_arr(ui0_.sect[SECT_WATCH].item[2].multi.name[0], "invalid field");
 
 	// prepare symbols needed by xmacro
-	MJDATA_POINTERS_PREAMBLE(env->model);
+	MJDATA_POINTERS_PREAMBLE(env->model_);
 
 // find specified field in mjData arrays, update value
-#define X(TYPE, NAME, NR, NC)                                                                        \
-	if (!mju::strcmp_arr(#NAME, settings_.field) && !mju::strcmp_arr(#TYPE, "mjtNum")) {              \
-		if (settings_.index >= 0 && settings_.index < env->model->NR * NC) {                           \
-			printField(ui0_.sect[SECT_WATCH].item[2].multi.name[0], env->data->NAME + settings_.index); \
-		} else {                                                                                       \
-			mju::strcpy_arr(ui0_.sect[SECT_WATCH].item[2].multi.name[0], "invalid index");              \
-		}                                                                                              \
-		return;                                                                                        \
+#define X(TYPE, NAME, NR, NC)                                                                         \
+	if (!mju::strcmp_arr(#NAME, settings_.field) && !mju::strcmp_arr(#TYPE, "mjtNum")) {               \
+		if (settings_.index >= 0 && settings_.index < env->model_->NR * NC) {                           \
+			printField(ui0_.sect[SECT_WATCH].item[2].multi.name[0], env->data_->NAME + settings_.index); \
+		} else {                                                                                        \
+			mju::strcpy_arr(ui0_.sect[SECT_WATCH].item[2].multi.name[0], "invalid index");               \
+		}                                                                                               \
+		return;                                                                                         \
 	}
 
 	MJDATA_POINTERS
@@ -869,35 +869,35 @@ void makePhysics(MujocoEnvPtr env, int oldstate)
 	int i;
 
 	mjuiDef defPhysics[]     = { { mjITEM_SECTION, "Physics", oldstate, nullptr, "AP" },
-                            { mjITEM_SELECT, "Integrator", 2, &(env->model->opt.integrator),
+                            { mjITEM_SELECT, "Integrator", 2, &(env->model_->opt.integrator),
                               "Euler\nRK4\nimplicit\nimplicitfast" },
-                            { mjITEM_SELECT, "Collision", 2, &(env->model->opt.collision), "All\nPair\nDynamic" },
-                            { mjITEM_SELECT, "Cone", 2, &(env->model->opt.cone), "Pyramidal\nElliptic" },
-                            { mjITEM_SELECT, "Jacobian", 2, &(env->model->opt.jacobian), "Dense\nSparse\nAuto" },
-                            { mjITEM_SELECT, "Solver", 2, &(env->model->opt.solver), "PGS\nCG\nNewton" },
+                            { mjITEM_SELECT, "Collision", 2, &(env->model_->opt.collision), "All\nPair\nDynamic" },
+                            { mjITEM_SELECT, "Cone", 2, &(env->model_->opt.cone), "Pyramidal\nElliptic" },
+                            { mjITEM_SELECT, "Jacobian", 2, &(env->model_->opt.jacobian), "Dense\nSparse\nAuto" },
+                            { mjITEM_SELECT, "Solver", 2, &(env->model_->opt.solver), "PGS\nCG\nNewton" },
                             { mjITEM_SEPARATOR, "Algorithmic Parameters", 1 },
-                            { mjITEM_EDITNUM, "Timestep", 2, &(env->model->opt.timestep), "1 0 1" },
-                            { mjITEM_EDITINT, "Iterations", 2, &(env->model->opt.iterations), "1 0 1000" },
-                            { mjITEM_EDITNUM, "Tolerance", 2, &(env->model->opt.tolerance), "1 0 1" },
-                            { mjITEM_EDITINT, "Noslip Iter", 2, &(env->model->opt.noslip_iterations), "1 0 1000" },
-                            { mjITEM_EDITNUM, "Noslip Tol", 2, &(env->model->opt.noslip_tolerance), "1 0 1" },
-                            { mjITEM_EDITINT, "MPR Iter", 2, &(env->model->opt.mpr_iterations), "1 0 1000" },
-                            { mjITEM_EDITNUM, "MPR Tol", 2, &(env->model->opt.mpr_tolerance), "1 0 1" },
-                            { mjITEM_EDITNUM, "API Rate", 2, &(env->model->opt.apirate), "1 0 1000" },
+                            { mjITEM_EDITNUM, "Timestep", 2, &(env->model_->opt.timestep), "1 0 1" },
+                            { mjITEM_EDITINT, "Iterations", 2, &(env->model_->opt.iterations), "1 0 1000" },
+                            { mjITEM_EDITNUM, "Tolerance", 2, &(env->model_->opt.tolerance), "1 0 1" },
+                            { mjITEM_EDITINT, "Noslip Iter", 2, &(env->model_->opt.noslip_iterations), "1 0 1000" },
+                            { mjITEM_EDITNUM, "Noslip Tol", 2, &(env->model_->opt.noslip_tolerance), "1 0 1" },
+                            { mjITEM_EDITINT, "MPR Iter", 2, &(env->model_->opt.mpr_iterations), "1 0 1000" },
+                            { mjITEM_EDITNUM, "MPR Tol", 2, &(env->model_->opt.mpr_tolerance), "1 0 1" },
+                            { mjITEM_EDITNUM, "API Rate", 2, &(env->model_->opt.apirate), "1 0 1000" },
                             { mjITEM_SEPARATOR, "Physical Parameters", 1 },
-                            { mjITEM_EDITNUM, "Gravity", 2, env->model->opt.gravity, "3" },
-                            { mjITEM_EDITNUM, "Wind", 2, env->model->opt.wind, "3" },
-                            { mjITEM_EDITNUM, "Magnetic", 2, env->model->opt.magnetic, "3" },
-                            { mjITEM_EDITNUM, "Density", 2, &(env->model->opt.density), "1" },
-                            { mjITEM_EDITNUM, "Viscosity", 2, &(env->model->opt.viscosity), "1" },
-                            { mjITEM_EDITNUM, "Imp Ratio", 2, &(env->model->opt.impratio), "1" },
+                            { mjITEM_EDITNUM, "Gravity", 2, env->model_->opt.gravity, "3" },
+                            { mjITEM_EDITNUM, "Wind", 2, env->model_->opt.wind, "3" },
+                            { mjITEM_EDITNUM, "Magnetic", 2, env->model_->opt.magnetic, "3" },
+                            { mjITEM_EDITNUM, "Density", 2, &(env->model_->opt.density), "1" },
+                            { mjITEM_EDITNUM, "Viscosity", 2, &(env->model_->opt.viscosity), "1" },
+                            { mjITEM_EDITNUM, "Imp Ratio", 2, &(env->model_->opt.impratio), "1" },
                             { mjITEM_SEPARATOR, "Disable Flags", 1 },
                             { mjITEM_END } };
 	mjuiDef defEnableFlags[] = { { mjITEM_SEPARATOR, "Enable Flags", 1 }, { mjITEM_END } };
 	mjuiDef defOverride[]    = { { mjITEM_SEPARATOR, "Contact Override", 1 },
-                             { mjITEM_EDITNUM, "Margin", 2, &(env->model->opt.o_margin), "1" },
-                             { mjITEM_EDITNUM, "Sol Imp", 2, &(env->model->opt.o_solimp), "5" },
-                             { mjITEM_EDITNUM, "Sol Ref", 2, &(env->model->opt.o_solref), "2" },
+                             { mjITEM_EDITNUM, "Margin", 2, &(env->model_->opt.o_margin), "1" },
+                             { mjITEM_EDITNUM, "Sol Imp", 2, &(env->model_->opt.o_solimp), "5" },
+                             { mjITEM_EDITNUM, "Sol Ref", 2, &(env->model_->opt.o_solref), "2" },
                              { mjITEM_END } };
 
 	// add physics
@@ -944,11 +944,11 @@ void makeRendering(MujocoEnvPtr env, int oldstate)
 	mjuiDef defOpenGL[]    = { { mjITEM_SEPARATOR, "OpenGL Effects", 1 }, { mjITEM_END } };
 
 	// add model cameras, up to UI limit
-	for (i = 0; i < mjMIN(env->model->ncam, mjMAXUIMULTI - 2); i++) {
+	for (i = 0; i < mjMIN(env->model_->ncam, mjMAXUIMULTI - 2); i++) {
 		// prepare name
 		char camname[mjMAXUITEXT] = "\n";
-		if (env->model->names[env->model->name_camadr[i]]) {
-			mju::strcat_arr(camname, env->model->names + env->model->name_camadr[i]);
+		if (env->model_->names[env->model_->name_camadr[i]]) {
+			mju::strcat_arr(camname, env->model_->names + env->model_->name_camadr[i]);
 		} else {
 			mju::sprintf_arr(camname, "\nCamera %d", i);
 		}
@@ -983,8 +983,8 @@ void makeRendering(MujocoEnvPtr env, int oldstate)
 		mjui_add(&ui0_, defFlag);
 	}
 
-	env->model->vis.global.treedepth = 0;
-	mjuiDef defTree[] = { { mjITEM_SLIDERINT, "Tree depth", 2, &env->model->vis.global.treedepth, "-1 15" },
+	env->model_->vis.global.treedepth = 0;
+	mjuiDef defTree[] = { { mjITEM_SLIDERINT, "Tree depth", 2, &env->model_->vis.global.treedepth, "-1 15" },
 		                   { mjITEM_END } };
 	mjui_add(&ui0_, defTree);
 
@@ -1059,26 +1059,26 @@ void makeJoint(MujocoEnvPtr env, int oldstate)
 
 	// add scalar joints, exit if UI limit reached
 	int itemcnt = 0;
-	for (i = 0; i < env->model->njnt && itemcnt < mjMAXUIITEM; i++) {
-		if ((env->model->jnt_type[i] == mjJNT_HINGE || env->model->jnt_type[i] == mjJNT_SLIDE)) {
+	for (i = 0; i < env->model_->njnt && itemcnt < mjMAXUIITEM; i++) {
+		if ((env->model_->jnt_type[i] == mjJNT_HINGE || env->model_->jnt_type[i] == mjJNT_SLIDE)) {
 			// skip if joint group is disabled
-			if (!vopt_.jointgroup[mjMAX(0, mjMIN(mjNGROUP - 1, env->model->jnt_group[i]))]) {
+			if (!vopt_.jointgroup[mjMAX(0, mjMIN(mjNGROUP - 1, env->model_->jnt_group[i]))]) {
 				continue;
 			}
 
 			// set data and name
-			defSlider[0].pdata = env->data->qpos + env->model->jnt_qposadr[i];
-			if (env->model->names[env->model->name_jntadr[i]]) {
-				mju::strcpy_arr(defSlider[0].name, env->model->names + env->model->name_jntadr[i]);
+			defSlider[0].pdata = env->data_->qpos + env->model_->jnt_qposadr[i];
+			if (env->model_->names[env->model_->name_jntadr[i]]) {
+				mju::strcpy_arr(defSlider[0].name, env->model_->names + env->model_->name_jntadr[i]);
 			} else {
 				mju::sprintf_arr(defSlider[0].name, "joint %d", i);
 			}
 
 			// set range
-			if (env->model->jnt_limited[i]) {
-				mju::sprintf_arr(defSlider[0].other, "%.4g %.4g", env->model->jnt_range[2 * i],
-				                 env->model->jnt_range[2 * i + 1]);
-			} else if (env->model->jnt_type[i] == mjJNT_SLIDE) {
+			if (env->model_->jnt_limited[i]) {
+				mju::sprintf_arr(defSlider[0].other, "%.4g %.4g", env->model_->jnt_range[2 * i],
+				                 env->model_->jnt_range[2 * i + 1]);
+			} else if (env->model_->jnt_type[i] == mjJNT_SLIDE) {
 				mju::strcpy_arr(defSlider[0].other, "-1 1");
 			} else {
 				mju::strcpy_arr(defSlider[0].other, "-3.1416 3.1416");
@@ -1107,23 +1107,23 @@ void makeControl(MujocoEnvPtr env, int oldstate)
 
 	// Add controls, exit if UI limit reached (Clear button already added)
 	int itemcnt = 1;
-	for (i = 0; i < env->model->nu && itemcnt < mjMAXUIITEM; i++) {
+	for (i = 0; i < env->model_->nu && itemcnt < mjMAXUIITEM; i++) {
 		// Skip if actuator group is disabled
-		if (!vopt_.actuatorgroup[mjMAX(0, mjMIN(mjNGROUP - 1, env->model->actuator_group[i]))]) {
+		if (!vopt_.actuatorgroup[mjMAX(0, mjMIN(mjNGROUP - 1, env->model_->actuator_group[i]))]) {
 			continue;
 		}
 
 		// set data and name
-		defSlider[0].pdata = env->data->ctrl + i;
-		if (env->model->names[env->model->name_actuatoradr[i]]) {
-			mju::strcpy_arr(defSlider[0].name, env->model->names + env->model->name_actuatoradr[i]);
+		defSlider[0].pdata = env->data_->ctrl + i;
+		if (env->model_->names[env->model_->name_actuatoradr[i]]) {
+			mju::strcpy_arr(defSlider[0].name, env->model_->names + env->model_->name_actuatoradr[i]);
 		} else {
 			mju::sprintf_arr(defSlider[0].name, "control %d", i);
 		}
 
 		// set range
-		if (env->model->actuator_ctrllimited[i]) {
-			mju::sprintf_arr(defSlider[0].other, "%.4g %.4g", env->model->actuator_ctrlrange[2 * i + 1]);
+		if (env->model_->actuator_ctrllimited[i]) {
+			mju::sprintf_arr(defSlider[0].other, "%.4g %.4g", env->model_->actuator_ctrlrange[2 * i + 1]);
 		} else {
 			mju::strcpy_arr(defSlider[0].other, "-1 1");
 		}
@@ -1173,10 +1173,10 @@ void makeSections(MujocoEnvPtr env)
 void alignScale(MujocoEnvPtr env)
 {
 	// autoscale
-	free_camera_.lookat[0] = env->model->stat.center[0];
-	free_camera_.lookat[1] = env->model->stat.center[1];
-	free_camera_.lookat[2] = env->model->stat.center[2];
-	free_camera_.distance  = 1.5 * env->model->stat.extent;
+	free_camera_.lookat[0] = env->model_->stat.center[0];
+	free_camera_.lookat[1] = env->model_->stat.center[1];
+	free_camera_.lookat[2] = env->model_->stat.center[2];
+	free_camera_.distance  = 1.5 * env->model_->stat.extent;
 
 	// set to free camera
 	free_camera_.type = mjCAMERA_FREE;
@@ -1189,8 +1189,8 @@ void copyKey(MujocoEnvPtr env)
 	char buf[200];
 
 	// prepare string
-	for (int i = 0; i < env->model->nq; i++) {
-		mju::sprintf_arr(buf, i == env->model->nq - 1 ? "%g" : "%g ", env->data->qpos[i]);
+	for (int i = 0; i < env->model_->nq; i++) {
+		mju::sprintf_arr(buf, i == env->model_->nq - 1 ? "%g" : "%g ", env->data_->qpos[i]);
 		mju::strcat_arr(clipboard, buf);
 	}
 	mju::strcat_arr(clipboard, "'/>");
@@ -1237,17 +1237,17 @@ void updateSettings(MujocoEnvPtr env)
 	ROS_DEBUG_ONCE_NAMED("mujoco", "\tupdating physics");
 	// physics flags
 	for (i = 0; i < mjNDISABLE; i++) {
-		settings_.disable[i] = ((env->model->opt.disableflags & (i << i)) != 0);
+		settings_.disable[i] = ((env->model_->opt.disableflags & (i << i)) != 0);
 	}
 	for (i = 0; i < mjNENABLE; i++) {
-		settings_.enable[i] = ((env->model->opt.enableflags & (1 << 1)) != 0);
+		settings_.enable[i] = ((env->model_->opt.enableflags & (1 << 1)) != 0);
 	}
 
 	ROS_DEBUG_ONCE_NAMED("mujoco", "\tupdating cam");
 	// camera
-	if (env->vis.cam.type == mjCAMERA_FIXED) {
-		settings_.camera = 2 + env->vis.cam.fixedcamid;
-	} else if (env->vis.cam.type == mjCAMERA_TRACKING) {
+	if (env->vis_.cam.type == mjCAMERA_FIXED) {
+		settings_.camera = 2 + env->vis_.cam.fixedcamid;
+	} else if (env->vis_.cam.type == mjCAMERA_TRACKING) {
 		settings_.camera = 1;
 	} else {
 		settings_.camera = 0;
@@ -1263,13 +1263,13 @@ int uiPredicate(int category, void *userdata)
 	MujocoEnvPtr env = *(MujocoEnvPtr *)userdata;
 	switch (category) {
 		case 2: // require model
-			return (env->model != nullptr);
+			return (env->model_ != nullptr);
 
 		case 3: //
-			return (env->model && env->model->nkey);
+			return (env->model_ && env->model_->nkey);
 
 		case 4:
-			return (env->model && !settings_.run.load());
+			return (env->model_ && !settings_.run.load());
 
 		default:
 			return 1;
@@ -1329,20 +1329,20 @@ void uiEvent(mjuiState *state)
 		if (it && it->sectionid == SECT_FILE) {
 			switch (it->itemid) {
 				case 0: // save xml
-					if (!mj_saveLastXML("mjmodel.xml", env->model.get(), err, 200))
+					if (!mj_saveLastXML("mjmodel.xml", env->model_.get(), err, 200))
 						ROS_ERROR("Save XML error: %s", err);
 					break;
 
 				case 1: // Save mjb
-					mj_saveModel(env->model.get(), "mjmodel.mjb", nullptr, 0);
+					mj_saveModel(env->model_.get(), "mjmodel.mjb", nullptr, 0);
 					break;
 
 				case 2: // print model
-					mj_printModel(env->model.get(), "MJMODEL.TXT");
+					mj_printModel(env->model_.get(), "MJMODEL.TXT");
 					break;
 
 				case 3: // print data
-					mj_printData(env->model.get(), env->data.get(), "MJDATA.TXT");
+					mj_printData(env->model_.get(), env->data_.get(), "MJDATA.TXT");
 					break;
 
 				case 4: // Quit
@@ -1421,30 +1421,30 @@ void uiEvent(mjuiState *state)
 				case 6: // Reset to key
 					// REVIEW: fully disable resetting to keypoints?
 					i = settings_.key;
-					mju_copy(env->data->qpos, env->model->key_qpos + i * env->model->nq, env->model->nq);
-					mju_copy(env->data->qvel, env->model->key_qvel + i * env->model->nv, env->model->nv);
-					mju_copy(env->data->act, env->model->key_act + i * env->model->na, env->model->na);
-					mju_copy(env->data->mocap_pos, env->model->key_mpos + i * 3 * env->model->nmocap,
-					         3 * env->model->nmocap);
-					mju_copy(env->data->mocap_quat, env->model->key_mquat + i * 4 * env->model->nmocap,
-					         4 * env->model->nmocap);
-					mju_copy(env->data->ctrl, env->model->key_ctrl + i * env->model->nu, env->model->nu);
-					mj_forward(env->model.get(), env->data.get());
+					mju_copy(env->data_->qpos, env->model_->key_qpos + i * env->model_->nq, env->model_->nq);
+					mju_copy(env->data_->qvel, env->model_->key_qvel + i * env->model_->nv, env->model_->nv);
+					mju_copy(env->data_->act, env->model_->key_act + i * env->model_->na, env->model_->na);
+					mju_copy(env->data_->mocap_pos, env->model_->key_mpos + i * 3 * env->model_->nmocap,
+					         3 * env->model_->nmocap);
+					mju_copy(env->data_->mocap_quat, env->model_->key_mquat + i * 4 * env->model_->nmocap,
+					         4 * env->model_->nmocap);
+					mju_copy(env->data_->ctrl, env->model_->key_ctrl + i * env->model_->nu, env->model_->nu);
+					mj_forward(env->model_.get(), env->data_.get());
 					profilerUpdate(env);
 					sensorUpdate(env);
 					updateSettings(env);
 					break;
 
 				case 7: // Set key
-					i                       = settings_.key;
-					env->model->key_time[i] = env->data->time;
-					mju_copy(env->model->key_qpos + i * env->model->nq, env->data->qpos, env->model->nq);
-					mju_copy(env->model->key_qvel + i * env->model->nv, env->data->qvel, env->model->nv);
-					mju_copy(env->model->key_act + i * env->model->na, env->data->act, env->model->na);
-					mju_copy(env->model->key_mpos + i * 3 * env->model->nmocap, env->data->mocap_pos,
-					         3 * env->model->nmocap);
-					mju_copy(env->model->key_mquat + i * 4 * env->model->nmocap, env->data->mocap_quat,
-					         4 * env->model->nmocap);
+					i                        = settings_.key;
+					env->model_->key_time[i] = env->data_->time;
+					mju_copy(env->model_->key_qpos + i * env->model_->nq, env->data_->qpos, env->model_->nq);
+					mju_copy(env->model_->key_qvel + i * env->model_->nv, env->data_->qvel, env->model_->nv);
+					mju_copy(env->model_->key_act + i * env->model_->na, env->data_->act, env->model_->na);
+					mju_copy(env->model_->key_mpos + i * 3 * env->model_->nmocap, env->data_->mocap_pos,
+					         3 * env->model_->nmocap);
+					mju_copy(env->model_->key_mquat + i * 4 * env->model_->nmocap, env->data_->mocap_quat,
+					         4 * env->model_->nmocap);
 					break;
 			}
 		}
@@ -1452,18 +1452,18 @@ void uiEvent(mjuiState *state)
 		// Physics section
 		else if (it && it->sectionid == SECT_PHYSICS) {
 			// Update disable flags in mjOption
-			env->model->opt.disableflags = 0;
+			env->model_->opt.disableflags = 0;
 			for (i = 0; i < mjNDISABLE; i++) {
 				if (settings_.disable[i]) {
-					env->model->opt.disableflags |= (1 << i);
+					env->model_->opt.disableflags |= (1 << i);
 				}
 			}
 
 			// Update enable flags in mjOption
-			env->model->opt.enableflags = 0;
+			env->model_->opt.enableflags = 0;
 			for (i = 0; i < mjNENABLE; i++) {
 				if (settings_.enable[i]) {
-					env->model->opt.enableflags |= (1 << i);
+					env->model_->opt.enableflags |= (1 << i);
 				}
 			}
 		}
@@ -1528,7 +1528,7 @@ void uiEvent(mjuiState *state)
 		if (it && it->sectionid == SECT_CONTROL) {
 			// clear controls
 			if (it->itemid == 0) {
-				mju_zero(env->data->ctrl, env->model->nu);
+				mju_zero(env->data_->ctrl, env->model_->nu);
 				mjui_update(SECT_CONTROL, -1, &ui1_, &uistate_, &free_context_);
 			}
 		}
@@ -1543,7 +1543,7 @@ void uiEvent(mjuiState *state)
 	if (state->type == mjEVENT_KEY && state->key != 0) {
 		switch (state->key) {
 			case ' ': // Mode
-				if (env->model) {
+				if (env->model_) {
 					settings_.run.store(1 - settings_.run.load());
 					if (settings_.run.load())
 						settings_.manual_env_steps.store(0);
@@ -1553,8 +1553,8 @@ void uiEvent(mjuiState *state)
 				break;
 
 			case mjKEY_RIGHT: // Step forward
-				if (env->model && !settings_.run.load()) {
-					clearTimers(env->data);
+				if (env->model_ && !settings_.run.load()) {
+					clearTimers(env->data_);
 					settings_.manual_env_steps.store(1);
 				}
 				break;
@@ -1565,8 +1565,8 @@ void uiEvent(mjuiState *state)
 				break;
 
 			case mjKEY_DOWN: // Step forward 100
-				if (env->model && !settings_.run.load()) {
-					clearTimers(env->data);
+				if (env->model_ && !settings_.run.load()) {
+					clearTimers(env->data_);
 					settings_.manual_env_steps.store(100);
 				}
 				break;
@@ -1577,8 +1577,8 @@ void uiEvent(mjuiState *state)
 				break;
 
 			case mjKEY_PAGE_UP: // Select parent body
-				if (env->model && pert_.select > 0) {
-					pert_.select     = env->model->body_parentid[pert_.select];
+				if (env->model_ && pert_.select > 0) {
+					pert_.select     = env->model_->body_parentid[pert_.select];
 					pert_.skinselect = -1;
 
 					// Stop perturbation if world reached
@@ -1609,15 +1609,15 @@ void uiEvent(mjuiState *state)
 	}
 
 	// 3D Scroll
-	if (state->type == mjEVENT_SCROLL && state->mouserect == 3 && env->model) {
+	if (state->type == mjEVENT_SCROLL && state->mouserect == 3 && env->model_) {
 		// Emulate vertical mouse motion = 5% of window height
-		mjv_moveCamera(env->model.get(), mjMOUSE_ZOOM, 0, -0.05 * state->sy, &free_scene_, &free_camera_);
+		mjv_moveCamera(env->model_.get(), mjMOUSE_ZOOM, 0, -0.05 * state->sy, &free_scene_, &free_camera_);
 
 		return;
 	}
 
 	// 3D press
-	if (state->type == mjEVENT_PRESS && state->mouserect == 3 && env->model) {
+	if (state->type == mjEVENT_PRESS && state->mouserect == 3 && env->model_) {
 		// Set perturbation
 		int newperturb = 0;
 		if (state->control && pert_.select > 0) {
@@ -1630,7 +1630,7 @@ void uiEvent(mjuiState *state)
 
 			// Perturbation onset: reset reference
 			if (newperturb && !pert_.active) {
-				mjv_initPerturb(env->model.get(), env->data.get(), &free_scene_, &pert_);
+				mjv_initPerturb(env->model_.get(), env->data_.get(), &free_scene_, &pert_);
 			}
 		}
 		pert_.active = newperturb;
@@ -1652,7 +1652,7 @@ void uiEvent(mjuiState *state)
 			mjtNum selpnt[3];
 			int selgeom, selskin;
 			int selbody =
-			    mjv_select(env->model.get(), env->data.get(), &vopt_, (mjtNum)r.width / (mjtNum)r.height,
+			    mjv_select(env->model_.get(), env->data_.get(), &vopt_, (mjtNum)r.width / (mjtNum)r.height,
 			               (mjtNum)(state->x - r.left) / (mjtNum)r.width, (mjtNum)(state->y - r.bottom) / (mjtNum)r.height,
 			               &free_scene_, selpnt, &selgeom, &selskin);
 
@@ -1685,8 +1685,8 @@ void uiEvent(mjuiState *state)
 
 					// Compute localpos
 					mjtNum tmp[3];
-					mju_sub3(tmp, selpnt, env->data->xpos + 3 * pert_.select);
-					mju_mulMatTVec(pert_.localpos, env->data->xmat + 9 * pert_.select, tmp, 3, 3);
+					mju_sub3(tmp, selpnt, env->data_->xpos + 3 * pert_.select);
+					mju_mulMatTVec(pert_.localpos, env->data_->xmat + 9 * pert_.select, tmp, 3, 3);
 				} else {
 					pert_.select     = 0;
 					pert_.skinselect = 0;
@@ -1701,7 +1701,7 @@ void uiEvent(mjuiState *state)
 	}
 
 	// 3D release
-	if (state->type == mjEVENT_RELEASE && state->dragrect == 3 && env->model) {
+	if (state->type == mjEVENT_RELEASE && state->dragrect == 3 && env->model_) {
 		// Stop perturbation
 		pert_.active = 0;
 
@@ -1709,7 +1709,7 @@ void uiEvent(mjuiState *state)
 	}
 
 	// 3D move
-	if (state->type == mjEVENT_MOVE && state->dragrect == 3 && env->model) {
+	if (state->type == mjEVENT_MOVE && state->dragrect == 3 && env->model_) {
 		// Determine action base on mouse button
 		mjtMouse action;
 		if (state->right) {
@@ -1723,10 +1723,10 @@ void uiEvent(mjuiState *state)
 		// Move perturb or camera
 		mjrRect r = state->rect[3];
 		if (pert_.active) {
-			mjv_movePerturb(env->model.get(), env->data.get(), action, state->dx / r.height, -state->dy / r.height,
+			mjv_movePerturb(env->model_.get(), env->data_.get(), action, state->dx / r.height, -state->dy / r.height,
 			                &free_scene_, &pert_);
 		} else {
-			mjv_moveCamera(env->model.get(), action, state->dx / r.height, -state->dy / r.height, &free_scene_,
+			mjv_moveCamera(env->model_.get(), action, state->dx / r.height, -state->dy / r.height, &free_scene_,
 			               &free_camera_);
 		}
 
@@ -1740,12 +1740,12 @@ void prepareOnScreen(const ros::WallDuration &r_interval)
 	mjtNum interval = mjMIN(1, mjMAX(0.0001, r_interval.toSec()));
 
 	// No model: nothing to do
-	if (!main_env_->model) {
+	if (!main_env_->model_) {
 		return;
 	}
 
 	// Update scene
-	mjv_updateScene(main_env_->model.get(), main_env_->data.get(), &vopt_, &pert_, &free_camera_, mjCAT_ALL,
+	mjv_updateScene(main_env_->model_.get(), main_env_->data_.get(), &vopt_, &pert_, &free_camera_, mjCAT_ALL,
 	                &free_scene_);
 
 	// Update watch
@@ -1780,7 +1780,7 @@ void prepareOnScreen(const ros::WallDuration &r_interval)
 	}
 
 	// clear timers once profiler info has been copied
-	clearTimers(main_env_->data);
+	clearTimers(main_env_->data_);
 }
 
 void renderMain()
