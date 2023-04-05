@@ -742,7 +742,7 @@ void loadInitialJointStates(mjModelPtr model, mjDataPtr data)
 				break;
 		}
 
-		double axis_vals[num_axes];
+		double *axis_vals = new double[num_axes];
 		std::stringstream stream_values(str_values);
 		int jnt_axis = 0;
 		std::string value;
@@ -757,11 +757,13 @@ void loadInitialJointStates(mjModelPtr model, mjDataPtr data)
 			ROS_ERROR_STREAM_NAMED("mujoco", "Provided initial position values for joint "
 			                                     << name << " don't match the degrees of freedom of the joint (exactly "
 			                                     << num_axes << " values are needed)!");
+			delete[] axis_vals;
 			continue;
 		}
 		for (jnt_axis = 0; jnt_axis < num_axes; jnt_axis++) {
 			setJointPosition(model, data, axis_vals[jnt_axis], id, jnt_axis);
 		}
+		delete[] axis_vals;
 	}
 
 	// Joint velocities
@@ -798,7 +800,7 @@ void loadInitialJointStates(mjModelPtr model, mjDataPtr data)
 				break;
 		}
 
-		double axis_vals[num_axes];
+		double *axis_vals = new double[num_axes];
 		std::stringstream stream_values(str_values);
 		int jnt_axis = 0;
 		std::string value;
@@ -813,11 +815,13 @@ void loadInitialJointStates(mjModelPtr model, mjDataPtr data)
 			ROS_ERROR_STREAM_NAMED("mujoco", "Provided initial velocity values for joint "
 			                                     << name << " don't match the degrees of freedom of the joint (exactly "
 			                                     << num_axes << " values are needed)!");
+			delete[] axis_vals;
 			continue;
 		}
 		for (jnt_axis = 0; jnt_axis < num_axes; jnt_axis++) {
 			setJointVelocity(model, data, axis_vals[jnt_axis], id, jnt_axis);
 		}
+		delete[] axis_vals;
 	}
 }
 
@@ -898,7 +902,7 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 	if (vfs_id > -1) {
 		filecontent_size = vfs_.filesize[vfs_id];
 	}
-	char filedata[filecontent_size] = "";
+	char *filedata = new char[filecontent_size];
 	mju::strcpy_arr(old_filename, filename_);
 	bool is_file = false;
 
@@ -911,6 +915,7 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 				ROS_ERROR_NAMED("mujoco", "Insufficient permission to change model in eval mode!");
 				resp.success        = false;
 				resp.status_message = "Insufficient permission to change model in eval mode!";
+				delete[] filedata;
 				return true;
 			}
 			ROS_DEBUG_NAMED("mujoco", "\tHash valid, request authorized");
@@ -932,6 +937,7 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 				                  << req.model << " to VFS, because it's full! This should not happen, check with dev!");
 				resp.success        = false;
 				resp.status_message = "VFS error";
+				delete[] filedata;
 				return true;
 			} else if (ret == 2) {
 				ROS_ERROR_STREAM_NAMED("mujoco", "\tCould not save file "
@@ -939,6 +945,7 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 				                                     << " to VFS, because the file is already present in VFS!");
 				resp.success        = false;
 				resp.status_message = "VFS error";
+				delete[] filedata;
 				return true;
 			}
 			ROS_DEBUG_STREAM_NAMED("mujoco",
@@ -1007,6 +1014,7 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 		}
 		settings_.model_valid.store(prev_valid);
 	}
+	delete[] filedata;
 	return true;
 }
 
