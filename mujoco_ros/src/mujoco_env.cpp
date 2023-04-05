@@ -97,7 +97,7 @@ void MujocoEnv::initializeRenderResources()
 	bool config_exists, use_segid;
 	rendering::streamType stream_type;
 	std::string cam_name, cam_config_path;
-	double pub_freq;
+	float pub_freq;
 	int max_res_h = 0, max_res_w = 0;
 
 	// // TODO(dleins): move camera pub config to URDF/SRDF config once it's ready
@@ -116,7 +116,7 @@ void MujocoEnv::initializeRenderResources()
 
 	rendering::CameraStreamPtr stream_ptr;
 	int res_h, res_w;
-	for (int cam_id = 0; cam_id < this->model_->ncam; cam_id++) {
+	for (uint8_t cam_id = 0; cam_id < this->model_->ncam; cam_id++) {
 		cam_name = mj_id2name(this->model_.get(), mjOBJ_CAMERA, cam_id);
 		ROS_DEBUG_STREAM_NAMED("mujoco_env",
 		                       "Found camera '" << cam_name << "' with id " << cam_id << ". Setting up publishers...");

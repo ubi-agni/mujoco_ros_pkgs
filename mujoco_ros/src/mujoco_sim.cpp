@@ -162,7 +162,7 @@ void setupVFS(const std::string &filename, const std::string &content /* = std::
 		ROS_DEBUG_STREAM_NAMED("mujoco",
 		                       "Successfully saved file " << filename << " in mujoco VFS for accelerated loading");
 	} else { // File in memory
-		mj_makeEmptyFileVFS(&vfs_, filename.c_str(), content.size() + 1);
+		mj_makeEmptyFileVFS(&vfs_, filename.c_str(), static_cast<int>(content.size()) + 1);
 		int file_idx = mj_findFileVFS(&vfs_, filename.c_str());
 		memcpy(vfs_.filedata[file_idx], content.c_str(), content.size() + 1);
 		ROS_DEBUG_STREAM_NAMED("mujoco", "Successfully saved xml content as mujoco VFS file for accelerated loading");
@@ -462,7 +462,7 @@ void simulate(void)
 
 	// cpu-sim syncronization point
 	ros::WallTime syncCPU(0); // last sync time in WallTime
-	double elapsedCPU(0);
+	mjtNum elapsedCPU = 0;
 	mjtNum syncSim    = 0; // last sync time in sim time
 	mjtNum elapsedSim = 0;
 
@@ -549,7 +549,7 @@ void simulate(void)
 					       (ros::WallTime::now() - startCPU).toSec() < mjsr::render_ui_rate_lower_bound_ &&
 					       (num_steps == -1 || num_steps > 0) && !settings_.exitrequest.load()) {
 						if (!measured && elapsedSim) {
-							settings_.measured_slow_down = elapsedCPU / elapsedSim;
+							settings_.measured_slow_down = static_cast<float>(elapsedCPU / elapsedSim);
 							measured                     = true;
 						}
 
@@ -840,7 +840,7 @@ void setupCallbacks()
 	service_servers_.push_back(
 	    nh_->advertiseService<mujoco_ros_msgs::GetStateUint::Request, mujoco_ros_msgs::GetStateUint::Response>(
 	        "get_loadingrequest_state", [&](auto &request, auto &response) {
-		        uint8_t status       = settings_.loadrequest.load();
+		        uint8_t status       = static_cast<uint8_t>(settings_.loadrequest.load());
 		        response.state.value = status;
 
 		        if (status == 0 && settings_.visualInitrequest.load() > 0)
@@ -957,9 +957,9 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 
 			ROS_DEBUG_STREAM_NAMED("mujoco", "\tProvided model is not a regular file. Treating string as content");
 			mj_deleteFileVFS(&vfs_, "rosparam_content");
-			mj_makeEmptyFileVFS(&vfs_, "rosparam_content", req.model.size() + 1);
+			mj_makeEmptyFileVFS(&vfs_, "rosparam_content", static_cast<int>(req.model.size()) + 1);
 			int file_idx = mj_findFileVFS(&vfs_, "rosparam_content");
-			memcpy(vfs_.filedata[file_idx], req.model.c_str(), req.model.size() + 1);
+			memcpy(vfs_.filedata[file_idx], req.model.c_str(), static_cast<int>(req.model.size()) + 1);
 			ROS_DEBUG_STREAM_NAMED("mujoco",
 			                       "\tSuccessfully saved xml content as mujoco VFS file for accelerated loading");
 			mju::strcpy_arr(filename_, "rosparam_content");
@@ -1008,7 +1008,7 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 		// If it is a file, renaming `filename_` suffices, otherwise we need to re-write the content of the vfs file
 		if (!is_file && filecontent_size > 0) {
 			mj_deleteFileVFS(&vfs_, "rosparam_content");
-			mj_makeEmptyFileVFS(&vfs_, "rosparam_content", filecontent_size);
+			mj_makeEmptyFileVFS(&vfs_, "rosparam_content", static_cast<int>(filecontent_size));
 			memcpy(vfs_.filedata[vfs_id], filedata, filecontent_size);
 			ROS_DEBUG_NAMED("mujoco", "Rolled back vfs file content");
 		}
@@ -1038,7 +1038,8 @@ void onStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal)
 
 	mujoco_ros_msgs::StepFeedback feedback;
 
-	feedback.steps_left = goal->num_steps + settings_.manual_env_steps.load();
+	feedback.steps_left =
+	    static_cast<decltype(feedback.steps_left)>(goal->num_steps + settings_.manual_env_steps.load());
 	settings_.manual_env_steps.store(settings_.manual_env_steps.load() + goal->num_steps);
 
 	result.success = true;
@@ -1052,12 +1053,12 @@ void onStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal)
 			break;
 		}
 
-		feedback.steps_left = settings_.manual_env_steps.load();
+		feedback.steps_left = static_cast<decltype(feedback.steps_left)>(settings_.manual_env_steps.load());
 		action_step_->publishFeedback(feedback);
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 
-	feedback.steps_left = settings_.manual_env_steps.load();
+	feedback.steps_left = static_cast<decltype(feedback.steps_left)>(settings_.manual_env_steps.load());
 	action_step_->publishFeedback(feedback);
 	action_step_->setSucceeded(result);
 }
@@ -1284,7 +1285,7 @@ bool getBodyStateCB(mujoco_ros_msgs::GetBodyState::Request &req, mujoco_ros_msgs
 	}
 
 	resp.state.name = mj_id2name(env->model_.get(), mjOBJ_BODY, body_id);
-	resp.state.mass = env->model_->body_mass[body_id];
+	resp.state.mass = static_cast<decltype(resp.state.mass)>(env->model_->body_mass[body_id]);
 
 	int jnt_adr     = env->model_->body_jntadr[body_id];
 	int jnt_type    = env->model_->jnt_type[jnt_adr];
@@ -1476,17 +1477,20 @@ bool getGeomPropertiesCB(mujoco_ros_msgs::GetGeomProperties::Request &req,
 
 	// Lock mutex to get data within one step
 	std::lock_guard<std::mutex> lk_sim(sim_mtx);
-	resp.properties.name           = req.geom_name;
-	resp.properties.body_mass      = env->model_->body_mass[body_id];
-	resp.properties.friction_slide = env->model_->geom_friction[geom_id * 3];
-	resp.properties.friction_spin  = env->model_->geom_friction[geom_id * 3 + 1];
-	resp.properties.friction_roll  = env->model_->geom_friction[geom_id * 3 + 2];
+	resp.properties.name      = req.geom_name;
+	resp.properties.body_mass = static_cast<decltype(resp.properties.body_mass)>(env->model_->body_mass[body_id]);
+	resp.properties.friction_slide =
+	    static_cast<decltype(resp.properties.friction_slide)>(env->model_->geom_friction[geom_id * 3]);
+	resp.properties.friction_spin =
+	    static_cast<decltype(resp.properties.friction_spin)>(env->model_->geom_friction[geom_id * 3 + 1]);
+	resp.properties.friction_roll =
+	    static_cast<decltype(resp.properties.friction_roll)>(env->model_->geom_friction[geom_id * 3 + 2]);
 
-	resp.properties.type.value = env->model_->geom_type[geom_id];
+	resp.properties.type.value = static_cast<decltype(resp.properties.type.value)>(env->model_->geom_type[geom_id]);
 
-	resp.properties.size_0 = env->model_->geom_size[geom_id * 3];
-	resp.properties.size_1 = env->model_->geom_size[geom_id * 3 + 1];
-	resp.properties.size_2 = env->model_->geom_size[geom_id * 3 + 2];
+	resp.properties.size_0 = static_cast<decltype(resp.properties.size_0)>(env->model_->geom_size[geom_id * 3]);
+	resp.properties.size_1 = static_cast<decltype(resp.properties.size_1)>(env->model_->geom_size[geom_id * 3 + 1]);
+	resp.properties.size_2 = static_cast<decltype(resp.properties.size_2)>(env->model_->geom_size[geom_id * 3 + 2]);
 
 	resp.success = true;
 	return true;

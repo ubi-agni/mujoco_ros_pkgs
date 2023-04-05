@@ -273,8 +273,9 @@ typedef struct _settings
 extern Settings settings_;
 
 static constexpr float percentRealTime[] = { -1, // unbound
-	                                          100, 80, 66,  50,  40, 33, 25,  20, 16, 13,  10,  8,  6.6, 5.0, 4, 3.3,
-	                                          2.5, 2,  1.6, 1.3, 1,  .8, .66, .5, .4, .33, .25, .2, .16, .13, .1 };
+	                                          100,  80,   66,   50,   40,   33,   25,   20,   16,   13, 10,
+	                                          8,    6.6f, 5.0f, 4,    3.3f, 2.5f, 2,    1.6f, 1.3f, 1,  .8f,
+	                                          .66f, .5f,  .4f,  .33f, .25f, .2f,  .16f, .13f, .1f };
 
 } // end namespace detail
 } // end namespace MujocoSim

@@ -299,7 +299,7 @@ bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const i
 		depth_im->width                = viewport.width;
 		depth_im->height               = viewport.height;
 		depth_im->encoding             = sensor_msgs::image_encodings::TYPE_32FC1;
-		depth_im->step                 = viewport.width * sizeof(float);
+		depth_im->step                 = static_cast<uint>(viewport.width * sizeof(float));
 		size_t size                    = depth_im->step * viewport.height;
 		depth_im->data.resize(size);
 
@@ -307,14 +307,14 @@ bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const i
 		float *dest_float   = reinterpret_cast<float *>(&depth_im->data[0]);
 		uint64_t index      = 0;
 
-		float e = env->model_->stat.extent;
-		float f = e * env->model_->vis.map.zfar;
-		float n = e * env->model_->vis.map.znear;
+		mjtNum e = env->model_->stat.extent;
+		mjtNum f = e * env->model_->vis.map.zfar;
+		mjtNum n = e * env->model_->vis.map.znear;
 
 		for (int j = depth_im->height - 1; j >= 0; --j) {
 			for (uint32_t i = 0; i < depth_im->width; i++) {
 				float depth_val                     = env->vis_.depth[index++];
-				dest_float[i + j * depth_im->width] = -f * n / (depth_val * (f - n) - f);
+				dest_float[i + j * depth_im->width] = static_cast<float>(-f * n / (depth_val * (f - n) - f));
 			}
 		}
 
@@ -812,16 +812,16 @@ void infotext(MujocoEnvPtr env, char (&title)[kBufSize], char (&content)[kBufSiz
 	solerr = mju_log10(mju_max(mjMINVAL, solerr));
 
 	mju::strcpy_arr(title, "Time\nSize\nCPU\nSolver\nFPS\nMemory");
-	mju::sprintf_arr(content, "%-9.3f\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%.0f\n%.2g of %s", env->data_->time,
-	                 env->data_->nefc, env->data_->ncon,
-	                 settings_.run.load() ?
-	                     env->data_->timer[mjTIMER_STEP].duration / mjMAX(1, env->data_->timer[mjTIMER_STEP].number) :
-	                     env->data_->timer[mjTIMER_FORWARD].duration /
-	                         mjMAX(1, env->data_->timer[mjTIMER_FORWARD].number),
-	                 solerr, env->data_->solver_iter, 1 / interval,
-	                 env->data_->maxuse_arena / static_cast<double>(env->data_->nstack * sizeof(mjtNum)),
-	                 env->data_->maxuse_con / static_cast<double>(env->model_->nconmax),
-	                 mju_writeNumBytes(env->data_->nstack * sizeof(mjtNum)));
+	mju::sprintf_arr(
+	    content, "%-9.3f\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%.0f\n%.2g of %s", env->data_->time, env->data_->nefc,
+	    env->data_->ncon,
+	    settings_.run.load() ?
+	        env->data_->timer[mjTIMER_STEP].duration / mjMAX(1, env->data_->timer[mjTIMER_STEP].number) :
+	        env->data_->timer[mjTIMER_FORWARD].duration / mjMAX(1, env->data_->timer[mjTIMER_FORWARD].number),
+	    solerr, env->data_->solver_iter, 1 / interval,
+	    static_cast<double>(env->data_->maxuse_arena) / static_cast<double>(env->data_->nstack * sizeof(mjtNum)),
+	    env->data_->maxuse_con / static_cast<double>(env->model_->nconmax),
+	    mju_writeNumBytes(env->data_->nstack * sizeof(mjtNum)));
 
 	// Add energy if enabled
 	if (mjENABLED_ros(env->model_, mjENBL_ENERGY)) {
@@ -932,7 +932,7 @@ void makePhysics(MujocoEnvPtr env, int oldstate)
 void makeRendering(MujocoEnvPtr env, int oldstate)
 {
 	int i;
-	unsigned long int j;
+	long unsigned int j;
 
 	mjuiDef defRendering[] = { { mjITEM_SECTION, "Rendering", oldstate, nullptr, "AR" },
 		                        { mjITEM_SELECT, "Camera", 2, &(settings_.camera), "Free\nTracking" },
@@ -979,7 +979,8 @@ void makeRendering(MujocoEnvPtr env, int oldstate)
 		mju::strcpy_arr(defFlag[0].name, mjVISSTRING[i][0]);
 		for (j = 0; j < strlen(mjVISSTRING[i][0]); j++) {
 			if (mjVISSTRING[i][0][j] == '&') {
-				mju_strncpy(defFlag[0].name + j, mjVISSTRING[i][0] + j + 1, mju::sizeof_arr(defFlag[0].name) - j);
+				mju_strncpy(defFlag[0].name + j, mjVISSTRING[i][0] + j + 1,
+				            static_cast<int>(mju::sizeof_arr(defFlag[0].name) - j));
 				break;
 			}
 		}

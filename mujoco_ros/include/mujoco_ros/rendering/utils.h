@@ -102,8 +102,8 @@ static mjUI ui1_          = {};
 // constants
 const int maxgeom_                      = 5000; // preallocated geom array in mjvScene
 const int max_slow_down_                = 128; // maximum slow-down quotient
-const float render_ui_rate_lower_bound_ = 0.0333; // Minimum render freq at 30 fps
-const float render_ui_rate_upper_bound_ = 0.0166; // Maximum render freq at 60 fps
+const float render_ui_rate_lower_bound_ = 0.0333f; // Minimum render freq at 30 fps
+const float render_ui_rate_upper_bound_ = 0.0166f; // Maximum render freq at 60 fps
 
 // info strings
 static char info_title[kBufSize];
