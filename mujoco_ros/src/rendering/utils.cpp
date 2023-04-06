@@ -116,20 +116,21 @@ void render(GLFWwindow *window)
 	float actual_realtime  = 100 / settings_.measured_slow_down;
 
 	float rt_offset = mju_abs(actual_realtime - desired_realtime);
-	bool misaligned = settings_.run.load() && rt_offset > 0.1 * desired_realtime;
+	bool misaligned = settings_.run.load() && rt_offset > 0.1f * desired_realtime;
 
 	// show realtime label
 	char rt_label[30] = { '\0' };
-	if (desired_realtime != 100. || misaligned) {
+	if (desired_realtime != 100.f || misaligned) {
 		uint labelsize;
 		if (desired_realtime != -1) {
-			labelsize =
-			    static_cast<uint>(std::max(0, std::snprintf(rt_label, sizeof(rt_label), "%g%%", desired_realtime)));
+			labelsize = static_cast<uint>(
+			    std::max(0, std::snprintf(rt_label, sizeof(rt_label), "%g%%", static_cast<double>(desired_realtime))));
 		} else {
 			labelsize   = 1;
 			rt_label[0] = '+';
 		}
-		std::snprintf(rt_label + labelsize, sizeof(rt_label) - labelsize, " (%-4.1f%%)", actual_realtime);
+		std::snprintf(rt_label + labelsize, sizeof(rt_label) - labelsize, " (%-4.1f%%)",
+		              static_cast<double>(actual_realtime));
 	}
 
 	if (!pauseloadlabel.empty() || rt_label[0]) {
@@ -308,15 +309,15 @@ bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const i
 		float *dest_float   = reinterpret_cast<float *>(&depth_im->data[0]);
 		uint index          = 0;
 
-		mjtNum e = env->model_->stat.extent;
-		mjtNum f = e * env->model_->vis.map.zfar;
-		mjtNum n = e * env->model_->vis.map.znear;
+		float e = static_cast<float>(env->model_->stat.extent);
+		float f = e * env->model_->vis.map.zfar;
+		float n = e * env->model_->vis.map.znear;
 
 		for (uint32_t j = depth_im->height - 1u; j >= 0; --j) {
 			for (uint32_t i = 0; i < depth_im->width; i++) {
 				float depth_val = env->vis_.depth[index];
 				index += 1u;
-				dest_float[i + j * depth_im->width] = static_cast<float>(-f * n / (depth_val * (f - n) - f));
+				dest_float[i + j * depth_im->width] = -f * n / (depth_val * (f - n) - f);
 			}
 		}
 
@@ -1235,9 +1236,11 @@ void printCamera(mjvGLCamera *camera)
 	mju_f2n(camup, camera[0].up, 3);
 	mju_cross(camright, camforward, camup);
 	std::printf("<camera pos=\"%.3f %.3f %.3f\" xyaxes=\"%.3f %.3f %.3f %.3f %.3f %.3f\"/>\n",
-	            (camera[0].pos[0] + camera[1].pos[0]) / 2, (camera[0].pos[1] + camera[1].pos[1]) / 2,
-	            (camera[0].pos[2] + camera[1].pos[2]) / 2, camright[0], camright[1], camright[2], camera[0].up[0],
-	            camera[0].up[1], camera[0].up[2]);
+	            static_cast<double>(camera[0].pos[0] + camera[1].pos[0]) / 2,
+	            static_cast<double>(camera[0].pos[1] + camera[1].pos[1]) / 2,
+	            static_cast<double>(camera[0].pos[2] + camera[1].pos[2]) / 2, camright[0], camright[1], camright[2],
+	            static_cast<double>(camera[0].up[0]), static_cast<double>(camera[0].up[1]),
+	            static_cast<double>(camera[0].up[2]));
 }
 
 // Update UI 0 when MuJoCo structures change (except for joint sliders)
