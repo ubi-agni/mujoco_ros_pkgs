@@ -157,11 +157,11 @@ void render(GLFWwindow *window)
 
 	// show profiler
 	if (settings_.profiler)
-		profilerShow(main_env_, rect);
+		profilerShow(rect);
 
 	// show sensor
 	if (settings_.sensor)
-		sensorShow(main_env_, smallrect);
+		sensorShow(smallrect);
 
 	// finalize
 	glfwSwapBuffers(window);
@@ -241,6 +241,11 @@ void initVisible()
 	uiModify(main_window_, &ui1_, &uistate_, &free_context_);
 }
 
+/**
+ * If anyone is subscribed to the respective topics, renders RGB (segmented or normal color) and DEPTH image and
+ * publishes the image(s).
+ * @return `true` if anything was published, `false` else.
+ */
 bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const image_transport::Publisher &pub_rgb,
                      const image_transport::Publisher &pub_depth, const int width, const int height,
                      const std::string cam_name)
@@ -305,9 +310,8 @@ bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const i
 		size_t size    = depth_im->step * static_cast<uint>(viewport.height);
 		depth_im->data.resize(size);
 
-		uint16_t *dest_uint = reinterpret_cast<uint16_t *>(&depth_im->data[0]);
-		float *dest_float   = reinterpret_cast<float *>(&depth_im->data[0]);
-		uint index          = 0;
+		float *dest_float = reinterpret_cast<float *>(&depth_im->data[0]);
+		uint index        = 0;
 
 		float e = static_cast<float>(env->model_->stat.extent);
 		float f = e * env->model_->vis.map.zfar;
@@ -392,8 +396,6 @@ void offScreenRenderEnv(MujocoEnvPtr env)
 		if (ros::Duration(1 / stream->pub_freq_) >= ros::Time::now() - stream->last_pub_) {
 			continue;
 		}
-
-		int cam_id = stream->cam_id_;
 
 		stream->last_pub_ = ros::Time::now();
 
@@ -700,7 +702,7 @@ void profilerUpdate(MujocoEnvPtr env)
 	}
 }
 
-void profilerShow(MujocoEnvPtr env, mjrRect rect)
+void profilerShow(mjrRect rect)
 {
 	mjrRect viewport = { rect.left + rect.width - rect.width / 4, rect.bottom, rect.width / 4, rect.height / 4 };
 	mjr_figure(viewport, &figtimer_, &free_context_);
@@ -788,7 +790,7 @@ void sensorUpdate(MujocoEnvPtr env)
 }
 
 // Show sensor figure
-void sensorShow(MujocoEnvPtr env, mjrRect rect)
+void sensorShow(mjrRect rect)
 {
 	// constant width with and without profiler
 	int width = settings_.profiler ? rect.width / 3 : rect.width / 4;
@@ -1011,7 +1013,7 @@ void makeRendering(MujocoEnvPtr env, int oldstate)
 }
 
 // Make group section UI
-void makeGroup(MujocoEnvPtr env, int oldstate)
+void makeGroup(int oldstate)
 {
 	mjuiDef defGroup[] = { { mjITEM_SECTION, "Group enable", oldstate, nullptr, "AG" },
 		                    { mjITEM_SEPARATOR, "Geom groups", 1 },
@@ -1176,7 +1178,7 @@ void makeSections(MujocoEnvPtr env)
 	// make
 	makePhysics(env, oldstate0[SECT_PHYSICS]);
 	makeRendering(env, oldstate0[SECT_RENDERING]);
-	makeGroup(env, oldstate0[SECT_GROUP]);
+	makeGroup(oldstate0[SECT_GROUP]);
 	makeJoint(env, oldstate1[SECT_JOINT]);
 	makeControl(env, oldstate1[SECT_CONTROL]);
 }

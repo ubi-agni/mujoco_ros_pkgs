@@ -35,7 +35,13 @@
 /* Authors: David P. Leins*/
 
 #include <mujoco_ros/plugin_utils.h>
+
+// Ignore static variables unused in this compilation unit
+// TODO(dleins): Remove this after object oriented refactoring
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
 #include <mujoco_ros/mujoco_sim.h>
+#pragma GCC diagnostic pop
 
 namespace MujocoSim::plugin_utils {
 

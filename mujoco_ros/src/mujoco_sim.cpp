@@ -50,7 +50,13 @@
 
 #include <mujoco_ros/mujoco_sim.h>
 #include <mujoco_ros/plugin_utils.h>
+
+// Ignore static variables unused in this compilation unit
+// TODO(dleins): Remove this after object oriented refactoring
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
 #include <mujoco_ros/rendering/utils.h>
+#pragma GCC diagnostic pop
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
@@ -839,7 +845,7 @@ void setupCallbacks()
 	service_servers_.push_back(nh_->advertiseService("get_gravity", getGravityCB));
 	service_servers_.push_back(
 	    nh_->advertiseService<mujoco_ros_msgs::GetStateUint::Request, mujoco_ros_msgs::GetStateUint::Response>(
-	        "get_loadingrequest_state", [&](auto &request, auto &response) {
+	        "get_loadingrequest_state", [&](auto /*&request*/, auto &response) {
 		        uint8_t status       = static_cast<uint8_t>(settings_.loadrequest.load());
 		        response.state.value = status;
 
@@ -866,7 +872,7 @@ void setupCallbacks()
 }
 
 // Service call callbacks
-bool shutdownCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
+bool shutdownCB([[maybe_unused]] std_srvs::Empty::Request &req, [[maybe_unused]] std_srvs::Empty::Response &resp)
 {
 	requestExternalShutdown();
 	return true;
@@ -1018,7 +1024,7 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 	return true;
 }
 
-bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
+bool resetCB([[maybe_unused]] std_srvs::Empty::Request &req, [[maybe_unused]] std_srvs::Empty::Response &resp)
 {
 	settings_.resetrequest.store(1);
 	return true;
