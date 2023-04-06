@@ -313,11 +313,11 @@ bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const i
 		float f = e * env->model_->vis.map.zfar;
 		float n = e * env->model_->vis.map.znear;
 
-		for (uint32_t j = depth_im->height - 1u; j >= 0; --j) {
+		for (uint32_t j = depth_im->height; j > 0; j--) {
 			for (uint32_t i = 0; i < depth_im->width; i++) {
 				float depth_val = env->vis_.depth[index];
 				index += 1u;
-				dest_float[i + j * depth_im->width] = -f * n / (depth_val * (f - n) - f);
+				dest_float[i + (j - 1u) * depth_im->width] = -f * n / (depth_val * (f - n) - f);
 			}
 		}
 
