@@ -129,8 +129,8 @@ CameraStream::CameraStream(const uint8_t cam_id, const std::string cam_name, con
 
 	sensor_msgs::CameraInfo ci;
 	ci.header.frame_id = camera_frame_name;
-	ci.width           = width;
-	ci.height          = height;
+	ci.width           = static_cast<decltype(ci.width)>(width);
+	ci.height          = static_cast<decltype(ci.height)>(height);
 
 	// clang-format off
 	mjtNum extrinsic[12] = {

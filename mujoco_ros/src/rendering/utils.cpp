@@ -121,9 +121,10 @@ void render(GLFWwindow *window)
 	// show realtime label
 	char rt_label[30] = { '\0' };
 	if (desired_realtime != 100. || misaligned) {
-		int labelsize;
+		uint labelsize;
 		if (desired_realtime != -1) {
-			labelsize = std::snprintf(rt_label, sizeof(rt_label), "%g%%", desired_realtime);
+			labelsize =
+			    static_cast<uint>(std::max(0, std::snprintf(rt_label, sizeof(rt_label), "%g%%", desired_realtime)));
 		} else {
 			labelsize   = 1;
 			rt_label[0] = '+';
@@ -274,11 +275,11 @@ bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const i
 		sensor_msgs::ImagePtr rgb_im = boost::make_shared<sensor_msgs::Image>();
 		rgb_im->header.frame_id      = cam_name + "_optical_frame";
 		rgb_im->header.stamp         = ros::Time::now();
-		rgb_im->width                = viewport.width;
-		rgb_im->height               = viewport.height;
+		rgb_im->width                = static_cast<decltype(rgb_im->width)>(viewport.width);
+		rgb_im->height               = static_cast<decltype(rgb_im->height)>(viewport.height);
 		rgb_im->encoding             = sensor_msgs::image_encodings::RGB8;
-		rgb_im->step                 = viewport.width * 3 * sizeof(unsigned char);
-		size_t size                  = rgb_im->step * viewport.height;
+		rgb_im->step                 = static_cast<decltype(rgb_im->step)>(viewport.width) * 3u * sizeof(unsigned char);
+		size_t size                  = rgb_im->step * static_cast<uint>(viewport.height);
 		rgb_im->data.resize(size);
 
 		memcpy(reinterpret_cast<char *>(&rgb_im->data[0]), env->vis_.rgb.get(), size);
@@ -296,24 +297,25 @@ bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const i
 		sensor_msgs::ImagePtr depth_im = boost::make_shared<sensor_msgs::Image>();
 		depth_im->header.frame_id      = cam_name + "_optical_frame";
 		depth_im->header.stamp         = ros::Time::now();
-		depth_im->width                = viewport.width;
-		depth_im->height               = viewport.height;
+		depth_im->width                = static_cast<decltype(depth_im->width)>(viewport.width);
+		depth_im->height               = static_cast<decltype(depth_im->height)>(viewport.height);
 		depth_im->encoding             = sensor_msgs::image_encodings::TYPE_32FC1;
-		depth_im->step                 = static_cast<uint>(viewport.width * sizeof(float));
-		size_t size                    = depth_im->step * viewport.height;
+		depth_im->step = static_cast<decltype(depth_im->step)>(static_cast<uint>(viewport.width) * sizeof(float));
+		size_t size    = depth_im->step * static_cast<uint>(viewport.height);
 		depth_im->data.resize(size);
 
 		uint16_t *dest_uint = reinterpret_cast<uint16_t *>(&depth_im->data[0]);
 		float *dest_float   = reinterpret_cast<float *>(&depth_im->data[0]);
-		uint64_t index      = 0;
+		uint index          = 0;
 
 		mjtNum e = env->model_->stat.extent;
 		mjtNum f = e * env->model_->vis.map.zfar;
 		mjtNum n = e * env->model_->vis.map.znear;
 
-		for (int j = depth_im->height - 1; j >= 0; --j) {
+		for (uint32_t j = depth_im->height - 1u; j >= 0; --j) {
 			for (uint32_t i = 0; i < depth_im->width; i++) {
-				float depth_val                     = env->vis_.depth[index++];
+				float depth_val = env->vis_.depth[index];
+				index += 1u;
 				dest_float[i + j * depth_im->width] = static_cast<float>(-f * n / (depth_val * (f - n) - f));
 			}
 		}
@@ -812,16 +814,17 @@ void infotext(MujocoEnvPtr env, char (&title)[kBufSize], char (&content)[kBufSiz
 	solerr = mju_log10(mju_max(mjMINVAL, solerr));
 
 	mju::strcpy_arr(title, "Time\nSize\nCPU\nSolver\nFPS\nMemory");
-	mju::sprintf_arr(
-	    content, "%-9.3f\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%.0f\n%.2g of %s", env->data_->time, env->data_->nefc,
-	    env->data_->ncon,
-	    settings_.run.load() ?
-	        env->data_->timer[mjTIMER_STEP].duration / mjMAX(1, env->data_->timer[mjTIMER_STEP].number) :
-	        env->data_->timer[mjTIMER_FORWARD].duration / mjMAX(1, env->data_->timer[mjTIMER_FORWARD].number),
-	    solerr, env->data_->solver_iter, 1 / interval,
-	    static_cast<double>(env->data_->maxuse_arena) / static_cast<double>(env->data_->nstack * sizeof(mjtNum)),
-	    env->data_->maxuse_con / static_cast<double>(env->model_->nconmax),
-	    mju_writeNumBytes(env->data_->nstack * sizeof(mjtNum)));
+	mju::sprintf_arr(content, "%-9.3f\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%.0f\n%.2g of %s", env->data_->time,
+	                 env->data_->nefc, env->data_->ncon,
+	                 settings_.run.load() ?
+	                     env->data_->timer[mjTIMER_STEP].duration / mjMAX(1, env->data_->timer[mjTIMER_STEP].number) :
+	                     env->data_->timer[mjTIMER_FORWARD].duration /
+	                         mjMAX(1, env->data_->timer[mjTIMER_FORWARD].number),
+	                 solerr, env->data_->solver_iter, 1 / interval,
+	                 static_cast<double>(env->data_->maxuse_arena) /
+	                     static_cast<double>(static_cast<uint>(env->data_->nstack) * sizeof(mjtNum)),
+	                 env->data_->maxuse_con / static_cast<double>(env->model_->nconmax),
+	                 mju_writeNumBytes(static_cast<uint>(env->data_->nstack) * sizeof(mjtNum)));
 
 	// Add energy if enabled
 	if (mjENABLED_ros(env->model_, mjENBL_ENERGY)) {
