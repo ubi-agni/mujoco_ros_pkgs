@@ -73,11 +73,11 @@ int main(int argc, char **argv)
 
 		if (vm.count("help")) {
 			std::cout << "command line options:\n" << options;
-			return false;
+			exit(0);
 		}
 	} catch (std::exception &e) {
 		ROS_ERROR("Error parsing command line: %s", e.what());
-		return false;
+		exit(-1);
 	}
 
 	bool vis = true;
