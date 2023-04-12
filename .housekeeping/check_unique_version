@@ -1,0 +1,12 @@
+#!/bin/bash
+
+unique_versions=$(grep -HRI "<version>" | sed -n 's/^.*[^0-9]\([0-9]*\.[0-9]*\.[0-9]*\).*$/\1/p' | awk '!seen[$0]++')
+num_versions=$(grep -HRI "<version>" | sed -n 's/^.*[^0-9]\([0-9]*\.[0-9]*\.[0-9]*\).*$/\1/p' | awk '!seen[$0]++' | wc -l)
+
+if [[ $num_versions -gt 1 ]]; then
+    echo -e "Found $num_versions unique versions, but should only find one! Found: \n$unique_versions"
+    exit -1
+fi
+
+# echo "Num versions: $num_versions"
+# echo -e "Versions: \n$unique_versions"

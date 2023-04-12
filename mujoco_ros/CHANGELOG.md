@@ -3,6 +3,7 @@
 
 ### Added
 * Signal handling to gracefully exit on SIGINT and SIGTERM.
+* **docs**: Contribution guideline along with commit template.
 
 ### Changed
 * Set GUI default to show info overlay and hide UI1.

@@ -1,0 +1,46 @@
+# <type>(<optional scope>): <description>
+#
+#   <description> imperative tense description
+#   Don't end with a period
+#   No more than 50 chars. ## 50 chars is here:  #
+#
+#   <type> can be one of:
+#     feat = A new feature is introduced
+#     fix = A bug was fixed
+#     chg = Changes that do not relate to a fix or feature
+#     perf = Performance increasing changes
+#     refactor = Refactored code that neither fixes a bug nor adds a feature
+#     docs = Updates to documentation such as the README file
+#     test = Including new or correcting previous tests
+#     build = Changes that affect the build system or external dependencies
+#     revert = Reverts a previous commit
+#
+#   <scope> can specify which part of the codebase is affected by the commit.
+#
+# Remember blank line between title and body
+#
+# Optional Body: Explain *what* and *why* (not *how*).
+#   Wrap at 72 chars. ################################# which is here: #
+#
+# Optional Footer:
+#   optionally reference an issue by its id.
+#   If the commit is written by multiple people, then use the git trailers
+#   to thank each person as a co-author; various git tools can track this.
+#Co-authored-by: name <name@example.com>
+#Co-authored-by: name <name@example.com>
+#
+# Breaking Changes should start with the word BREAKING CHANGES: followed by space or two newlines.
+# The rest of the commit message is then used for this.
+#BREAKING CHANGES:
+#
+#
+# How to Write a Git Commit Message:
+# https://chris.beams.io/posts/git-commit/
+#
+# 1.Separate subject from body with a blank line
+# 2. Limit the subject line to 50 characters
+# 3. Capitalize the subject line
+# 4. Do not end the subject line with a period
+# 5. Use the imperative mood in the subject line
+# 6. Wrap the body at 72 characters
+# 7. Use the body to explain what and why vs. how
