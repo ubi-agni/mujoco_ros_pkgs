@@ -1,0 +1,22 @@
+<mujoco model="empty">
+    <option collision="all" timestep="0.001" gravity="0 0 -9.81" cone="elliptic" />
+    <compiler angle="radian" />
+
+    <visual>
+        <headlight ambient="0.4 0.4 0.4" diffuse="0.4 0.4 0.4" specular="0.0 0.0 0.0" active="1" />
+    </visual>
+
+    <asset>
+        <texture builtin="checker" height="512" name="texplane" rgb1=".2 .3 .4" rgb2=".1 .15 .2" type="2d" width="512" />
+        <material name="MatPlane" reflectance="0.5" shininess="0.01" specular="0.1" texrepeat="1 1" texture="texplane" texuniform="true" />
+    </asset>
+
+    <worldbody>
+        <light pos="0 0 1000" castshadow="false" />
+        <body name="hogBox">
+            <geom type="box" pos="0 0 0.25" size="0.25 0.25 0.25"/>
+        </body>
+        <geom name="ground_plane" type="plane" size="5 5 10" material="MatPlane" rgba="1 1 1 1"/>
+
+    </worldbody>
+</mujoco>

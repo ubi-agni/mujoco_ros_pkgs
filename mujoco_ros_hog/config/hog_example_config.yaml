@@ -1,0 +1,12 @@
+MujocoPlugins:
+  - type: mujoco_ros_hog/MujocoHogPlugin
+    hogBodies:
+      hogBox:
+        desiredPose:
+         - 0   # X
+         - 1   # Y
+         - 0.5 # Z
+         - 1   # qw
+         - 0   # qx
+         - 0   # qy
+         - 0   # qz
