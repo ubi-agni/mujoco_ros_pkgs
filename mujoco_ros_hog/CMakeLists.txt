@@ -7,12 +7,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(catkin REQUIRED COMPONENTS
   mujoco_ros
+  tf2
 )
 
 catkin_package(
  INCLUDE_DIRS include
  CATKIN_DEPENDS
   mujoco_ros
+  tf2
  LIBRARIES ${PROJECT_NAME}
 )
 ## Generate services in the 'srv' folder

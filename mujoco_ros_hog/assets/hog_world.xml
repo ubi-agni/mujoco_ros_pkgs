@@ -14,6 +14,7 @@
     <worldbody>
         <light pos="0 0 1000" castshadow="false" />
         <body name="hogBox">
+            <joint type="free"/>
             <geom type="box" pos="0 0 0.25" size="0.25 0.25 0.25"/>
         </body>
         <geom name="ground_plane" type="plane" size="5 5 10" material="MatPlane" rgba="1 1 1 1"/>

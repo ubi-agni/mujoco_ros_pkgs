@@ -46,6 +46,8 @@
 #include <mujoco_ros/common_types.h>
 #include <mujoco_ros/mujoco_sim.h>
 #include <mujoco_ros/plugin_utils.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/transform_broadcaster.h>
 
 
 
@@ -65,12 +67,15 @@ public:
 
 	void controlCallback(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d);
 
-	bool registerHog(MujocoSim::mjModelPtr m, std::string bodyname);
+	bool registerHog(MujocoSim::mjModelPtr m, std::string bodyname,std::vector<double> desiredPose={});
 
-
+	void updateHog(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d);
 
 protected:
-	std::vector<std::string> hog_bodies_;
+
+
+	std::map<std::string,std::vector<double>> hog_bodies_;
+	boost::shared_ptr<tf2_ros::Buffer> tf_buffer_;
 
 };
 
