@@ -97,11 +97,11 @@ void MujocoHogPlugin::controlCallback(MujocoSim::mjModelPtr m, MujocoSim::mjData
 void MujocoHogPlugin::updateHog(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d)
 {
 	int env_id = 0;
-	MujocoSim::MujocoEnvPtr env = MujocoSim::environments::getEnvById(env_id);
+	MujocoSim::MujocoEnvPtr env = MujocoSim::environments::getEnv(d.get());
 	
 	double g;
 	if (env != nullptr) {
-		g = env->model_->opt.gravity[3];
+		g = env->model_->opt.gravity[2];
 	}else{
 		ROS_ERROR_STREAM_NAMED("mujoco_ros_hog","Couldn't get Environment with ID: " << env_id);
 		return;
