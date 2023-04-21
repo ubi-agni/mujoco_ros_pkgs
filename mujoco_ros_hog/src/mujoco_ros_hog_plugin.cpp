@@ -91,7 +91,11 @@ bool MujocoHogPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d)
 
 void MujocoHogPlugin::controlCallback(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d)
 {
-	updateHog(m,d);
+
+	if(d->time != last_time){
+		updateHog(m,d);
+	}
+	last_time = d->time;
 }
 
 void MujocoHogPlugin::updateHog(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d)
