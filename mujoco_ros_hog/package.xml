@@ -12,11 +12,9 @@
 
   <license>BSD</license>
 
-
   <buildtool_depend>catkin</buildtool_depend>
   <depend>tf2</depend>
-
-  <depend version_gte="3.0.0">mujoco_ros</depend>
+  <depend>mujoco_ros</depend>
 
   <export>
     <mujoco_ros plugin="${prefix}/mujoco_ros_hog_plugin.xml" />

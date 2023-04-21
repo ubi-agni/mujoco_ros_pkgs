@@ -39,7 +39,6 @@
 #include <pluginlib/class_list_macros.h>
 #include <iostream>
 #include <vector>
-#include <tf/transform_datatypes.h>
 
 
 namespace mujoco_ros_hog {
@@ -97,15 +96,32 @@ void MujocoHogPlugin::controlCallback(MujocoSim::mjModelPtr m, MujocoSim::mjData
 
 void MujocoHogPlugin::updateHog(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d)
 {
+	int env_id = 0;
+	MujocoSim::MujocoEnvPtr env = MujocoSim::environments::getEnvById(env_id);
+	
+	double g;
+	if (env != nullptr) {
+		g = env->model_->opt.gravity[3];
+	}else{
+		ROS_ERROR_STREAM_NAMED("mujoco_ros_hog","Couldn't get Environment with ID: " << env_id);
+		return;
+	}
+	
     for (std::map<std::string,std::vector<double>>::iterator it = hog_bodies_.begin() ; it != hog_bodies_.end(); ++it) {
 
 		std::string body_name = it->first;
 		geometry_msgs::TransformStamped hog_desired_tform;
-		tf::Vector3 p;
-		tf::Quaternion q;
+
+		geometry_msgs::Vector3 pm;
+		geometry_msgs::Quaternion qm;  
 		if(!it->second.empty()&& it->second.size()==7){
-            p = tf::Vector3(it->second[0],it->second[1],it->second[2]);
-            q = tf::Quaternion(it->second[4],it->second[5],it->second[6],it->second[3]);
+            pm.x = it->second[0];
+			pm.y = it->second[1];
+			pm.z = it->second[2];
+            qm.w = it->second[3];
+			qm.x = it->second[4];
+			qm.y = it->second[5];
+			qm.z = it->second[6];
 
 		}else{
 			try{
@@ -114,12 +130,9 @@ void MujocoHogPlugin::updateHog(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d)
 				ROS_ERROR_ONCE("%s",ex.what());
 				return;
 			}
-            const geometry_msgs::Vector3 pm = hog_desired_tform.transform.translation;
-            const geometry_msgs::Quaternion qm = hog_desired_tform.transform.rotation;  
-            p = tf::Vector3(pm.x,pm.y,pm.z);
-            q = tf::Quaternion(qm.x,qm.y,qm.z,qm.w);
+            pm = hog_desired_tform.transform.translation;
+            qm = hog_desired_tform.transform.rotation;  
 		}
-		// Convert TF transform to Gazebo Pose
 		unsigned int fidx = mj_name2id(m.get(), mjOBJ_XBODY, body_name.c_str());
 		unsigned int h;
 		double kl = 2500;
@@ -128,37 +141,43 @@ void MujocoHogPlugin::updateHog(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d)
 		double ca = 2.0 * sqrt(ka * m->body_inertia[3*fidx]);
 		
 		
-		const tf::Vector3 pc(d->xpos[3*fidx    ],
+		mjtNum p[3] = {pm.x,pm.y,pm.z};
+		mjtNum q[4] = {qm.w,qm.x,qm.y,qm.z};
+		mjtNum pc[3] = {d->xpos[3*fidx    ],
 							d->xpos[3*fidx + 1],
-							d->xpos[3*fidx + 2]);
-		tf::Quaternion qc(d->xquat[4*fidx + 1],
-								d->xquat[4*fidx + 2],
-								d->xquat[4*fidx + 3],
-								d->xquat[4*fidx    ]);
+							d->xpos[3*fidx + 2]};
 		
-		qc = qc.normalized();
+		
+		mjtNum qc[4] = {d->xquat[4*fidx],
+								d->xquat[4*fidx + 1],
+								d->xquat[4*fidx + 2],
+								d->xquat[4*fidx +3]}; 
+		mju_normalize4(qc);
 		mjtNum vx[6];
-		const tf::Vector3 pe = p - pc;
-		tf::Quaternion qe = q * qc.inverse();
+		mjtNum pe[3];
+		mjtNum qe[4];
+		mjtNum qi[4];
+		mju_sub3(pe,p,pc); 
+		mju_negQuat(qi,qc);
+		mju_mulQuat(qe,q,qi);
 		mj_objectVelocity(m.get(),d.get(),mjOBJ_XBODY, fidx, vx, 0);
 		for (int i = 0; i < 3; ++i) {
-			d->xfrc_applied[6*fidx + i] = kl * pe.m_floats[i]- cl *vx[i+3];
+			d->xfrc_applied[6*fidx + i] = kl * pe[i]- cl *vx[i+3];
 		}
-		d->xfrc_applied[6*fidx + 2] += 9.81 * m->body_subtreemass[fidx];
-		tf::Vector3 ql(0,0,0);
-		if (std::fabs(qe.w() < 1.0)) {
-			double acosw = std::acos(qe.w());
+		d->xfrc_applied[6*fidx + 2] += -1* g * m->body_subtreemass[fidx];
+		mjtNum ql[3] = {0,0,0};
+		if (qe[0] < 1.0) {
+			double acosw = std::acos(qe[1]);
 			double qsin = std::sin(acosw);
 			if (std::fabs(qsin) <= 1e-3) {
-			double c = acosw/qsin;
-			ql.setX(c*qe.x());
-			ql.setY(c*qe.y());
-			ql.setZ(c*qe.z());
+				double c = acosw/qsin;
+				ql[1] = c*qe[1];
+				ql[2] = c*qe[2];
+				ql[3] = c*qe[3];
 			}
 		}
-		
 		for (int i = 0; i < 3; ++i) {
-			d->xfrc_applied[6*fidx + i + 3] = ka * ql.m_floats[i] - ca * vx[i];
+			d->xfrc_applied[6*fidx + i + 3] = ka * ql[i] - ca * vx[i];
 		}
 	}
 

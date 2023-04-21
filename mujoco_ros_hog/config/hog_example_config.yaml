@@ -5,7 +5,7 @@ MujocoPlugins:
         desiredPose:
          - 0.0   # X
          - 1.0   # Y
-         - 0.5 # Z
+         - 1.0 # Z
          - 1.0   # qw
          - 0.0   # qx
          - 0.0   # qy
