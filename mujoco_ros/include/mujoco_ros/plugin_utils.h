@@ -90,7 +90,7 @@ public:
 	 * @param[in] model pointer to mjModel.
 	 * @param[in] data pointer to mjData.
 	 */
-	virtual void controlCallback(mjModelPtr model, mjDataPtr data){};
+	virtual void controlCallback([[maybe_unused]] mjModelPtr model, [[maybe_unused]] mjDataPtr data){};
 
 	/**
 	 * @brief Override this function to compute and apply custom passive (i.e. non-controlled) forces.
@@ -100,7 +100,7 @@ public:
 	 * @param[in] model pointer to mjModel.
 	 * @param[in] data pointer to mjData.
 	 */
-	virtual void passiveCallback(mjModelPtr model, mjDataPtr data){};
+	virtual void passiveCallback([[maybe_unused]] mjModelPtr model, [[maybe_unused]] mjDataPtr data){};
 
 	/**
 	 * @brief Override this callback to add custom visualisations to the scene.
@@ -109,7 +109,8 @@ public:
 	 * @param[in] data pointer to mjData.
 	 * @param[in] scene pointer to mjvScene.
 	 */
-	virtual void renderCallback(mjModelPtr model, mjDataPtr data, mjvScene *scene){};
+	virtual void renderCallback([[maybe_unused]] mjModelPtr model, [[maybe_unused]] mjDataPtr data,
+	                            [[maybe_unused]] mjvScene *scene){};
 
 	/**
 	 * @brief Override this callback to add custom behavior at the end of a mujoco_ros simulation step.
@@ -119,7 +120,7 @@ public:
 	 * @param[in] model pointer to mjModel.
 	 * @param[in] data pointer to mjData.
 	 */
-	virtual void lastStageCallback(mjModelPtr model, mjDataPtr data){};
+	virtual void lastStageCallback([[maybe_unused]] mjModelPtr model, [[maybe_unused]] mjDataPtr data){};
 
 	/**
 	 * @brief Override this callback to add custom behavior when a geom has been changed in the model.
@@ -128,7 +129,8 @@ public:
 	 * @param[in] data pointer to mjData.
 	 * @param[in] geom_id id of the geom thas has been changed.
 	 */
-	virtual void onGeomChanged(mjModelPtr model, mjDataPtr data, const int geom_id){};
+	virtual void onGeomChanged([[maybe_unused]] mjModelPtr model, [[maybe_unused]] mjDataPtr data,
+	                           [[maybe_unused]] const int geom_id){};
 
 protected:
 	/**

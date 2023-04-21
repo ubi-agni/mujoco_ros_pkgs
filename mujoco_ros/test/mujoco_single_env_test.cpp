@@ -36,7 +36,13 @@
 
 #include <gtest/gtest.h>
 
+// Ignore static variables unused in this compilation unit
+// TODO(dleins): Remove this after object oriented refactoring
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
 #include <mujoco_ros/mujoco_sim.h>
+#pragma GCC diagnostic pop
+
 #include <mujoco_ros/mujoco_env.h>
 #include <mujoco_ros/common_types.h>
 
@@ -68,8 +74,8 @@ class MujocoRosCoreFixture : public ::testing::Test
 {
 protected:
 	std::shared_ptr<ros::NodeHandle> nh;
-	MujocoSim::mjModelPtr getModel(MujocoSim::MujocoEnvPtr env) { return env->model; }
-	MujocoSim::mjDataPtr getData(MujocoSim::MujocoEnvPtr env) { return env->data; }
+	MujocoSim::mjModelPtr getModel(MujocoSim::MujocoEnvPtr env) { return env->model_; }
+	MujocoSim::mjDataPtr getData(MujocoSim::MujocoEnvPtr env) { return env->data_; }
 
 	virtual void SetUp()
 	{
@@ -109,23 +115,24 @@ protected:
 		}
 
 		env = MujocoSim::detail::main_env_;
-		d   = env->data;
-		m   = env->model;
+		d   = env->data_;
+		m   = env->model_;
 	}
 
 	virtual void TearDown() {}
 };
 
-void compare_qpos(MujocoSim::mjDataPtr d, int qpos_adr, std::string joint_name, const std::vector<double> &values,
+void compare_qpos(MujocoSim::mjDataPtr d, int qpos_adr_int, std::string joint_name, const std::vector<double> &values,
                   const std::vector<double> &tolerances = {})
 {
+	uint qpos_adr = static_cast<uint>(qpos_adr_int);
 	if (tolerances.size() == 0) {
-		for (int i = 0; i < values.size(); i++) {
+		for (size_t i = 0; i < values.size(); i++) {
 			EXPECT_EQ(d->qpos[qpos_adr + i], values[i]) << "qpos of joint '" << joint_name << "' at index " << i << " is "
 			                                            << d->qpos[qpos_adr + i] << " instead of " << values[i] << "!";
 		}
 	} else {
-		for (int i = 0; i < values.size(); i++) {
+		for (size_t i = 0; i < values.size(); i++) {
 			EXPECT_NEAR(d->qpos[qpos_adr + i], values[i], tolerances[i])
 			    << "qpos of joint '" << joint_name << "' at index " << i << " is " << d->qpos[qpos_adr + i]
 			    << " instead of " << values[i] << " (tolerance: " << tolerances[i] << ")!";
@@ -133,9 +140,10 @@ void compare_qpos(MujocoSim::mjDataPtr d, int qpos_adr, std::string joint_name, 
 	}
 }
 
-void compare_qvel(MujocoSim::mjDataPtr d, int dof_adr, std::string joint_name, std::vector<double> values)
+void compare_qvel(MujocoSim::mjDataPtr d, int dof_adr_int, std::string joint_name, std::vector<double> values)
 {
-	for (int i = 0; i < values.size(); i++) {
+	uint dof_adr = static_cast<uint>(dof_adr_int);
+	for (size_t i = 0; i < values.size(); i++) {
 		EXPECT_EQ(d->qvel[dof_adr + i], values[i]) << "qvel of joint '" << joint_name << "' at index " << i << " is "
 		                                           << d->qvel[dof_adr + i] << " instead of " << values[i] << "!";
 	}
@@ -252,8 +260,8 @@ TEST_F(MujocoRosCoreFixture, custom_initial_joint_states_on_reset)
 	}
 
 	MujocoSim::MujocoEnvPtr env = MujocoSim::detail::main_env_;
-	MujocoSim::mjDataPtr d      = env->data;
-	MujocoSim::mjModelPtr m     = env->model;
+	MujocoSim::mjDataPtr d      = env->data_;
+	MujocoSim::mjModelPtr m     = env->model_;
 
 	int id_balljoint, id1, id2, id_free;
 
@@ -335,8 +343,8 @@ TEST_F(MujocoRosCoreFixture, custom_initial_joint_states)
 	}
 
 	MujocoSim::MujocoEnvPtr env = MujocoSim::detail::main_env_;
-	MujocoSim::mjDataPtr d      = env->data;
-	MujocoSim::mjModelPtr m     = env->model;
+	MujocoSim::mjDataPtr d      = env->data_;
+	MujocoSim::mjModelPtr m     = env->model_;
 
 	int id_balljoint, id1, id2, id_free;
 
@@ -372,12 +380,9 @@ TEST_F(MujocoRosBaseFixture, set_body_state)
 {
 	nh->setParam("unpause", false);
 
-	int id_balljoint, id1, id2, id_free;
+	int id_free;
 
-	id_balljoint = MujocoSim::jointName2id(m.get(), "balljoint");
-	id1          = MujocoSim::jointName2id(m.get(), "joint1");
-	id2          = MujocoSim::jointName2id(m.get(), "joint2");
-	id_free      = MujocoSim::jointName2id(m.get(), "ball_freejoint");
+	id_free = MujocoSim::jointName2id(m.get(), "ball_freejoint");
 
 	mujoco_ros_msgs::SetBodyState srv;
 
@@ -458,7 +463,7 @@ TEST_F(MujocoRosBaseFixture, set_body_state)
 	srv.request.set_pose   = false;
 	srv.request.set_twist  = false;
 	srv.request.set_mass   = true;
-	srv.request.state.mass = 0.299;
+	srv.request.state.mass = 0.299f;
 	EXPECT_NE(m->body_mass[mj_name2id(m.get(), mjOBJ_BODY, "body_ball")], srv.request.state.mass)
 	    << "Mass already has the requested value!"; // Check that mass is different beforehand
 	MujocoSim::detail::setBodyStateCB(srv.request, srv.response);
@@ -510,7 +515,7 @@ TEST_F(MujocoRosBaseFixture, set_geom_properties)
 
 	// set mass
 	srv.request.set_mass             = true;
-	srv.request.properties.body_mass = 0.299;
+	srv.request.properties.body_mass = 0.299f;
 	EXPECT_NE(m->body_mass[ball_body_id], srv.request.properties.body_mass) << "Mass already has requested value!";
 	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
 	EXPECT_TRUE(srv.response.success);
@@ -537,44 +542,45 @@ TEST_F(MujocoRosBaseFixture, set_geom_properties)
 	srv.request.set_type     = true;
 	//   BOX
 	srv.request.properties.type.value = mujoco_ros_msgs::GeomType::BOX;
-	EXPECT_NE(env->model->geom_type[ball_geom_id], mjGEOM_BOX) << "Geom already is of type BOX";
+	EXPECT_NE(env->model_->geom_type[ball_geom_id], mjGEOM_BOX) << "Geom already is of type BOX";
 	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
 	EXPECT_TRUE(srv.response.success);
-	EXPECT_EQ(env->model->geom_type[ball_geom_id], mjGEOM_BOX) << "Geom unchanged";
+	EXPECT_EQ(env->model_->geom_type[ball_geom_id], mjGEOM_BOX) << "Geom unchanged";
 	//   CYLINDER
 	srv.request.properties.type.value = mujoco_ros_msgs::GeomType::CYLINDER;
 	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
 	EXPECT_TRUE(srv.response.success);
-	EXPECT_EQ(env->model->geom_type[ball_geom_id], mjGEOM_CYLINDER) << "Geom unchanged";
+	EXPECT_EQ(env->model_->geom_type[ball_geom_id], mjGEOM_CYLINDER) << "Geom unchanged";
 	//  ELLIPSOID
 	srv.request.properties.type.value = mujoco_ros_msgs::GeomType::ELLIPSOID;
 	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
 	EXPECT_TRUE(srv.response.success);
-	EXPECT_EQ(env->model->geom_type[ball_geom_id], mjGEOM_ELLIPSOID) << "Geom unchanged";
+	EXPECT_EQ(env->model_->geom_type[ball_geom_id], mjGEOM_ELLIPSOID) << "Geom unchanged";
 	//  CAPSULE
 	srv.request.properties.type.value = mujoco_ros_msgs::GeomType::CAPSULE;
 	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
 	EXPECT_TRUE(srv.response.success);
-	EXPECT_EQ(env->model->geom_type[ball_geom_id], mjGEOM_CAPSULE) << "Geom unchanged";
+	EXPECT_EQ(env->model_->geom_type[ball_geom_id], mjGEOM_CAPSULE) << "Geom unchanged";
 	//  SPHERE
 	srv.request.properties.type.value = mujoco_ros_msgs::GeomType::SPHERE;
 	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
 	EXPECT_TRUE(srv.response.success);
-	EXPECT_EQ(env->model->geom_type[ball_geom_id], mjGEOM_SPHERE) << "Geom unchanged";
+	EXPECT_EQ(env->model_->geom_type[ball_geom_id], mjGEOM_SPHERE) << "Geom unchanged";
 
 	// set size
 	srv.request.set_type          = false;
 	srv.request.set_size          = true;
-	srv.request.properties.size_0 = 0.01;
-	srv.request.properties.size_1 = 0.01;
-	srv.request.properties.size_2 = 0.01;
-	EXPECT_TRUE(env->model->geom_size[ball_geom_id * 3] != 0.01 && env->model->geom_size[ball_geom_id * 3 + 1] != 0.01 &&
-	            env->model->geom_size[ball_geom_id * 3 + 2] != 0.01)
+	srv.request.properties.size_0 = 0.01f;
+	srv.request.properties.size_1 = 0.01f;
+	srv.request.properties.size_2 = 0.01f;
+	EXPECT_TRUE(env->model_->geom_size[ball_geom_id * 3] != 0.01 &&
+	            env->model_->geom_size[ball_geom_id * 3 + 1] != 0.01 &&
+	            env->model_->geom_size[ball_geom_id * 3 + 2] != 0.01)
 	    << "Geom size is already 0.01 0.01 0.01!";
 	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
-	EXPECT_NEAR(env->model->geom_size[ball_geom_id * 3], 0.01, 9e-4) << "Size 0 unchanged";
-	EXPECT_NEAR(env->model->geom_size[ball_geom_id * 3 + 1], 0.01, 9e-4) << "Size 1 unchanged";
-	EXPECT_NEAR(env->model->geom_size[ball_geom_id * 3 + 2], 0.01, 9e-4) << "Size 2 unchanged";
+	EXPECT_NEAR(env->model_->geom_size[ball_geom_id * 3], 0.01, 9e-4) << "Size 0 unchanged";
+	EXPECT_NEAR(env->model_->geom_size[ball_geom_id * 3 + 1], 0.01, 9e-4) << "Size 1 unchanged";
+	EXPECT_NEAR(env->model_->geom_size[ball_geom_id * 3 + 2], 0.01, 9e-4) << "Size 2 unchanged";
 
 	MujocoSim::requestExternalShutdown();
 	mj_thread->join();
@@ -591,7 +597,7 @@ TEST_F(MujocoRosBaseFixture, get_body_state)
 	srv.request.set_pose                      = true;
 	srv.request.state.env_id                  = 0;
 	srv.request.state.name                    = "body_ball";
-	srv.request.state.mass                    = 0.299;
+	srv.request.state.mass                    = 0.299f;
 	srv.request.state.pose.pose.position.x    = 1.0;
 	srv.request.state.pose.pose.position.y    = 1.0;
 	srv.request.state.pose.pose.position.z    = 1.0;
@@ -646,10 +652,10 @@ TEST_F(MujocoRosBaseFixture, get_geom_properties)
 	srv.request.properties.env_id         = 0;
 	srv.request.properties.name           = "ball";
 	srv.request.properties.type.value     = mujoco_ros_msgs::GeomType::BOX;
-	srv.request.properties.body_mass      = 0.299;
-	srv.request.properties.size_0         = 0.01;
-	srv.request.properties.size_1         = 0.01;
-	srv.request.properties.size_2         = 0.01;
+	srv.request.properties.body_mass      = 0.299f;
+	srv.request.properties.size_0         = 0.01f;
+	srv.request.properties.size_1         = 0.01f;
+	srv.request.properties.size_2         = 0.01f;
 	srv.request.properties.friction_slide = 1.;
 	srv.request.properties.friction_spin  = 1.;
 	srv.request.properties.friction_roll  = 1.;

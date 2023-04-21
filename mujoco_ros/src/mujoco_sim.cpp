@@ -50,7 +50,13 @@
 
 #include <mujoco_ros/mujoco_sim.h>
 #include <mujoco_ros/plugin_utils.h>
+
+// Ignore static variables unused in this compilation unit
+// TODO(dleins): Remove this after object oriented refactoring
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
 #include <mujoco_ros/rendering/utils.h>
+#pragma GCC diagnostic pop
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
@@ -696,7 +702,7 @@ void setupEnv(MujocoEnvPtr env)
 	ROS_DEBUG_NAMED("mujoco", "resetting noise ...");
 	// Allocate ctrlnoise
 	free(env->ctrlnoise_);
-	env->ctrlnoise_ = static_cast<mjtNum *>(malloc(sizeof(mjtNum) * env->model_->nu));
+	env->ctrlnoise_ = static_cast<mjtNum *>(malloc(sizeof(mjtNum) * static_cast<size_t>(env->model_->nu)));
 	mju_zero(env->ctrlnoise_, env->model_->nu);
 
 	env->load();
@@ -839,7 +845,7 @@ void setupCallbacks()
 	service_servers_.push_back(nh_->advertiseService("get_gravity", getGravityCB));
 	service_servers_.push_back(
 	    nh_->advertiseService<mujoco_ros_msgs::GetStateUint::Request, mujoco_ros_msgs::GetStateUint::Response>(
-	        "get_loadingrequest_state", [&](auto &request, auto &response) {
+	        "get_loadingrequest_state", [&](auto /*&request*/, auto &response) {
 		        uint8_t status       = static_cast<uint8_t>(settings_.loadrequest.load());
 		        response.state.value = status;
 
@@ -866,7 +872,7 @@ void setupCallbacks()
 }
 
 // Service call callbacks
-bool shutdownCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
+bool shutdownCB([[maybe_unused]] std_srvs::Empty::Request &req, [[maybe_unused]] std_srvs::Empty::Response &resp)
 {
 	requestExternalShutdown();
 	return true;
@@ -900,7 +906,7 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 	int vfs_id              = mj_findFileVFS(&vfs_, filename_);
 	size_t filecontent_size = 0;
 	if (vfs_id > -1) {
-		filecontent_size = vfs_.filesize[vfs_id];
+		filecontent_size = static_cast<size_t>(vfs_.filesize[vfs_id]);
 	}
 	char *filedata = new char[filecontent_size];
 	mju::strcpy_arr(old_filename, filename_);
@@ -957,9 +963,9 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 
 			ROS_DEBUG_STREAM_NAMED("mujoco", "\tProvided model is not a regular file. Treating string as content");
 			mj_deleteFileVFS(&vfs_, "rosparam_content");
-			mj_makeEmptyFileVFS(&vfs_, "rosparam_content", static_cast<int>(req.model.size()) + 1);
+			mj_makeEmptyFileVFS(&vfs_, "rosparam_content", static_cast<int>(req.model.size() + 1u));
 			int file_idx = mj_findFileVFS(&vfs_, "rosparam_content");
-			memcpy(vfs_.filedata[file_idx], req.model.c_str(), static_cast<int>(req.model.size()) + 1);
+			memcpy(vfs_.filedata[file_idx], req.model.c_str(), req.model.size() + 1u);
 			ROS_DEBUG_STREAM_NAMED("mujoco",
 			                       "\tSuccessfully saved xml content as mujoco VFS file for accelerated loading");
 			mju::strcpy_arr(filename_, "rosparam_content");
@@ -1018,7 +1024,7 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 	return true;
 }
 
-bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
+bool resetCB([[maybe_unused]] std_srvs::Empty::Request &req, [[maybe_unused]] std_srvs::Empty::Response &resp)
 {
 	settings_.resetrequest.store(1);
 	return true;
@@ -1524,7 +1530,7 @@ bool setGravityCB(mujoco_ros_msgs::SetGravity::Request &req, mujoco_ros_msgs::Se
 
 	// Lock mutex to get data within one step
 	std::lock_guard<std::mutex> lk_sim(sim_mtx);
-	for (int i = 0; i < 3; ++i) {
+	for (size_t i = 0; i < 3; ++i) {
 		env->model_->opt.gravity[i] = req.gravity[i];
 	}
 	resp.success = true;
@@ -1559,7 +1565,7 @@ bool getGravityCB(mujoco_ros_msgs::GetGravity::Request &req, mujoco_ros_msgs::Ge
 
 	// Lock mutex to get data within one step
 	std::lock_guard<std::mutex> lk_sim(sim_mtx);
-	for (int i = 0; i < 3; ++i) {
+	for (size_t i = 0; i < 3; ++i) {
 		resp.gravity[i] = env->model_->opt.gravity[i];
 	}
 	resp.success = true;

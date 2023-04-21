@@ -61,7 +61,13 @@
 #include <mujoco_ros/uitools.h>
 #include <mujoco_ros/array_safety.h>
 #include <mujoco_ros/common_types.h>
+
+// Ignore static variables unused in this compilation unit
+// TODO(dleins): Remove this after object oriented refactoring
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
 #include <mujoco_ros/mujoco_sim.h>
+#pragma GCC diagnostic pop
 
 #include <mujoco_ros/rendering/camera.h>
 
@@ -100,10 +106,10 @@ static mjUI ui0_          = {};
 static mjUI ui1_          = {};
 
 // constants
-const int maxgeom_                      = 5000; // preallocated geom array in mjvScene
-const int max_slow_down_                = 128; // maximum slow-down quotient
-const float render_ui_rate_lower_bound_ = 0.0333f; // Minimum render freq at 30 fps
-const float render_ui_rate_upper_bound_ = 0.0166f; // Maximum render freq at 60 fps
+const int maxgeom_                       = 5000; // preallocated geom array in mjvScene
+const int max_slow_down_                 = 128; // maximum slow-down quotient
+const double render_ui_rate_lower_bound_ = 0.0333; // Minimum render freq at 30 fps
+const float render_ui_rate_upper_bound_  = 0.0166f; // Maximum render freq at 60 fps
 
 // info strings
 static char info_title[kBufSize];
@@ -134,11 +140,11 @@ void onModelLoad(MujocoEnvPtr env, bool align);
 // Profiler, Sensor, Info, Watch
 void profilerInit(void);
 void profilerUpdate(MujocoEnvPtr env);
-void profilerShow(MujocoEnvPtr env, mjrRect rect);
+void profilerShow(mjrRect rect);
 
 void sensorInit(void);
 void sensorUpdate(MujocoEnvPtr env);
-void sensorShow(MujocoEnvPtr env, mjrRect rect);
+void sensorShow(mjrRect rect);
 
 void infotext(MujocoEnvPtr env, char (&title)[kBufSize], char (&content)[kBufSize], double interval);
 
@@ -149,7 +155,7 @@ void watch(MujocoEnvPtr env);
 // UI Elements
 void makePhysics(MujocoEnvPtr env, int oldstate);
 void makeRendering(MujocoEnvPtr env, int oldstate);
-void makeGroup(MujocoEnvPtr env, int oldstate);
+void makeGroup(int oldstate);
 void makeJoint(MujocoEnvPtr env, int oldstate);
 void makeControl(MujocoEnvPtr env, int oldstate);
 void makeSections(MujocoEnvPtr env);
@@ -189,19 +195,6 @@ void renderMain();
  * @param[in] scene pointer to the scene which should be rendered to.
  */
 void renderCallback(mjData *data, mjvScene *scene);
-
-namespace {
-void initVisible();
-void render(GLFWwindow *window);
-
-/**
- * If anyone is subscribed to the respective topics, renders RGB (segmented or normal color) and DEPTH image and
- * publishes the image(s).
- * @return `true` if anything was published, `false` else.
- */
-bool renderAndPubEnv(MujocoEnvPtr env, bool rgb, bool depth, const image_transport::Publisher &pub_rgb,
-                     const image_transport::Publisher &pub_depth, int width, int height, const std::string cam_name);
-} // end unnamed namespace
 
 // section ids
 enum

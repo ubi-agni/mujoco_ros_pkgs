@@ -40,7 +40,13 @@
 #include <mujoco_ros_msgs/ShutdownNS.h>
 #include <mujoco_ros/mujoco_env.h>
 
+// Ignore static variables unused in this compilation unit
+// TODO(dleins): Remove this after object oriented refactoring
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
 #include <mujoco_ros/rendering/utils.h>
+#pragma GCC diagnostic pop
+
 #include <mujoco_ros/rendering/camera.h>
 
 #include <sstream>

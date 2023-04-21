@@ -100,7 +100,6 @@ static std::mutex sim_mtx;
 static std::mutex render_mtx;
 static std::condition_variable step_signal_;
 static std::mutex readyness_mtx;
-static int ready_threads_;
 
 int jointName2id(mjModel *m, const std::string &joint_name, const std::string &robot_namespace = std::string());
 
@@ -155,9 +154,6 @@ namespace detail {
 extern MujocoEnvPtr main_env_;
 // List of currently used envs
 static std::vector<MujocoEnvPtr> env_list_;
-
-// Time benchmarking bool for multienv performance measuring
-static bool benchmark_env_time_;
 
 // MuJoCo virtual filesystem to store mjcf in-memory.
 static mjVFS vfs_;

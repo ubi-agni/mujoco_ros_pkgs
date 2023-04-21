@@ -64,7 +64,7 @@ static void uiUpdateState(GLFWwindow *wnd)
 }
 
 // keyboard
-static void uiKeyboard(GLFWwindow *wnd, int key, int scancode, int act, int mods)
+static void uiKeyboard(GLFWwindow *wnd, int key, int /*scancode*/, int act, int /*mods*/)
 {
 	// release: nothing to do
 	if (act == GLFW_RELEASE) {
@@ -88,7 +88,7 @@ static void uiKeyboard(GLFWwindow *wnd, int key, int scancode, int act, int mods
 }
 
 // mouse button
-static void uiMouseButton(GLFWwindow *wnd, int button, int act, int mods)
+static void uiMouseButton(GLFWwindow *wnd, int button, int act, int /*mods*/)
 {
 	// extract data from user pointer
 	uiUserPointer *ptr = static_cast<uiUserPointer *>(glfwGetWindowUserPointer(wnd));
@@ -152,7 +152,7 @@ static void uiMouseButton(GLFWwindow *wnd, int button, int act, int mods)
 }
 
 // mouse move
-static void uiMouseMove(GLFWwindow *wnd, double xpos, double ypos)
+static void uiMouseMove(GLFWwindow *wnd, double /*xpos*/, double /*ypos*/)
 {
 	// extract data from user pointer
 	uiUserPointer *ptr = static_cast<uiUserPointer *>(glfwGetWindowUserPointer(wnd));

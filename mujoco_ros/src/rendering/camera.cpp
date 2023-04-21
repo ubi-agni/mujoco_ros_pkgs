@@ -39,7 +39,12 @@
 #include <mujoco_ros/rendering/camera.h>
 #include <geometry_msgs/PoseStamped.h>
 
+// Ignore static variables unused in this compilation unit
+// TODO(dleins): Remove this after object oriented refactoring
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
 #include <mujoco_ros/mujoco_sim.h>
+#pragma GCC diagnostic pop
 
 namespace MujocoSim::rendering {
 
@@ -129,8 +134,8 @@ CameraStream::CameraStream(const uint8_t cam_id, const std::string cam_name, con
 
 	sensor_msgs::CameraInfo ci;
 	ci.header.frame_id = camera_frame_name;
-	ci.width           = width;
-	ci.height          = height;
+	ci.width           = static_cast<decltype(ci.width)>(width);
+	ci.height          = static_cast<decltype(ci.height)>(height);
 
 	// clang-format off
 	mjtNum extrinsic[12] = {

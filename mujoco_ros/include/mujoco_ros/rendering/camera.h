@@ -63,15 +63,9 @@ public:
 
 	~CameraStream()
 	{
-		if (&rgb_pub_ != nullptr) {
-			rgb_pub_.shutdown();
-		}
-		if (&depth_pub_ != nullptr) {
-			depth_pub_.shutdown();
-		}
-		if (&segment_pub_ != nullptr) {
-			segment_pub_.shutdown();
-		}
+		rgb_pub_.shutdown();
+		depth_pub_.shutdown();
+		segment_pub_.shutdown();
 	};
 
 	uint8_t cam_id_;

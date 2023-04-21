@@ -116,19 +116,21 @@ void render(GLFWwindow *window)
 	float actual_realtime  = 100 / settings_.measured_slow_down;
 
 	float rt_offset = mju_abs(actual_realtime - desired_realtime);
-	bool misaligned = settings_.run.load() && rt_offset > 0.1 * desired_realtime;
+	bool misaligned = settings_.run.load() && rt_offset > 0.1f * desired_realtime;
 
 	// show realtime label
 	char rt_label[30] = { '\0' };
-	if (desired_realtime != 100. || misaligned) {
-		int labelsize;
+	if (desired_realtime != 100.f || misaligned) {
+		uint labelsize;
 		if (desired_realtime != -1) {
-			labelsize = std::snprintf(rt_label, sizeof(rt_label), "%g%%", desired_realtime);
+			labelsize = static_cast<uint>(
+			    std::max(0, std::snprintf(rt_label, sizeof(rt_label), "%g%%", static_cast<double>(desired_realtime))));
 		} else {
 			labelsize   = 1;
 			rt_label[0] = '+';
 		}
-		std::snprintf(rt_label + labelsize, sizeof(rt_label) - labelsize, " (%-4.1f%%)", actual_realtime);
+		std::snprintf(rt_label + labelsize, sizeof(rt_label) - labelsize, " (%-4.1f%%)",
+		              static_cast<double>(actual_realtime));
 	}
 
 	if (!pauseloadlabel.empty() || rt_label[0]) {
@@ -155,11 +157,11 @@ void render(GLFWwindow *window)
 
 	// show profiler
 	if (settings_.profiler)
-		profilerShow(main_env_, rect);
+		profilerShow(rect);
 
 	// show sensor
 	if (settings_.sensor)
-		sensorShow(main_env_, smallrect);
+		sensorShow(smallrect);
 
 	// finalize
 	glfwSwapBuffers(window);
@@ -239,6 +241,11 @@ void initVisible()
 	uiModify(main_window_, &ui1_, &uistate_, &free_context_);
 }
 
+/**
+ * If anyone is subscribed to the respective topics, renders RGB (segmented or normal color) and DEPTH image and
+ * publishes the image(s).
+ * @return `true` if anything was published, `false` else.
+ */
 bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const image_transport::Publisher &pub_rgb,
                      const image_transport::Publisher &pub_depth, const int width, const int height,
                      const std::string cam_name)
@@ -274,11 +281,11 @@ bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const i
 		sensor_msgs::ImagePtr rgb_im = boost::make_shared<sensor_msgs::Image>();
 		rgb_im->header.frame_id      = cam_name + "_optical_frame";
 		rgb_im->header.stamp         = ros::Time::now();
-		rgb_im->width                = viewport.width;
-		rgb_im->height               = viewport.height;
+		rgb_im->width                = static_cast<decltype(rgb_im->width)>(viewport.width);
+		rgb_im->height               = static_cast<decltype(rgb_im->height)>(viewport.height);
 		rgb_im->encoding             = sensor_msgs::image_encodings::RGB8;
-		rgb_im->step                 = viewport.width * 3 * sizeof(unsigned char);
-		size_t size                  = rgb_im->step * viewport.height;
+		rgb_im->step                 = static_cast<decltype(rgb_im->step)>(viewport.width) * 3u * sizeof(unsigned char);
+		size_t size                  = rgb_im->step * static_cast<uint>(viewport.height);
 		rgb_im->data.resize(size);
 
 		memcpy(reinterpret_cast<char *>(&rgb_im->data[0]), env->vis_.rgb.get(), size);
@@ -296,25 +303,25 @@ bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const i
 		sensor_msgs::ImagePtr depth_im = boost::make_shared<sensor_msgs::Image>();
 		depth_im->header.frame_id      = cam_name + "_optical_frame";
 		depth_im->header.stamp         = ros::Time::now();
-		depth_im->width                = viewport.width;
-		depth_im->height               = viewport.height;
+		depth_im->width                = static_cast<decltype(depth_im->width)>(viewport.width);
+		depth_im->height               = static_cast<decltype(depth_im->height)>(viewport.height);
 		depth_im->encoding             = sensor_msgs::image_encodings::TYPE_32FC1;
-		depth_im->step                 = static_cast<uint>(viewport.width * sizeof(float));
-		size_t size                    = depth_im->step * viewport.height;
+		depth_im->step = static_cast<decltype(depth_im->step)>(static_cast<uint>(viewport.width) * sizeof(float));
+		size_t size    = depth_im->step * static_cast<uint>(viewport.height);
 		depth_im->data.resize(size);
 
-		uint16_t *dest_uint = reinterpret_cast<uint16_t *>(&depth_im->data[0]);
-		float *dest_float   = reinterpret_cast<float *>(&depth_im->data[0]);
-		uint64_t index      = 0;
+		float *dest_float = reinterpret_cast<float *>(&depth_im->data[0]);
+		uint index        = 0;
 
-		mjtNum e = env->model_->stat.extent;
-		mjtNum f = e * env->model_->vis.map.zfar;
-		mjtNum n = e * env->model_->vis.map.znear;
+		float e = static_cast<float>(env->model_->stat.extent);
+		float f = e * env->model_->vis.map.zfar;
+		float n = e * env->model_->vis.map.znear;
 
-		for (int j = depth_im->height - 1; j >= 0; --j) {
+		for (uint32_t j = depth_im->height; j > 0; j--) {
 			for (uint32_t i = 0; i < depth_im->width; i++) {
-				float depth_val                     = env->vis_.depth[index++];
-				dest_float[i + j * depth_im->width] = static_cast<float>(-f * n / (depth_val * (f - n) - f));
+				float depth_val = env->vis_.depth[index];
+				index += 1u;
+				dest_float[i + (j - 1u) * depth_im->width] = -f * n / (depth_val * (f - n) - f);
 			}
 		}
 
@@ -389,8 +396,6 @@ void offScreenRenderEnv(MujocoEnvPtr env)
 		if (ros::Duration(1 / stream->pub_freq_) >= ros::Time::now() - stream->last_pub_) {
 			continue;
 		}
-
-		int cam_id = stream->cam_id_;
 
 		stream->last_pub_ = ros::Time::now();
 
@@ -697,7 +702,7 @@ void profilerUpdate(MujocoEnvPtr env)
 	}
 }
 
-void profilerShow(MujocoEnvPtr env, mjrRect rect)
+void profilerShow(mjrRect rect)
 {
 	mjrRect viewport = { rect.left + rect.width - rect.width / 4, rect.bottom, rect.width / 4, rect.height / 4 };
 	mjr_figure(viewport, &figtimer_, &free_context_);
@@ -785,7 +790,7 @@ void sensorUpdate(MujocoEnvPtr env)
 }
 
 // Show sensor figure
-void sensorShow(MujocoEnvPtr env, mjrRect rect)
+void sensorShow(mjrRect rect)
 {
 	// constant width with and without profiler
 	int width = settings_.profiler ? rect.width / 3 : rect.width / 4;
@@ -812,16 +817,17 @@ void infotext(MujocoEnvPtr env, char (&title)[kBufSize], char (&content)[kBufSiz
 	solerr = mju_log10(mju_max(mjMINVAL, solerr));
 
 	mju::strcpy_arr(title, "Time\nSize\nCPU\nSolver\nFPS\nMemory");
-	mju::sprintf_arr(
-	    content, "%-9.3f\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%.0f\n%.2g of %s", env->data_->time, env->data_->nefc,
-	    env->data_->ncon,
-	    settings_.run.load() ?
-	        env->data_->timer[mjTIMER_STEP].duration / mjMAX(1, env->data_->timer[mjTIMER_STEP].number) :
-	        env->data_->timer[mjTIMER_FORWARD].duration / mjMAX(1, env->data_->timer[mjTIMER_FORWARD].number),
-	    solerr, env->data_->solver_iter, 1 / interval,
-	    static_cast<double>(env->data_->maxuse_arena) / static_cast<double>(env->data_->nstack * sizeof(mjtNum)),
-	    env->data_->maxuse_con / static_cast<double>(env->model_->nconmax),
-	    mju_writeNumBytes(env->data_->nstack * sizeof(mjtNum)));
+	mju::sprintf_arr(content, "%-9.3f\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%.0f\n%.2g of %s", env->data_->time,
+	                 env->data_->nefc, env->data_->ncon,
+	                 settings_.run.load() ?
+	                     env->data_->timer[mjTIMER_STEP].duration / mjMAX(1, env->data_->timer[mjTIMER_STEP].number) :
+	                     env->data_->timer[mjTIMER_FORWARD].duration /
+	                         mjMAX(1, env->data_->timer[mjTIMER_FORWARD].number),
+	                 solerr, env->data_->solver_iter, 1 / interval,
+	                 static_cast<double>(env->data_->maxuse_arena) /
+	                     static_cast<double>(static_cast<uint>(env->data_->nstack) * sizeof(mjtNum)),
+	                 env->data_->maxuse_con / static_cast<double>(env->model_->nconmax),
+	                 mju_writeNumBytes(static_cast<uint>(env->data_->nstack) * sizeof(mjtNum)));
 
 	// Add energy if enabled
 	if (mjENABLED_ros(env->model_, mjENBL_ENERGY)) {
@@ -1007,7 +1013,7 @@ void makeRendering(MujocoEnvPtr env, int oldstate)
 }
 
 // Make group section UI
-void makeGroup(MujocoEnvPtr env, int oldstate)
+void makeGroup(int oldstate)
 {
 	mjuiDef defGroup[] = { { mjITEM_SECTION, "Group enable", oldstate, nullptr, "AG" },
 		                    { mjITEM_SEPARATOR, "Geom groups", 1 },
@@ -1172,7 +1178,7 @@ void makeSections(MujocoEnvPtr env)
 	// make
 	makePhysics(env, oldstate0[SECT_PHYSICS]);
 	makeRendering(env, oldstate0[SECT_RENDERING]);
-	makeGroup(env, oldstate0[SECT_GROUP]);
+	makeGroup(oldstate0[SECT_GROUP]);
 	makeJoint(env, oldstate1[SECT_JOINT]);
 	makeControl(env, oldstate1[SECT_CONTROL]);
 }
@@ -1232,9 +1238,11 @@ void printCamera(mjvGLCamera *camera)
 	mju_f2n(camup, camera[0].up, 3);
 	mju_cross(camright, camforward, camup);
 	std::printf("<camera pos=\"%.3f %.3f %.3f\" xyaxes=\"%.3f %.3f %.3f %.3f %.3f %.3f\"/>\n",
-	            (camera[0].pos[0] + camera[1].pos[0]) / 2, (camera[0].pos[1] + camera[1].pos[1]) / 2,
-	            (camera[0].pos[2] + camera[1].pos[2]) / 2, camright[0], camright[1], camright[2], camera[0].up[0],
-	            camera[0].up[1], camera[0].up[2]);
+	            static_cast<double>(camera[0].pos[0] + camera[1].pos[0]) / 2,
+	            static_cast<double>(camera[0].pos[1] + camera[1].pos[1]) / 2,
+	            static_cast<double>(camera[0].pos[2] + camera[1].pos[2]) / 2, camright[0], camright[1], camright[2],
+	            static_cast<double>(camera[0].up[0]), static_cast<double>(camera[0].up[1]),
+	            static_cast<double>(camera[0].up[2]));
 }
 
 // Update UI 0 when MuJoCo structures change (except for joint sliders)
