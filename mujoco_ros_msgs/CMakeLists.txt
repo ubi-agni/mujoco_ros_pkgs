@@ -17,6 +17,8 @@ add_message_files(
     GeomProperties.msg
     GeomType.msg
     SensorNoiseModel.msg
+    CameraOptions.msg
+    BoolOption.msg
 )
 
 add_service_files(
@@ -35,6 +37,8 @@ add_service_files(
     SetGravity.srv
     GetGravity.srv
     Reload.srv
+    SetCameraOptions.srv
+    GetCameraOptions.srv
 )
 
 add_action_files(

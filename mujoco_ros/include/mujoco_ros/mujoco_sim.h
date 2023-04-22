@@ -77,6 +77,8 @@
 #include <mujoco_ros_msgs/GetGeomProperties.h>
 #include <mujoco_ros_msgs/SetGravity.h>
 #include <mujoco_ros_msgs/GetGravity.h>
+#include <mujoco_ros_msgs/GetCameraOptions.h>
+#include <mujoco_ros_msgs/SetCameraOptions.h>
 
 #include <actionlib/server/simple_action_server.h>
 #include <std_srvs/Empty.h>
@@ -207,6 +209,10 @@ bool getGeomPropertiesCB(mujoco_ros_msgs::GetGeomProperties::Request &req,
                          mujoco_ros_msgs::GetGeomProperties::Response &resp);
 bool setGravityCB(mujoco_ros_msgs::SetGravity::Request &req, mujoco_ros_msgs::SetGravity::Response &resp);
 bool getGravityCB(mujoco_ros_msgs::GetGravity::Request &req, mujoco_ros_msgs::GetGravity::Response &resp);
+bool setCameraOptionsCB(mujoco_ros_msgs::SetCameraOptions::Request &req,
+                        mujoco_ros_msgs::SetCameraOptions::Response &resp);
+bool getCameraOptionsCB(mujoco_ros_msgs::GetCameraOptions::Request &req,
+                        mujoco_ros_msgs::GetCameraOptions::Response &resp);
 
 // Action calls
 void onStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal);

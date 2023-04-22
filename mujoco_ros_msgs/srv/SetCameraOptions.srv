@@ -1,0 +1,7 @@
+uint8 env_id
+string camera_name
+string admin_hash
+mujoco_ros_msgs/CameraOptions camera_options
+---
+bool success
+string status_message

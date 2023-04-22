@@ -71,6 +71,7 @@
 #include <iostream>
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string.hpp>
 namespace MujocoSim {
 
 using namespace detail;
@@ -849,6 +850,8 @@ void setupCallbacks()
 		    loadInitialJointStates(main_env_->model_, main_env_->data_);
 		    return true;
 	    }));
+	service_servers_.push_back(nh_->advertiseService("set_camera_options", setCameraOptionsCB));
+	service_servers_.push_back(nh_->advertiseService("get_camera_options", getCameraOptionsCB));
 	service_servers_.push_back(
 	    nh_->advertiseService<mujoco_ros_msgs::GetStateUint::Request, mujoco_ros_msgs::GetStateUint::Response>(
 	        "get_loadingrequest_state", [&](auto /*&request*/, auto &response) {
@@ -1575,6 +1578,180 @@ bool getGravityCB(mujoco_ros_msgs::GetGravity::Request &req, mujoco_ros_msgs::Ge
 		resp.gravity[i] = env->model_->opt.gravity[i];
 	}
 	resp.success = true;
+	return true;
+}
+
+bool getCameraOptionsCB(mujoco_ros_msgs::GetCameraOptions::Request &req,
+                        mujoco_ros_msgs::GetCameraOptions::Response &resp)
+{
+	ROS_WARN("Caution GetCameraOptions returns the global offscreen camera options, because no individual options are "
+	         "used yet!");
+	if (settings_.eval_mode) {
+		ROS_DEBUG_NAMED("mujoco", "Evaluation mode is active. Checking hash validity");
+		if (settings_.admin_hash != req.admin_hash) {
+			ROS_ERROR_NAMED("mujoco", "Hash mismatch, no permission to get camera options!");
+			resp.status_message =
+			    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to get camera options!");
+			resp.success = false;
+			return true;
+		}
+		ROS_DEBUG_NAMED("mujoco", "Hash valid, request authorized.");
+	}
+
+	uint env_id = (req.env_id);
+	ROS_DEBUG_STREAM_NAMED("mujoco", "Searching for env '/env" << env_id << "'");
+	MujocoEnvPtr env = environments::getEnvById(env_id);
+
+	if (env == nullptr) {
+		std::string error_msg("Could not find environment with id " + env_id);
+		ROS_WARN_STREAM_NAMED("mujoco", error_msg);
+		resp.status_message = static_cast<decltype(resp.status_message)>(error_msg);
+		resp.success        = false;
+		return true;
+	}
+
+	// Lock mutex to get data within one step
+	std::lock_guard<std::mutex> lk_sim(sim_mtx);
+	char tmp[100] = "";
+
+	for (size_t i = 0; i < mjNVISFLAG; i++) {
+		mujoco_ros_msgs::BoolOption option;
+
+		std::strcpy(tmp, mjVISSTRING[i][0]);
+		option.name = std::string(tmp);
+		boost::algorithm::to_lower(option.name);
+		option.name.erase(std::remove_if(option.name.begin(), option.name.end(),
+		                                 [](unsigned char x) { return std::isspace(x) || x == '&'; }),
+		                  option.name.end());
+
+		if (option.name == "bodytree")
+			continue;
+
+		option.active = static_cast<decltype(option.active)>(env->vis_.vopt.flags[i]);
+		// ROS_WARN_STREAM("ID " << i << " named: " << option.name << " value: " << option.active);
+		resp.camera_options.render_elements.push_back(option);
+	}
+
+	for (size_t i = 0; i < mjNRNDFLAG; i++) {
+		mujoco_ros_msgs::BoolOption option;
+
+		std::strcpy(tmp, mjRNDSTRING[i][0]);
+		option.name = std::string(tmp);
+		boost::algorithm::to_lower(option.name);
+		option.name.erase(std::remove_if(option.name.begin(), option.name.end(),
+		                                 [](unsigned char x) { return std::isspace(x) || x == '&'; }),
+		                  option.name.end());
+
+		option.active = static_cast<decltype(option.active)>(env->vis_.scn.flags[i]);
+		// ROS_WARN_STREAM("ID " << i << " named: " << option.name << " value: " << option.active);
+		resp.camera_options.render_effects.push_back(option);
+	}
+
+	for (size_t i = 0; i < mjNGROUP; i++) {
+		resp.camera_options.geom_groups.push_back(env->vis_.vopt.geomgroup[i]);
+		resp.camera_options.site_groups.push_back(env->vis_.vopt.sitegroup[i]);
+		resp.camera_options.joint_groups.push_back(env->vis_.vopt.jointgroup[i]);
+		resp.camera_options.tendon_groups.push_back(env->vis_.vopt.tendongroup[i]);
+		resp.camera_options.actuator_groups.push_back(env->vis_.vopt.actuatorgroup[i]);
+	}
+
+	resp.success = true;
+
+	return true;
+}
+
+bool setCameraOptionsCB(mujoco_ros_msgs::SetCameraOptions::Request &req,
+                        mujoco_ros_msgs::SetCameraOptions::Response &resp)
+{
+	ROS_WARN(
+	    "Caution SetCameraOptions settings for now are applied to all offscreen cameras and not just to a single one!");
+
+	if (settings_.eval_mode) {
+		ROS_DEBUG_NAMED("mujoco", "Evaluation mode is active. Checking hash validity");
+		if (settings_.admin_hash != req.admin_hash) {
+			ROS_ERROR_NAMED("mujoco", "Hash mismatch, no permission to set camera options!");
+			resp.status_message =
+			    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to get camera options!");
+			resp.success = false;
+			return true;
+		}
+		ROS_DEBUG_NAMED("mujoco", "Hash valid, request authorized.");
+	}
+
+	uint env_id = (req.env_id);
+	ROS_DEBUG_STREAM_NAMED("mujoco", "Searching for env '/env" << env_id << "'");
+	MujocoEnvPtr env = environments::getEnvById(env_id);
+
+	if (env == nullptr) {
+		std::string error_msg("Could not find environment with id " + env_id);
+		ROS_WARN_STREAM_NAMED("mujoco", error_msg);
+		resp.status_message = static_cast<decltype(resp.status_message)>(error_msg);
+		resp.success        = false;
+		return true;
+	}
+
+	// Lock mutex to set data within one step
+	std::lock_guard<std::mutex> lk_sim(sim_mtx);
+	std::string name;
+	char tmp[100] = "";
+
+	for (size_t i = 0; i < mjNVISFLAG; i++) {
+		std::strcpy(tmp, mjVISSTRING[i][0]);
+		name = std::string(tmp);
+		boost::algorithm::to_lower(name);
+		name.erase(std::remove_if(name.begin(), name.end(), [](unsigned char x) { return std::isspace(x) || x == '&'; }),
+		           name.end());
+
+		for (size_t i = 0; i < req.camera_options.render_elements.size(); i++) {
+			if (name == req.camera_options.render_elements[i].name) {
+				env->vis_.vopt.flags[i] = req.camera_options.render_elements[i].active;
+				req.camera_options.render_elements.erase(req.camera_options.render_elements.begin() + i);
+				break;
+			}
+		}
+
+		if (req.camera_options.render_elements.size() > 0) {
+			ROS_WARN_STREAM("Could not set '" << name << "' because this render element option could not be found!");
+		}
+	}
+
+	for (size_t i = 0; i < mjNRNDFLAG; i++) {
+		mujoco_ros_msgs::BoolOption option;
+
+		std::strcpy(tmp, mjRNDSTRING[i][0]);
+		option.name = std::string(tmp);
+		boost::algorithm::to_lower(option.name);
+		name.erase(std::remove_if(name.begin(), name.end(), [](unsigned char x) { return std::isspace(x) || x == '&'; }),
+		           name.end());
+
+		for (size_t i = 0; i < req.camera_options.render_effects.size(); i++) {
+			if (name == req.camera_options.render_effects[i].name) {
+				env->vis_.vopt.flags[i] = req.camera_options.render_effects[i].active;
+				req.camera_options.render_effects.erase(req.camera_options.render_effects.begin() + i);
+				break;
+			}
+		}
+
+		if (req.camera_options.render_effects.size() > 0) {
+			ROS_WARN_STREAM("Could not set '" << name << "' because this render element option could not be found!");
+		}
+	}
+
+	for (size_t i = 0; i < mjNGROUP; i++) {
+		if (i < req.camera_options.geom_groups.size())
+			env->vis_.vopt.geomgroup[i] = static_cast<mjtByte>(req.camera_options.geom_groups[i]);
+		if (i < req.camera_options.site_groups.size())
+			env->vis_.vopt.sitegroup[i] = static_cast<mjtByte>(req.camera_options.site_groups[i]);
+		if (i < req.camera_options.joint_groups.size())
+			env->vis_.vopt.jointgroup[i] = static_cast<mjtByte>(req.camera_options.joint_groups[i]);
+		if (i < req.camera_options.tendon_groups.size())
+			env->vis_.vopt.tendongroup[i] = static_cast<mjtByte>(req.camera_options.tendon_groups[i]);
+		if (i < req.camera_options.actuator_groups.size())
+			env->vis_.vopt.actuatorgroup[i] = static_cast<mjtByte>(req.camera_options.actuator_groups[i]);
+	}
+
+	resp.success = true;
+
 	return true;
 }
 
