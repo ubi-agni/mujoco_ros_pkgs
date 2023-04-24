@@ -1,4 +1,11 @@
 # MuJoCo hand of god plugin
+This plugin holds an object, defined in the config, in place.
+
+## Usage
+
+Define the desired hog-objects in config (hog_example_config.yaml).
+Launch plugin with `roslaunch mujoco_ros_hog hog.launch`
+Pause/unpause the plugin with with the servicecall `mujoco_ros_hog/set_active bool`
 
 
 # Licensing
