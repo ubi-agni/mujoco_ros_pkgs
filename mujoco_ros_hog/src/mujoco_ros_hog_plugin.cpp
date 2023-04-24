@@ -39,6 +39,7 @@
 #include <pluginlib/class_list_macros.h>
 #include <iostream>
 #include <vector>
+#include <std_srvs/SetBool.h>
 
 
 namespace mujoco_ros_hog {
@@ -84,6 +85,12 @@ bool MujocoHogPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d)
     }
 
 	tf_buffer_.reset(new tf2_ros::Buffer());
+	ros_hog_server_ = node_handle_->advertiseService<std_srvs::SetBool::Request, std_srvs::SetBool::Response>(
+	    "mujoco_ros_hog/set_active", [&](auto &request, auto &response) {
+		    active = request.data;
+		    response.success = true;
+		    return true;
+	    });
 	ROS_INFO_NAMED("mujoco_ros_hog", "Hog initialized");
 	return true; 
 	
@@ -92,7 +99,7 @@ bool MujocoHogPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d)
 void MujocoHogPlugin::controlCallback(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d)
 {
 
-	if(d->time != last_time){
+	if(d->time != last_time && active==true){
 		updateHog(m,d);
 	}
 	last_time = d->time;
@@ -104,13 +111,14 @@ void MujocoHogPlugin::updateHog(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d)
 	MujocoSim::MujocoEnvPtr env = MujocoSim::environments::getEnv(d.get());
 	
 	double g;
+	//get the gravitational force
 	if (env != nullptr) {
 		g = env->model_->opt.gravity[2];
 	}else{
 		ROS_ERROR_STREAM_NAMED("mujoco_ros_hog","Couldn't get Environment with ID: " << env_id);
 		return;
 	}
-	
+	//apply update for every registered hog body	
     for (std::map<std::string,std::vector<double>>::iterator it = hog_bodies_.begin() ; it != hog_bodies_.end(); ++it) {
 
 		std::string body_name = it->first;
@@ -128,6 +136,7 @@ void MujocoHogPlugin::updateHog(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d)
 			qm.z = it->second[6];
 
 		}else{
+			// uses transform if there is no desired position in the config
 			try{
 				hog_desired_tform = tf_buffer_->lookupTransform("hog_desired", body_name, ros::Time(0));
 			} catch (tf2::TransformException ex){
@@ -137,6 +146,7 @@ void MujocoHogPlugin::updateHog(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d)
             pm = hog_desired_tform.transform.translation;
             qm = hog_desired_tform.transform.rotation;  
 		}
+		//retrieve id of object
 		unsigned int fidx = mj_name2id(m.get(), mjOBJ_XBODY, body_name.c_str());
 		unsigned int h;
 		double kl = 2500;
@@ -145,6 +155,7 @@ void MujocoHogPlugin::updateHog(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d)
 		double ca = 2.0 * sqrt(ka * m->body_inertia[3*fidx]);
 		
 		
+		// get desired positions,quaternions as mujoco Nums
 		mjtNum p[3] = {pm.x,pm.y,pm.z};
 		mjtNum q[4] = {qm.w,qm.x,qm.y,qm.z};
 		mjtNum pc[3] = {d->xpos[3*fidx    ],
@@ -159,27 +170,16 @@ void MujocoHogPlugin::updateHog(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d)
 		mju_normalize4(qc);
 		mjtNum vx[6];
 		mjtNum pe[3];
-		mjtNum qe[4];
-		mjtNum qi[4];
+		//calculate difference between desired pos and actual pos
 		mju_sub3(pe,p,pc); 
-		mju_negQuat(qi,qc);
-		mju_mulQuat(qe,q,qi);
 		mj_objectVelocity(m.get(),d.get(),mjOBJ_XBODY, fidx, vx, 0);
 		for (int i = 0; i < 3; ++i) {
 			d->xfrc_applied[6*fidx + i] = kl * pe[i]- cl *vx[i+3];
 		}
 		d->xfrc_applied[6*fidx + 2] += -1* g * m->body_subtreemass[fidx];
-		mjtNum ql[3] = {0,0,0};
-		if (qe[0] < 1.0) {
-			double acosw = std::acos(qe[1]);
-			double qsin = std::sin(acosw);
-			if (std::fabs(qsin) <= 1e-3) {
-				double c = acosw/qsin;
-				ql[1] = c*qe[1];
-				ql[2] = c*qe[2];
-				ql[3] = c*qe[3];
-			}
-		}
+		mjtNum ql[3]; 
+		//calculate 3d velocity of difference between quats
+		mju_subQuat(ql,q,qc);
 		for (int i = 0; i < 3; ++i) {
 			d->xfrc_applied[6*fidx + i + 3] = ka * ql[i] - ca * vx[i];
 		}

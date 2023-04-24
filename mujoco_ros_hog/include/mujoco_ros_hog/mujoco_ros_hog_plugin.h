@@ -74,9 +74,11 @@ public:
 protected:
 
 
+	bool active = true;
 	mjtNum last_time;
 	std::map<std::string,std::vector<double>> hog_bodies_;
 	boost::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+	ros::ServiceServer ros_hog_server_;
 
 };
 
