@@ -9,7 +9,10 @@
 * Set GUI default to show info overlay and hide UI1.
 
 ### Fixed
+* Fixed publish rate of camera images (#22).
 * Now publishing clock on reload.
+
+Contributors: @DavidPL1, @lbergmann
 
 <a name="0.5.0"></a>
 ## [0.5.0] - 2023-03-24
