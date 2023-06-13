@@ -101,8 +101,8 @@ protected:
 		}
 
 		env = MujocoSim::detail::main_env_;
-		d   = env->data;
-		m   = env->model;
+		d   = env->data_;
+		m   = env->model_;
 	}
 
 	virtual void TearDown()
@@ -140,8 +140,8 @@ protected:
 		}
 
 		env = MujocoSim::detail::main_env_;
-		d   = env->data;
-		m   = env->model;
+		d   = env->data_;
+		m   = env->model_;
 	}
 
 	virtual void TearDown()
