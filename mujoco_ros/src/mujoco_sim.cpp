@@ -843,6 +843,12 @@ void setupCallbacks()
 	service_servers_.push_back(nh_->advertiseService("get_geom_properties", getGeomPropertiesCB));
 	service_servers_.push_back(nh_->advertiseService("set_gravity", setGravityCB));
 	service_servers_.push_back(nh_->advertiseService("get_gravity", getGravityCB));
+	service_servers_.push_back(nh_->advertiseService<std_srvs::Empty::Request, std_srvs::Empty::Response>(
+	    "load_initial_jointstates", [&](auto /*&request*/, auto &response) {
+		    std::lock_guard<std::mutex> lk_sim(sim_mtx);
+		    loadInitialJointStates(main_env_->model_, main_env_->data_);
+		    return true;
+	    }));
 	service_servers_.push_back(
 	    nh_->advertiseService<mujoco_ros_msgs::GetStateUint::Request, mujoco_ros_msgs::GetStateUint::Response>(
 	        "get_loadingrequest_state", [&](auto /*&request*/, auto &response) {

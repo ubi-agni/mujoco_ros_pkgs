@@ -4,6 +4,7 @@
 ### Added
 * Signal handling to gracefully exit on SIGINT and SIGTERM.
 * **docs**: Contribution guideline along with commit template.
+* Service call to load initial joint states from parameter server.
 
 ### Changed
 * Set GUI default to show info overlay and hide UI1.
