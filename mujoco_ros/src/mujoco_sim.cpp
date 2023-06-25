@@ -1418,6 +1418,13 @@ bool setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request &req,
 	}
 
 	if (req.set_size) {
+		if (req.properties.size_0 * req.properties.size_1 * req.properties.size_2 >
+		    env->model_->geom_size[geom_id * 3] * env->model_->geom_size[geom_id * 3 + 1] *
+		        env->model_->geom_size[geom_id * 3 + 2]) {
+			ROS_WARN_STREAM_NAMED("mujoco", "New geom size is bigger than the old size. AABBs are not recomputed, this "
+			                                "might cause incorrect collisions!");
+		}
+
 		ROS_DEBUG_STREAM_NAMED("mujoco", "\tReplacing size '" << env->model_->geom_size[geom_id * 3] << ", "
 		                                                      << env->model_->geom_size[geom_id * 3 + 1] << ", "
 		                                                      << env->model_->geom_size[geom_id * 3 + 2]
