@@ -978,7 +978,7 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 		}
 	}
 
-	mjModel *mnew;
+	mjModel *mnew   = 0;
 	char error[500] = "";
 	// check if model xml is okay
 	if (mju::strlen_arr(filename_) > 4 && !std::strncmp(filename_ + mju::strlen_arr(filename_) - 4, ".mjb",
@@ -1026,6 +1026,7 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 		}
 		settings_.model_valid.store(prev_valid);
 	}
+	mj_deleteModel(mnew);
 	delete[] filedata;
 	return true;
 }
