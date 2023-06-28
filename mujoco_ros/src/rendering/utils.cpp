@@ -333,9 +333,8 @@ bool renderAndPubEnv(MujocoEnvPtr env, const bool rgb, const bool depth, const i
 
 void renderCallback(mjData *data, mjvScene *scene)
 {
-	MujocoEnvPtr env = environments::getEnv(data);
-	if (env) {
-		env->runRenderCbs(scene);
+	if (main_env_) {
+		main_env_->runRenderCbs(scene);
 	}
 }
 

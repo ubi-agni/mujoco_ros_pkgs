@@ -58,41 +58,30 @@ namespace environments {
 void assignData(mjData *data, MujocoEnvPtr env)
 {
 	env->data_.reset(data, [](mjData *d) { mj_deleteData(d); });
-	env_map_[data] = env;
 }
 
 MujocoEnvPtr getEnv(mjData *data)
 {
-	if (env_map_.find(data) != env_map_.end()) {
-		return env_map_[data];
-	} else
-		return nullptr;
+	return MujocoSim::detail::main_env_;
 }
 
 MujocoEnvPtr getEnvById(uint id)
 {
-	for (std::pair<mjData *, MujocoEnvPtr> element : env_map_) {
-		if (element.second->name_ == "/env" + id || (element.second->name_ == "/" && id == 0)) {
-			return element.second;
-		}
+	if (id > 0) {
+		return nullptr;
 	}
-	return nullptr;
+
+	return MujocoSim::detail::main_env_;
 }
 
 void unregisterEnv(mjData *data)
 {
-	if (env_map_.find(data) != env_map_.end()) {
-		env_map_.erase(data);
-	}
+	// nothing to do
 }
 
 void unregisterEnv(uint id)
 {
-	for (std::pair<mjData *, MujocoEnvPtr> element : env_map_) {
-		if (element.second->name_ == "/env" + id || (element.second->name_ == "/" && id == 0)) {
-			env_map_.erase(element.second->data_.get());
-		}
-	}
+	// nothing to do
 }
 
 } // end namespace environments

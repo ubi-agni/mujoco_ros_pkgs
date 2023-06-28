@@ -13,6 +13,9 @@
 * Fixed publish rate of camera images (#22).
 * Now publishing clock on reload.
 
+### Refactored
+* Deprecated `getEnv`, `getEnvById`, and `unregisterEnv` functions.
+
 Contributors: @DavidPL1, @lbergmann
 
 <a name="0.5.0"></a>

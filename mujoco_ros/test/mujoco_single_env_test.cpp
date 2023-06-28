@@ -386,11 +386,6 @@ TEST_F(MujocoRosBaseFixture, set_body_state)
 
 	mujoco_ros_msgs::SetBodyState srv;
 
-	// Invalid env_id
-	srv.request.state.env_id = 1;
-	MujocoSim::detail::setBodyStateCB(srv.request, srv.response);
-	EXPECT_FALSE(srv.response.success);
-
 	// Invalid body_name
 	srv.request.state.env_id = 0;
 	srv.request.state.name   = "unknown";
@@ -495,12 +490,6 @@ TEST_F(MujocoRosBaseFixture, set_geom_properties)
 	EXPECT_NE(ball_body_id, -1) << "'body_ball' should be found as body in model!";
 
 	mujoco_ros_msgs::SetGeomProperties srv;
-
-	// Invalid env_id
-	srv.request.properties.env_id = 1;
-	srv.request.properties.name   = "ball";
-	MujocoSim::detail::setGeomPropertiesCB(srv.request, srv.response);
-	EXPECT_FALSE(srv.response.success);
 
 	// Invalid geom_name
 	srv.request.properties.env_id = 0;
@@ -615,11 +604,6 @@ TEST_F(MujocoRosBaseFixture, get_body_state)
 	EXPECT_TRUE(srv.response.success);
 
 	mujoco_ros_msgs::GetBodyState g_srv;
-	// wrong env_id
-	g_srv.request.env_id = 1;
-	g_srv.request.name   = "body_ball";
-	EXPECT_FALSE(g_srv.response.success);
-
 	// wrong body name
 	g_srv.request.env_id = 0;
 	g_srv.request.name   = "unknown";
@@ -663,12 +647,6 @@ TEST_F(MujocoRosBaseFixture, get_geom_properties)
 	EXPECT_TRUE(srv.response.success);
 
 	mujoco_ros_msgs::GetGeomProperties g_srv;
-	// wrong env_id
-	g_srv.request.env_id    = 1;
-	g_srv.request.geom_name = "ball";
-	MujocoSim::detail::getGeomPropertiesCB(g_srv.request, g_srv.response);
-	EXPECT_FALSE(g_srv.response.success);
-
 	// wrong geom name
 	g_srv.request.env_id    = 0;
 	g_srv.request.geom_name = "unknown";
