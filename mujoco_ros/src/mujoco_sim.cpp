@@ -144,30 +144,7 @@ void setupVFS(const std::string &filename, const std::string &content /* = std::
 {
 	mj_defaultVFS(&vfs_);
 
-	// File from disk
-	int ret;
-	if (content.empty()) {
-		if (!boost::filesystem::is_regular_file(filename)) {
-			ROS_ERROR_STREAM_NAMED("mujoco", filename << " is not a regular file! Cannot load config!");
-			return;
-		}
-
-		boost::filesystem::path path(filename);
-		path = boost::filesystem::absolute(path);
-		ret  = mj_addFileVFS(&vfs_, path.parent_path().c_str(), path.filename().c_str());
-		if (ret == 1) {
-			ROS_ERROR_STREAM_NAMED("mujoco", "Could not save file "
-			                                     << filename
-			                                     << " to VFS, because it's full! This should not happen, check with dev!");
-			return;
-		} else if (ret == 2) {
-			ROS_ERROR_STREAM_NAMED("mujoco", "Could not save file "
-			                                     << filename << " to VFS, because the file is already present in VFS!");
-			return;
-		}
-		ROS_DEBUG_STREAM_NAMED("mujoco",
-		                       "Successfully saved file " << filename << " in mujoco VFS for accelerated loading");
-	} else { // File in memory
+	if (!content.empty()) {
 		mj_makeEmptyFileVFS(&vfs_, filename.c_str(), static_cast<int>(content.size()) + 1);
 		int file_idx = mj_findFileVFS(&vfs_, filename.c_str());
 		memcpy(vfs_.filedata[file_idx], content.c_str(), content.size() + 1);
@@ -613,16 +590,16 @@ void loadModel(void)
 	}
 
 	// Load and compile
-	char error_msg[500] = "";
-	mjModel *mnew       = 0;
+	char error_msg[1024] = "";
+	mjModel *mnew        = nullptr;
 	if (mju::strlen_arr(filename_) > 4 && !std::strncmp(filename_ + mju::strlen_arr(filename_) - 4, ".mjb",
 	                                                    mju::sizeof_arr(filename_) - mju::strlen_arr(filename_) + 4)) {
-		mnew = mj_loadModel(filename_, nullptr);
+		mnew = mj_loadModel(filename_, &vfs_);
 		if (!mnew) {
 			mju::strcpy_arr(error_msg, "could not load binary model");
 		}
 	} else {
-		mnew = mj_loadXML(filename_, &vfs_, error_msg, 500);
+		mnew = mj_loadXML(filename_, &vfs_, error_msg, 1024);
 	}
 	if (!mnew) {
 		ROS_ERROR_NAMED("mujoco", "Model loading failed with error: %s", error_msg);
@@ -903,11 +880,12 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 {
 	char old_filename[kBufSize] = "";
 
-	int vfs_id              = mj_findFileVFS(&vfs_, filename_);
+	int vfs_id              = mj_findFileVFS(&vfs_, "rosparam_content");
 	size_t filecontent_size = 0;
 	if (vfs_id > -1) {
 		filecontent_size = static_cast<size_t>(vfs_.filesize[vfs_id]);
 	}
+
 	char *filedata = new char[filecontent_size];
 	mju::strcpy_arr(old_filename, filename_);
 	bool is_file = false;
@@ -934,28 +912,6 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 		}
 
 		if (is_file) {
-			boost::filesystem::path path(req.model);
-			path    = boost::filesystem::absolute(path);
-			int ret = mj_addFileVFS(&vfs_, path.parent_path().c_str(), path.filename().c_str());
-			if (ret == 1) {
-				ROS_ERROR_STREAM_NAMED(
-				    "mujoco", "\tCould not save file "
-				                  << req.model << " to VFS, because it's full! This should not happen, check with dev!");
-				resp.success        = false;
-				resp.status_message = "VFS error";
-				delete[] filedata;
-				return true;
-			} else if (ret == 2) {
-				ROS_ERROR_STREAM_NAMED("mujoco", "\tCould not save file "
-				                                     << req.model
-				                                     << " to VFS, because the file is already present in VFS!");
-				resp.success        = false;
-				resp.status_message = "VFS error";
-				delete[] filedata;
-				return true;
-			}
-			ROS_DEBUG_STREAM_NAMED("mujoco",
-			                       "Successfully saved file " << req.model << " in mujoco VFS for accelerated loading");
 			mju::strcpy_arr(filename_, req.model.c_str());
 		} else { // File in memory
 			// Backup old content for eventual rollback
@@ -972,14 +928,14 @@ bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Re
 		}
 	}
 
-	mjModel *mnew   = 0;
-	char error[500] = "";
+	mjModel *mnew    = nullptr;
+	char error[1024] = "";
 	// check if model xml is okay
 	if (mju::strlen_arr(filename_) > 4 && !std::strncmp(filename_ + mju::strlen_arr(filename_) - 4, ".mjb",
 	                                                    mju::sizeof_arr(filename_) - mju::strlen_arr(filename_) + 4)) {
-		mnew = mj_loadModel(filename_, nullptr);
+		mnew = mj_loadModel(filename_, &vfs_);
 	} else {
-		mnew = mj_loadXML(filename_, &vfs_, error, 500);
+		mnew = mj_loadXML(filename_, &vfs_, error, 1024);
 	}
 
 	bool prev_valid = settings_.model_valid.load();
