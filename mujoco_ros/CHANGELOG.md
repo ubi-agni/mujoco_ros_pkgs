@@ -13,6 +13,7 @@
 * Fixed publish rate of camera images (#22).
 * Now publishing clock on reload.
 * Fixed memory leak caused by missing deallocation of opengl contexts on reload.
+* Cameras now publish their first image at timestep 0 instead of waiting for `t = 1/pub_frequency`.
 
 ### Refactored
 * Deprecated `getEnv`, `getEnvById`, and `unregisterEnv` functions.

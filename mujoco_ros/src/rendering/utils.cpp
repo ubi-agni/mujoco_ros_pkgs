@@ -392,7 +392,8 @@ void offScreenRenderEnv(MujocoEnvPtr env)
 		env->vis_.cam.type       = mjCAMERA_FIXED;
 		env->vis_.cam.fixedcamid = stream->cam_id_;
 
-		if (ros::Duration(1 / stream->pub_freq_) > ros::Time::now() - stream->last_pub_) {
+		if (stream->last_pub_ != ros::Time(0) &&
+		    ros::Duration(1 / stream->pub_freq_) > ros::Time::now() - stream->last_pub_) {
 			continue;
 		}
 
