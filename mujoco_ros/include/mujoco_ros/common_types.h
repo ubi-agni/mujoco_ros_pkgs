@@ -74,11 +74,12 @@ struct VisualStruct
 
 	~VisualStruct()
 	{
-		ROS_DEBUG("Freeing scene in vis");
-		mjv_freeScene(&scn);
-		ROS_DEBUG("Freeing context in vis");
-		mjr_freeContext(&con);
 		if (window != nullptr) {
+			glfwMakeContextCurrent(window);
+			ROS_DEBUG("Freeing scene in vis");
+			mjv_freeScene(&scn);
+			ROS_DEBUG("Freeing context in vis");
+			mjr_freeContext(&con);
 			glfwDestroyWindow(window);
 		}
 	};
