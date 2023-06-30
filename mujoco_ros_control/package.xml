@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>mujoco_ros_control</name>
-  <version>0.5.0</version>
+  <version>0.6.0</version>
   <description>The mujoco_ros_control package</description>
 
   <url type="repository">https://github.com/DavidPL1/mujoco_ros_pkgs</url>

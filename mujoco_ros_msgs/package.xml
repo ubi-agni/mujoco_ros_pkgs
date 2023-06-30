@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>mujoco_ros_msgs</name>
-  <version>0.5.0</version>
+  <version>0.6.0</version>
   <description>mujoco_ros_msgs provides message files for interaction with a mujoco_ros simulation</description>
 
   <maintainer email="dleins@techfak.uni-bielefeld.de">David Leins</maintainer>

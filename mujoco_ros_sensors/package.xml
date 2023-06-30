@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>mujoco_ros_sensors</name>
-  <version>0.5.0</version>
+  <version>0.6.0</version>
   <description>Sensor plugin for mujoco_ros</description>
 
   <maintainer email="dleins@techfak.uni-bielefeld.de">David P. Leins</maintainer>

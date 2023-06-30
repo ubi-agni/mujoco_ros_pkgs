@@ -1,5 +1,5 @@
-<a name="Unreleased"></a>
-## [Unreleased]
+<a name="0.6.0"></a>
+## [0.6.0] - 2023-06-30
 
 ### Added
 * Signal handling to gracefully exit on SIGINT and SIGTERM.
@@ -37,9 +37,6 @@ Contributors: @DavidPL1, @lbergmann
 * Stepping action server is now sensitive to preemts caused by reload/reset/shutdown and will inform clients in time instead of just severing the connection.
 * Missing roll back of collision functions to default on reload caused calling unloaded code.
 * An invalid model will not result in trying to reload indefinitely anymore.
-
-### Fixed
-* Stepping action server is now sensitive to preemts caused by reload/reset/shutdown and will inform clients in time instead of just severing the connection.
 
 Contributors: @DavidPL1, @fpatzelt
 
@@ -180,7 +177,7 @@ Contributors: @DavidPL1, @balandbal
 
 Contributors: @DavidPL1
 
-[Unreleased]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.5.0...HEAD
+[0.6.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.5.0...0.6.0
 [0.5.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.4.0...0.5.0
 [0.4.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.3.1...0.4.0
 [0.3.1]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.3.0...0.3.1
