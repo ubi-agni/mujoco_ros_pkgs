@@ -66,6 +66,7 @@ public:
 		rgb_pub_.shutdown();
 		depth_pub_.shutdown();
 		segment_pub_.shutdown();
+		camera_info_pub_.shutdown();
 	};
 
 	uint8_t cam_id_;

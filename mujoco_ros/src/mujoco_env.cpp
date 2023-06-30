@@ -152,6 +152,12 @@ void MujocoEnv::initializeRenderResources()
 		}
 	} else {
 		ROS_DEBUG_NAMED("mujoco_env", "Reusing old offscreen buffer window");
+		glfwMakeContextCurrent(this->vis_.window);
+		if (&(this->vis_.con) != nullptr) {
+			ROS_DEBUG_NAMED("mujoco_env", "Freeing old context and scene");
+			mjv_freeScene(&(this->vis_.scn));
+			mjr_freeContext(&(this->vis_.con));
+		}
 	}
 
 	// make context current
@@ -168,7 +174,7 @@ void MujocoEnv::initializeRenderResources()
 	mjr_defaultContext(&(this->vis_.con));
 	ROS_DEBUG_NAMED("mujoco_env", "\tInitialized default context");
 
-	// // Create scene and context
+	// Create scene and context
 	mjv_makeScene(this->model_.get(), &(this->vis_.scn), rendering::maxgeom_);
 	ROS_DEBUG_NAMED("mujoco_env", "\tApplied model to scene");
 	mjr_makeContext(this->model_.get(), &(this->vis_.con), 50 * (settings_.font + 1));
@@ -247,8 +253,8 @@ void MujocoEnv::notifyGeomChanged(const int geom_id)
 
 void MujocoEnv::prepareReload()
 {
-	this->model_.reset();
 	this->data_.reset();
+	this->model_.reset();
 	this->vis_.rgb.reset();
 	this->vis_.depth.reset();
 	this->cb_ready_plugins_.clear();
