@@ -22,11 +22,11 @@
 #include <GLFW/glfw3native.h>
 #endif
 
-namespace MujocoSim {
+namespace mujoco_ros {
 // Dynamic dispatch table for GLFW functions required by Simulate.
 // This allows us to use GLFW without introducing a link-time dependency on the
 // library, which is useful e.g. when using GLFW via Python.
-struct Glfw_
+struct Glfw
 {
 #define mjGLFW_DECLARE_SYMBOL(func) decltype(&::func) func
 	// go/keep-sorted start
@@ -72,7 +72,7 @@ struct Glfw_
 #undef mjGLFW_DECLARE_SYMBOL
 };
 
-const struct Glfw_ &Glfw(void *dlhandle = nullptr);
-} // namespace MujocoSim
+const struct Glfw &Glfw(void *dlhandle = nullptr);
+} // namespace mujoco_ros
 
 #endif // MUJOCO_SIMULATE_GLFW_DISPATCH_H_

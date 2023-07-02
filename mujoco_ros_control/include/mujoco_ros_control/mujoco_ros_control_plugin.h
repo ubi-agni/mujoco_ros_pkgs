@@ -1,7 +1,7 @@
 /**
  * Software License Agreement (BSD 3-Clause License)
  *
- *  Copyright (c) 2022, Bielefeld University
+ *  Copyright (c) 2023, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -48,7 +48,7 @@
 #include <std_msgs/Bool.h>
 
 #include <mujoco_ros/common_types.h>
-#include <mujoco_ros/mujoco_sim.h>
+#include <mujoco_ros/mujoco_env.h>
 #include <mujoco_ros/plugin_utils.h>
 
 #include <mujoco_ros_control/robot_hw_sim.h>
@@ -56,15 +56,15 @@
 #include <controller_manager/controller_manager.h>
 #include <transmission_interface/transmission_parser.h>
 
-namespace mujoco_ros_control {
+namespace mujoco_ros::control {
 
-class MujocoRosControlPlugin : public MujocoSim::MujocoPlugin
+class MujocoRosControlPlugin : public mujoco_ros::MujocoPlugin
 {
 public:
 	virtual ~MujocoRosControlPlugin();
 
 	// Overload entry point
-	virtual bool load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d);
+	virtual bool load(mujoco_ros::mjModelPtr m, mujoco_ros::mjDataPtr d);
 
 	// Called on reset
 	virtual void reset();
@@ -75,13 +75,13 @@ public:
 	// Get transmissions from URDF
 	bool parseTransmissionsFromURDF(const std::string &urdf_string);
 
-	void controlCallback(MujocoSim::mjModelPtr model, MujocoSim::mjDataPtr data);
+	void controlCallback(mujoco_ros::mjModelPtr model, mujoco_ros::mjDataPtr data);
 
 protected:
 	void eStopCB(const std_msgs::BoolConstPtr &e_stop_active);
 
 	// Interface loader
-	boost::shared_ptr<pluginlib::ClassLoader<mujoco_ros_control::RobotHWSim>> robot_hw_sim_loader_;
+	boost::shared_ptr<pluginlib::ClassLoader<mujoco_ros::control::RobotHWSim>> robot_hw_sim_loader_;
 
 	std::string robot_description_;
 	std::string robot_namespace_;
@@ -90,11 +90,11 @@ protected:
 	std::vector<transmission_interface::TransmissionInfo> transmissions_;
 
 	std::string robot_hw_sim_type_str_;
-	boost::shared_ptr<mujoco_ros_control::RobotHWSim> robot_hw_sim_;
+	boost::shared_ptr<mujoco_ros::control::RobotHWSim> robot_hw_sim_;
 
 	// Mujoco model and data pointers
-	MujocoSim::mjModelPtr m_;
-	MujocoSim::mjDataPtr d_;
+	mujoco_ros::mjModelPtr m_;
+	mujoco_ros::mjDataPtr d_;
 
 	// Controller manager
 	boost::shared_ptr<controller_manager::ControllerManager> controller_manager_;
@@ -106,6 +106,9 @@ protected:
 
 	bool e_stop_active_, last_e_stop_active_;
 	ros::Subscriber e_stop_sub_;
+
+	// Nodehandle in robot namespace
+	ros::NodeHandlePtr robot_nh_;
 };
 
-} // namespace mujoco_ros_control
+} // namespace mujoco_ros::control

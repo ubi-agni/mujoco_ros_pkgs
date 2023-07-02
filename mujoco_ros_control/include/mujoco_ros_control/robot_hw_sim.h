@@ -1,7 +1,7 @@
 /**
  * Software License Agreement (BSD 3-Clause License)
  *
- *  Copyright (c) 2022, Bielefeld University
+ *  Copyright (c) 2023, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -44,9 +44,9 @@
 #include <urdf/model.h>
 
 #include <mujoco_ros/common_types.h>
-#include <mujoco_ros/mujoco_sim.h>
+#include <mujoco_ros/mujoco_env.h>
 
-namespace mujoco_ros_control {
+namespace mujoco_ros::control {
 
 // Struct for passing loaded joint data
 struct JointData
@@ -75,8 +75,9 @@ public:
 	 * @param transmissions Transmissions.
 	 * @return \c true if the simulated robot hardware is initialized successfully, \c false if not.
 	 */
-	virtual bool initSim(MujocoSim::mjModelPtr m_ptr, MujocoSim::mjDataPtr d_ptr, const std::string &robot_namespace,
-	                     ros::NodeHandle model_nh, const urdf::Model *const urdf_model,
+	virtual bool initSim(mujoco_ros::mjModelPtr m_ptr, mujoco_ros::mjDataPtr d_ptr, MujocoEnvPtr mujoco_env_ptr,
+	                     const std::string &robot_namespace, ros::NodeHandle model_nh,
+	                     const urdf::Model *const urdf_model,
 	                     std::vector<transmission_interface::TransmissionInfo> transmissions) = 0;
 
 	/**
@@ -109,7 +110,8 @@ public:
 	virtual void eStopActive(const bool active) {}
 
 protected:
-	MujocoSim::mjModelPtr m_ptr_;
-	MujocoSim::mjDataPtr d_ptr_;
+	mujoco_ros::mjModelPtr m_ptr_;
+	mujoco_ros::mjDataPtr d_ptr_;
+	MujocoEnvPtr mujoco_env_ptr_;
 };
-} // namespace mujoco_ros_control
+} // namespace mujoco_ros::control

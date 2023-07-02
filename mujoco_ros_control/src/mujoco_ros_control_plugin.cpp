@@ -1,7 +1,7 @@
 /**
  * Software License Agreement (BSD 3-Clause License)
  *
- *  Copyright (c) 2022, Bielefeld University
+ *  Copyright (c) 2023, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -45,11 +45,11 @@
 #include <chrono>
 #include <thread>
 
-namespace mujoco_ros_control {
+namespace mujoco_ros::control {
 
 MujocoRosControlPlugin::~MujocoRosControlPlugin() {}
 
-bool MujocoRosControlPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d)
+bool MujocoRosControlPlugin::load(mujoco_ros::mjModelPtr m, mujoco_ros::mjDataPtr d)
 {
 	ROS_INFO_STREAM_NAMED("mujoco_ros_control", "Loading mujoco_ros_control plugin ...");
 
@@ -60,8 +60,6 @@ bool MujocoRosControlPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr 
 		return false;
 	}
 
-	robot_namespace_ = node_handle_->getNamespace();
-
 	ROS_ASSERT(rosparam_config_.getType() == XmlRpc::XmlRpcValue::TypeStruct);
 	// Check rosparam sanity
 	if (!rosparam_config_.hasMember("hardware")) {
@@ -69,6 +67,12 @@ bool MujocoRosControlPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr 
 		                                      "the 'type' of hardware interface and a 'control_period'");
 		return false;
 	}
+
+	if (rosparam_config_.hasMember("robot_namespace")) {
+		robot_namespace_ = (std::string)rosparam_config_["robot_namespace"];
+	}
+	robot_nh_.reset(new ros::NodeHandle("/" + robot_namespace_));
+
 	if (rosparam_config_["hardware"].getType() != XmlRpc::XmlRpcValue::TypeStruct) {
 		if (rosparam_config_["hardware"].getType() == XmlRpc::XmlRpcValue::TypeArray) {
 			ROS_ERROR_NAMED("mujoco_ros_control",
@@ -109,7 +113,7 @@ bool MujocoRosControlPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr 
 
 	if (rosparam_config_["hardware"].hasMember("eStopTopic")) {
 		const std::string e_stop_topic = (std::string)rosparam_config_["hardware"]["eStopTopic"];
-		e_stop_sub_                    = node_handle_->subscribe(e_stop_topic, 1, &MujocoRosControlPlugin::eStopCB, this);
+		e_stop_sub_                    = robot_nh_->subscribe(e_stop_topic, 1, &MujocoRosControlPlugin::eStopCB, this);
 	}
 
 	std::string urdf_string = getURDF(robot_description_);
@@ -120,8 +124,8 @@ bool MujocoRosControlPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr 
 	}
 
 	try {
-		robot_hw_sim_loader_.reset(new pluginlib::ClassLoader<mujoco_ros_control::RobotHWSim>(
-		    "mujoco_ros_control", "mujoco_ros_control::RobotHWSim"));
+		robot_hw_sim_loader_.reset(new pluginlib::ClassLoader<mujoco_ros::control::RobotHWSim>(
+		    "mujoco_ros_control", "mujoco_ros::control::RobotHWSim"));
 
 		robot_hw_sim_ = robot_hw_sim_loader_->createInstance(robot_hw_sim_type_str_);
 		urdf::Model urdf_model;
@@ -129,13 +133,13 @@ bool MujocoRosControlPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr 
 
 		ROS_DEBUG_STREAM_NAMED("mujoco_ros_control",
 		                       "Trying to initialize robot hw sim of type '" << robot_hw_sim_type_str_ << "'");
-		if (!robot_hw_sim_->initSim(m, d, robot_namespace_, *node_handle_, urdf_model_ptr, transmissions_)) {
+		if (!robot_hw_sim_->initSim(m, d, env_ptr_, robot_namespace_, *robot_nh_, urdf_model_ptr, transmissions_)) {
 			ROS_FATAL_NAMED("mujoco_ros_control", "Could not initialize robot simulation interface");
 			return false;
 		}
 
 		ROS_DEBUG_STREAM_NAMED("mujoco_ros_control", "Loading controller manager");
-		controller_manager_.reset(new controller_manager::ControllerManager(robot_hw_sim_.get(), *node_handle_));
+		controller_manager_.reset(new controller_manager::ControllerManager(robot_hw_sim_.get(), *robot_nh_));
 	} catch (pluginlib::LibraryLoadException &ex) {
 		ROS_FATAL_STREAM_NAMED("mujoco_ros_control", "Failed to create robot simulation interface loader: " << ex.what());
 		return false;
@@ -145,7 +149,7 @@ bool MujocoRosControlPlugin::load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr 
 	return true;
 }
 
-void MujocoRosControlPlugin::controlCallback(MujocoSim::mjModelPtr /*model*/, MujocoSim::mjDataPtr data)
+void MujocoRosControlPlugin::controlCallback(mujoco_ros::mjModelPtr /*model*/, mujoco_ros::mjDataPtr data)
 {
 	ros::Time sim_time_ros = ros::Time::now();
 
@@ -197,20 +201,20 @@ std::string MujocoRosControlPlugin::getURDF(std::string param_name) const
 	// search and wait for robot_description on param server
 	while (urdf_string.empty()) {
 		std::string search_param_name;
-		if (node_handle_->searchParam(param_name, search_param_name)) {
+		if (robot_nh_->searchParam(param_name, search_param_name)) {
 			ROS_INFO_ONCE_NAMED("mujoco_ros_control",
 			                    "mujoco_ros_control plugin is waiting for model"
 			                    " URDF in parameter [%s] on the ROS param server.",
 			                    search_param_name.c_str());
 
-			node_handle_->getParam(search_param_name, urdf_string);
+			robot_nh_->getParam(search_param_name, urdf_string);
 		} else {
 			ROS_INFO_ONCE_NAMED("mujoco_ros_control",
 			                    "mujoco_ros_control plugin is waiting for model"
 			                    " URDF in parameter [%s] on the ROS param server.",
 			                    robot_description_.c_str());
 
-			node_handle_->getParam(param_name, urdf_string);
+			robot_nh_->getParam(param_name, urdf_string);
 		}
 
 		std::this_thread::sleep_for(std::chrono::microseconds(100000));
@@ -230,6 +234,6 @@ void MujocoRosControlPlugin::eStopCB(const std_msgs::BoolConstPtr &e_stop_active
 {
 	e_stop_active_ = e_stop_active->data;
 }
-} // namespace mujoco_ros_control
+} // namespace mujoco_ros::control
 
-PLUGINLIB_EXPORT_CLASS(mujoco_ros_control::MujocoRosControlPlugin, MujocoSim::MujocoPlugin)
+PLUGINLIB_EXPORT_CLASS(mujoco_ros::control::MujocoRosControlPlugin, mujoco_ros::MujocoPlugin)

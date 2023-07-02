@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2022, Bielefeld University
+ *  Copyright (c) 2023, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -36,7 +36,6 @@
 
 #include <gtest/gtest.h>
 
-#include <mujoco_ros/mujoco_sim.h>
 #include <mujoco_ros/mujoco_env.h>
 #include <mujoco_ros/common_types.h>
 #include <mujoco_ros_sensors/mujoco_sensor_handler_plugin.h>
@@ -77,9 +76,7 @@ class MujocoRosTrainFixture : public ::testing::Test
 {
 protected:
 	std::shared_ptr<ros::NodeHandle> nh;
-	MujocoSim::MujocoEnvPtr env;
-	MujocoSim::mjDataPtr d;
-	MujocoSim::mjModelPtr m;
+	mujoco_ros::MujocoEnvPtr env;
 	std::unique_ptr<std::thread> mj_thread;
 
 	virtual void SetUp()
@@ -92,22 +89,22 @@ protected:
 
 		std::string xml_path = ros::package::getPath("mujoco_ros_sensors") + "/test/sensors_world.xml";
 
-		mj_thread = std::unique_ptr<std::thread>(new std::thread(MujocoSim::init, xml_path, ""));
-		while (MujocoSim::detail::settings_.loadrequest.load() == 0) { // wait for request to be made
+		mj_thread = std::unique_ptr<std::thread>(new std::thread(mujoco_ros::init, xml_path, ""));
+		while (mujoco_ros::detail::settings_.loadrequest.load() == 0) { // wait for request to be made
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
-		while (MujocoSim::detail::settings_.loadrequest.load() > 0) { // wait for model to be loaded
+		while (mujoco_ros::detail::settings_.loadrequest.load() > 0) { // wait for model to be loaded
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
 
-		env = MujocoSim::detail::main_env_;
+		env = mujoco_ros::detail::main_env_;
 		d   = env->data_;
 		m   = env->model_;
 	}
 
 	virtual void TearDown()
 	{
-		MujocoSim::requestExternalShutdown();
+		mujoco_ros::requestExternalShutdown();
 		mj_thread->join();
 	}
 };
@@ -116,9 +113,9 @@ class MujocoRosEvalFixture : public ::testing::Test
 {
 protected:
 	std::shared_ptr<ros::NodeHandle> nh;
-	MujocoSim::MujocoEnvPtr env;
-	MujocoSim::mjDataPtr d;
-	MujocoSim::mjModelPtr m;
+	mujoco_ros::MujocoEnvPtr env;
+	mujoco_ros::mjDataPtr d;
+	mujoco_ros::mjModelPtr m;
 	std::unique_ptr<std::thread> mj_thread;
 
 	virtual void SetUp()
@@ -131,22 +128,22 @@ protected:
 
 		std::string xml_path = ros::package::getPath("mujoco_ros_sensors") + "/test/sensors_world.xml";
 
-		mj_thread = std::unique_ptr<std::thread>(new std::thread(MujocoSim::init, xml_path, "example_hash"));
-		while (MujocoSim::detail::settings_.loadrequest.load() == 0) { // wait for request to be made
+		mj_thread = std::unique_ptr<std::thread>(new std::thread(mujoco_ros::init, xml_path, "example_hash"));
+		while (mujoco_ros::detail::settings_.loadrequest.load() == 0) { // wait for request to be made
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
-		while (MujocoSim::detail::settings_.loadrequest.load() > 0) { // wait for model to be loaded
+		while (mujoco_ros::detail::settings_.loadrequest.load() > 0) { // wait for model to be loaded
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
 
-		env = MujocoSim::detail::main_env_;
+		env = mujoco_ros::detail::main_env_;
 		d   = env->data_;
 		m   = env->model_;
 	}
 
 	virtual void TearDown()
 	{
-		MujocoSim::requestExternalShutdown();
+		mujoco_ros::requestExternalShutdown();
 		mj_thread->join();
 	}
 };
@@ -225,7 +222,7 @@ TEST_F(MujocoRosEvalFixture, sensor_created_eval)
 	}
 }
 
-void getSensorByName(const std::string sensor_name, MujocoSim::mjModelPtr m, int &n_sensor)
+void getSensorByName(const std::string sensor_name, mujoco_ros::mjModelPtr m, int &n_sensor)
 {
 	std::string name;
 
@@ -296,7 +293,7 @@ TEST_F(MujocoRosTrainFixture, sensor_3DOF)
 	EXPECT_TRUE(client.call(srv)) << "Service call failed!";
 
 	// Pause sim for synchronous message
-	MujocoSim::detail::settings_.run.store(0);
+	mujoco_ros::detail::settings_.run.store(0);
 
 	msgPtr    = ros::topic::waitForMessage<geometry_msgs::Vector3Stamped>("/vel_EE");
 	msgPtr_GT = ros::topic::waitForMessage<geometry_msgs::Vector3Stamped>("/vel_EE_GT");
@@ -312,9 +309,9 @@ TEST_F(MujocoRosTrainFixture, sensor_3DOF)
 	double variances[6] = { 0.0 };
 
 	for (int i = 0; i <= 1000; i++) {
-		MujocoSim::detail::settings_.manual_env_steps.store(1);
+		mujoco_ros::detail::settings_.manual_env_steps.store(1);
 
-		while (MujocoSim::detail::settings_.manual_env_steps.load() != 0) {
+		while (mujoco_ros::detail::settings_.manual_env_steps.load() != 0) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
 		msgPtr    = ros::topic::waitForMessage<geometry_msgs::Vector3Stamped>("/vel_EE");
@@ -411,7 +408,7 @@ TEST_F(MujocoRosTrainFixture, framepos)
 	// sensor_plugin->registerNoiseModelsCB(srv.request, srv.response);
 
 	// Pause sim for synchronous message
-	MujocoSim::detail::settings_.run.store(0);
+	mujoco_ros::detail::settings_.run.store(0);
 
 	msgPtr    = ros::topic::waitForMessage<geometry_msgs::PointStamped>("/immovable_pos");
 	msgPtr_GT = ros::topic::waitForMessage<geometry_msgs::PointStamped>("/immovable_pos_GT");
@@ -427,9 +424,9 @@ TEST_F(MujocoRosTrainFixture, framepos)
 	double variances[6] = { 0.0 };
 
 	for (int i = 0; i <= 1000; i++) {
-		MujocoSim::detail::settings_.manual_env_steps.store(1);
+		mujoco_ros::detail::settings_.manual_env_steps.store(1);
 
-		while (MujocoSim::detail::settings_.manual_env_steps.load() != 0) {
+		while (mujoco_ros::detail::settings_.manual_env_steps.load() != 0) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
 		msgPtr    = ros::topic::waitForMessage<geometry_msgs::PointStamped>("/immovable_pos");
@@ -522,7 +519,7 @@ TEST_F(MujocoRosTrainFixture, scalar_stamped)
 	EXPECT_TRUE(client.call(srv)) << "Service call failed!";
 
 	// Pause sim for synchronous message
-	MujocoSim::detail::settings_.run.store(0);
+	mujoco_ros::detail::settings_.run.store(0);
 
 	msgPtr_GT = ros::topic::waitForMessage<mujoco_ros_msgs::ScalarStamped>("/vel_joint2_GT");
 	msgPtr    = ros::topic::waitForMessage<mujoco_ros_msgs::ScalarStamped>("/vel_joint2");
@@ -536,9 +533,9 @@ TEST_F(MujocoRosTrainFixture, scalar_stamped)
 	double variances[2] = { 0.0 };
 
 	for (int i = 0; i <= 1000; i++) {
-		MujocoSim::detail::settings_.manual_env_steps.store(1);
+		mujoco_ros::detail::settings_.manual_env_steps.store(1);
 
-		while (MujocoSim::detail::settings_.manual_env_steps.load() != 0) {
+		while (mujoco_ros::detail::settings_.manual_env_steps.load() != 0) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
 		msgPtr_GT = ros::topic::waitForMessage<mujoco_ros_msgs::ScalarStamped>("/vel_joint2_GT");
@@ -604,7 +601,7 @@ TEST_F(MujocoRosTrainFixture, quaternion)
 	EXPECT_TRUE(client.call(srv)) << "Service call failed!";
 
 	// Pause sim for synchronous message
-	MujocoSim::detail::settings_.run.store(0);
+	mujoco_ros::detail::settings_.run.store(0);
 
 	msgPtr    = ros::topic::waitForMessage<geometry_msgs::QuaternionStamped>("/immovable_quat");
 	msgPtr_GT = ros::topic::waitForMessage<geometry_msgs::QuaternionStamped>("/immovable_quat_GT");
@@ -626,9 +623,9 @@ TEST_F(MujocoRosTrainFixture, quaternion)
 	double r, p, y, R, P, Y;
 
 	for (int i = 0; i <= 1000; i++) {
-		MujocoSim::detail::settings_.manual_env_steps.store(1);
+		mujoco_ros::detail::settings_.manual_env_steps.store(1);
 
-		while (MujocoSim::detail::settings_.manual_env_steps.load() != 0) {
+		while (mujoco_ros::detail::settings_.manual_env_steps.load() != 0) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
 		msgPtr    = ros::topic::waitForMessage<geometry_msgs::QuaternionStamped>("/immovable_quat");

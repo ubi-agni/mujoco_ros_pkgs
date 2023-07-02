@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2022, Bielefeld University
+ *  Copyright (c) 2023, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -45,24 +45,25 @@
 
 #include <camera_info_manager/camera_info_manager.h>
 
-#include <mujoco_ros_msgs/SetBodyState.h>
-#include <std_srvs/Empty.h>
 #include <tf2_ros/transform_listener.h>
 #include "tf2_geometry_msgs/tf2_geometry_msgs.h"
 
-namespace MujocoSim {
+namespace mujoco_ros {
 namespace rendering {
 
-class CameraStream
+class OffscreenCamera
 {
 public:
-	CameraStream(const uint8_t cam_id, const std::string cam_name, const int width, const int height,
-	             const streamType stream_type, const bool use_segid, const float pub_freq,
-	             image_transport::ImageTransport *it, ros::NodeHandlePtr parent_nh, const MujocoSim::mjModelPtr model,
-	             MujocoSim::mjDataPtr data);
+	OffscreenCamera(const uint8_t cam_id, const std::string cam_name, const int width, const int height,
+	                const streamType stream_type, const bool use_segid, const float pub_freq,
+	                image_transport::ImageTransport *it, ros::NodeHandlePtr parent_nh,
+	                const mujoco_ros::mjModelPtr model, mujoco_ros::mjDataPtr data, mujoco_ros::MujocoEnv *env_ptr);
 
-	~CameraStream()
+	~OffscreenCamera()
 	{
+		ROS_DEBUG("Freeing offscreen scene state");
+		mjv_freeSceneState(&scn_state_);
+
 		rgb_pub_.shutdown();
 		depth_pub_.shutdown();
 		segment_pub_.shutdown();
@@ -75,20 +76,37 @@ public:
 	streamType stream_type_ = streamType::RGB;
 	bool use_segid_         = true;
 	float pub_freq_         = 15;
+
+	bool initial_published_ = false;
+
+	mjvOption vopt_ = {}; // Options should be individual for each camera
+	mjvSceneState scn_state_; // Update depends on vopt, so every CamStream needs one
+
 	ros::Time last_pub_;
 	ros::Publisher camera_info_pub_;
 	image_transport::Publisher rgb_pub_;
 	image_transport::Publisher depth_pub_;
 	image_transport::Publisher segment_pub_;
 
-	void publishCameraInfo();
+	void renderAndPublish(mujoco_ros::OffscreenRenderContext *offscreen);
+
+	/**
+	 * @brief Check if the camera should render a new image at time t.
+	 * @param[in] t The time to check.
+	 */
+	bool shouldRender(const ros::Time &t);
 
 private:
 	boost::shared_ptr<camera_info_manager::CameraInfoManager> camera_info_manager_;
+
+	void publishCameraInfo();
+
+	bool renderAndPubIfNecessary(mujoco_ros::OffscreenRenderContext *offscreen, const bool rgb, const bool depth,
+	                             const bool segment);
 
 	// void publishCameraInfo(ros::Publisher camera_info_publisher);
 	// void publishCameraInfo(ros::Time &last_update_time);
 };
 
 } // end namespace rendering
-} // end namespace MujocoSim
+} // namespace mujoco_ros

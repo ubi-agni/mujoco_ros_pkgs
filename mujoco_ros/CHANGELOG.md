@@ -1,3 +1,6 @@
+<a name="Unreleased"></a>
+## [Unreleased]
+
 <a name="0.6.0"></a>
 ## [0.6.0] - 2023-06-30
 
@@ -177,6 +180,7 @@ Contributors: @DavidPL1, @balandbal
 
 Contributors: @DavidPL1
 
+[Unreleased]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.6.0...HEAD
 [0.6.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.5.0...0.6.0
 [0.5.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.4.0...0.5.0
 [0.4.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.3.1...0.4.0

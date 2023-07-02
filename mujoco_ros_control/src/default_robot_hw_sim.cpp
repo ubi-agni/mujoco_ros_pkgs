@@ -1,7 +1,7 @@
 /**
  * Software License Agreement (BSD 3-Clause License)
  *
- *  Copyright (c) 2022, Bielefeld University
+ *  Copyright (c) 2023, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -37,6 +37,7 @@
 /* Authors: David P. Leins*/
 
 #include <mujoco_ros_control/default_robot_hw_sim.h>
+#include <mujoco_ros/util.h>
 
 namespace {
 double clamp(const double val, const double min_val, const double max_val)
@@ -45,11 +46,11 @@ double clamp(const double val, const double min_val, const double max_val)
 }
 } // namespace
 
-namespace mujoco_ros_control {
+namespace mujoco_ros::control {
 
-bool DefaultRobotHWSim::initSim(MujocoSim::mjModelPtr m_ptr, MujocoSim::mjDataPtr d_ptr,
-                                const std::string &robot_namespace, ros::NodeHandle model_nh,
-                                const urdf::Model *const urdf_model,
+bool DefaultRobotHWSim::initSim(mujoco_ros::mjModelPtr m_ptr, mujoco_ros::mjDataPtr d_ptr,
+                                MujocoEnvPtr /*mujoco_env_ptr*/, const std::string &robot_namespace,
+                                ros::NodeHandle model_nh, const urdf::Model *const urdf_model,
                                 std::vector<transmission_interface::TransmissionInfo> transmissions)
 {
 	// getJointLimits() searches joint_limit_nh for joint limit parameters. The format of each
@@ -179,7 +180,7 @@ bool DefaultRobotHWSim::initSim(MujocoSim::mjModelPtr m_ptr, MujocoSim::mjDataPt
 			                                                  << joint_names_[j]);
 		}
 
-		int joint_id = MujocoSim::jointName2id(m_ptr.get(), joint_names_[j]);
+		int joint_id = mujoco_ros::util::jointName2id(m_ptr.get(), joint_names_[j]);
 		if (joint_id < 0) {
 			ROS_ERROR_STREAM_NAMED("default_robot_hw_sim", "This robot has a joint named '"
 			                                                   << joint_names_[j]
@@ -436,6 +437,6 @@ void DefaultRobotHWSim::registerJointLimits(const std::string &joint_name,
 	}
 }
 
-} // namespace mujoco_ros_control
+} // namespace mujoco_ros::control
 
-PLUGINLIB_EXPORT_CLASS(mujoco_ros_control::DefaultRobotHWSim, mujoco_ros_control::RobotHWSim)
+PLUGINLIB_EXPORT_CLASS(mujoco_ros::control::DefaultRobotHWSim, mujoco_ros::control::RobotHWSim)

@@ -13,6 +13,9 @@
 
   <buildtool_depend>catkin</buildtool_depend>
 
+  <depend>python3</depend>
+  <depend>pybind11_catkin</depend>
+
   <depend>roscpp</depend>
   <depend>pluginlib</depend>
   <depend>mujoco_ros_msgs</depend>

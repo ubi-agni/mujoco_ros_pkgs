@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2022, Bielefeld University
+ *  Copyright (c) 2023, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -56,11 +56,12 @@
 // URDF
 #include <urdf/model.h>
 
-namespace mujoco_ros_control {
-class DefaultRobotHWSim : public mujoco_ros_control::RobotHWSim
+namespace mujoco_ros::control {
+class DefaultRobotHWSim : public mujoco_ros::control::RobotHWSim
 {
 public:
-	virtual bool initSim(MujocoSim::mjModelPtr m_ptr, MujocoSim::mjDataPtr d_ptr, const std::string &robot_namespace,
+	virtual bool initSim(mujoco_ros::mjModelPtr m_ptr, mujoco_ros::mjDataPtr d_ptr,
+	                     mujoco_ros::MujocoEnvPtr mujoco_env_ptr, const std::string &robot_namespace,
 	                     ros::NodeHandle model_nh, const urdf::Model *const urdf_model,
 	                     std::vector<transmission_interface::TransmissionInfo> transmissions);
 
@@ -129,4 +130,4 @@ protected:
 };
 
 typedef boost::shared_ptr<DefaultRobotHWSim> DefaultRobotHWSimPtr;
-} // namespace mujoco_ros_control
+} // namespace mujoco_ros::control

@@ -26,8 +26,7 @@
 #include <cstdlib>
 #include <iostream>
 
-namespace MujocoSim {
-
+namespace mujoco_ros {
 // return dispatch table for glfw functions
 const struct Glfw &Glfw(void *dlhandle)
 {
@@ -81,6 +80,7 @@ const struct Glfw &Glfw(void *dlhandle)
 
 		// go/keep-sorted start
 		mjGLFW_INITIALIZE_SYMBOL(glfwCreateWindow);
+		mjGLFW_INITIALIZE_SYMBOL(glfwDestroyWindow);
 		mjGLFW_INITIALIZE_SYMBOL(glfwGetCursorPos);
 		mjGLFW_INITIALIZE_SYMBOL(glfwGetFramebufferSize);
 		mjGLFW_INITIALIZE_SYMBOL(glfwGetKey);
@@ -114,14 +114,14 @@ const struct Glfw &Glfw(void *dlhandle)
 		mjGLFW_INITIALIZE_SYMBOL(glfwWindowShouldClose);
 		// go/keep-sorted end
 
-#undef mjGLFW_INITIALIZE_SYMBOL
-
-#if defined(mjGLFW_DYNAMIC_SYMBOLS) && !defined(_MSC_VER)
-		dlclose(dlhandle);
+#ifdef __APPLE__
+		mjGLFW_INITIALIZE_SYMBOL(glfwGetNSGLContext);
 #endif
+
+#undef mjGLFW_INITIALIZE_SYMBOL
 
 		return glfw;
 	}();
 	return glfw;
 }
-} // namespace MujocoSim
+} // namespace mujoco_ros

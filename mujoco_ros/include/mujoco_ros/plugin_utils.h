@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2022, Bielefeld University
+ *  Copyright (c) 2023, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -40,7 +40,7 @@
 
 #include <pluginlib/class_loader.h>
 
-namespace MujocoSim {
+namespace mujoco_ros {
 
 class MujocoPlugin
 {
@@ -48,11 +48,15 @@ public:
 	virtual ~MujocoPlugin() { ROS_DEBUG_STREAM("Deleted plugin of type " << rosparam_config_["type"]); }
 
 	// Called directly after plugin creation
-	void init(const XmlRpc::XmlRpcValue &config, ros::NodeHandlePtr nh)
+	void init(const XmlRpc::XmlRpcValue &config, ros::NodeHandlePtr nh, MujocoEnvPtr env_ptr)
 	{
 		rosparam_config_ = config;
 		node_handle_     = nh;
+		env_ptr_         = env_ptr;
+		type_            = static_cast<std::string>(rosparam_config_["type"]);
 	};
+
+	std::string type_;
 
 	/**
 	 * @brief Wrapper method that evaluates if loading the plugin is successful
@@ -68,7 +72,7 @@ public:
 		if (!loading_successful_)
 			ROS_WARN_STREAM_NAMED("mujoco_ros_plugin",
 			                      "Plugin of type '"
-			                          << rosparam_config_["type"] << "' and full config '" << rosparam_config_
+			                          << rosparam_config_["type"] << "' with full config '" << rosparam_config_
 			                          << "' failed to load. It will be ignored until the next load attempt.");
 		return loading_successful_;
 	}
@@ -155,6 +159,7 @@ protected:
 	MujocoPlugin() {}
 	XmlRpc::XmlRpcValue rosparam_config_;
 	ros::NodeHandlePtr node_handle_;
+	MujocoEnvPtr env_ptr_;
 };
 
 namespace plugin_utils {
@@ -174,7 +179,8 @@ bool parsePlugins(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &plugin_config_rpc)
  * @param[in] config_rpc config of at least one plugin to load.
  * @param[inout] plugins vector of plugins. If successfully initialized, the plugins are appended to the vector.
  */
-void registerPlugins(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config_rpc, std::vector<MujocoPluginPtr> &plugins);
+void registerPlugins(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config_rpc, std::vector<MujocoPluginPtr> &plugins,
+                     MujocoEnvPtr env);
 
 /**
  * @brief Loads a MujocoPlugin defined in \c config_rpc via pluginlib and registers it in the passed plugin vector for
@@ -185,11 +191,13 @@ void registerPlugins(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config_rpc, std
  * @param[inout] plugins vector of plugins. If successfully initialized, the plugin is appended to the vector.
  * @return true if initializing the plugin was successful, false otherwise.
  */
-bool registerPlugin(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config_rpc, std::vector<MujocoPluginPtr> &plugins);
+bool registerPlugin(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config_rpc, std::vector<MujocoPluginPtr> &plugins,
+                    MujocoEnvPtr env);
 
 void unloadPluginloader();
+void initPluginLoader();
 
-static boost::shared_ptr<pluginlib::ClassLoader<MujocoPlugin>> plugin_loader_ptr_;
+static std::unique_ptr<pluginlib::ClassLoader<MujocoPlugin>> plugin_loader_ptr_;
 
 /**
  * @brief Defines under which path the plugin configuration is stored in the ros parameter server.
@@ -197,4 +205,4 @@ static boost::shared_ptr<pluginlib::ClassLoader<MujocoPlugin>> plugin_loader_ptr
 const static std::string MUJOCO_PLUGIN_PARAM_NAME = "MujocoPlugins";
 
 } // end namespace plugin_utils
-} // namespace MujocoSim
+} // namespace mujoco_ros

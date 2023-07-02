@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2022, Bielefeld University
+ *  Copyright (c) 2023, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -43,9 +43,7 @@
 
 #include <GLFW/glfw3.h>
 
-static constexpr int kBufSize = 1000;
-
-namespace MujocoSim {
+namespace mujoco_ros {
 
 namespace rendering {
 
@@ -62,33 +60,13 @@ typedef enum streamType_ : uint8_t
 	RGB_D_S = 7
 } streamType;
 
-struct VisualStruct
-{
-	mjvScene scn                           = {};
-	mjvCamera cam                          = {};
-	mjvOption vopt                         = {};
-	mjrContext con                         = {};
-	boost::shared_ptr<unsigned char[]> rgb = {};
-	boost::shared_ptr<float[]> depth       = {};
-	GLFWwindow *window                     = nullptr;
-
-	~VisualStruct()
-	{
-		if (window != nullptr) {
-			glfwMakeContextCurrent(window);
-			ROS_DEBUG("Freeing scene in vis");
-			mjv_freeScene(&scn);
-			ROS_DEBUG("Freeing context in vis");
-			mjr_freeContext(&con);
-			glfwDestroyWindow(window);
-		}
-	};
-};
-
-class CameraStream;
-typedef boost::shared_ptr<CameraStream> CameraStreamPtr;
+class OffscreenCamera;
+typedef boost::shared_ptr<OffscreenCamera> OffscreenCameraPtr;
 
 } // namespace rendering
+
+// Struct holding all the data needed for offscreen rendering
+struct OffscreenRenderContext;
 
 /**
  * @def mjModelPtr
@@ -111,12 +89,15 @@ class MujocoPlugin;
 typedef boost::shared_ptr<MujocoPlugin> MujocoPluginPtr;
 
 // MujocoEnvironment
-struct MujocoEnv;
+class MujocoEnv;
 
 /**
  * @def MujocoEnvPtr
- * @brief boost::shared_ptr to MujocoEnv
+ * @brief ptr to MujocoEnv
  */
-typedef boost::shared_ptr<MujocoEnv> MujocoEnvPtr;
+typedef MujocoEnv *MujocoEnvPtr;
 
-} // namespace MujocoSim
+// Viewer
+class Viewer;
+
+} // namespace mujoco_ros
