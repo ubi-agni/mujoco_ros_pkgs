@@ -1,7 +1,21 @@
+// Copyright 2021 DeepMind Technologies Limited
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2022, Bielefeld University
+ *  Copyright (c) 2023, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -39,129 +53,346 @@
 #include <thread>
 #include <ros/ros.h>
 
+#include <boost/thread.hpp>
+
 #include <mujoco_ros/common_types.h>
+#include <mujoco_ros/viewer.h>
 #include <mujoco_ros/plugin_utils.h>
 
-namespace MujocoSim {
+#include <mujoco_ros_msgs/StepAction.h>
+#include <mujoco_ros_msgs/StepGoal.h>
+#include <actionlib/server/simple_action_server.h>
 
-namespace environments {
+#include <mujoco_ros_msgs/SetPause.h>
+#include <mujoco_ros_msgs/Reload.h>
+#include <std_srvs/Empty.h>
+#include <mujoco_ros_msgs/SetBodyState.h>
+#include <mujoco_ros_msgs/GetBodyState.h>
+#include <mujoco_ros_msgs/SetGeomProperties.h>
+#include <mujoco_ros_msgs/GetGeomProperties.h>
+#include <mujoco_ros_msgs/SetGravity.h>
+#include <mujoco_ros_msgs/GetGravity.h>
 
-/**
- * @brief Assigns an mjData pointer to a MujocoEnv.
- *
- * @param[in] data mjData pointer used as key element in the map.
- * @param[in] env MujocoEnvPtr assigned to the mjData pointer.
- */
-void assignData(mjData *data, MujocoEnvPtr env);
+#include <geometry_msgs/TransformStamped.h>
+#include <tf2_ros/static_transform_broadcaster.h>
+#include <tf2_ros/transform_listener.h>
 
-[[deprecated("Multienv is no longer supported. Use MujocoSim::detail::main_env_ to get the only available env "
-             "instead.")]]
-/**
- * @brief Retrieve the MujocoEnvPtr assigned to the given mjData pointer from the env_map_.
- *
- * @param[in] data mjData pointer used as key.
- * @return MujocoEnvPtr if `data` is in the map, otherwise nullptr is returned.
- */
-MujocoEnvPtr
-getEnv(mjData *data);
+#include <rosgraph_msgs/Clock.h>
 
-[[deprecated("Multienv is no longer supported. Use MujocoSim::detail::main_env_ to get the only available env "
-             "instead.")]]
-/**
- * @brief Retreive a MujocoEnvPtr by id.
- *
- * @param[in] id id to search for.
- * @return MujocoEnvPtr if an env with that id exists, otherwise nullptr is returned.
- */
-MujocoEnvPtr
-getEnvById(uint id);
+#include <mujoco_ros/glfw_adapter.h>
+#include <mujoco_ros/glfw_dispatch.h>
 
-[[deprecated("Multienv is no longer supported. Unregistering is no longer necessary.")]]
-/**
- * @brief Unregisters an mjData/MujocoEnvPtr entry in the static map resolved by mjData pointer.
- * This is necessary to deallocate the environment and its plugins, once it is not needed anymore, to greacefully shut
- * down.
- *
- * @param data mjData pointer which is used as key in the map to retrieve the correct MujocoEnvPtr.
- */
-void unregisterEnv(mjData *data);
+namespace mujoco_ros {
 
-[[deprecated("Multienv is no longer supported. Unregistering is no longer necessary.")]]
-/**
- * @brief Unregisters an mjData/MujocoEnvPtr entry in the static map resolved by environment id.
- * This is necessary to deallocate the environment and its plugins, once it is not needed anymore, to greacefully shut
- * down.
- *
- * @param id id of the MujocoEnv that should be unregistered.
- */
-void unregisterEnv(uint id);
+class MujocoEnvMutex : public std::recursive_mutex
+{};
+using MutexLock = std::unique_lock<std::recursive_mutex>;
 
-} // end namespace environments
+struct CollisionFunctionDefault
+{
+	CollisionFunctionDefault(int geom_type1, int geom_type2, mjfCollision collision_cb)
+	    : geom_type1_(geom_type1), geom_type2_(geom_type2), collision_cb_(collision_cb)
+	{}
 
-struct MujocoEnv
+	int geom_type1_;
+	int geom_type2_;
+	mjfCollision collision_cb_;
+};
+
+struct OffscreenRenderContext
+{
+	mjvCamera cam;
+	boost::shared_ptr<unsigned char[]> rgb;
+	boost::shared_ptr<float[]> depth;
+	boost::shared_ptr<GLFWwindow> window;
+	mjrContext con = {};
+	mjvScene scn   = {};
+
+	boost::thread render_thread_handle;
+
+	// Condition variable to signal that the offscreen render thread should render a new frame
+	std::atomic_bool request_pending = { false };
+
+	std::mutex render_mutex;
+	std::condition_variable_any cond_render_request;
+
+	std::vector<rendering::OffscreenCameraPtr> cams;
+
+	~OffscreenRenderContext()
+	{
+		if (window != nullptr) {
+			glfwMakeContextCurrent(window.get());
+			ROS_DEBUG("Freeing offscreen context");
+			mjr_freeContext(&con);
+		}
+	};
+};
+
+class MujocoEnv
 {
 public:
 	/**
-	 * @brief Construct a new Mujoco Env object in a given namespace.
+	 * @brief Construct a new Mujoco Env object.
 	 *
-	 * @param[in] name namespace of the environment.
 	 */
-	MujocoEnv(std::string name) : name_(name)
-	{
-		this->nh_.reset(new ros::NodeHandle(name));
-		ROS_DEBUG_STREAM_NAMED("mujoco_env", "New env created with namespace: " << name);
-	};
-
+	MujocoEnv(std::string admin_hash = std::string());
 	~MujocoEnv();
 
 	MujocoEnv(const MujocoEnv &) = delete;
 
-	void initializeRenderResources(void);
+	// constants
+	static constexpr int kErrorLength       = 1024;
+	static constexpr int kMaxFilenameLength = 1000;
 
-	/// Pointer to mjModel
-	mjModelPtr model_;
-	/// Pointer to mjData
-	mjDataPtr data_;
+	const double syncMisalign       = 0.1; // maximum mis-alignment before re-sync (simulation seconds)
+	const double simRefreshFraction = 0.7; // fraction of refresh available for simulation
+
 	/// Noise to apply to control signal
-	mjtNum *ctrlnoise_ = nullptr;
-	/// Pointer to ros nodehandle in env namespace
-	ros::NodeHandlePtr nh_;
-	/// Env namespace
-	std::string name_;
-	/// struct holding objects needed for rendering
-	rendering::VisualStruct vis_;
-	/// CameraStream objects for other cameras
-	std::vector<rendering::CameraStreamPtr> cam_streams_;
+	mjtNum *ctrlnoise_     = nullptr;
+	double ctrl_noise_std  = 0.0;
+	double ctrl_noise_rate = 0.0;
 
-	/**
-	 * @brief Calls load functions of all members depeding on mjData.
-	 * This function is called when a new mjData object is assigned to the environment.
-	 */
-	void load();
+	mjvScene scn_;
+	mjvPerturb pert_;
 
-	void prepareReload();
+	MujocoEnvMutex physics_thread_mutex_;
 
-	/**
-	 * @brief Calls reset functions of all members depending on mjData.
-	 * This function is called on a reset request by the user. mjModel and mjData are not reinitialized.
-	 */
-	void reset();
+	void connectViewer(Viewer *viewer);
+	void disconnectViewer(Viewer *viewer);
+
+	char queued_filename_[kMaxFilenameLength];
+
+	struct
+	{
+		// Render options
+		bool headless         = false;
+		bool render_offscreen = false;
+		bool use_sim_time     = true;
+
+		// Sim speed
+		int real_time_index = 1;
+		int busywait        = 0;
+
+		// Mode
+		bool eval_mode = false;
+		char admin_hash[64];
+
+		// Atomics for multithread access
+		std::atomic_int run                 = { 0 };
+		std::atomic_int exit_request        = { 0 };
+		std::atomic_int visual_init_request = { 0 };
+
+		// Load request
+		//  0: no request
+		//  1: replace model_ with mnew and data_ with dnew
+		//  2: load mnew and dnew from file
+		std::atomic_int load_request      = { 0 };
+		std::atomic_int reset_request     = { 0 };
+		std::atomic_int speed_changed     = { 0 };
+		std::atomic_int env_steps_request = { 0 };
+
+		// Must be set to true before loading a new model from python
+		std::atomic_int is_python_request = { 0 };
+	} settings_;
+
+	// General sim information for viewers to fetch
+	struct
+	{
+		float measured_slowdown = 1.0;
+		bool model_valid        = false;
+	} sim_state_;
 
 	const std::vector<MujocoPluginPtr> getPlugins();
 
+	/**
+	 * @brief Register a custom collision function for collisions between two geom types.
+	 *
+	 * @param [in] geom_type1 first geom type of the colliding geoms.
+	 * @param [in] geom_type2 second type of the colliding geoms.
+	 * @param [in] collision_cb collision function to call.
+	 */
+	void registerCollisionFunction(int geom_type1, int geom_type2, mjfCollision collision_cb);
+
+	/**
+	 * @brief Register a static transform to be published by the simulation.
+	 *
+	 * @param [in] transform const pointer to transform that will be published.
+	 */
+	void registerStaticTransform(geometry_msgs::TransformStamped &transform);
+
+	void waitForPhysicsJoin();
+	void waitForEventsJoin();
+
+	void startPhysicsLoop();
+	void startEventLoop();
+
+	/**
+	 * @brief Get information about the current simulation state.
+	 *
+	 * Additionally to the `settings_.load_request` state, this function also considers visual initialization to be a
+	 * part of the loading process.
+	 *
+	 * @return 0 if done loading, 1 if loading is in progress, 2 if loading has been requested.
+	 */
+	int getOperationalStatus();
+
+	static constexpr float percentRealTime[] = { -1, // unbound
+		                                          100,  80,   66,   50,   40,   33,   25,   20,   16,   13, 10,
+		                                          8,    6.6f, 5.0f, 4,    3.3f, 2.5f, 2,    1.6f, 1.3f, 1,  .8f,
+		                                          .66f, .5f,  .4f,  .33f, .25f, .2f,  .16f, .13f, .1f };
+
+	static MujocoEnv *instance;
+	static void proxyControlCB(const mjModel * /*m*/, mjData * /*d*/)
+	{
+		if (MujocoEnv::instance != nullptr)
+			MujocoEnv::instance->runControlCbs();
+	}
+	static void proxyPassiveCB(const mjModel * /*m*/, mjData * /*d*/)
+	{
+		if (MujocoEnv::instance != nullptr)
+			MujocoEnv::instance->runPassiveCbs();
+	}
+
+	// Proxies to MuJoCo callbacks
 	void runControlCbs();
 	void runPassiveCbs();
-	void runRenderCbs(mjvScene *scene);
+
+	bool togglePaused(bool paused, std::string admin_hash = std::string());
+
+	GlfwAdapter *gui_adapter_ = nullptr;
+
+	void runRenderCbs(mjModelPtr model, mjDataPtr data, mjvScene *scene);
+	bool step(int num_steps = 1, bool blocking = true);
+
+protected:
+	std::vector<MujocoPluginPtr> cb_ready_plugins_;
+	XmlRpc::XmlRpcValue rpc_plugin_config_;
+	std::vector<MujocoPluginPtr> plugins_;
+
+	// This variable keeps track of remaining steps if the environment was configured to terminate after a fixed number
+	// of steps (-1 means no limit).
+	int num_steps_until_exit_ = -1;
+
+	// VFS for loading models from strings
+	mjVFS vfs_;
+
+	// Currently loaded model
+	char filename_[kMaxFilenameLength];
+	// last error message
+	char load_error_[kErrorLength];
+
+	// Store default collision functions to restore on reload
+	std::vector<CollisionFunctionDefault> defaultCollisionFunctions;
+
+	// Keep track of overriden collisions to throw warnings
+	std::set<std::pair<int, int>> custom_collisions_;
+
+	// Keep track of static transforms to publish.
+	std::vector<geometry_msgs::TransformStamped> static_transforms_;
+
+	// Central broadcaster for all static transforms
+	tf2_ros::StaticTransformBroadcaster static_broadcaster_;
+
+	// ROS TF2
+	boost::shared_ptr<tf2_ros::Buffer> tf_bufferPtr_;
+	boost::shared_ptr<tf2_ros::TransformListener> tf_listenerPtr_;
+
+	/// Pointer to mjModel
+	mjModelPtr model_; // technically could be a unique_ptr, but setting the deleter correctly is not trivial
+	/// Pointer to mjData
+	mjDataPtr data_; // technically could be a unique_ptr, but setting the deleter correctly is not trivial
+
+	std::vector<Viewer *> connected_viewers_;
+
+	void publishSimTime(mjtNum time);
+	ros::Publisher clock_pub_;
+	boost::shared_ptr<ros::NodeHandle> nh_;
+
 	void runLastStageCbs();
 
 	void notifyGeomChanged(const int geom_id);
 
-protected:
-	XmlRpc::XmlRpcValue rpc_plugin_config_;
-	std::vector<MujocoPluginPtr> plugins_;
+	std::vector<ros::ServiceServer> service_servers_;
+	std::unique_ptr<actionlib::SimpleActionServer<mujoco_ros_msgs::StepAction>> action_step_;
 
-private:
-	std::vector<MujocoPluginPtr> cb_ready_plugins_;
+	void setupServices();
+	bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &res);
+	bool shutdownCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
+	bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Response &res);
+	bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
+	bool setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req, mujoco_ros_msgs::SetBodyState::Response &resp);
+	bool getBodyStateCB(mujoco_ros_msgs::GetBodyState::Request &req, mujoco_ros_msgs::GetBodyState::Response &resp);
+	bool setGravityCB(mujoco_ros_msgs::SetGravity::Request &req, mujoco_ros_msgs::SetGravity::Response &resp);
+	bool getGravityCB(mujoco_ros_msgs::GetGravity::Request &req, mujoco_ros_msgs::GetGravity::Response &resp);
+	bool setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request &req,
+	                         mujoco_ros_msgs::SetGeomProperties::Response &resp);
+	bool getGeomPropertiesCB(mujoco_ros_msgs::GetGeomProperties::Request &req,
+	                         mujoco_ros_msgs::GetGeomProperties::Response &resp);
+	// Action calls
+	void onStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal);
+
+	void resetSim();
+
+	/**
+	 * @brief Loads and sets the initial joint states from the parameter server.
+	 */
+	void loadInitialJointStates();
+
+	void setJointPosition(const double &pos, const int &joint_id, const int &jnt_axis /*= 0*/);
+	void setJointVelocity(const double &vel, const int &joint_id, const int &jnt_axis /*= 0*/);
+
+	/**
+	 * @brief Makes sure that all data that will be replaced in a reload is freed.
+	 */
+	void prepareReload();
+
+	// Threading
+
+	boost::thread physics_thread_handle_;
+	boost::thread event_thread_handle_;
+
+	// Helper variables to get the state of threads
+	std::atomic_int is_physics_running_   = { 0 };
+	std::atomic_int is_event_running_     = { 0 };
+	std::atomic_int is_rendering_running_ = { 0 };
+
+	/**
+	 * @brief Runs physics steps.
+	 */
+	void physicsLoop();
+
+	/**
+	 * @brief Handles requests from other threads (viewers).
+	 */
+	void eventLoop();
+
+	void completeEnvSetup();
+
+	/**
+	 * @brief Tries to load all configured plugins.
+	 * This function is called when a new mjData object is assigned to the environment.
+	 */
+	void loadPlugins();
+
+	void initializeRenderResources();
+
+	OffscreenRenderContext offscreen_;
+
+	void offscreenRenderLoop();
+
+	// Model loading
+	mjModel *mnew = nullptr;
+	mjData *dnew  = nullptr;
+
+	/**
+	 * @brief Load a queued model from either a path or XML-string.
+	 */
+	bool initModelFromQueue();
+
+	/**
+	 * @brief Replace the current model and data with new ones and complete the loading process.
+	 */
+	void loadWithModelAndData();
 };
 
-} // end namespace MujocoSim
+} // end namespace mujoco_ros

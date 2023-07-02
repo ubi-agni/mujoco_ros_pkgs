@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2022, Bielefeld University
+ *  Copyright (c) 2023, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -34,17 +34,35 @@
 
 /* Authors: David P. Leins */
 
-#include <mujoco_ros/mujoco_sim.h>
+#include <mujoco_ros/glfw_adapter.h>
+#include <mujoco_ros/viewer.h>
+#include <mujoco_ros/mujoco_env.h>
+
+#include <mujoco_ros/array_safety.h>
+#include <mujoco/mujoco.h>
+
 #include <boost/program_options.hpp>
 #include <signal.h>
+#include <thread>
 
-void sigint_handler(int sig)
+namespace {
+
+void sigint_handler(int /*sig*/)
 {
-	MujocoSim::requestExternalShutdown(true);
 	ros::shutdown();
 }
 
-namespace po = boost::program_options;
+namespace po  = boost::program_options;
+namespace mju = ::mujoco::sample_util;
+
+// constants
+const double syncMisalign       = 0.1; // maximum mis-alignment before re-sync (simulation seconds)
+const double simRefreshFraction = 0.7; // fraction of refresh available for simulation
+const int kErrorLength          = 1024; // load error string length
+
+using Seconds = std::chrono::duration<double>;
+
+} // anonymous namespace
 
 int main(int argc, char **argv)
 {
@@ -62,8 +80,8 @@ int main(int argc, char **argv)
 
 	po::options_description options;
 	options.add_options() // clang-format off
-      ("help,h", "Produce this help message")
-      ("admin-hash", po::value<std::string>(&admin_hash),"Set the admin hash for eval mode.");
+	  ("help,h", "Produce this help message")
+	  ("admin-hash", po::value<std::string>(&admin_hash),"Set the admin hash for eval mode.");
 	// clang-format on
 	po::variables_map vm;
 
@@ -80,13 +98,10 @@ int main(int argc, char **argv)
 		exit(-1);
 	}
 
-	bool vis = true;
-
 	/*
 	 * Model (file) passing: the model can be provided as file to parse or directly as string stored in the rosparam
 	 * server. If both string and file are provided, the string takes precedence.
 	 */
-
 	std::string filename;
 	nh.getParam("modelfile", filename);
 
@@ -111,13 +126,50 @@ int main(int argc, char **argv)
 
 	if (!filename.empty()) {
 		ROS_INFO_STREAM("Using modelfile " << filename);
-		MujocoSim::setupVFS(filename, xml_content);
 	} else {
 		ROS_WARN("No modelfile was provided, launching empty simulation!");
 	}
 
-	std::thread app_thread(MujocoSim::init, filename, admin_hash);
-	app_thread.join();
+	std::printf("MuJoCo version %s\n", mj_versionString());
+	if (mjVERSION_HEADER != mj_version()) {
+		mju_error("Headers and library have different versions");
+	}
+
+	// TODO(dleins): Should MuJoCo Plugins be loaded?
+	{
+		mujoco_ros::MujocoEnv env(admin_hash);
+
+		bool no_x;
+		nh.param("no_x", no_x, false);
+
+		if (!no_x) {
+			nh.param("headless", no_x, false);
+		}
+
+		// const char *filename = nullptr;
+		if (!filename.empty()) {
+			mju::strcpy_arr(env.queued_filename_, filename.c_str());
+			env.settings_.load_request = 2;
+		}
+
+		env.startPhysicsLoop();
+		env.startEventLoop();
+
+		if (!no_x) {
+			ROS_INFO("Launching viewer");
+			// Start simulation UI loop (blocking)
+			// auto viewer = std::make_unique<mujoco_ros::Viewer>(std::make_unique<mujoco_ros::GlfwAdapter>(), &env,
+			//    /* fully_managed = */ true);
+			auto viewer = std::make_unique<mujoco_ros::Viewer>(
+			    std::unique_ptr<mujoco_ros::PlatformUIAdapter>(env.gui_adapter_), &env, /* fully_managed = */ true);
+			viewer->RenderLoop();
+		} else {
+			ROS_INFO("Running headless");
+		}
+
+		env.waitForPhysicsJoin();
+		env.waitForEventsJoin();
+	} // end of scope for env for proper destruction
 
 	ROS_INFO("MuJoCo ROS Simulation Server node is terminating");
 

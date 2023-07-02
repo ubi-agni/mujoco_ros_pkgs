@@ -34,70 +34,76 @@
 
 /* Authors: David P. Leins */
 
-#pragma once
+#include <pluginlib/class_list_macros.h>
 
-#include <mujoco/mujoco.h>
+#include "test_plugin.h"
 
-#include <ros/ros.h>
-#include <image_transport/image_transport.h>
-
-#include <GLFW/glfw3.h>
-
+using namespace mujoco_ros;
 namespace mujoco_ros {
 
-namespace rendering {
-
-typedef enum streamType_ : uint8_t
+bool TestPlugin::load(mjModelPtr m, mjDataPtr d)
 {
-	RGB       = 1,
-	DEPTH     = 1 << 1,
-	SEGMENTED = 1 << 1 << 1,
+	if (rosparam_config_.hasMember("example_param")) {
+		got_config_param = true;
+	}
 
-	// Combined types to be cast safe
-	RGB_D   = 3,
-	RGB_S   = 5,
-	DEPTH_S = 6,
-	RGB_D_S = 7
-} streamType;
+	if (rosparam_config_.hasMember("nested_array_param_1")) {
+		if (rosparam_config_["nested_array_param_1"].getType() == XmlRpc::XmlRpcValue::TypeArray) {
+			got_lvl1_nested_array = true;
+			if (rosparam_config_["nested_array_param_1"][0].hasMember("nested_array_param_2")) {
+				got_lvl2_nested_array = true;
+			}
+		}
+	}
 
-class OffscreenCamera;
-typedef boost::shared_ptr<OffscreenCamera> OffscreenCameraPtr;
+	if (rosparam_config_.hasMember("nested_struct_param_1")) {
+		if (rosparam_config_["nested_struct_param_1"].getType() == XmlRpc::XmlRpcValue::TypeStruct) {
+			got_lvl1_nested_struct = true;
+			if (rosparam_config_["nested_struct_param_1"].hasMember("nested_struct_param_2")) {
+				got_lvl2_nested_struct = true;
+			}
+		}
+	}
 
-} // namespace rendering
+	node_handle_->param<bool>("should_fail", should_fail, false);
+	if (should_fail) {
+		return false;
+	}
 
-// Struct holding all the data needed for offscreen rendering
-struct OffscreenRenderContext;
+	m_ = m;
+	d_ = d;
+	return true;
+}
 
-/**
- * @def mjModelPtr
- * @brief boost::shared_ptr to mjModel
- */
-typedef boost::shared_ptr<mjModel> mjModelPtr;
-/**
- * @def mjDataPtr
- * @brief boost::shared_ptr to mjData
- */
-typedef boost::shared_ptr<mjData> mjDataPtr;
+void TestPlugin::reset()
+{
+	ran_reset = true;
+}
 
-// MujocoPlugin
-class MujocoPlugin;
+void TestPlugin::controlCallback(mjModelPtr model, mjDataPtr data)
+{
+	ran_control_cb = true;
+}
 
-/**
- * @def MujocoPluginPtr
- * @brief boost::shared_ptr to MujocoPlugin
- */
-typedef boost::shared_ptr<MujocoPlugin> MujocoPluginPtr;
+void TestPlugin::passiveCallback(mjModelPtr model, mjDataPtr data)
+{
+	ran_passive_cb = true;
+}
 
-// MujocoEnvironment
-class MujocoEnv;
+void TestPlugin::renderCallback(mjModelPtr model, mjDataPtr data, mjvScene *scene)
+{
+	ran_render_cb = true;
+}
 
-/**
- * @def MujocoEnvPtr
- * @brief ptr to MujocoEnv
- */
-typedef MujocoEnv *MujocoEnvPtr;
+void TestPlugin::lastStageCallback(mjModelPtr model, mjDataPtr data)
+{
+	ran_last_cb = true;
+}
 
-// Viewer
-class Viewer;
-
+void TestPlugin::onGeomChanged(mjModelPtr model, mjDataPtr data, const int geom_id)
+{
+	ran_on_geom_changed_cb = true;
+}
 } // namespace mujoco_ros
+
+PLUGINLIB_EXPORT_CLASS(mujoco_ros::TestPlugin, mujoco_ros::MujocoPlugin)

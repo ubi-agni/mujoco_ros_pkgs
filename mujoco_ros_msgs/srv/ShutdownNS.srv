@@ -1,4 +1,0 @@
-string ros_namespace
-string admin_hash
----
-bool success

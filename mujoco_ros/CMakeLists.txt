@@ -1,14 +1,10 @@
 cmake_minimum_required(VERSION 3.11)
 include(CMakePrintHelpers)
 
+option(ENABLE_SANITIZER "Enable AddressSanitizer" OFF)
+
 cmake_print_variables(ENABLE_SANITIZER)
 cmake_print_variables(NO_OPTIM)
-
-# Disable optimization to prevent false-positives with memory analisys tools
-if (NOT ENABLE_SANITIZER AND NOT NO_OPTIM)
-  # INTERPROCEDURAL_OPTIMIZATION is enforced when enabled.
-  set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
-endif()
 
 # Use GLVND instead of Legacy OpenGL
 set(CMAKE_POLICY_DEFAULT_CMP0072 NEW)
@@ -28,24 +24,16 @@ set(EXTRA_COMPILE_OPTIONS
   -Wno-unknown-pragmas
 )
 
-# Disable optimization to prevent false-positives with memory analisys tools (e.g. asan or valgrind)
-if (ENABLE_SANITIZER OR NO_OPTIM)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -fno-inline")
-  set(CMAKE_BUILD_TYPE "RelWithDebInfo")
+if (ENABLE_SANITIZER)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer -O1")
 endif()
 
 cmake_print_variables(CMAKE_CXX_FLAGS)
 cmake_print_variables(CMAKE_BUILD_TYPE)
 
-if (ENABLE_SANITIZER)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
-  add_link_options(-fsanitize=address)
-endif()
-
-
 # Find MuJoCo
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
-find_package(mujoco 2.3.3 REQUIRED)
+find_package(mujoco 2.3.6 REQUIRED)
 find_library(GLFW libglfw.so.3)
 
 ## Find catkin macros and libraries
@@ -62,6 +50,7 @@ find_package(catkin REQUIRED
     image_transport
     camera_info_manager
     sensor_msgs
+    moveit_ros_planning_interface
 )
 
 catkin_package(
@@ -84,36 +73,56 @@ catkin_package(
 ## Build ##
 ###########
 
+add_library(platform_ui_adapter OBJECT
+  src/glfw_adapter.cc
+  src/glfw_dispatch.cc
+  src/platform_ui_adapter.cc
+)
+set_property(TARGET platform_ui_adapter PROPERTY POSITION_INDEPENDENT_CODE ON)
+target_include_directories(platform_ui_adapter PUBLIC
+  ${PROJECT_SOURCE_DIR}/include
+  ${GLFW_INTERFACE_INCLUDE_DIRECTORIES}
+)
+
+target_link_libraries(platform_ui_adapter PUBLIC mujoco::mujoco ${GLFW})
+add_library(mujoco::platform_ui_adapter ALIAS platform_ui_adapter)
+
 add_library(${PROJECT_NAME}
+  $<TARGET_OBJECTS:platform_ui_adapter>
   src/mujoco_env.cpp
-  src/mujoco_sim.cpp
-  src/uitools.cpp
+  src/viewer.cpp
+  src/lodepng.cpp
   src/plugin_utils.cpp
-  src/rendering/utils.cpp
-  src/rendering/camera.cpp
+  src/offscreen_camera.cpp
+  src/offscreen_rendering.cpp
+  src/callbacks.cpp
+)
+
+target_include_directories(${PROJECT_NAME}
+  PUBLIC ${PROJECT_SOURCE_DIR}/include
+  ${mujoco_INCLUDE_DIRS}
+  ${GLFW_INCLUDE_DIRS}
+  ${catkin_INCLUDE_DIRS}
 )
 
 target_link_libraries(${PROJECT_NAME}
-  ${mujoco_LIBRARIES}
-  ${catkin_LIBRARIES}
-  ${GLFW}
-)
-target_include_directories(${PROJECT_NAME}
-  PUBLIC include
-  SYSTEM PUBLIC ${catkin_INCLUDE_DIRS}
-)
-add_dependencies(${PROJECT_NAME}
-  ${${PROJECT_NAME}_EXPORTED_TARGETS}
-  ${catkin_EXPORTED_TARGETS}
+  PUBLIC
+    mujoco::mujoco
+    mujoco::platform_ui_adapter
+    ${catkin_LIBRARIES}
 )
 
-add_executable(mujoco_server
+add_executable(mujoco_node
   src/main.cpp
 )
-target_link_libraries(mujoco_server
-  ${PROJECT_NAME}
-)
 
+target_include_directories(mujoco_node
+  SYSTEM PUBLIC ${catkin_INCLUDE_DIRS}
+)
+target_link_libraries(mujoco_node
+  PUBLIC
+   ${PROJECT_NAME}
+)
 
 #############
 ## Install ##
@@ -123,7 +132,7 @@ install(DIRECTORY include/${PROJECT_NAME}/
   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
 )
 
-install(TARGETS ${PROJECT_NAME} mujoco_server
+install(TARGETS ${PROJECT_NAME} mujoco_node
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
@@ -131,12 +140,6 @@ install(TARGETS ${PROJECT_NAME} mujoco_server
 
 install(DIRECTORY launch
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
-)
-
-catkin_install_python(
-  PROGRAMS
-    scripts/ns_bootstrapper.py
-  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
 #############

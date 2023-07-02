@@ -24,8 +24,6 @@ add_service_files(
     GetStateUint.srv
     SetFloat.srv
     SetPause.srv
-    BootstrapNS.srv
-    ShutdownNS.srv
     SetBodyState.srv
     GetBodyState.srv
     SetGeomProperties.srv

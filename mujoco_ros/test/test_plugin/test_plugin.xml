@@ -1,0 +1,10 @@
+<library path="lib/libmujoco_testplugin">
+  <class
+    name="mujoco_ros/TestPlugin"
+    type="mujoco_ros::TestPlugin"
+    base_class_type="mujoco_ros::MujocoPlugin">
+    <description>
+      Mujoco dummy plugin for unit tests.
+    </description>
+  </class>
+</library>

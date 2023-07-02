@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2022, Bielefeld University
+ *  Copyright (c) 2023, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -34,61 +34,26 @@
 
 /* Authors: David P. Leins */
 
-#pragma once
-
-#include <math.h>
-
 #include <mujoco_ros/common_types.h>
+#include <mujoco/mujoco.h>
 
-#include <sensor_msgs/CameraInfo.h>
-#include <geometry_msgs/TransformStamped.h>
+namespace mujoco_ros::util {
 
-#include <camera_info_manager/camera_info_manager.h>
-
-#include <mujoco_ros_msgs/SetBodyState.h>
-#include <std_srvs/Empty.h>
-#include <tf2_ros/transform_listener.h>
-#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
-
-namespace MujocoSim {
-namespace rendering {
-
-class CameraStream
+template <class T>
+inline typename std::make_unsigned<T>::type as_unsigned(T x)
 {
-public:
-	CameraStream(const uint8_t cam_id, const std::string cam_name, const int width, const int height,
-	             const streamType stream_type, const bool use_segid, const float pub_freq,
-	             image_transport::ImageTransport *it, ros::NodeHandlePtr parent_nh, const MujocoSim::mjModelPtr model,
-	             MujocoSim::mjDataPtr data);
+	return static_cast<typename std::make_unsigned<T>::type>(x);
+}
 
-	~CameraStream()
-	{
-		rgb_pub_.shutdown();
-		depth_pub_.shutdown();
-		segment_pub_.shutdown();
-		camera_info_pub_.shutdown();
-	};
+static inline int jointName2id(mjModel *m, const std::string &joint_name,
+                               const std::string &robot_namespace = std::string())
+{
+	int result = mj_name2id(m, mjOBJ_JOINT, joint_name.c_str());
+	if (result == -1 && robot_namespace.size() > 0) {
+		ROS_DEBUG_STREAM("Trying to find without namespace (" << joint_name.substr(robot_namespace.size()) << ")");
+		result = mj_name2id(m, mjOBJ_JOINT, joint_name.substr(robot_namespace.size()).c_str());
+	}
+	return result;
+}
 
-	uint8_t cam_id_;
-	std::string cam_name_;
-	int width_, height_;
-	streamType stream_type_ = streamType::RGB;
-	bool use_segid_         = true;
-	float pub_freq_         = 15;
-	ros::Time last_pub_;
-	ros::Publisher camera_info_pub_;
-	image_transport::Publisher rgb_pub_;
-	image_transport::Publisher depth_pub_;
-	image_transport::Publisher segment_pub_;
-
-	void publishCameraInfo();
-
-private:
-	boost::shared_ptr<camera_info_manager::CameraInfoManager> camera_info_manager_;
-
-	// void publishCameraInfo(ros::Publisher camera_info_publisher);
-	// void publishCameraInfo(ros::Time &last_update_time);
-};
-
-} // end namespace rendering
-} // end namespace MujocoSim
+} // namespace mujoco_ros::util

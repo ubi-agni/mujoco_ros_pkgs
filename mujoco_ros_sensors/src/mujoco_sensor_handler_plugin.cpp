@@ -1,7 +1,7 @@
 /**
  * Software License Agreement (BSD 3-Clause License)
  *
- *  Copyright (c) 2022, Bielefeld University
+ *  Copyright (c) 2023, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -47,9 +47,9 @@
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
-#include <mujoco_ros/mujoco_sim.h>
+#include <mujoco_ros/mujoco_env.h>
 
-namespace mujoco_ros_sensors {
+namespace mujoco_ros::sensors {
 
 MujocoRosSensorsPlugin::~MujocoRosSensorsPlugin()
 {
@@ -58,21 +58,27 @@ MujocoRosSensorsPlugin::~MujocoRosSensorsPlugin()
 	register_noise_model_server_.shutdown();
 }
 
-bool MujocoRosSensorsPlugin::load(MujocoSim::mjModelPtr model, MujocoSim::mjDataPtr data)
+bool MujocoRosSensorsPlugin::load(mujoco_ros::mjModelPtr model, mujoco_ros::mjDataPtr data)
 {
 	ROS_INFO_NAMED("sensors", "Loading sensors plugin ...");
-	if (MujocoSim::detail::settings_.eval_mode) {
+	if (env_ptr_->settings_.eval_mode) {
 		ROS_WARN_NAMED("sensors", "Evalutaion mode is active, ground truth topics won't be available!");
 	} else {
 		ROS_WARN_NAMED("sensors", "Train mode is active, ground truth topics will be available!");
 	}
 
+	std::string sensors_namespace;
+	if (rosparam_config_.hasMember("namespace")) {
+		sensors_namespace = (std::string)rosparam_config_["namespace"];
+	}
+	sensors_nh_.reset(new ros::NodeHandle("/" + sensors_namespace));
+
 	noise_dist = std::normal_distribution<double>(0.0, 1.0);
 	initSensors(model, data);
 	ROS_INFO_NAMED("sensors", "All sensors initialized");
 
-	register_noise_model_server_ = node_handle_->advertiseService("sensors/register_noise_models",
-	                                                              &MujocoRosSensorsPlugin::registerNoiseModelsCB, this);
+	register_noise_model_server_ = sensors_nh_->advertiseService("sensors/register_noise_models",
+	                                                             &MujocoRosSensorsPlugin::registerNoiseModelsCB, this);
 
 	return true;
 }
@@ -80,9 +86,9 @@ bool MujocoRosSensorsPlugin::load(MujocoSim::mjModelPtr model, MujocoSim::mjData
 bool MujocoRosSensorsPlugin::registerNoiseModelsCB(mujoco_ros_msgs::RegisterSensorNoiseModels::Request &req,
                                                    mujoco_ros_msgs::RegisterSensorNoiseModels::Response &resp)
 {
-	if (MujocoSim::detail::settings_.eval_mode) {
+	if (env_ptr_->settings_.eval_mode) {
 		ROS_DEBUG_NAMED("mujoco", "Evaluation mode is active. Checking hash validity");
-		if (MujocoSim::detail::settings_.admin_hash != req.admin_hash) {
+		if (env_ptr_->settings_.admin_hash != req.admin_hash) {
 			ROS_ERROR_NAMED("mujoco", "Hash mismatch, no permission to change noise model!");
 			resp.success = false;
 			return true;
@@ -131,7 +137,7 @@ bool MujocoRosSensorsPlugin::registerNoiseModelsCB(mujoco_ros_msgs::RegisterSens
 	return true;
 }
 
-void MujocoRosSensorsPlugin::lastStageCallback(MujocoSim::mjModelPtr model, MujocoSim::mjDataPtr data)
+void MujocoRosSensorsPlugin::lastStageCallback(mujoco_ros::mjModelPtr model, mujoco_ros::mjDataPtr data)
 {
 	std::string sensor_name;
 
@@ -187,7 +193,7 @@ void MujocoRosSensorsPlugin::lastStageCallback(MujocoSim::mjModelPtr model, Mujo
 
 						config->value_pub.publish(msg);
 
-						if (!MujocoSim::detail::settings_.eval_mode) {
+						if (!env_ptr_->settings_.eval_mode) {
 							config->gt_pub.publish(msg);
 						}
 					} else { // Noise at least in one dim
@@ -219,7 +225,7 @@ void MujocoRosSensorsPlugin::lastStageCallback(MujocoSim::mjModelPtr model, Mujo
 
 						config->value_pub.publish(msg);
 
-						if (!MujocoSim::detail::settings_.eval_mode) {
+						if (!env_ptr_->settings_.eval_mode) {
 							msg.vector.x = (float)(data->sensordata[adr] / cutoff);
 							msg.vector.y = (float)(data->sensordata[adr + 1] / cutoff);
 							msg.vector.z = (float)(data->sensordata[adr + 2] / cutoff);
@@ -243,7 +249,7 @@ void MujocoRosSensorsPlugin::lastStageCallback(MujocoSim::mjModelPtr model, Mujo
 
 					config->value_pub.publish(msg);
 
-					if (!MujocoSim::detail::settings_.eval_mode) {
+					if (!env_ptr_->settings_.eval_mode) {
 						config->gt_pub.publish(msg);
 					}
 				} else { // Noise at least in one dim
@@ -275,7 +281,7 @@ void MujocoRosSensorsPlugin::lastStageCallback(MujocoSim::mjModelPtr model, Mujo
 
 					config->value_pub.publish(msg);
 
-					if (!MujocoSim::detail::settings_.eval_mode) {
+					if (!env_ptr_->settings_.eval_mode) {
 						msg.point.x = (float)(data->sensordata[adr] / cutoff);
 						msg.point.y = (float)(data->sensordata[adr + 1] / cutoff);
 						msg.point.z = (float)(data->sensordata[adr + 2] / cutoff);
@@ -312,7 +318,7 @@ void MujocoRosSensorsPlugin::lastStageCallback(MujocoSim::mjModelPtr model, Mujo
 
 							config->value_pub.publish(msg);
 
-							if (!MujocoSim::detail::settings_.eval_mode) {
+							if (!env_ptr_->settings_.eval_mode) {
 								config->gt_pub.publish(msg);
 							}
 						} else { // Noise set
@@ -322,7 +328,7 @@ void MujocoRosSensorsPlugin::lastStageCallback(MujocoSim::mjModelPtr model, Mujo
 
 							config->value_pub.publish(msg);
 
-							if (!MujocoSim::detail::settings_.eval_mode) {
+							if (!env_ptr_->settings_.eval_mode) {
 								msg.value = (float)(data->sensordata[adr] / cutoff);
 
 								config->gt_pub.publish(msg);
@@ -343,7 +349,7 @@ void MujocoRosSensorsPlugin::lastStageCallback(MujocoSim::mjModelPtr model, Mujo
 					msg.quaternion.y = (float)(data->sensordata[adr + 2] / cutoff);
 					msg.quaternion.z = (float)(data->sensordata[adr + 3] / cutoff);
 
-					if (!MujocoSim::detail::settings_.eval_mode) {
+					if (!env_ptr_->settings_.eval_mode) {
 						config->gt_pub.publish(msg);
 					}
 
@@ -395,7 +401,7 @@ void MujocoRosSensorsPlugin::lastStageCallback(MujocoSim::mjModelPtr model, Mujo
 	}
 }
 
-void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim::mjDataPtr data)
+void MujocoRosSensorsPlugin::initSensors(mujoco_ros::mjModelPtr model, mujoco_ros::mjDataPtr data)
 {
 	std::string sensor_name, site, frame_id;
 	for (int n = 0; n < model->nsensor; n++) {
@@ -439,10 +445,10 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 						                                                                       << frame_id);
 					}
 					config.reset(new SensorConfig(frame_id));
-					config->registerPub(node_handle_->advertise<geometry_msgs::Vector3Stamped>(sensor_name, 1, true));
-					if (!MujocoSim::detail::settings_.eval_mode) {
+					config->registerPub(sensors_nh_->advertise<geometry_msgs::Vector3Stamped>(sensor_name, 1, true));
+					if (!env_ptr_->settings_.eval_mode) {
 						config->registerGTPub(
-						    node_handle_->advertise<geometry_msgs::Vector3Stamped>(sensor_name + "_GT", 1, true));
+						    sensors_nh_->advertise<geometry_msgs::Vector3Stamped>(sensor_name + "_GT", 1, true));
 					}
 					sensor_map_[sensor_name] = config;
 					break;
@@ -451,10 +457,10 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 			case mjSENS_SUBTREELINVEL:
 			case mjSENS_SUBTREEANGMOM:
 				config.reset(new SensorConfig(frame_id));
-				config->registerPub(node_handle_->advertise<geometry_msgs::Vector3Stamped>(sensor_name, 1, true));
-				if (!MujocoSim::detail::settings_.eval_mode) {
+				config->registerPub(sensors_nh_->advertise<geometry_msgs::Vector3Stamped>(sensor_name, 1, true));
+				if (!env_ptr_->settings_.eval_mode) {
 					config->registerGTPub(
-					    node_handle_->advertise<geometry_msgs::Vector3Stamped>(sensor_name + "_GT", 1, true));
+					    sensors_nh_->advertise<geometry_msgs::Vector3Stamped>(sensor_name + "_GT", 1, true));
 				}
 				sensor_map_[sensor_name] = config;
 				global_frame             = true;
@@ -474,10 +480,10 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 							                                      << frame_id);
 						}
 						config.reset(new SensorConfig(frame_id));
-						config->registerPub(node_handle_->advertise<geometry_msgs::PointStamped>(sensor_name, 1, true));
-						if (!MujocoSim::detail::settings_.eval_mode) {
+						config->registerPub(sensors_nh_->advertise<geometry_msgs::PointStamped>(sensor_name, 1, true));
+						if (!env_ptr_->settings_.eval_mode) {
 							config->registerGTPub(
-							    node_handle_->advertise<geometry_msgs::PointStamped>(sensor_name + "_GT", 1, true));
+							    sensors_nh_->advertise<geometry_msgs::PointStamped>(sensor_name + "_GT", 1, true));
 						}
 						sensor_map_[sensor_name] = config;
 						global_frame             = true;
@@ -487,10 +493,10 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 			case mjSENS_BALLQUAT:
 			case mjSENS_FRAMEQUAT:
 				config.reset(new SensorConfig(frame_id));
-				config->registerPub(node_handle_->advertise<geometry_msgs::QuaternionStamped>(sensor_name, 1, true));
-				if (!MujocoSim::detail::settings_.eval_mode) {
+				config->registerPub(sensors_nh_->advertise<geometry_msgs::QuaternionStamped>(sensor_name, 1, true));
+				if (!env_ptr_->settings_.eval_mode) {
 					config->registerGTPub(
-					    node_handle_->advertise<geometry_msgs::QuaternionStamped>(sensor_name + "_GT", 1, true));
+					    sensors_nh_->advertise<geometry_msgs::QuaternionStamped>(sensor_name + "_GT", 1, true));
 				}
 				sensor_map_[sensor_name] = config;
 				global_frame             = true;
@@ -517,10 +523,10 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 			case mjSENS_MAGNETOMETER:
 			case mjSENS_BALLANGVEL:
 				config.reset(new SensorConfig(frame_id));
-				config->registerPub(node_handle_->advertise<geometry_msgs::Vector3Stamped>(sensor_name, 1, true));
-				if (!MujocoSim::detail::settings_.eval_mode) {
+				config->registerPub(sensors_nh_->advertise<geometry_msgs::Vector3Stamped>(sensor_name, 1, true));
+				if (!env_ptr_->settings_.eval_mode) {
 					config->registerGTPub(
-					    node_handle_->advertise<geometry_msgs::Vector3Stamped>(sensor_name + "_GT", 1, true));
+					    sensors_nh_->advertise<geometry_msgs::Vector3Stamped>(sensor_name + "_GT", 1, true));
 				}
 				sensor_map_[sensor_name] = config;
 				break;
@@ -541,10 +547,10 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 			case mjSENS_TENDONLIMITVEL:
 			case mjSENS_TENDONLIMITFRC:
 				config.reset(new SensorConfig(frame_id));
-				config->registerPub(node_handle_->advertise<mujoco_ros_msgs::ScalarStamped>(sensor_name, 1, true));
-				if (!MujocoSim::detail::settings_.eval_mode) {
+				config->registerPub(sensors_nh_->advertise<mujoco_ros_msgs::ScalarStamped>(sensor_name, 1, true));
+				if (!env_ptr_->settings_.eval_mode) {
 					config->registerGTPub(
-					    node_handle_->advertise<mujoco_ros_msgs::ScalarStamped>(sensor_name + "_GT", 1, true));
+					    sensors_nh_->advertise<mujoco_ros_msgs::ScalarStamped>(sensor_name + "_GT", 1, true));
 				}
 				sensor_map_[sensor_name] = config;
 				break;
@@ -560,6 +566,6 @@ void MujocoRosSensorsPlugin::initSensors(MujocoSim::mjModelPtr model, MujocoSim:
 // Nothing to do on reset
 void MujocoRosSensorsPlugin::reset(){};
 
-} // namespace mujoco_ros_sensors
+} // namespace mujoco_ros::sensors
 
-PLUGINLIB_EXPORT_CLASS(mujoco_ros_sensors::MujocoRosSensorsPlugin, MujocoSim::MujocoPlugin)
+PLUGINLIB_EXPORT_CLASS(mujoco_ros::sensors::MujocoRosSensorsPlugin, mujoco_ros::MujocoPlugin)

@@ -1,0 +1,7 @@
+MujocoPlugins:
+  - type: mujoco_ros/TestPlugin
+    example_param: 0.0
+    nested_array_param_1:
+    -  nested_array_param_2: true
+    nested_struct_param_1:
+       nested_struct_param_2: true

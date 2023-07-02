@@ -1,3 +1,25 @@
+<a name="Unreleased"></a>
+## [Unreleased]
+
+### Added
+* Updated to MuJoCo library version 2.3.6.
+* Added a `step(num_steps=1, blocking=true)` public function./
+* Unit tests for plugin loading and resetting and running callbacks correctly.
+
+### Changed
+* Moved from static namespace to object oriented application model.
+* `get_load_requeststate` service topic changed to `get_load_request_state`.
+* Renamed namespaces:
+* * `mujoco_ros_sensors` -> `mujoco_ros::sensors`.
+* * `mujoco_ros_control` -> `mujoco_ros::control`.
+* * `MujocoSim` -> `mujoco_ros`.
+* * `MujocoSim::detail` -> moved mostly to private access members, namespace is not necessary anymore.
+* * `MujocoSim::jointName2id` -> `mujoco_ros::util::jointName2id`.
+* Node launchfile arg changed from `visualize` to `headless` for consistency.
+* Moved most contents of `MujocoSim::rendering::VisualStruct` into `mujoco_ros::MujocoEnv::offscreen`.
+* Renamed `MujocoSim::rendering::CameraStream` -> `mujoco_ros::rendering::OffscreenCamera`.
+* `env_id` members were removed from messages, since env_ids are no longer used.
+
 <a name="0.6.0"></a>
 ## [0.6.0] - 2023-06-30
 
@@ -177,6 +199,7 @@ Contributors: @DavidPL1, @balandbal
 
 Contributors: @DavidPL1
 
+[Unreleased]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.6.0...HEAD
 [0.6.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.5.0...0.6.0
 [0.5.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.4.0...0.5.0
 [0.4.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.3.1...0.4.0

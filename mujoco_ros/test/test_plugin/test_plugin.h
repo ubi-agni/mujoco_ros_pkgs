@@ -36,68 +36,38 @@
 
 #pragma once
 
-#include <mujoco/mujoco.h>
+#include <mujoco_ros/plugin_utils.h>
+#include <mujoco_ros/common_types.h>
+#include <mujoco_ros/mujoco_env.h>
 
-#include <ros/ros.h>
-#include <image_transport/image_transport.h>
-
-#include <GLFW/glfw3.h>
-
+using namespace mujoco_ros;
 namespace mujoco_ros {
-
-namespace rendering {
-
-typedef enum streamType_ : uint8_t
+class TestPlugin : public MujocoPlugin
 {
-	RGB       = 1,
-	DEPTH     = 1 << 1,
-	SEGMENTED = 1 << 1 << 1,
+public:
+	TestPlugin() {}
+	virtual ~TestPlugin() {}
+	virtual bool load(mjModelPtr m, mjDataPtr d) override;
+	virtual void reset() override;
+	virtual void controlCallback(mjModelPtr model, mjDataPtr data) override;
+	virtual void passiveCallback(mjModelPtr model, mjDataPtr data) override;
+	virtual void renderCallback(mjModelPtr model, mjDataPtr data, mjvScene *scene) override;
+	virtual void lastStageCallback(mjModelPtr model, mjDataPtr data) override;
+	virtual void onGeomChanged(mjModelPtr model, mjDataPtr data, const int geom_id) override;
 
-	// Combined types to be cast safe
-	RGB_D   = 3,
-	RGB_S   = 5,
-	DEPTH_S = 6,
-	RGB_D_S = 7
-} streamType;
-
-class OffscreenCamera;
-typedef boost::shared_ptr<OffscreenCamera> OffscreenCameraPtr;
-
-} // namespace rendering
-
-// Struct holding all the data needed for offscreen rendering
-struct OffscreenRenderContext;
-
-/**
- * @def mjModelPtr
- * @brief boost::shared_ptr to mjModel
- */
-typedef boost::shared_ptr<mjModel> mjModelPtr;
-/**
- * @def mjDataPtr
- * @brief boost::shared_ptr to mjData
- */
-typedef boost::shared_ptr<mjData> mjDataPtr;
-
-// MujocoPlugin
-class MujocoPlugin;
-
-/**
- * @def MujocoPluginPtr
- * @brief boost::shared_ptr to MujocoPlugin
- */
-typedef boost::shared_ptr<MujocoPlugin> MujocoPluginPtr;
-
-// MujocoEnvironment
-class MujocoEnv;
-
-/**
- * @def MujocoEnvPtr
- * @brief ptr to MujocoEnv
- */
-typedef MujocoEnv *MujocoEnvPtr;
-
-// Viewer
-class Viewer;
-
+	mjModelPtr m_;
+	mjDataPtr d_;
+	bool ran_reset              = false;
+	bool ran_control_cb         = false;
+	bool ran_passive_cb         = false;
+	bool ran_render_cb          = false;
+	bool ran_last_cb            = false;
+	bool ran_on_geom_changed_cb = false;
+	bool got_config_param       = false;
+	bool got_lvl1_nested_array  = false;
+	bool got_lvl1_nested_struct = false;
+	bool got_lvl2_nested_array  = false;
+	bool got_lvl2_nested_struct = false;
+	bool should_fail            = false;
+};
 } // namespace mujoco_ros

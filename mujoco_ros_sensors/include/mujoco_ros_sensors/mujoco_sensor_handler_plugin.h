@@ -1,7 +1,7 @@
 /**
  * Software License Agreement (BSD 3-Clause License)
  *
- *  Copyright (c) 2022, Bielefeld University
+ *  Copyright (c) 2023, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -42,13 +42,13 @@
 
 #include <mujoco_ros/common_types.h>
 #include <mujoco_ros/plugin_utils.h>
-#include <mujoco_ros/mujoco_sim.h>
+#include <mujoco_ros/mujoco_env.h>
 
 #include <mujoco_ros_msgs/RegisterSensorNoiseModels.h>
 
 #include <random>
 
-namespace mujoco_ros_sensors {
+namespace mujoco_ros::sensors {
 
 struct SensorConfig
 {
@@ -76,20 +76,21 @@ public:
 
 typedef std::shared_ptr<SensorConfig> SensorConfigPtr;
 
-class MujocoRosSensorsPlugin : public MujocoSim::MujocoPlugin
+class MujocoRosSensorsPlugin : public mujoco_ros::MujocoPlugin
 {
 public:
 	virtual ~MujocoRosSensorsPlugin();
 
 	// Overload entry point
-	virtual bool load(MujocoSim::mjModelPtr m, MujocoSim::mjDataPtr d);
+	virtual bool load(mujoco_ros::mjModelPtr m, mujoco_ros::mjDataPtr d);
 
 	virtual void reset();
 
-	void lastStageCallback(MujocoSim::mjModelPtr model, MujocoSim::mjDataPtr data);
+	void lastStageCallback(mujoco_ros::mjModelPtr model, mujoco_ros::mjDataPtr data);
 
 private:
-	void initSensors(MujocoSim::mjModelPtr model, MujocoSim::mjDataPtr data);
+	ros::NodeHandlePtr sensors_nh_;
+	void initSensors(mujoco_ros::mjModelPtr model, mujoco_ros::mjDataPtr data);
 	std::mt19937 rand_generator = std::mt19937(std::random_device{}());
 	std::normal_distribution<double> noise_dist;
 
@@ -137,4 +138,4 @@ const char *const SENSOR_STRING[] = { [mjSENS_TOUCH]          = "touch",
 	                                   [mjSENS_SUBTREELINVEL]  = "subtreelinvel",
 	                                   [mjSENS_SUBTREEANGMOM]  = "subtreeangmom" };
 
-} // namespace mujoco_ros_sensors
+} // namespace mujoco_ros::sensors
