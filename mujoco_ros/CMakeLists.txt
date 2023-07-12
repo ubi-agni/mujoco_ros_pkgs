@@ -73,10 +73,6 @@ catkin_package(
 ## Build ##
 ###########
 
-pybind_add_module(pymujoco_ros
-  python/pymujoco_ros.cpp
-)
-
 add_library(platform_ui_adapter OBJECT
   src/glfw_adapter.cc
   src/glfw_dispatch.cc
@@ -130,11 +126,13 @@ target_link_libraries(mujoco_node
   #  ${catkin_LIBRARIES}
 )
 
+pybind_add_module(pymujoco_ros
+  python/pymujoco_ros.cpp
+)
+
 target_include_directories(pymujoco_ros SYSTEM PRIVATE include ${mujoco_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS})
 target_link_libraries(pymujoco_ros PRIVATE
-  ${PACKAGE_NAME}
-#   ${catkin_LIBRARIES}
-#   mujoco::platform_ui_adapter
+  ${PROJECT_NAME}
 )
 
 #############

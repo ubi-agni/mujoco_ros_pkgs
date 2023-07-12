@@ -30,7 +30,7 @@ public:
 	}
 };
 
-PYBIND11_MODULE(_mujoco_env, m)
+PYBIND11_MODULE(pymujoco_ros, m)
 {
 	py::class_<MujocoEnvWrapper>(m, "MujocoEnv")
 	    .def(py::init([](bool headless, bool render_offscreen) {
