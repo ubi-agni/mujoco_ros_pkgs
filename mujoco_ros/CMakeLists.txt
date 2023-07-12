@@ -49,6 +49,7 @@ find_package(catkin REQUIRED
     camera_info_manager
     sensor_msgs
     pybind11_catkin
+    moveit_ros_planning_interface
 )
 
 catkin_python_setup()
@@ -133,6 +134,7 @@ pybind_add_module(pymujoco_ros
 target_include_directories(pymujoco_ros SYSTEM PRIVATE include ${mujoco_INCLUDE_DIRS} ${catkin_INCLUDE_DIRS})
 target_link_libraries(pymujoco_ros PRIVATE
   ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
 )
 
 #############

@@ -3,6 +3,7 @@
 #include <pybind11/pybind11.h>
 #include <mujoco_ros/mujoco_env.h>
 #include <mujoco_ros/array_safety.h>
+#include <moveit/py_bindings_tools/roscpp_initializer.h>
 
 // #include <mujoco_ros/viewer.h>
 
@@ -10,7 +11,7 @@ namespace mujoco_ros::python {
 namespace py  = pybind11;
 namespace mju = ::mujoco::sample_util;
 
-class MujocoEnvWrapper : public mujoco_ros::MujocoEnv
+class MujocoEnvWrapper : protected moveit::py_bindings_tools::ROScppInitializer, public mujoco_ros::MujocoEnv
 {
 public:
 	MujocoEnvWrapper(bool headless = false, bool render_offscreen = false) : mujoco_ros::MujocoEnv() {}
