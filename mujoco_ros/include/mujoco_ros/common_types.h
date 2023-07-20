@@ -47,8 +47,7 @@ namespace mujoco_ros {
 
 namespace rendering {
 
-typedef enum streamType_ : uint8_t
-{
+using streamType = enum streamType_ : uint8_t {
 	RGB       = 1,
 	DEPTH     = 1 << 1,
 	SEGMENTED = 1 << 1 << 1,
@@ -58,10 +57,10 @@ typedef enum streamType_ : uint8_t
 	RGB_S   = 5,
 	DEPTH_S = 6,
 	RGB_D_S = 7
-} streamType;
+};
 
 class OffscreenCamera;
-typedef boost::shared_ptr<OffscreenCamera> OffscreenCameraPtr;
+using OffscreenCameraPtr = boost::shared_ptr<OffscreenCamera>;
 
 } // namespace rendering
 
@@ -72,12 +71,12 @@ struct OffscreenRenderContext;
  * @def mjModelPtr
  * @brief boost::shared_ptr to mjModel
  */
-typedef boost::shared_ptr<mjModel> mjModelPtr;
+using mjModelPtr = boost::shared_ptr<mjModel>;
 /**
  * @def mjDataPtr
  * @brief boost::shared_ptr to mjData
  */
-typedef boost::shared_ptr<mjData> mjDataPtr;
+using mjDataPtr = boost::shared_ptr<mjData>;
 
 // MujocoPlugin
 class MujocoPlugin;
@@ -86,7 +85,7 @@ class MujocoPlugin;
  * @def MujocoPluginPtr
  * @brief boost::shared_ptr to MujocoPlugin
  */
-typedef boost::shared_ptr<MujocoPlugin> MujocoPluginPtr;
+using MujocoPluginPtr = boost::shared_ptr<MujocoPlugin>;
 
 // MujocoEnvironment
 class MujocoEnv;
@@ -95,7 +94,7 @@ class MujocoEnv;
  * @def MujocoEnvPtr
  * @brief ptr to MujocoEnv
  */
-typedef MujocoEnv *MujocoEnvPtr;
+using MujocoEnvPtr = MujocoEnv *;
 
 // Viewer
 class Viewer;
