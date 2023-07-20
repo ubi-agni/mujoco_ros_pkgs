@@ -20,16 +20,21 @@ find_package(catkin REQUIRED COMPONENTS
   tf2
   tf2_geometry_msgs
   tf2_ros
+  pybind11_catkin
 )
 
+catkin_python_setup()
+
 catkin_package(
- INCLUDE_DIRS include
  CATKIN_DEPENDS
   mujoco_ros
   mujoco_ros_msgs
   tf2
   tf2_geometry_msgs
   tf2_ros
+  pybind11_catkin
+ INCLUDE_DIRS
+  include
  LIBRARIES ${PROJECT_NAME}
 )
 
@@ -50,6 +55,8 @@ add_library(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )
+
+add_subdirectory(python)
 
 #############
 ## Install ##

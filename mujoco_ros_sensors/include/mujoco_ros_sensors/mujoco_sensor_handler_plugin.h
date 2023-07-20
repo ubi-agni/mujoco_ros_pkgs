@@ -79,6 +79,9 @@ using SensorConfigPtr = std::unique_ptr<SensorConfig>;
 class MujocoRosSensorsPlugin : public mujoco_ros::MujocoPlugin
 {
 public:
+	// Friend definition to access private/protected members in python bindings
+	friend class MujocoSensorPluginAccessor;
+
 	~MujocoRosSensorsPlugin() override;
 
 	// Overload entry point
@@ -88,7 +91,7 @@ public:
 
 	void lastStageCallback(const mjModel *model, mjData *data) override;
 
-private:
+protected:
 	ros::NodeHandle sensors_nh_;
 	void initSensors(const mjModel *model, mjData *data);
 	std::mt19937 rand_generator = std::mt19937(std::random_device{}());

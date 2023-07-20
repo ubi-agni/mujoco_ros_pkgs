@@ -34,6 +34,11 @@ repos:
         stages: [commit-msg]
         additional_dependencies: ['@commitlint/config-conventional']
 
+  - repo: https://github.com/psf/black
+    rev: 22.3.0
+    hooks:
+      - id: black
+
   - repo: local
     hooks:
       - id: clang-format
@@ -57,7 +62,7 @@ repos:
       - id: catkin-lint
         name: catkin-lint
         description: Check package.xml and CMake files
-        entry: catkin_lint .
+        entry: catkin_lint --ignore undefined_target .
         language: system
         always_run: true
         pass_filenames: false

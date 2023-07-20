@@ -61,7 +61,10 @@ void MujocoEnv::setupServices()
 {
 	service_servers_.emplace_back(nh_->advertiseService("set_pause", &MujocoEnv::setPauseCB, this));
 	service_servers_.emplace_back(nh_->advertiseService("shutdown", &MujocoEnv::shutdownCB, this));
-	service_servers_.emplace_back(nh_->advertiseService("reload", &MujocoEnv::reloadCB, this));
+	// disable reload service if python bindings are used
+	if (!is_python_bound_) {
+		service_servers_.emplace_back(nh_->advertiseService("reload", &MujocoEnv::reloadCB, this));
+	}
 	service_servers_.emplace_back(nh_->advertiseService("reset", &MujocoEnv::resetCB, this));
 	service_servers_.emplace_back(nh_->advertiseService("set_body_state", &MujocoEnv::setBodyStateCB, this));
 	service_servers_.emplace_back(nh_->advertiseService("get_body_state", &MujocoEnv::getBodyStateCB, this));

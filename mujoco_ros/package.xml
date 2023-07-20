@@ -13,6 +13,9 @@
 
   <buildtool_depend>catkin</buildtool_depend>
 
+  <depend>pybind11_catkin</depend>
+  <depend>py_binding_tools</depend>
+
   <depend>roscpp</depend>
   <depend>dynamic_reconfigure</depend>
   <depend>actionlib</depend>

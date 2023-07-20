@@ -50,9 +50,14 @@
 
 namespace mujoco_ros::mocap {
 
+bool ValidateMocapMsg(const mujoco_ros_msgs::MocapState &msg, const mjModel *m);
+
 class MocapPlugin : public mujoco_ros::MujocoPlugin
 {
 public:
+	// Friend definition to access private/protected members in python bindings
+	friend class MocapPluginAccessor;
+
 	~MocapPlugin() override = default;
 
 	// Overload entry point
@@ -63,8 +68,8 @@ public:
 	void controlCallback(const mjModel *m, mjData *d) override;
 
 private:
-	void mocapStateCallback(const mujoco_ros_msgs::MocapState::ConstPtr &msg);
-	bool mocapServiceCallback(mujoco_ros_msgs::SetMocapState::Request &req,
+	void MocapStateCallback(const mujoco_ros_msgs::MocapState::ConstPtr &msg);
+	bool MocapServiceCallback(mujoco_ros_msgs::SetMocapState::Request &req,
 	                          mujoco_ros_msgs::SetMocapState::Response &resp);
 
 	const mjModel *m_;

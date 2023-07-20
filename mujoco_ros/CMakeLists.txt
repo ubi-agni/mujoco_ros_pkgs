@@ -43,6 +43,8 @@ find_package(catkin REQUIRED COMPONENTS
     camera_info_manager
     sensor_msgs
     dynamic_reconfigure
+    py_binding_tools
+    pybind11_catkin
 )
 
 # cmake-format: off
@@ -66,6 +68,8 @@ configure_project_option(
 
 # Find MuJoCo
 find_package(mujoco 3.3.5 REQUIRED)
+
+catkin_python_setup()
 
 # ###############################################
 # # Declare ROS dynamic reconfigure parameters ##
@@ -96,6 +100,7 @@ include(ConfigureRenderBackend)
 # # LIBRARIES: libraries you create in this project that dependent projects also need
 # # CATKIN_DEPENDS: catkin_packages dependent projects also need
 # # DEPENDS: system dependencies of this project that dependent projects also need
+
 catkin_package(
   CATKIN_DEPENDS
     roscpp
@@ -110,6 +115,8 @@ catkin_package(
     camera_info_manager
     sensor_msgs
     dynamic_reconfigure
+    py_binding_tools
+    pybind11_catkin
   INCLUDE_DIRS
     include
   LIBRARIES
@@ -119,6 +126,7 @@ catkin_package(
 )
 
 add_subdirectory(src)
+add_subdirectory(python)
 
 # Depend on gencfg to ensure build before lib
 add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_gencfg)
@@ -143,10 +151,9 @@ install(DIRECTORY launch config assets
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
 
-
-# #############
-# ## Testing ##
-# #############
+#############
+## Testing ##
+#############
 
 if(CATKIN_ENABLE_TESTING)
   add_subdirectory(test)

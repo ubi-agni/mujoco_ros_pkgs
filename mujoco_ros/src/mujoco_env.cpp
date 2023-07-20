@@ -94,10 +94,13 @@ const char *MujocoEnv::Diverged(int disableflags, const mjData *d)
 	return nullptr;
 }
 
-MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
+MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/, bool python_bound /* = false*/)
 {
 	nh_ = std::make_unique<ros::NodeHandle>("~");
 	ROS_DEBUG_STREAM("New MujocoEnv created");
+
+	is_python_bound_ = python_bound;
+	ROS_DEBUG_COND(is_python_bound_, "MujocoEnv is python bound. Loading will be routed over python");
 
 	if (!admin_hash.empty()) {
 		mju::strcpy_arr(settings_.admin_hash, admin_hash.c_str());
@@ -554,8 +557,9 @@ void MujocoEnv::connectViewer(Viewer *viewer)
 			viewer->loadrequest = true;
 		}
 		return;
+	} else {
+		ROS_WARN("Viewer already connected!");
 	}
-	ROS_WARN("Viewer already connected!");
 }
 
 void MujocoEnv::disconnectViewer(Viewer *viewer)
@@ -622,8 +626,16 @@ int MujocoEnv::getOperationalStatus()
 
 void MujocoEnv::loadWithModelAndData()
 {
-	model_.reset(mnew, mj_deleteModel);
-	data_.reset(dnew, mj_deleteData);
+	// Loading the model and data from python means that python
+	// is the owner of the underlying structures. In this case
+	// we use no-op deleters to avoid double deletion.
+	if (is_python_bound_) {
+		model_.reset(mnew, [](mjModel *) {});
+		data_.reset(dnew, [](mjData *) {});
+	} else {
+		model_.reset(mnew, mj_deleteModel);
+		data_.reset(dnew, mj_deleteData);
+	}
 
 	// perform a forward pass to initialize all fields if not done yet (very important for offscreen rendering)
 	mj_forward(model_.get(), data_.get());
@@ -848,18 +860,34 @@ void MujocoEnv::prepareReload()
 MujocoEnv::~MujocoEnv()
 {
 	ROS_DEBUG("Destructor called");
+	ROS_DEBUG("Making sure threads have terminated");
+	// This bit is needed when the Env goes out of scope without setting exit_request
+	// Most likely happens in python bindings
+	this->settings_.exit_request.store(1);
+	this->waitForPhysicsJoin();
+	this->waitForEventsJoin();
+	ROS_DEBUG("All threads terminated. Continuing with destruction");
+
 	delete param_server_;
 	connected_viewers_.clear();
+	ROS_DEBUG("Unregistered viewers");
 	free(this->ctrlnoise_);
+	ROS_DEBUG("Freed ctrlnoise");
 	this->cb_ready_plugins_.clear();
 	this->plugins_.clear();
+	ROS_DEBUG("Cleared plugin references");
 	mj_deleteVFS(&vfs_);
+	ROS_DEBUG("deleted vfs");
 
 	if (threadpool_ != nullptr) {
+		ROS_DEBUG("destroying threadpool");
 		mju_threadPoolDestroy(threadpool_);
 	}
 
+	ROS_DEBUG("unloading plugin loader");
 	plugin_utils::unloadPluginloader();
+
+	ROS_DEBUG("MujocoEnv destructor finished");
 }
 
 } // namespace mujoco_ros

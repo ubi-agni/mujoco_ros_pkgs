@@ -61,10 +61,11 @@ public:
 
 	~OffscreenCamera()
 	{
-		ROS_DEBUG("Freeing offscreen model and data states");
+		ROS_DEBUG_STREAM("Freeing offscreen model and data states of camera " << cam_name_);
 		mj_deleteData(data_state_);
 		mj_deleteModel(model_state_);
 
+		ROS_DEBUG_STREAM("Shutting down offscreen publishers of camera " << cam_name_);
 		rgb_pub_.shutdown();
 		depth_pub_.shutdown();
 		segment_pub_.shutdown();
@@ -76,6 +77,9 @@ public:
 	uint8_t cam_id_;
 	std::string cam_name_;
 	std::string topic_;
+	std::string rgb_topic_;
+	std::string depth_topic_;
+	std::string segment_topic_;
 	int width_, height_;
 	streamType stream_type_ = streamType::RGB;
 	bool use_segid_         = true;

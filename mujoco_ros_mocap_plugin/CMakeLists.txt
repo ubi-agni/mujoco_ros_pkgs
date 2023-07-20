@@ -15,13 +15,17 @@ set(CMAKE_CXX_FLAGS_SANITIZE "-fsanitize=address -g -O1 -fno-inline -fno-omit-fr
 find_package(catkin REQUIRED COMPONENTS
   mujoco_ros
   mujoco_ros_msgs
+  pybind11_catkin
 )
+
+catkin_python_setup()
 
 catkin_package(
  INCLUDE_DIRS include
  CATKIN_DEPENDS
   mujoco_ros
   mujoco_ros_msgs
+  pybind11_catkin
  LIBRARIES ${PROJECT_NAME}
 )
 
@@ -36,6 +40,8 @@ add_library(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )
+
+add_subdirectory(python)
 
 install(TARGETS ${PROJECT_NAME}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}

@@ -124,12 +124,13 @@ bool MujocoRosControlPlugin::load(const mjModel *m, mjData *d)
 		return false;
 	}
 
+	mujoco_ros::control::RobotHWSim *ptr = nullptr;
 	try {
 		robot_hw_sim_loader_ = std::make_unique<pluginlib::ClassLoader<mujoco_ros::control::RobotHWSim>>(
 		    "mujoco_ros_control", "mujoco_ros::control::RobotHWSim");
 
-		robot_hw_sim_ = std::unique_ptr<mujoco_ros::control::RobotHWSim>(
-		    robot_hw_sim_loader_->createUnmanagedInstance(robot_hw_sim_type_str_));
+		ptr           = robot_hw_sim_loader_->createUnmanagedInstance(robot_hw_sim_type_str_);
+		robot_hw_sim_ = std::unique_ptr<mujoco_ros::control::RobotHWSim>(ptr);
 		urdf::Model urdf_model;
 		const urdf::Model *const urdf_model_ptr = urdf_model.initString(urdf_string) ? &urdf_model : nullptr;
 

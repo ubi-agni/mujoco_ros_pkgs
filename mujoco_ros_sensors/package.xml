@@ -12,6 +12,9 @@
   <author>David P. Leins</author>
 
   <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>pybind11_catkin</depend>
+
   <depend>mujoco_ros</depend>
   <depend>mujoco_ros_msgs</depend>
   <depend>tf2</depend>

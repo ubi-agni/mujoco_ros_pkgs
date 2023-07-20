@@ -68,6 +68,12 @@ using OffscreenCameraPtr = std::unique_ptr<OffscreenCamera>;
 
 } // namespace rendering
 
+// Struct holding various settings for the MuJoCo environment
+struct EnvSettings;
+
+// General sim information for viewers and bindings to fetch
+struct SimState;
+
 // Struct holding all the data needed for offscreen rendering
 struct OffscreenRenderContext;
 

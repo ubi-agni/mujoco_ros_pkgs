@@ -148,6 +148,44 @@ struct OffscreenRenderContext
 	~OffscreenRenderContext();
 };
 
+struct EnvSettings
+{
+	// Render options
+	bool headless         = false;
+	bool render_offscreen = false;
+	bool use_sim_time     = true;
+
+	// Sim speed
+	int real_time_index = 9;
+	int busywait        = 0;
+
+	// Mode
+	bool eval_mode      = false;
+	char admin_hash[64] = "\0";
+
+	// Atomics for multithread access
+	std::atomic_int run                 = { 0 };
+	std::atomic_int exit_request        = { 0 };
+	std::atomic_int visual_init_request = { 0 };
+	std::atomic_int settings_changed    = { 0 };
+
+	// Load request
+	//  0: no request
+	//  1: replace model_ with mnew and data_ with dnew
+	//  2: load mnew and dnew from file
+	std::atomic_int load_request      = { 0 };
+	std::atomic_int reset_request     = { 0 };
+	std::atomic_int speed_changed     = { 0 };
+	std::atomic_int env_steps_request = { 0 };
+};
+
+struct SimState
+{
+	float measured_slowdown = 1.0;
+	bool model_valid        = false;
+	uint load_count         = 0;
+};
+
 class MujocoEnv
 {
 public:
@@ -155,7 +193,7 @@ public:
 	 * @brief Construct a new Mujoco Env object.
 	 *
 	 */
-	MujocoEnv(const std::string &admin_hash = std::string());
+	MujocoEnv(const std::string &admin_hash = std::string(), bool python_bound = false);
 	~MujocoEnv();
 
 	MujocoEnv(const MujocoEnv &) = delete;
@@ -182,48 +220,8 @@ public:
 
 	char queued_filename_[kMaxFilenameLength] = "\0";
 
-	struct
-	{
-		// Render options
-		bool headless         = false;
-		bool render_offscreen = false;
-		bool use_sim_time     = true;
-
-		// Sim speed
-		int real_time_index = 9;
-		int busywait        = 0;
-
-		// Mode
-		bool eval_mode      = false;
-		char admin_hash[64] = "\0";
-
-		// Atomics for multithread access
-		std::atomic_int run                 = { 0 };
-		std::atomic_int exit_request        = { 0 };
-		std::atomic_int visual_init_request = { 0 };
-
-		// Load request
-		//  0: no request
-		//  1: replace model_ with mnew and data_ with dnew
-		//  2: load mnew and dnew from file
-		std::atomic_int load_request      = { 0 };
-		std::atomic_int reset_request     = { 0 };
-		std::atomic_int speed_changed     = { 0 };
-		std::atomic_int env_steps_request = { 0 };
-
-		std::atomic_int settings_changed = { 0 };
-
-		// Must be set to true before loading a new model from python
-		std::atomic_int is_python_request = { 0 };
-	} settings_;
-
-	// General sim information for viewers to fetch
-	struct
-	{
-		float measured_slowdown = 1.0;
-		bool model_valid        = false;
-		uint load_count         = 0;
-	} sim_state_;
+	EnvSettings settings_;
+	SimState sim_state_;
 
 	std::vector<MujocoPluginPtr> const &getPlugins() const { return plugins_; }
 
@@ -467,6 +465,8 @@ protected:
 	void loadWithModelAndData();
 
 	mjThreadPool *threadpool_ = nullptr;
+
+	bool is_python_bound_ = false;
 };
 
 } // end namespace mujoco_ros

@@ -17,6 +17,8 @@ The default is `min(#available_threads - 1, 4)`.
 Loading and reset times are reported in the server debug log. All plugin stats can be retrieved by the `get_plugin_stats` service call.
 * Added ros laser plugin.
 * Added dynamic reconfigure for all MuJoCo settings for fast model testing.
+* Added initial python bindings for the core library, mocap plugin, and sensor plugin.
+An example of how to run a simulation in python is [run_mjrospy_example.py](mujoco_ros/scripts/run_mjrospy_example.py).
 
 ### Fixed
 * Added missing call to render callbacks in viewer. While the callbacks were still being run for offscreen rendering, the viewer did not render additional geoms added by plugins.
