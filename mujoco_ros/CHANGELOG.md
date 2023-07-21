@@ -5,6 +5,8 @@
 * Updated to MuJoCo library version 2.3.6.
 * Added a `step(num_steps=1, blocking=true)` public function./
 * Unit tests for plugin loading and resetting and running callbacks correctly.
+* Now automatically building with AVX instructions, if possible.
+* CMake tooling borrowed from deepminds MuJoCo repo and https://github.com/osjacky430/ros_pkg_template/.
 
 ### Changed
 * Moved from static namespace to object oriented application model.
@@ -19,6 +21,7 @@
 * Moved most contents of `MujocoSim::rendering::VisualStruct` into `mujoco_ros::MujocoEnv::offscreen`.
 * Renamed `MujocoSim::rendering::CameraStream` -> `mujoco_ros::rendering::OffscreenCamera`.
 * `env_id` members were removed from messages, since env_ids are no longer used.
+* Added more compiler warnings (see [CompilerWarnings.cmake](./cmake/CompilerWarnings.cmake)).
 
 <a name="0.6.0"></a>
 ## [0.6.0] - 2023-06-30

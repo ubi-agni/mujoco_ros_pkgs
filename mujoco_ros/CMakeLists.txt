@@ -1,44 +1,39 @@
-cmake_minimum_required(VERSION 3.11)
-include(CMakePrintHelpers)
+cmake_minimum_required(VERSION 3.17 FATAL_ERROR)
+project(mujoco_ros VERSION 0.6.0 LANGUAGES CXX)
 
-option(ENABLE_SANITIZER "Enable AddressSanitizer" OFF)
-
-cmake_print_variables(ENABLE_SANITIZER)
-cmake_print_variables(NO_OPTIM)
-
-# Use GLVND instead of Legacy OpenGL
-set(CMAKE_POLICY_DEFAULT_CMP0072 NEW)
-
-project(mujoco_ros)
-
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(EXTRA_COMPILE_OPTIONS
-  -Werror
-  -Wall
-  -Wimplicit-fallthrough
-  -Wunused
-  -Wno-int-in-bool-context
-  -Wno-sign-compare
-  -Wno-unknown-pragmas
-)
-
-if (ENABLE_SANITIZER)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer -O1")
+if(NOT CMAKE_CONFIGURATION_TYPES)
+  if(NOT CMAKE_BUILD_TYPE)
+    message(STATUS "Setting build type to 'Release' as none was specified.")
+    set(CMAKE_BUILD_TYPE
+        "Release"
+        CACHE STRING "Choose the type of build, recommanded options are: Debug or Release" FORCE
+    )
+  endif()
+  set(BUILD_TYPES
+      "Debug"
+      "Release"
+      "MinSizeRel"
+      "RelWithDebInfo"
+  )
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS ${BUILD_TYPES})
 endif()
 
-cmake_print_variables(CMAKE_CXX_FLAGS)
-cmake_print_variables(CMAKE_BUILD_TYPE)
+set(OpenGL_GL_PREFERENCE GLVND)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# Find MuJoCo
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
-find_package(mujoco 2.3.6 REQUIRED)
-find_library(GLFW libglfw.so.3)
+list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+include(ProjectOption)
 
-## Find catkin macros and libraries
-## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
-## is used, also find other catkin packages
+# Find catkin macros and libraries
+# if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
+# is used, also find other catkin packages
 find_package(catkin REQUIRED
     roscpp
     pluginlib
@@ -53,6 +48,53 @@ find_package(catkin REQUIRED
     moveit_ros_planning_interface
 )
 
+# cmake-format: off
+configure_project_option(
+  WARNINGS
+    TARGET project_warning
+  AVX
+    TARGET project_option
+  LINKER
+    TARGET project_option
+  SANITIZER
+    TARGET project_option
+  IPO
+    DISABLE_FOR_CONFIG Debug
+  # EXTRA_ARG -DROSCONSOLE_MIN_SEVERITY=ROSCONSOLE_SEVERITY_NONE
+  CATKIN_ROS
+    TARGET catkin_pkg
+  COMPILER_CACHE
+    LAUNCHER ccache
+)
+
+# Find MuJoCo
+find_package(mujoco 2.3.6 REQUIRED)
+find_library(GLFW libglfw.so.3)
+
+# ###############################################
+# # Declare ROS dynamic reconfigure parameters ##
+# ###############################################
+
+# # To declare and build dynamic reconfigure parameters within this
+# # package, follow these steps:
+# # * In the file package.xml:
+# #   * add a build_depend and a exec_depend tag for "dynamic_reconfigure"
+# # * In this file (CMakeLists.txt):
+# #   * add "dynamic_reconfigure" to
+# #     find_package(catkin REQUIRED COMPONENTS ...)
+# #   * uncomment the "generate_dynamic_reconfigure_options" section below
+# #     and list every .cfg file to be processed
+
+
+# ##################################
+# # catkin specific configuration ##
+# ##################################
+# # The catkin_package macro generates cmake config files for your package
+# # Declare things to be passed to dependent projects
+# # INCLUDE_DIRS: uncomment this if your package contains header files
+# # LIBRARIES: libraries you create in this project that dependent projects also need
+# # CATKIN_DEPENDS: catkin_packages dependent projects also need
+# # DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   CATKIN_DEPENDS
     roscpp
@@ -65,68 +107,19 @@ catkin_package(
     image_transport
     camera_info_manager
     sensor_msgs
-  INCLUDE_DIRS include ${mujoco_INCLUDE_DIRS}
-  LIBRARIES ${PROJECT_NAME} ${mujoco_LIBRARIES}
+    moveit_ros_planning_interface
+  INCLUDE_DIRS
+    include
+    ${mujoco_INCLUDE_DIRS}
+  LIBRARIES
+    ${PROJECT_NAME} ${mujoco_LIBRARIES}
 )
 
-###########
-## Build ##
-###########
+add_subdirectory(src)
 
-add_library(platform_ui_adapter OBJECT
-  src/glfw_adapter.cc
-  src/glfw_dispatch.cc
-  src/platform_ui_adapter.cc
-)
-set_property(TARGET platform_ui_adapter PROPERTY POSITION_INDEPENDENT_CODE ON)
-target_include_directories(platform_ui_adapter PUBLIC
-  ${PROJECT_SOURCE_DIR}/include
-  ${GLFW_INTERFACE_INCLUDE_DIRECTORIES}
-)
-
-target_link_libraries(platform_ui_adapter PUBLIC mujoco::mujoco ${GLFW})
-add_library(mujoco::platform_ui_adapter ALIAS platform_ui_adapter)
-
-add_library(${PROJECT_NAME}
-  $<TARGET_OBJECTS:platform_ui_adapter>
-  src/mujoco_env.cpp
-  src/viewer.cpp
-  src/lodepng.cpp
-  src/plugin_utils.cpp
-  src/offscreen_camera.cpp
-  src/offscreen_rendering.cpp
-  src/callbacks.cpp
-)
-
-target_include_directories(${PROJECT_NAME}
-  PUBLIC ${PROJECT_SOURCE_DIR}/include
-  ${mujoco_INCLUDE_DIRS}
-  ${GLFW_INCLUDE_DIRS}
-  ${catkin_INCLUDE_DIRS}
-)
-
-target_link_libraries(${PROJECT_NAME}
-  PUBLIC
-    mujoco::mujoco
-    mujoco::platform_ui_adapter
-    ${catkin_LIBRARIES}
-)
-
-add_executable(mujoco_node
-  src/main.cpp
-)
-
-target_include_directories(mujoco_node
-  SYSTEM PUBLIC ${catkin_INCLUDE_DIRS}
-)
-target_link_libraries(mujoco_node
-  PUBLIC
-   ${PROJECT_NAME}
-)
-
-#############
-## Install ##
-#############
+# ############
+# # Install ##
+# ############
 
 install(DIRECTORY include/${PROJECT_NAME}/
   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
@@ -142,9 +135,10 @@ install(DIRECTORY launch
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
 
-#############
-## Testing ##
-#############
+
+# #############
+# ## Testing ##
+# #############
 
 if(CATKIN_ENABLE_TESTING)
   add_subdirectory(test)

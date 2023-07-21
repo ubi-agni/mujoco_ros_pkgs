@@ -4,8 +4,7 @@ add_library(mujoco_testplugin
   test_plugin.cpp
 )
 target_link_libraries(mujoco_testplugin
-  # catkin_pkg
-  # project_option
+  project_option
   # project_warning
   mujoco_ros
   ${catkin_LIBRARIES}
