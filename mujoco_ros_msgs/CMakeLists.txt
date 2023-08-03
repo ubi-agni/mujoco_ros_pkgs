@@ -17,6 +17,7 @@ add_message_files(
     GeomProperties.msg
     GeomType.msg
     SensorNoiseModel.msg
+    MocapState.msg
 )
 
 add_service_files(
@@ -33,6 +34,7 @@ add_service_files(
     SetGravity.srv
     GetGravity.srv
     Reload.srv
+    SetMocapState.srv
 )
 
 add_action_files(
