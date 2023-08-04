@@ -57,7 +57,9 @@ function(configure_project_option)
   configure_project_setting()
 
   configure_interprocedural_optimization(DISABLE_FOR_CONFIG ${IPO_DISABLE_FOR_CONFIG})
-  configure_compiler_cache(OPTION ${CCACHE_LAUNCHER} BASE_DIR ${CCACHE_CCACHE_BASE_DIR})
+  if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.18")
+    configure_compiler_cache(OPTION ${CCACHE_LAUNCHER} BASE_DIR ${CCACHE_CCACHE_BASE_DIR})
+  endif()
   configure_project_warnings(TARGET ${WARNING_TARGET} WARNINGS ${WARNING_PROJECT_WARNINGS})
   configure_project_avx_support(TARGET ${AVX_TARGET})
 
