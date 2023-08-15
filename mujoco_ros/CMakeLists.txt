@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
-project(mujoco_ros VERSION 0.6.0 LANGUAGES CXX)
+project(mujoco_ros VERSION 0.7.0 LANGUAGES CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
