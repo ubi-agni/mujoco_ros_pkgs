@@ -18,7 +18,7 @@ CodeCov | [![codecov](https://codecov.io/gh/ubi-agni/mujoco_ros_pkgs/branch/noet
 
 
 # Build Instructions
-1. Make sure MuJoCo is installed (the current build uses version 2.3.6) and runs on your machine.
+1. Make sure MuJoCo is installed (the current build uses version 2.3.7) and runs on your machine.
 2. Create a new ROS workspace or include this repository into an existing workspace.
 3. Before building, make sure that your compiler knows where to find the MuJoCo library, e.g. by running
 ```bash
@@ -26,7 +26,7 @@ export MUJOCO_DIR=PATH/TO/MUJOCO/DIR
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$MUJOCO_DIR/lib
 export LIBRARY_PATH=$LIBRARY_PATH:$MUJOCO_DIR/lib
 ```
-where `PATH/TO/MUJOCO/DIR` is `~/.mujoco/mujoco-2.3.6` if you used the recommended location to install mujoco (if downloaded as tarball). If you built MuJoCo from source and the install path is known to catkin, you can skip this step.
+where `PATH/TO/MUJOCO/DIR` is `~/.mujoco/mujoco-2.3.7` if you used the recommended location to install mujoco (if downloaded as tarball). If you built MuJoCo from source and the install path is known to catkin, you can skip this step.
 
 4. Build with `catkin_build`, `catkin b` or `colcon build`.
 5. Source your workspace and try `roslaunch mujoco_ros launch_server.launch use_sim_time:=true` to test if it runs.

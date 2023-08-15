@@ -102,6 +102,6 @@ private:
 	                           mujoco_ros_msgs::RegisterSensorNoiseModels::Response &rep);
 };
 
-const char *SENSOR_STRING[35];
+const char *SENSOR_STRING[36];
 
 } // namespace mujoco_ros::sensors

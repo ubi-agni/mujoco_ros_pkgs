@@ -84,6 +84,7 @@ bool MujocoRosSensorsPlugin::load(const mjModel *model, mjData *data)
 	SENSOR_STRING[mjSENS_ACTUATORFRC]    = "actuatorfrc";
 	SENSOR_STRING[mjSENS_BALLQUAT]       = "ballquat";
 	SENSOR_STRING[mjSENS_BALLANGVEL]     = "ballangvel";
+	SENSOR_STRING[mjSENS_JOINTACTFRC]    = "jointactfrc";
 	SENSOR_STRING[mjSENS_JOINTLIMITPOS]  = "jointlimitpos";
 	SENSOR_STRING[mjSENS_JOINTLIMITVEL]  = "jointlimitvel";
 	SENSOR_STRING[mjSENS_JOINTLIMITFRC]  = "jointlimitfrc";
@@ -335,6 +336,7 @@ void MujocoRosSensorsPlugin::lastStageCallback(const mjModel *model, mjData *dat
 					case mjSENS_ACTUATORPOS:
 					case mjSENS_ACTUATORVEL:
 					case mjSENS_ACTUATORFRC:
+					case mjSENS_JOINTACTFRC:
 					case mjSENS_JOINTLIMITPOS:
 					case mjSENS_JOINTLIMITVEL:
 					case mjSENS_JOINTLIMITFRC:
@@ -572,6 +574,7 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 			case mjSENS_ACTUATORPOS:
 			case mjSENS_ACTUATORVEL:
 			case mjSENS_ACTUATORFRC:
+			case mjSENS_JOINTACTFRC:
 			case mjSENS_JOINTLIMITPOS:
 			case mjSENS_JOINTLIMITVEL:
 			case mjSENS_JOINTLIMITFRC:

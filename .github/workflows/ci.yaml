@@ -20,15 +20,15 @@ jobs:
       fail-fast: false
       matrix:
         distro: [noetic, one]
-        mujoco: [2.3.6]
+        mujoco: [2.3.7]
         include:
           - distro: noetic
-            mujoco: 2.3.6
+            mujoco: 2.3.7
             env:
               CATKIN_LINT: true
               CCOV: true
           - distro: one
-            mujoco: 2.3.6
+            mujoco: 2.3.7
             env:
               CLANG_TIDY: pedantic
 

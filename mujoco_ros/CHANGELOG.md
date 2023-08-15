@@ -14,6 +14,8 @@
 * replaced `boost::shared_ptr` with `std::shared_ptr` or `std::unique_ptr` wherever possible (ROS 1 fast intra-process message-passing requires boost::shared_ptr).
 * replaced `shared_ptr` with `unique_ptr` wherever possible.
 * replaced smart pointer constructor initialization with `make_shared` or `make_unique` wherever possible.
+* Updated to MuJoCo library version 2.3.7.
+* * Added [jointactuatorfrc](https://mujoco.readthedocs.io/en/2.3.7/XMLreference.html#sensor-jointactuatorfrc) support in `mujoco_ros_sensors`.
 
 Contributors: @DavidPL1, @acodeodyssey
 
@@ -48,7 +50,7 @@ Contributors: @DavidPL1, @LeroyR, @rhaschke
 
 ### Added
 * Updated to MuJoCo library version 2.3.6.
-* Added a `step(num_steps=1, blocking=true)` public function./
+* Added a `step(num_steps=1, blocking=true)` public function.
 * Unit tests for plugin loading and resetting and running callbacks correctly.
 * Now automatically building with AVX instructions, if possible.
 * CMake tooling borrowed from deepminds MuJoCo repo and https://github.com/osjacky430/ros_pkg_template/.
