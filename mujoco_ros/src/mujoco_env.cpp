@@ -878,6 +878,28 @@ bool MujocoEnv::initModelFromQueue()
 			settings_.run = 0;
 	}
 
+	// Update real-time settings
+	int num_clicks  = sizeof(percentRealTime) / sizeof(percentRealTime[0]);
+	float min_error = 1e6f;
+	float desired;
+	nh_->param<float>("realtime", desired, mnew->vis.global.realtime);
+
+	if (desired == -1.f) {
+		settings_.real_time_index = 0;
+	} else if (desired <= 0.f or desired > 1.f) {
+		ROS_WARN("Desired realtime should be in range (0, 1]. Falling back to default (1)");
+		settings_.real_time_index = 1;
+	} else {
+		desired = mju_log(100 * desired);
+		for (int click = 0; click < num_clicks; click++) {
+			float error = mju_abs(mju_log(percentRealTime[click]) - desired);
+			if (error < min_error) {
+				min_error                 = error;
+				settings_.real_time_index = click;
+			}
+		}
+	}
+
 	return true;
 }
 
