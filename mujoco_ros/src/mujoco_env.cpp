@@ -530,9 +530,11 @@ void MujocoEnv::physicsLoop()
 						// possible
 						while ((settings_.real_time_index == 0 ||
 						        Seconds((data_->time - syncSim) * slowdown) < mujoco_ros::Viewer::Clock::now() - syncCPU) &&
-						       mujoco_ros::Viewer::Clock::now() - startCPU <
-						           Seconds(mujoco_ros::Viewer::render_ui_rate_lower_bound_) &&
-						       !settings_.exit_request.load() && num_steps_until_exit_ != 0) {
+						       (mujoco_ros::Viewer::Clock::now() - startCPU <
+						            Seconds(mujoco_ros::Viewer::render_ui_rate_lower_bound_) &&
+						        connected_viewers_.size() > 0) && // only break if rendering UI is actually necessary
+						       !settings_.exit_request.load() &&
+						       num_steps_until_exit_ != 0) {
 							// measure slowdown before first step
 							if (!measured && elapsedSim) {
 								if (settings_.real_time_index != 0) {
@@ -582,28 +584,42 @@ void MujocoEnv::physicsLoop()
 				// Paused
 				else {
 					if (settings_.env_steps_request.load() > 0) { // Action call or arrow keys used for stepping
-						// Run single step
-						mj_step(model_.get(), data_.get());
-						publishSimTime(data_->time);
-						runLastStageCbs();
-						if (settings_.render_offscreen) {
-							// Wait until no render request is pending
-							while (offscreen_.request_pending.load()) {
-								std::this_thread::sleep_for(std::chrono::milliseconds(3));
-							}
-							std::unique_lock<std::mutex> lock(offscreen_.render_mutex);
+						syncSim             = data_->time;
+						const auto startCPU = mujoco_ros::Viewer::Clock::now();
+						// Elapsed CPU time since last sync
+						const auto elapsedCPU = startCPU - syncCPU;
 
-							for (auto cam_ptr : offscreen_.cams) {
-								if (cam_ptr->shouldRender(ros::Time(data_->time))) {
-									mjv_updateSceneState(model_.get(), data_.get(), &cam_ptr->vopt_, &cam_ptr->scn_state_);
-									runRenderCbs(model_, data_, &cam_ptr->scn_state_.plugincache);
-									offscreen_.request_pending.store(true);
+						while (settings_.env_steps_request.load() > 0 &&
+						       (connected_viewers_.size() == 0 ||
+						        mujoco_ros::Viewer::Clock::now() - startCPU <
+						            Seconds(mujoco_ros::Viewer::render_ui_rate_lower_bound_))) {
+							// Run single step
+							mj_step(model_.get(), data_.get());
+							publishSimTime(data_->time);
+							runLastStageCbs();
+							if (settings_.render_offscreen) {
+								// Wait until no render request is pending
+								while (offscreen_.request_pending.load()) {
+									std::this_thread::sleep_for(std::chrono::milliseconds(3));
+								}
+								std::unique_lock<std::mutex> lock(offscreen_.render_mutex);
+
+								for (auto cam_ptr : offscreen_.cams) {
+									if (cam_ptr->shouldRender(ros::Time(data_->time))) {
+										mjv_updateSceneState(model_.get(), data_.get(), &cam_ptr->vopt_, &cam_ptr->scn_state_);
+										runRenderCbs(model_, data_, &cam_ptr->scn_state_.plugincache);
+										offscreen_.request_pending.store(true);
+									}
 								}
 							}
-						}
-						offscreen_.cond_render_request.notify_one();
+							offscreen_.cond_render_request.notify_one();
 
-						settings_.env_steps_request.fetch_sub(1); // Decrement requested steps counter
+							settings_.env_steps_request.fetch_sub(1); // Decrement requested steps counter
+							// Break if reset
+							if (data_->time < syncSim) {
+								break;
+							}
+						}
 					} else {
 						// Run mj_forward, to update rendering and joint sliders
 						mj_forward(model_.get(), data_.get());
