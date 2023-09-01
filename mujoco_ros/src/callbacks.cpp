@@ -56,6 +56,12 @@ void MujocoEnv::setupServices()
 	service_servers_.emplace_back(nh_->advertiseService("get_body_state", &MujocoEnv::getBodyStateCB, this));
 	service_servers_.emplace_back(nh_->advertiseService("set_geom_properties", &MujocoEnv::setGeomPropertiesCB, this));
 	service_servers_.emplace_back(nh_->advertiseService("get_geom_properties", &MujocoEnv::getGeomPropertiesCB, this));
+	
+	service_servers_.emplace_back(
+	    nh_->advertiseService("set_eq_constraint_parameters", &MujocoEnv::setEqualityConstraintParametersCB, this));
+
+	service_servers_.emplace_back(
+	    nh_->advertiseService("get_eq_constraint_parameters", &MujocoEnv::getEqualityConstraintParametersCB, this));
 
 	service_servers_.emplace_back(nh_->advertiseService<std_srvs::Empty::Request, std_srvs::Empty::Response>(
 	    "load_initial_joint_states", [&](auto /*&req*/, auto /*&res*/) {
@@ -629,6 +635,200 @@ bool MujocoEnv::getGeomPropertiesCB(mujoco_ros_msgs::GetGeomProperties::Request 
 	resp.properties.size_2 = static_cast<decltype(resp.properties.size_2)>(model_->geom_size[geom_id * 3 + 2]);
 
 	resp.success = true;
+	return true;
+}
+
+bool MujocoEnv::setEqualityConstraintParametersCB(mujoco_ros_msgs::SetEqualityConstraintParameters::Request &req,
+                                                  mujoco_ros_msgs::SetEqualityConstraintParameters::Response &resp)
+{
+	if (settings_.eval_mode) {
+		ROS_DEBUG("Evaluation mode is active. Checking hash validity");
+		if (settings_.admin_hash != req.admin_hash) {
+			ROS_ERROR("Hash mismatch, no permission to get geom properties!");
+			resp.status_message =
+			    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to get geom properties!");
+			resp.success = false;
+			return true;
+		}
+		ROS_DEBUG("Hash valid, request authorized.");
+	}
+	// look up equality constraint by name
+	int eq_id = mj_name2id(model_.get(), mjOBJ_EQUALITY, req.parameters.name.c_str());
+	if (eq_id != -1) {
+		int id1, id2;
+		switch (req.parameters.type.typevalue) {
+			case 0:
+				id1 = mj_name2id(model_.get(), mjOBJ_TENDON, req.parameters.element1.c_str());
+				if (id1 != -1) {
+					model_->eq_obj1id[eq_id] = id1;
+				}
+				if (!req.parameters.element2.empty()) {
+					id2 = mj_name2id(model_.get(), mjOBJ_TENDON, req.parameters.element2.c_str());
+					if (id2 != -1) {
+						model_->eq_obj2id[eq_id] = id2;
+					}
+				}
+				break;
+			case 1:
+				id1 = mj_name2id(model_.get(), mjOBJ_XBODY, req.parameters.element1.c_str());
+				if (id1 != -1) {
+					model_->eq_obj1id[eq_id] = id1;
+				}
+				if (!req.parameters.element2.empty()) {
+					id2 = mj_name2id(model_.get(), mjOBJ_XBODY, req.parameters.element2.c_str());
+					if (id2 != -1) {
+						model_->eq_obj2id[eq_id] = id2;
+					}
+				}
+				model_->eq_data[eq_id * mjNEQDATA]      = req.parameters.relpose.position.x;
+				model_->eq_data[eq_id * mjNEQDATA + 1]  = req.parameters.relpose.position.y;
+				model_->eq_data[eq_id * mjNEQDATA + 2]  = req.parameters.relpose.position.z;
+				model_->eq_data[eq_id * mjNEQDATA + 3]  = req.parameters.anchor[0];
+				model_->eq_data[eq_id * mjNEQDATA + 4]  = req.parameters.anchor[1];
+				model_->eq_data[eq_id * mjNEQDATA + 5]  = req.parameters.anchor[2];
+				model_->eq_data[eq_id * mjNEQDATA + 6]  = req.parameters.relpose.orientation.w;
+				model_->eq_data[eq_id * mjNEQDATA + 7]  = req.parameters.relpose.orientation.x;
+				model_->eq_data[eq_id * mjNEQDATA + 8]  = req.parameters.relpose.orientation.y;
+				model_->eq_data[eq_id * mjNEQDATA + 9]  = req.parameters.relpose.orientation.z;
+				model_->eq_data[eq_id * mjNEQDATA + 10] = req.parameters.torquescale;
+				break;
+			case 2:
+				id1 = mj_name2id(model_.get(), mjOBJ_JOINT, req.parameters.element1.c_str());
+				if (id1 != -1) {
+					model_->eq_obj1id[eq_id] = id1;
+				}
+				if (!req.parameters.element2.empty()) {
+					id2 = mj_name2id(model_.get(), mjOBJ_JOINT, req.parameters.element2.c_str());
+					if (id2 != -1) {
+						model_->eq_obj2id[eq_id] = id2;
+					}
+				}
+				model_->eq_data[eq_id * mjNEQDATA]     = req.parameters.polycoef[0];
+				model_->eq_data[eq_id * mjNEQDATA + 1] = req.parameters.polycoef[1];
+				model_->eq_data[eq_id * mjNEQDATA + 2] = req.parameters.polycoef[2];
+				model_->eq_data[eq_id * mjNEQDATA + 3] = req.parameters.polycoef[3];
+				model_->eq_data[eq_id * mjNEQDATA + 4] = req.parameters.polycoef[4];
+				break;
+			case 3:
+				id1 = mj_name2id(model_.get(), mjOBJ_XBODY, req.parameters.element1.c_str());
+				if (id1 != -1) {
+					model_->eq_obj1id[eq_id] = id1;
+				}
+				if (!req.parameters.element2.empty()) {
+					id2 = mj_name2id(model_.get(), mjOBJ_XBODY, req.parameters.element2.c_str());
+
+					if (id2 != -1) {
+						model_->eq_obj2id[eq_id] = id2;
+					}
+				}
+				break;
+			default:
+				break;
+		}
+		model_->eq_active[eq_id]     = req.parameters.active;
+		model_->eq_solimp[eq_id]     = req.parameters.solverParameters.dmin;
+		model_->eq_solimp[eq_id + 1] = req.parameters.solverParameters.dmax;
+		model_->eq_solimp[eq_id + 2] = req.parameters.solverParameters.width;
+		model_->eq_solimp[eq_id + 3] = req.parameters.solverParameters.midpoint;
+		model_->eq_solimp[eq_id + 4] = req.parameters.solverParameters.power;
+		model_->eq_solref[eq_id]     = req.parameters.solverParameters.timeconst;
+		model_->eq_solref[eq_id + 1] = req.parameters.solverParameters.dampratio;
+		resp.success                 = true;
+	} else {
+		resp.status_message = "Could not find specified equality constraint";
+		resp.success        = false;
+	}
+	return true;
+}
+
+bool MujocoEnv::getEqualityConstraintParametersCB(mujoco_ros_msgs::GetEqualityConstraintParameters::Request &req,
+                                                  mujoco_ros_msgs::GetEqualityConstraintParameters::Response &resp)
+{
+	if (settings_.eval_mode) {
+		ROS_DEBUG("Evaluation mode is active. Checking hash validity");
+		if (settings_.admin_hash != req.admin_hash) {
+			ROS_ERROR("Hash mismatch, no permission to get geom properties!");
+			resp.status_message =
+			    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to get geom properties!");
+			resp.success = false;
+			return true;
+		}
+		ROS_DEBUG("Hash valid, request authorized.");
+	}
+	ROS_DEBUG("Looking up Eq Constraint");
+	// look up equality constraint by name
+	int eq_id = mj_name2id(model_.get(), mjOBJ_EQUALITY, req.name.c_str());
+	if (eq_id != -1) {
+		ROS_DEBUG("Found Eq Constraint");
+		resp.parameters.type.typevalue = model_->eq_type[eq_id];
+		resp.parameters.name           = req.name;
+
+		std::vector<float> polycoef = std::vector<float>();
+		std::vector<float> anchor   = std::vector<float>();
+		std::vector<double> vct; // or msg.vct
+
+		switch (model_->eq_type[eq_id]) {
+			case 0:
+				resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj1id[eq_id]);
+				if (mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj2id[eq_id])) {
+					resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_BODY, model_->eq_obj2id[eq_id]);
+				}
+				break;
+			case 1:
+				resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_BODY, model_->eq_obj1id[eq_id]);
+				if (mj_id2name(model_.get(), mjOBJ_BODY, model_->eq_obj2id[eq_id])) {
+					resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_BODY, model_->eq_obj2id[eq_id]);
+				}
+				resp.parameters.torquescale        = model_->eq_data[eq_id * mjNEQDATA + 10];
+				resp.parameters.relpose.position.x = model_->eq_data[eq_id * mjNEQDATA];
+				resp.parameters.relpose.position.y = model_->eq_data[eq_id * mjNEQDATA + 1];
+				resp.parameters.relpose.position.z = model_->eq_data[eq_id * mjNEQDATA + 2];
+				for (int i = 3; i < 7; i++) {
+					anchor.push_back(model_->eq_data[eq_id * mjNEQDATA + i]);
+				}
+				resp.parameters.anchor                = anchor;
+				resp.parameters.relpose.orientation.w = model_->eq_data[eq_id * mjNEQDATA + 6];
+				resp.parameters.relpose.orientation.x = model_->eq_data[eq_id * mjNEQDATA + 7];
+				resp.parameters.relpose.orientation.y = model_->eq_data[eq_id * mjNEQDATA + 8];
+				resp.parameters.relpose.orientation.z = model_->eq_data[eq_id * mjNEQDATA + 9];
+				break;
+			case 2:
+				resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj1id[eq_id]);
+				if (mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj2id[eq_id])) {
+					resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj2id[eq_id]);
+				}
+				for (int i = 0; i < 5; i++) {
+					polycoef.push_back(model_->eq_data[i]);
+				}
+				resp.parameters.polycoef = polycoef;
+				break;
+			case 3:
+				resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj1id[eq_id]);
+				if (mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj2id[eq_id])) {
+					resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj2id[eq_id]);
+				}
+				for (int i = 0; i < 5; i++) {
+					polycoef.push_back(model_->eq_data[i]);
+				}
+				break;
+				resp.parameters.polycoef = polycoef;
+			default:
+				break;
+		}
+		resp.parameters.active                     = model_->eq_active[eq_id];
+		resp.parameters.solverParameters.dmin      = model_->eq_solimp[eq_id];
+		resp.parameters.solverParameters.dmax      = model_->eq_solimp[eq_id + 1];
+		resp.parameters.solverParameters.width     = model_->eq_solimp[eq_id + 2];
+		resp.parameters.solverParameters.midpoint  = model_->eq_solimp[eq_id + 3];
+		resp.parameters.solverParameters.power     = model_->eq_solimp[eq_id + 4];
+		resp.parameters.solverParameters.timeconst = model_->eq_solref[eq_id];
+		resp.parameters.solverParameters.dampratio = model_->eq_solref[eq_id + 1];
+		resp.success                               = true;
+
+	} else {
+		resp.status_message = "Could not find specified equality constraint";
+		resp.success        = false;
+	}
 	return true;
 }
 

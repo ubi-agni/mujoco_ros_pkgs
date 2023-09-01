@@ -70,6 +70,8 @@
 #include <mujoco_ros_msgs/GetBodyState.h>
 #include <mujoco_ros_msgs/SetGeomProperties.h>
 #include <mujoco_ros_msgs/GetGeomProperties.h>
+#include <mujoco_ros_msgs/GetEqualityConstraintParameters.h>
+#include <mujoco_ros_msgs/SetEqualityConstraintParameters.h>
 #include <mujoco_ros_msgs/SetGravity.h>
 #include <mujoco_ros_msgs/GetGravity.h>
 
@@ -321,6 +323,10 @@ protected:
 	                         mujoco_ros_msgs::SetGeomProperties::Response &resp);
 	bool getGeomPropertiesCB(mujoco_ros_msgs::GetGeomProperties::Request &req,
 	                         mujoco_ros_msgs::GetGeomProperties::Response &resp);
+	bool setEqualityConstraintParametersCB(mujoco_ros_msgs::SetEqualityConstraintParameters::Request &req,
+	                                       mujoco_ros_msgs::SetEqualityConstraintParameters::Response &resp);
+	bool getEqualityConstraintParametersCB(mujoco_ros_msgs::GetEqualityConstraintParameters::Request &req,
+	                                       mujoco_ros_msgs::GetEqualityConstraintParameters::Response &resp);
 	// Action calls
 	void onStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal);
 

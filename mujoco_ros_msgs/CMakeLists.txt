@@ -17,6 +17,7 @@ add_message_files(
     GeomProperties.msg
     GeomType.msg
     SensorNoiseModel.msg
+    SolverParameters.msg
     MocapState.msg
 )
 
@@ -29,6 +30,8 @@ add_service_files(
     GetBodyState.srv
     SetGeomProperties.srv
     GetGeomProperties.srv
+    SetEqualityConstraintParameters.srv
+    GetEqualityConstraintParameters.srv
     ResetBodyQPos.srv
     RegisterSensorNoiseModels.srv
     SetGravity.srv
