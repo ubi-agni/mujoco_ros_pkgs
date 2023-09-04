@@ -126,3 +126,37 @@ protected:
 		delete env_ptr;
 	}
 };
+
+class EqualityEnvFixture : public ::testing::Test
+{
+protected:
+	boost::shared_ptr<ros::NodeHandle> nh;
+	MujocoEnvTestWrapper *env_ptr;
+
+	virtual void SetUp()
+	{
+		nh.reset(new ros::NodeHandle("~"));
+		nh->setParam("unpause", false);
+		nh->setParam("no_x", true);
+		nh->setParam("use_sim_time", true);
+		nh->setParam("sim_steps", -1);
+
+		env_ptr = new MujocoEnvTestWrapper();
+
+		std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/equality_world.xml";
+		env_ptr->startWithXML(xml_path);
+
+		float seconds = 0;
+		while (env_ptr->getOperationalStatus() != 0 && seconds < 2) { // wait for model to be loaded or timeout
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			seconds += 0.001;
+		}
+		EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
+	}
+
+	virtual void TearDown()
+	{
+		env_ptr->shutdown();
+		delete env_ptr;
+	}
+};

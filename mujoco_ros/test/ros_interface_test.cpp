@@ -743,3 +743,133 @@ TEST_F(PendulumEnvFixture, GetGeomPropertiesCallback)
 	EXPECT_EQ(srv.request.properties.friction_spin, g_srv.response.properties.friction_spin);
 	EXPECT_EQ(srv.request.properties.friction_roll, g_srv.response.properties.friction_roll);
 }
+
+TEST_F(EqualityEnvFixture, InitialEualityConstraintValues){
+	mjModelPtr m = env_ptr->getModelPtr();
+	mjDataPtr d  = env_ptr->getDataPtr();
+	int weld_eq_id = mj_name2id(m.get(), mjEQ_WELD, "weld_eq");
+	int joint_eq_id = mj_name2id(m.get(), mjEQ_JOINT, "joint_eq");
+	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
+	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
+	EXPECT_EQ(m->eq_data[joint_eq_id * mjNEQDATA], 0.5);
+	EXPECT_EQ(m->eq_data[joint_eq_id * mjNEQDATA + 1], 0.25);
+	EXPECT_EQ(m->eq_data[joint_eq_id * mjNEQDATA +2], 0.76);
+	EXPECT_EQ(m->eq_data[joint_eq_id * mjNEQDATA +3], 0.66);
+	EXPECT_EQ(m->eq_data[joint_eq_id * mjNEQDATA +4], 1);
+	// test weld
+	double solimp[5]= {0.8, 0.95, 0.002, 0.4,2.0};
+	// data[0-2] pos data[3-5] anchor, data[6 - 9] quat , data[10] torque
+	double data[11]= {1.1, 1.2, 1.3,2.0 ,3.0 ,4.0, 1, 0.1, 0.2, 0.3 , 0.9};
+	for(int i=0; i<11;i++){
+		EXPECT_EQ(m->eq_data[weld_eq_id * mjNEQDATA+i], data[i]);
+	}
+	for(int j=0;j<5;j++){
+		EXPECT_EQ(m->eq_solimp[weld_eq_id+j], solimp[j]);
+	}
+		EXPECT_EQ(m->eq_solref[weld_eq_id], 0.3);
+		EXPECT_EQ(m->eq_solref[weld_eq_id+1], 0.9);
+}
+
+TEST_F(EqualityEnvFixture, SetEualityConstraintCallback){
+	mjModelPtr m = env_ptr->getModelPtr();
+	mjDataPtr d  = env_ptr->getDataPtr();
+	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
+	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
+	EXPECT_TRUE(ros::service::exists(env_ptr->getHandleNamespace() + "/set_eq_constraint_parameters", true))
+	    << "Set geom properties service should be available!";
+	EXPECT_TRUE(ros::service::exists(env_ptr->getHandleNamespace() + "/get_eq_constraint_parameters", true))
+	    << "Ret geom properties service should be available!";
+	mujoco_ros_msgs::SetEqualityConstraintParameters srv;
+	srv.request.parameters.active = true;
+	srv.request.parameters.anchor = {3.0,4.0,5.0};
+	srv.request.parameters.name = "weld_eq";
+	srv.request.parameters.element1 = "immovable";
+	srv.request.parameters.element1 = "";
+	srv.request.parameters.solverParameters.dampratio = 0.8;
+	srv.request.parameters.solverParameters.timeconst = 0.2;
+	srv.request.parameters.solverParameters.dmin = 0.7; 
+	srv.request.parameters.solverParameters.dmax = 0.9;
+	srv.request.parameters.solverParameters.width = 0.001;
+	srv.request.parameters.solverParameters.midpoint = 0.5;
+	srv.request.parameters.solverParameters.power = 2.0;
+	srv.request.parameters.relpose.position.x = 1.2;
+	srv.request.parameters.relpose.position.y = 1.3;
+	srv.request.parameters.relpose.position.z = 1.4;
+	srv.request.parameters.relpose.orientation.w = 1;
+	srv.request.parameters.relpose.orientation.x = 0.2;
+	srv.request.parameters.relpose.orientation.y = 0.3;
+	srv.request.parameters.relpose.orientation.z = 0.4;
+	srv.request.parameters.anchor = {5,3,7};
+	srv.request.parameters.type.typevalue = 1;
+	EXPECT_TRUE(ros::service::call(env_ptr->getHandleNamespace() + "/set_eq_constraint_parameters", srv))
+	    << "Set geom properties service call failed!";
+	EXPECT_TRUE(srv.response.success);
+
+
+	int weld_eq_id = mj_name2id(m.get(), mjEQ_WELD, "weld_eq");
+	EXPECT_EQ(m->eq_solref[weld_eq_id], srv.request.parameters.solverParameters.timeconst);
+	EXPECT_EQ(m->eq_solref[weld_eq_id+1], srv.request.parameters.solverParameters.dampratio);
+	EXPECT_EQ(m->eq_solimp[weld_eq_id], srv.request.parameters.solverParameters.dampratio);
+	EXPECT_EQ(m->eq_solimp[weld_eq_id+1], srv.request.parameters.solverParameters.dmin);
+	EXPECT_EQ(m->eq_solimp[weld_eq_id+2], srv.request.parameters.solverParameters.dmax);
+	EXPECT_EQ(m->eq_solimp[weld_eq_id+3], srv.request.parameters.solverParameters.width);
+	EXPECT_EQ(m->eq_solimp[weld_eq_id+3], srv.request.parameters.solverParameters.midpoint);
+	EXPECT_EQ(m->eq_solimp[weld_eq_id+4], srv.request.parameters.solverParameters.power);
+	EXPECT_EQ(m->eq_data[weld_eq_id*mjNEQDATA], srv.request.parameters.relpose.position.x);
+	EXPECT_EQ(m->eq_data[weld_eq_id*mjNEQDATA+1], srv.request.parameters.relpose.position.y);
+	EXPECT_EQ(m->eq_data[weld_eq_id*mjNEQDATA+2], srv.request.parameters.relpose.position.z);
+	EXPECT_EQ(m->eq_data[weld_eq_id*mjNEQDATA+3], srv.request.parameters.anchor[0]);
+	EXPECT_EQ(m->eq_data[weld_eq_id*mjNEQDATA+4], srv.request.parameters.anchor[1]);
+	EXPECT_EQ(m->eq_data[weld_eq_id*mjNEQDATA+5], srv.request.parameters.anchor[2]);
+	EXPECT_EQ(m->eq_data[weld_eq_id*mjNEQDATA+6], srv.request.parameters.relpose.orientation.w);
+	EXPECT_EQ(m->eq_data[weld_eq_id*mjNEQDATA+7], srv.request.parameters.relpose.orientation.x);
+	EXPECT_EQ(m->eq_data[weld_eq_id*mjNEQDATA+8], srv.request.parameters.relpose.orientation.y);
+	EXPECT_EQ(m->eq_data[weld_eq_id*mjNEQDATA+9], srv.request.parameters.relpose.orientation.z);
+	EXPECT_EQ(m->eq_data[weld_eq_id*mjNEQDATA+10], srv.request.parameters.torquescale);
+}
+
+
+TEST_F(EqualityEnvFixture, GetEualityConstraintCallback){
+	mjModelPtr m = env_ptr->getModelPtr();
+	mjDataPtr d  = env_ptr->getDataPtr();
+	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
+	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
+	EXPECT_TRUE(ros::service::exists(env_ptr->getHandleNamespace() + "/set_eq_constraint_parameters", true))
+	    << "Set geom properties service should be available!";
+	EXPECT_TRUE(ros::service::exists(env_ptr->getHandleNamespace() + "/get_eq_constraint_parameters", true))
+	    << "Ret geom properties service should be available!";
+
+	mujoco_ros_msgs::SetEqualityConstraintParameters srv;
+	srv.request.parameters.active = true;
+	srv.request.parameters.anchor = {2.0,3.0,4.0};
+	srv.request.parameters.name = "weld_eq";
+	srv.request.parameters.element1 = "immovable";
+	srv.request.parameters.element1 = "";
+	srv.request.parameters.solverParameters.dampratio = 0.9;
+	srv.request.parameters.solverParameters.timeconst = 0.3;
+	srv.request.parameters.solverParameters.dmin = 0.8; 
+	srv.request.parameters.solverParameters.dmax = 0.95;
+	srv.request.parameters.solverParameters.width = 0.002;
+	srv.request.parameters.solverParameters.midpoint = 0.4;
+	srv.request.parameters.solverParameters.power = 2.0;
+	srv.request.parameters.relpose.position.x = 1.1;
+	srv.request.parameters.relpose.position.y = 1.2;
+	srv.request.parameters.relpose.position.z = 1.3;
+	srv.request.parameters.relpose.orientation.w = 1;
+	srv.request.parameters.relpose.orientation.x = 0.1;
+	srv.request.parameters.relpose.orientation.y = 0.2;
+	srv.request.parameters.relpose.orientation.z = 0.3;
+	srv.request.parameters.anchor = {2,3,4};
+
+	mujoco_ros_msgs::GetEqualityConstraintParameters g_srv;
+	g_srv.request.name = "weld_eq";
+	EXPECT_TRUE(ros::service::call(env_ptr->getHandleNamespace() + "/get_eq_constraint_parameters", g_srv))
+	    << "Get geom properties service call failed!";
+	EXPECT_TRUE(g_srv.response.success);
+	EXPECT_EQ(g_srv.response.parameters.active,srv.request.parameters.active);
+	EXPECT_EQ(g_srv.response.parameters.anchor,srv.request.parameters.anchor);
+	EXPECT_EQ(g_srv.response.parameters.element1,srv.request.parameters.element1);
+	EXPECT_EQ(g_srv.response.parameters.element2,srv.request.parameters.element2);
+	EXPECT_EQ(g_srv.response.parameters.relpose,srv.request.parameters.relpose);
+	EXPECT_EQ(g_srv.response.parameters.solverParameters,srv.request.parameters.solverParameters);
+}
