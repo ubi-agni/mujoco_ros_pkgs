@@ -19,6 +19,8 @@ add_message_files(
     SensorNoiseModel.msg
     SolverParameters.msg
     MocapState.msg
+    EqualityConstraintParameters.msg
+    EqualityConstraintType.msg
 )
 
 add_service_files(
