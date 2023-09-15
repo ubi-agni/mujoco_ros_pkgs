@@ -841,10 +841,9 @@ TEST_F(EqualityEnvFixture, GetEualityConstraintCallback){
 
 	mujoco_ros_msgs::SetEqualityConstraintParameters srv;
 	srv.request.parameters.active = true;
-	srv.request.parameters.anchor = {2.0,3.0,4.0};
 	srv.request.parameters.name = "weld_eq";
 	srv.request.parameters.element1 = "immovable";
-	srv.request.parameters.element1 = "";
+	srv.request.parameters.element2 = "world";
 	srv.request.parameters.solverParameters.dampratio = 0.9;
 	srv.request.parameters.solverParameters.timeconst = 0.3;
 	srv.request.parameters.solverParameters.dmin = 0.8; 
@@ -859,7 +858,7 @@ TEST_F(EqualityEnvFixture, GetEualityConstraintCallback){
 	srv.request.parameters.relpose.orientation.x = 0.1;
 	srv.request.parameters.relpose.orientation.y = 0.2;
 	srv.request.parameters.relpose.orientation.z = 0.3;
-	srv.request.parameters.anchor = {2,3,4};
+	srv.request.parameters.anchor = {0,0,0};
 
 	mujoco_ros_msgs::GetEqualityConstraintParameters g_srv;
 	g_srv.request.name = "weld_eq";

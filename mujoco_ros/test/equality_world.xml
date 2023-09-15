@@ -38,7 +38,7 @@
         </body>
     </worldbody>
     <equality>
-        <weld name="weld_eq" body1="immovable" torquescale="0.9" relpose="1.1 1.2 1.3 1 0.1 0.2 0.3" anchor="2 3 4" solref="0.3 0.9" solimp="0.8 0.95 0.002 0.4 2" active="true"/>
+        <weld name="weld_eq" body1="immovable" torquescale="0.9" relpose="1.1 1.2 1.3 1 0.1 0.2 0.3" solref="0.3 0.9" solimp="0.8 0.95 0.002 0.4 2" active="true"/>
     </equality>
     <equality>
         <joint name="joint_eq" joint1="joint1" joint2="joint2" polycoef="0.5 0.25 0.76 0.66 1" active="true"/>

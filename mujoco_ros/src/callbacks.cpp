@@ -680,7 +680,7 @@ bool MujocoEnv::setEqualityConstraintParametersCB(mujoco_ros_msgs::SetEqualityCo
 						model_->eq_obj2id[eq_id] = id2;
 					}
 				}
-				model_->eq_data[eq_id * mjNEQDATA]      = req.parameters.relpose.position.x;
+				model_->eq_data[eq_id * mjNEQDATA    ]  = req.parameters.relpose.position.x;
 				model_->eq_data[eq_id * mjNEQDATA + 1]  = req.parameters.relpose.position.y;
 				model_->eq_data[eq_id * mjNEQDATA + 2]  = req.parameters.relpose.position.z;
 				model_->eq_data[eq_id * mjNEQDATA + 3]  = req.parameters.anchor[0];
@@ -771,19 +771,19 @@ bool MujocoEnv::getEqualityConstraintParametersCB(mujoco_ros_msgs::GetEqualityCo
 			case 0:
 				resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj1id[eq_id]);
 				if (mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj2id[eq_id])) {
-					resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_BODY, model_->eq_obj2id[eq_id]);
+					resp.parameters.element2 = mj_id2name(model_.get(), mjOBJ_BODY, model_->eq_obj2id[eq_id]);
 				}
 				break;
 			case 1:
 				resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_BODY, model_->eq_obj1id[eq_id]);
 				if (mj_id2name(model_.get(), mjOBJ_BODY, model_->eq_obj2id[eq_id])) {
-					resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_BODY, model_->eq_obj2id[eq_id]);
+					resp.parameters.element2 = mj_id2name(model_.get(), mjOBJ_BODY, model_->eq_obj2id[eq_id]);
 				}
 				resp.parameters.torquescale        = model_->eq_data[eq_id * mjNEQDATA + 10];
 				resp.parameters.relpose.position.x = model_->eq_data[eq_id * mjNEQDATA];
 				resp.parameters.relpose.position.y = model_->eq_data[eq_id * mjNEQDATA + 1];
 				resp.parameters.relpose.position.z = model_->eq_data[eq_id * mjNEQDATA + 2];
-				for (int i = 3; i < 7; i++) {
+				for (int i = 3; i < 6; i++) {
 					anchor.push_back(model_->eq_data[eq_id * mjNEQDATA + i]);
 				}
 				resp.parameters.anchor                = anchor;
@@ -795,7 +795,7 @@ bool MujocoEnv::getEqualityConstraintParametersCB(mujoco_ros_msgs::GetEqualityCo
 			case 2:
 				resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj1id[eq_id]);
 				if (mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj2id[eq_id])) {
-					resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj2id[eq_id]);
+					resp.parameters.element2 = mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj2id[eq_id]);
 				}
 				for (int i = 0; i < 5; i++) {
 					polycoef.push_back(model_->eq_data[i]);
@@ -805,7 +805,7 @@ bool MujocoEnv::getEqualityConstraintParametersCB(mujoco_ros_msgs::GetEqualityCo
 			case 3:
 				resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj1id[eq_id]);
 				if (mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj2id[eq_id])) {
-					resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj2id[eq_id]);
+					resp.parameters.element2 = mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj2id[eq_id]);
 				}
 				for (int i = 0; i < 5; i++) {
 					polycoef.push_back(model_->eq_data[i]);
