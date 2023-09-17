@@ -768,31 +768,31 @@ bool MujocoEnv::getEqualityConstraintParametersCB(mujoco_ros_msgs::GetEqualityCo
 		std::vector<double> vct; // or msg.vct
 
 		switch (model_->eq_type[eq_id]) {
-			case 0:
+			case mjEQ_CONNECT:
 				resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj1id[eq_id]);
 				if (mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj2id[eq_id])) {
 					resp.parameters.element2 = mj_id2name(model_.get(), mjOBJ_BODY, model_->eq_obj2id[eq_id]);
 				}
 				break;
-			case 1:
+			case mjEQ_WELD:
 				resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_BODY, model_->eq_obj1id[eq_id]);
 				if (mj_id2name(model_.get(), mjOBJ_BODY, model_->eq_obj2id[eq_id])) {
 					resp.parameters.element2 = mj_id2name(model_.get(), mjOBJ_BODY, model_->eq_obj2id[eq_id]);
 				}
-				resp.parameters.torquescale        = model_->eq_data[eq_id * mjNEQDATA + 10];
-				resp.parameters.relpose.position.x = model_->eq_data[eq_id * mjNEQDATA];
-				resp.parameters.relpose.position.y = model_->eq_data[eq_id * mjNEQDATA + 1];
-				resp.parameters.relpose.position.z = model_->eq_data[eq_id * mjNEQDATA + 2];
-				for (int i = 3; i < 6; i++) {
+				for (int i = 0; i < 3; i++) {
 					anchor.push_back(model_->eq_data[eq_id * mjNEQDATA + i]);
 				}
 				resp.parameters.anchor                = anchor;
+				resp.parameters.relpose.position.x    = model_->eq_data[eq_id * mjNEQDATA + 3];
+				resp.parameters.relpose.position.y    = model_->eq_data[eq_id * mjNEQDATA + 4];
+				resp.parameters.relpose.position.z    = model_->eq_data[eq_id * mjNEQDATA + 5];
 				resp.parameters.relpose.orientation.w = model_->eq_data[eq_id * mjNEQDATA + 6];
 				resp.parameters.relpose.orientation.x = model_->eq_data[eq_id * mjNEQDATA + 7];
 				resp.parameters.relpose.orientation.y = model_->eq_data[eq_id * mjNEQDATA + 8];
 				resp.parameters.relpose.orientation.z = model_->eq_data[eq_id * mjNEQDATA + 9];
+				resp.parameters.torquescale           = model_->eq_data[eq_id * mjNEQDATA + 10];
 				break;
-			case 2:
+			case mjEQ_JOINT:
 				resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj1id[eq_id]);
 				if (mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj2id[eq_id])) {
 					resp.parameters.element2 = mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj2id[eq_id]);
@@ -802,7 +802,7 @@ bool MujocoEnv::getEqualityConstraintParametersCB(mujoco_ros_msgs::GetEqualityCo
 				}
 				resp.parameters.polycoef = polycoef;
 				break;
-			case 3:
+			case mjEQ_TENDON:
 				resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj1id[eq_id]);
 				if (mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj2id[eq_id])) {
 					resp.parameters.element2 = mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj2id[eq_id]);
@@ -816,13 +816,13 @@ bool MujocoEnv::getEqualityConstraintParametersCB(mujoco_ros_msgs::GetEqualityCo
 				break;
 		}
 		resp.parameters.active                     = model_->eq_active[eq_id];
-		resp.parameters.solverParameters.dmin      = model_->eq_solimp[eq_id];
-		resp.parameters.solverParameters.dmax      = model_->eq_solimp[eq_id + 1];
-		resp.parameters.solverParameters.width     = model_->eq_solimp[eq_id + 2];
-		resp.parameters.solverParameters.midpoint  = model_->eq_solimp[eq_id + 3];
-		resp.parameters.solverParameters.power     = model_->eq_solimp[eq_id + 4];
-		resp.parameters.solverParameters.timeconst = model_->eq_solref[eq_id];
-		resp.parameters.solverParameters.dampratio = model_->eq_solref[eq_id + 1];
+		resp.parameters.solverParameters.dmin      = model_->eq_solimp[eq_id * mjNIMP];
+		resp.parameters.solverParameters.dmax      = model_->eq_solimp[eq_id * mjNIMP + 1];
+		resp.parameters.solverParameters.width     = model_->eq_solimp[eq_id * mjNIMP + 2];
+		resp.parameters.solverParameters.midpoint  = model_->eq_solimp[eq_id * mjNIMP + 3];
+		resp.parameters.solverParameters.power     = model_->eq_solimp[eq_id * mjNIMP + 4];
+		resp.parameters.solverParameters.timeconst = model_->eq_solref[eq_id * mjNREF];
+		resp.parameters.solverParameters.dampratio = model_->eq_solref[eq_id * mjNREF + 1];
 		resp.success                               = true;
 
 	} else {
