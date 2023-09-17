@@ -657,7 +657,7 @@ bool MujocoEnv::setEqualityConstraintParametersCB(mujoco_ros_msgs::SetEqualityCo
 	if (eq_id != -1) {
 		int id1, id2;
 		switch (req.parameters.type.typevalue) {
-			case 0:
+			case mjEQ_TENDON:
 				id1 = mj_name2id(model_.get(), mjOBJ_TENDON, req.parameters.element1.c_str());
 				if (id1 != -1) {
 					model_->eq_obj1id[eq_id] = id1;
@@ -669,7 +669,7 @@ bool MujocoEnv::setEqualityConstraintParametersCB(mujoco_ros_msgs::SetEqualityCo
 					}
 				}
 				break;
-			case 1:
+			case mjEQ_WELD:
 				id1 = mj_name2id(model_.get(), mjOBJ_XBODY, req.parameters.element1.c_str());
 				if (id1 != -1) {
 					model_->eq_obj1id[eq_id] = id1;
@@ -680,19 +680,19 @@ bool MujocoEnv::setEqualityConstraintParametersCB(mujoco_ros_msgs::SetEqualityCo
 						model_->eq_obj2id[eq_id] = id2;
 					}
 				}
-				model_->eq_data[eq_id * mjNEQDATA    ]  = req.parameters.relpose.position.x;
-				model_->eq_data[eq_id * mjNEQDATA + 1]  = req.parameters.relpose.position.y;
-				model_->eq_data[eq_id * mjNEQDATA + 2]  = req.parameters.relpose.position.z;
-				model_->eq_data[eq_id * mjNEQDATA + 3]  = req.parameters.anchor[0];
-				model_->eq_data[eq_id * mjNEQDATA + 4]  = req.parameters.anchor[1];
-				model_->eq_data[eq_id * mjNEQDATA + 5]  = req.parameters.anchor[2];
+				model_->eq_data[eq_id * mjNEQDATA]      = req.parameters.anchor[0];
+				model_->eq_data[eq_id * mjNEQDATA + 1]  = req.parameters.anchor[1];
+				model_->eq_data[eq_id * mjNEQDATA + 2]  = req.parameters.anchor[2];
+				model_->eq_data[eq_id * mjNEQDATA + 3]  = req.parameters.relpose.position.x;
+				model_->eq_data[eq_id * mjNEQDATA + 4]  = req.parameters.relpose.position.y;
+				model_->eq_data[eq_id * mjNEQDATA + 5]  = req.parameters.relpose.position.z;
 				model_->eq_data[eq_id * mjNEQDATA + 6]  = req.parameters.relpose.orientation.w;
 				model_->eq_data[eq_id * mjNEQDATA + 7]  = req.parameters.relpose.orientation.x;
 				model_->eq_data[eq_id * mjNEQDATA + 8]  = req.parameters.relpose.orientation.y;
 				model_->eq_data[eq_id * mjNEQDATA + 9]  = req.parameters.relpose.orientation.z;
 				model_->eq_data[eq_id * mjNEQDATA + 10] = req.parameters.torquescale;
 				break;
-			case 2:
+			case mjEQ_JOINT:
 				id1 = mj_name2id(model_.get(), mjOBJ_JOINT, req.parameters.element1.c_str());
 				if (id1 != -1) {
 					model_->eq_obj1id[eq_id] = id1;
@@ -709,7 +709,7 @@ bool MujocoEnv::setEqualityConstraintParametersCB(mujoco_ros_msgs::SetEqualityCo
 				model_->eq_data[eq_id * mjNEQDATA + 3] = req.parameters.polycoef[3];
 				model_->eq_data[eq_id * mjNEQDATA + 4] = req.parameters.polycoef[4];
 				break;
-			case 3:
+			case mjEQ_CONNECT:
 				id1 = mj_name2id(model_.get(), mjOBJ_XBODY, req.parameters.element1.c_str());
 				if (id1 != -1) {
 					model_->eq_obj1id[eq_id] = id1;
@@ -725,15 +725,15 @@ bool MujocoEnv::setEqualityConstraintParametersCB(mujoco_ros_msgs::SetEqualityCo
 			default:
 				break;
 		}
-		model_->eq_active[eq_id]     = req.parameters.active;
-		model_->eq_solimp[eq_id]     = req.parameters.solverParameters.dmin;
-		model_->eq_solimp[eq_id + 1] = req.parameters.solverParameters.dmax;
-		model_->eq_solimp[eq_id + 2] = req.parameters.solverParameters.width;
-		model_->eq_solimp[eq_id + 3] = req.parameters.solverParameters.midpoint;
-		model_->eq_solimp[eq_id + 4] = req.parameters.solverParameters.power;
-		model_->eq_solref[eq_id]     = req.parameters.solverParameters.timeconst;
-		model_->eq_solref[eq_id + 1] = req.parameters.solverParameters.dampratio;
-		resp.success                 = true;
+		model_->eq_active[eq_id]              = req.parameters.active;
+		model_->eq_solimp[eq_id * mjNIMP]     = req.parameters.solverParameters.dmin;
+		model_->eq_solimp[eq_id * mjNIMP + 1] = req.parameters.solverParameters.dmax;
+		model_->eq_solimp[eq_id * mjNIMP + 2] = req.parameters.solverParameters.width;
+		model_->eq_solimp[eq_id * mjNIMP + 3] = req.parameters.solverParameters.midpoint;
+		model_->eq_solimp[eq_id * mjNIMP + 4] = req.parameters.solverParameters.power;
+		model_->eq_solref[eq_id * mjNREF]     = req.parameters.solverParameters.timeconst;
+		model_->eq_solref[eq_id * mjNREF + 1] = req.parameters.solverParameters.dampratio;
+		resp.success                          = true;
 	} else {
 		resp.status_message = "Could not find specified equality constraint";
 		resp.success        = false;
