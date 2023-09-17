@@ -929,10 +929,11 @@ TEST_F(EqualityEnvFixture, SetWeldConstraint)
 	    << "Torquescale was not set correctly";
 }
 
-TEST_F(EqualityEnvFixture, GetEualityConstraintCallback)
+TEST_F(EqualityEnvFixture, GetWeldConstraint)
 {
 	mjModelPtr m = env_ptr->getModelPtr();
 	mjDataPtr d  = env_ptr->getDataPtr();
+
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
 	EXPECT_TRUE(ros::service::exists(env_ptr->getHandleNamespace() + "/set_eq_constraint_parameters", true))
@@ -940,42 +941,55 @@ TEST_F(EqualityEnvFixture, GetEualityConstraintCallback)
 	EXPECT_TRUE(ros::service::exists(env_ptr->getHandleNamespace() + "/get_eq_constraint_parameters", true))
 	    << "Ret geom properties service should be available!";
 
-	int eq_id = mj_name2id(m.get(), mjOBJ_EQUALITY, "weld_eq");
-	EXPECT_NE(eq_id, -1) << "weld_eq is not defined in loaded model!";
+	int weld_eq_id = mj_name2id(m.get(), mjOBJ_EQUALITY, "weld_eq");
+	EXPECT_NE(weld_eq_id, -1) << "weld_eq is not defined in loaded model!";
 
 	int elem1_id = mj_name2id(m.get(), mjOBJ_BODY, "immovable");
 	EXPECT_NE(elem1_id, -1) << "Body with name 'immovable' is not defined in loaded model!";
 
-	mujoco_ros_msgs::SetEqualityConstraintParameters srv;
-	srv.request.parameters.active                     = true;
-	srv.request.parameters.name                       = "weld_eq";
-	srv.request.parameters.element1                   = "immovable";
-	srv.request.parameters.element2                   = "world";
-	srv.request.parameters.solverParameters.dampratio = 0.9;
-	srv.request.parameters.solverParameters.timeconst = 0.3;
-	srv.request.parameters.solverParameters.dmin      = 0.8;
-	srv.request.parameters.solverParameters.dmax      = 0.95;
-	srv.request.parameters.solverParameters.width     = 0.002;
-	srv.request.parameters.solverParameters.midpoint  = 0.4;
-	srv.request.parameters.solverParameters.power     = 2.0;
-	srv.request.parameters.relpose.position.x         = 1.1;
-	srv.request.parameters.relpose.position.y         = 1.2;
-	srv.request.parameters.relpose.position.z         = 1.3;
-	srv.request.parameters.relpose.orientation.w      = 1;
-	srv.request.parameters.relpose.orientation.x      = 0.1;
-	srv.request.parameters.relpose.orientation.y      = 0.2;
-	srv.request.parameters.relpose.orientation.z      = 0.3;
-	srv.request.parameters.anchor                     = { 0, 0, 0 };
+	mujoco_ros_msgs::GetEqualityConstraintParameters srv;
+	srv.request.name = "weld_eq";
+	EXPECT_TRUE(ros::service::call(env_ptr->getHandleNamespace() + "/get_eq_constraint_parameters", srv))
+	    << "Get eq constraints service call failed!";
+	EXPECT_TRUE(srv.response.success);
 
-	mujoco_ros_msgs::GetEqualityConstraintParameters g_srv;
-	g_srv.request.name = "weld_eq";
-	EXPECT_TRUE(ros::service::call(env_ptr->getHandleNamespace() + "/get_eq_constraint_parameters", g_srv))
-	    << "Get geom properties service call failed!";
-	EXPECT_TRUE(g_srv.response.success);
-	EXPECT_EQ(g_srv.response.parameters.active, srv.request.parameters.active);
-	EXPECT_EQ(g_srv.response.parameters.anchor, srv.request.parameters.anchor);
-	EXPECT_EQ(g_srv.response.parameters.element1, srv.request.parameters.element1);
-	EXPECT_EQ(g_srv.response.parameters.element2, srv.request.parameters.element2);
-	EXPECT_EQ(g_srv.response.parameters.relpose, srv.request.parameters.relpose);
-	EXPECT_EQ(g_srv.response.parameters.solverParameters, srv.request.parameters.solverParameters);
+	EXPECT_EQ(m->eq_obj1id[weld_eq_id], elem1_id) << "Weld constraint body1 was not set correctly";
+	EXPECT_NEAR(m->eq_solref[weld_eq_id * mjNREF], srv.response.parameters.solverParameters.timeconst, 1e-5)
+	    << "Solref timeconst was not set correctly";
+	EXPECT_NEAR(m->eq_solref[weld_eq_id * mjNREF + 1], srv.response.parameters.solverParameters.dampratio, 1e-5)
+	    << "Solref dampration was not set correctly";
+
+	EXPECT_NEAR(m->eq_solimp[weld_eq_id * mjNIMP], srv.response.parameters.solverParameters.dmin, 1e-5)
+	    << "Solimp dmin was not set correctly";
+	EXPECT_NEAR(m->eq_solimp[weld_eq_id * mjNIMP + 1], srv.response.parameters.solverParameters.dmax, 1e-5)
+	    << "Solimp dmax was not set correctly";
+	EXPECT_NEAR(m->eq_solimp[weld_eq_id * mjNIMP + 2], srv.response.parameters.solverParameters.width, 1e-5)
+	    << "Solimp width was not set correctly";
+	EXPECT_NEAR(m->eq_solimp[weld_eq_id * mjNIMP + 3], srv.response.parameters.solverParameters.midpoint, 1e-5)
+	    << "Solimp midpoint was not set correctly";
+	EXPECT_DOUBLE_EQ(m->eq_solimp[weld_eq_id * mjNIMP + 4], srv.response.parameters.solverParameters.power)
+	    << "Solimp power was not set correctly";
+
+	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA], srv.response.parameters.anchor[0])
+	    << "Anchor[0] was not set correctly";
+	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 1], srv.response.parameters.anchor[1])
+	    << "Anchor[1] was not set correctly";
+	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 2], srv.response.parameters.anchor[2])
+	    << "Anchor[2] was not set correctly";
+	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 3], srv.response.parameters.relpose.position.x)
+	    << "Relpose[0] was not set correctly";
+	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 4], srv.response.parameters.relpose.position.y)
+	    << "Relpose[1] was not set correctly";
+	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 5], srv.response.parameters.relpose.position.z)
+	    << "Relpose[2] was not set correctly";
+	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 6], srv.response.parameters.relpose.orientation.w)
+	    << "Relpose[3] was not set correctly";
+	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 7], srv.response.parameters.relpose.orientation.x)
+	    << "Relpose[4] was not set correctly";
+	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 8], srv.response.parameters.relpose.orientation.y)
+	    << "Relpose[5] was not set correctly";
+	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 9], srv.response.parameters.relpose.orientation.z)
+	    << "Relpose[6] was not set correctly";
+	EXPECT_NEAR(m->eq_data[weld_eq_id * mjNEQDATA + 10], srv.response.parameters.torquescale, 1e-5)
+	    << "Torquescale was not set correctly";
 }
