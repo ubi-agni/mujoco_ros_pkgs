@@ -141,6 +141,20 @@ protected:
 		nh->setParam("use_sim_time", true);
 		nh->setParam("sim_steps", -1);
 
+		// verify expected parameter array sizes
+		EXPECT_EQ(mjNEQDATA, 11) << "This versions expects the maximum equality contraint parameters to be 11";
+		EXPECT_EQ(mjNIMP, 5) << "This version expects the number of solimp parameters to be 5";
+		EXPECT_EQ(mjNREF, 2) << "This version expects the number of solref parameters to be 2";
+
+		// verify enum consistency
+		EXPECT_EQ(mjEQ_CONNECT, mujoco_ros_msgs::EqualityConstraintType::CONNECT)
+		    << "Mismatch between connect constraint types";
+		EXPECT_EQ(mjEQ_WELD, mujoco_ros_msgs::EqualityConstraintType::WELD) << "Mismatch between weld constraint types";
+		EXPECT_EQ(mjEQ_JOINT, mujoco_ros_msgs::EqualityConstraintType::JOINT)
+		    << "Mismatch between joint constraint types";
+		EXPECT_EQ(mjEQ_TENDON, mujoco_ros_msgs::EqualityConstraintType::TENDON)
+		    << "Mismatch between tendon constraint types";
+
 		env_ptr = new MujocoEnvTestWrapper();
 
 		std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/equality_world.xml";
