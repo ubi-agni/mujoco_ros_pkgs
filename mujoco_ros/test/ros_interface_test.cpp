@@ -807,6 +807,8 @@ TEST_F(EqualityEnvFixture, InitialEqualityConstraintValues)
 	    << "Weld constraint data mismatch in torquescale";
 }
 
+// TODO: Should we test changing element1 and/or element2?
+// are changes like that valid?
 TEST_F(EqualityEnvFixture, SetWeldConstraint)
 {
 	mjModelPtr m = env_ptr->getModelPtr();
