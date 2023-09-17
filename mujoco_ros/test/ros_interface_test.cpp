@@ -744,7 +744,7 @@ TEST_F(PendulumEnvFixture, GetGeomPropertiesCallback)
 	EXPECT_EQ(srv.request.properties.friction_roll, g_srv.response.properties.friction_roll);
 }
 
-TEST_F(EqualityEnvFixture, InitialEualityConstraintValues)
+TEST_F(EqualityEnvFixture, InitialEqualityConstraintValues)
 {
 	mjModelPtr m = env_ptr->getModelPtr();
 	mjDataPtr d  = env_ptr->getDataPtr();
