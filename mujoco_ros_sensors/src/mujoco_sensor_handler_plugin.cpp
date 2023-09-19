@@ -399,6 +399,106 @@ void MujocoRosSensorsPlugin::lastStageCallback(mujoco_ros::mjModelPtr model, muj
 				break;
 		}
 	}
+
+	for (std::string wrench_sensor_name : wrench_sensor_names_) {
+		auto wrench_sensor_config = wrench_sensor_map_[wrench_sensor_name];
+		auto force_sensor_config  = wrench_sensor_config->force_config;
+		auto torque_sensor_config = wrench_sensor_config->torque_config;
+
+		geometry_msgs::WrenchStamped msg;
+		msg.header.frame_id = force_sensor_config->frame_id;
+		msg.header.stamp    = ros::Time::now();
+
+		int id    = wrench_sensor_config->force_sensor_id;
+		adr       = model->sensor_adr[id];
+		type      = model->sensor_type[id];
+		cutoff    = (model->sensor_cutoff[id] > 0 ? model->sensor_cutoff[id] : 1);
+		noise_idx = 0;
+
+		// No noise configured
+		if (force_sensor_config->is_set == 0) {
+			msg.wrench.force.x = (float)(data->sensordata[adr] / cutoff);
+			msg.wrench.force.y = (float)(data->sensordata[adr + 1] / cutoff);
+			msg.wrench.force.z = (float)(data->sensordata[adr + 2] / cutoff);
+		} else { // Noise at least in one dim
+			if (force_sensor_config->is_set & 0x01) {
+				// shift and scale standard normal to desired distribution
+				noise = noise_dist(rand_generator) * force_sensor_config->sigma[noise_idx] +
+				        force_sensor_config->mean[noise_idx];
+				noise_idx += 1;
+			} else {
+				noise = 0;
+			}
+			msg.wrench.force.x = (float)(data->sensordata[adr] + noise / cutoff);
+
+			if (force_sensor_config->is_set & 0x02) {
+				// shift and scale standard normal to desired distribution
+				noise = noise_dist(rand_generator) * force_sensor_config->sigma[noise_idx] +
+				        force_sensor_config->mean[noise_idx];
+				noise_idx += 1;
+			} else {
+				noise = 0;
+			}
+			msg.wrench.force.y = (float)(data->sensordata[adr + 1] + noise / cutoff);
+
+			if (force_sensor_config->is_set & 0x04) {
+				// shift and scale standard normal to desired distribution
+				noise = noise_dist(rand_generator) * force_sensor_config->sigma[noise_idx] +
+				        force_sensor_config->mean[noise_idx];
+			} else {
+				noise = 0;
+			}
+			msg.wrench.force.z = (float)(data->sensordata[adr + 2] + noise / cutoff);
+		}
+
+		id        = wrench_sensor_config->torque_sensor_id;
+		adr       = model->sensor_adr[id];
+		type      = model->sensor_type[id];
+		cutoff    = (model->sensor_cutoff[id] > 0 ? model->sensor_cutoff[id] : 1);
+		noise_idx = 0;
+
+		// No noise configured
+		if (torque_sensor_config->is_set == 0) {
+			msg.wrench.torque.x = (float)(data->sensordata[adr] / cutoff);
+			msg.wrench.torque.y = (float)(data->sensordata[adr + 1] / cutoff);
+			msg.wrench.torque.z = (float)(data->sensordata[adr + 2] / cutoff);
+		} else { // Noise at least in one dim
+			if (torque_sensor_config->is_set & 0x01) {
+				// shift and scale standard normal to desired distribution
+				noise = noise_dist(rand_generator) * torque_sensor_config->sigma[noise_idx] +
+				        torque_sensor_config->mean[noise_idx];
+				noise_idx += 1;
+			} else {
+				noise = 0;
+			}
+			msg.wrench.torque.x = (float)(data->sensordata[adr] + noise / cutoff);
+
+			if (torque_sensor_config->is_set & 0x02) {
+				// shift and scale standard normal to desired distribution
+				noise = noise_dist(rand_generator) * torque_sensor_config->sigma[noise_idx] +
+				        torque_sensor_config->mean[noise_idx];
+				noise_idx += 1;
+			} else {
+				noise = 0;
+			}
+			msg.wrench.torque.y = (float)(data->sensordata[adr + 1] + noise / cutoff);
+
+			if (torque_sensor_config->is_set & 0x04) {
+				// shift and scale standard normal to desired distribution
+				noise = noise_dist(rand_generator) * torque_sensor_config->sigma[noise_idx] +
+				        torque_sensor_config->mean[noise_idx];
+			} else {
+				noise = 0;
+			}
+			msg.wrench.torque.z = (float)(data->sensordata[adr + 2] + noise / cutoff);
+		}
+
+		wrench_sensor_config->value_pub.publish(msg);
+
+		if (!env_ptr_->settings_.eval_mode) {
+			wrench_sensor_config->gt_pub.publish(msg);
+		}
+	}
 }
 
 void MujocoRosSensorsPlugin::initSensors(mujoco_ros::mjModelPtr model, mujoco_ros::mjDataPtr data)
@@ -561,6 +661,148 @@ void MujocoRosSensorsPlugin::initSensors(mujoco_ros::mjModelPtr model, mujoco_ro
 				break;
 		}
 	}
+
+	for (int n = 0; n < model->ntuple; ++n) {
+		std::string tuple_name;
+		if (model->names[model->name_tupleadr[n]])
+			tuple_name = mj_id2name(model.get(), mjOBJ_TUPLE, n);
+		else {
+			ROS_WARN_STREAM_NAMED("sensors", "Tuple name resolution error. Skipping");
+			continue;
+		}
+
+		if (tuple_name != "wrench")
+			continue;
+
+		int adr  = model->tuple_adr[n];
+		int size = model->tuple_size[n];
+		WrenchSensorConfigPtr config;
+
+		for (int i = 0; i < size; ++i) {
+			std::string wrench_sensor_name =
+			    mj_id2name(model.get(), model->tuple_objtype[adr + i], model->tuple_objid[adr + i]);
+
+			if (mjOBJ_TUPLE != model->tuple_objtype[adr + i]) {
+				ROS_WARN_STREAM_NAMED("sensors", "Wrench sensor '" << wrench_sensor_name << "' is not a tuple. Skipping");
+				continue;
+			}
+
+			int id   = mj_name2id(model.get(), mjOBJ_TUPLE, wrench_sensor_name.c_str());
+			int size = model->tuple_size[id];
+
+			if (size != 2) {
+				ROS_WARN_STREAM_NAMED("sensors", "Wrench sensor '" << wrench_sensor_name << "' is not a 2-tuple. Skipping");
+				continue;
+			}
+
+			int adr = model->tuple_adr[id];
+
+			if (model->tuple_objtype[adr] != mjOBJ_SENSOR) {
+				ROS_WARN_STREAM_NAMED("sensors", "The first element of wrench sensor '" << wrench_sensor_name
+				                                                                        << "' is not a sensor. Skipping");
+				continue;
+			}
+			if (model->tuple_objtype[adr + 1] != mjOBJ_SENSOR) {
+				ROS_WARN_STREAM_NAMED("sensors", "The second element of wrench sensor '" << wrench_sensor_name
+				                                                                         << "' is not a sensor. Skipping");
+				continue;
+			}
+
+			int force_sensor_id  = model->tuple_objid[adr];
+			int torque_sensor_id = model->tuple_objid[adr + 1];
+
+			if (model->sensor_type[force_sensor_id] != mjSENS_FORCE) {
+				ROS_WARN_STREAM_NAMED("sensors", "The first element of wrench sensor '"
+				                                     << wrench_sensor_name << "' is not a force sensor. Skipping");
+				continue;
+			}
+			if (model->sensor_type[torque_sensor_id] != mjSENS_TORQUE) {
+				ROS_WARN_STREAM_NAMED("sensors", "The second element of wrench sensor '"
+				                                     << wrench_sensor_name << "' is not a force sensor. Skipping");
+				continue;
+			}
+
+			std::string force_sensor_name  = mj_id2name(model.get(), mjOBJ_SENSOR, force_sensor_id);
+			std::string torque_sensor_name = mj_id2name(model.get(), mjOBJ_SENSOR, torque_sensor_id);
+
+			// ROS_INFO_STREAM_NAMED("sensors", "Wrench sensor '" << name << "' from '" << force_sensor_name << "' and
+			// '"
+			//                                                    << torque_sensor_name << "'");
+
+			config.reset(new WrenchSensorConfig(force_sensor_id, sensor_map_[force_sensor_name], torque_sensor_id,
+			                                    sensor_map_[torque_sensor_name]));
+
+			if (config->force_config->frame_id != config->torque_config->frame_id) {
+				ROS_ERROR_STREAM_NAMED("sensors", "The force sensor " << force_sensor_name << " and the torque sensor "
+				                                                      << torque_sensor_name
+				                                                      << " does not measure in the same frame");
+				continue;
+			}
+
+			config->registerPub(sensors_nh_->advertise<geometry_msgs::WrenchStamped>(wrench_sensor_name, 1, true));
+			if (!env_ptr_->settings_.eval_mode) {
+				config->registerGTPub(
+				    sensors_nh_->advertise<geometry_msgs::WrenchStamped>(wrench_sensor_name + "_GT", 1, true));
+			}
+
+			wrench_sensor_names_.push_back(wrench_sensor_name);
+			wrench_sensor_map_[wrench_sensor_name] = config;
+		}
+	}
+
+	// for (std::string name : wrench_sensor_names_) {
+	// 	WrenchSensorConfigPtr config;
+
+	// 	int id   = mj_name2id(model.get(), mjOBJ_TUPLE, name.c_str());
+	// 	int size = model->tuple_size[id];
+
+	// 	if (size != 2) {
+	// 		ROS_WARN_STREAM_NAMED("sensors", "Wrench sensor '" << name << "' is not a 2-tuple. Skipping");
+	// 		continue;
+	// 	}
+
+	// 	int adr = model->tuple_adr[id];
+
+	// 	if (model->tuple_objtype[adr] != mjOBJ_SENSOR) {
+	// 		ROS_WARN_STREAM_NAMED("sensors",
+	// 		                      "The first element of wrench sensor '" << name << "' is not a sensor. Skipping");
+	// 		continue;
+	// 	}
+	// 	if (model->tuple_objtype[adr + 1] != mjOBJ_SENSOR) {
+	// 		ROS_WARN_STREAM_NAMED("sensors",
+	// 		                      "The second element of wrench sensor '" << name << "' is not a sensor. Skipping");
+	// 		continue;
+	// 	}
+
+	// 	int force_sensor_id  = model->tuple_objid[adr];
+	// 	int torque_sensor_id = model->tuple_objid[adr + 1];
+
+	// 	if (model->sensor_type[force_sensor_id] != mjSENS_FORCE) {
+	// 		ROS_WARN_STREAM_NAMED("sensors",
+	// 		                      "The first element of wrench sensor '" << name << "' is not a force sensor.
+	// Skipping"); 		continue;
+	// 	}
+	// 	if (model->sensor_type[torque_sensor_id] != mjSENS_TORQUE) {
+	// 		ROS_WARN_STREAM_NAMED("sensors",
+	// 		                      "The second element of wrench sensor '" << name << "' is not a force sensor.
+	// Skipping"); 		continue;
+	// 	}
+
+	// 	std::string force_sensor_name  = mj_id2name(model.get(), mjOBJ_SENSOR, force_sensor_id);
+	// 	std::string torque_sensor_name = mj_id2name(model.get(), mjOBJ_SENSOR, torque_sensor_id);
+
+	// 	// ROS_INFO_STREAM_NAMED("sensors", "Wrench sensor '" << name << "' from '" << force_sensor_name << "' and
+	// '"
+	// 	//                                                    << torque_sensor_name << "'");
+
+	// 	config.reset(new WrenchSensorConfig(sensor_map_[force_sensor_name], sensor_map_[torque_sensor_name]));
+	// 	config->registerPub(sensors_nh_->advertise<geometry_msgs::WrenchStamped>(name, 1, true));
+	// 	if (!env_ptr_->settings_.eval_mode) {
+	// 		config->registerGTPub(sensors_nh_->advertise<geometry_msgs::WrenchStamped>(name + "_GT", 1, true));
+	// 	}
+
+	// 	wrench_sensor_map_[name] = config;
+	// }
 }
 
 // Nothing to do on reset
