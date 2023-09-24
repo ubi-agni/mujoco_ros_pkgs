@@ -3,6 +3,7 @@
 
 ### Added
 * Manual steps now run as fast as possbile. I.e., if a viewer is connected, stepping is interrupted to render the UI at 30Hz. (This now also applies to running with unbound real-time, which previously was interrupted at 30Hz regardless if any viewer was connected).
+* Added GitHub Actions for building docker images, CI, and formatting based on MoveIt's configuration.
 
 ### Fixed
 * re-added setting realtime settings via ros param or in the mujoco model xml.

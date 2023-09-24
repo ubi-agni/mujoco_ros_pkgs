@@ -1,0 +1,9 @@
+- git:
+    local-name: franka_mujoco
+    uri: https://github.com/ubi-agni/franka_mujoco_ros.git
+    version: noetic-devel
+
+- git:
+    local-name: mujoco_ros_demos
+    uri: https://github.com/ubi-agni/mujoco_ros_demos.git
+    version: noetic-devel
