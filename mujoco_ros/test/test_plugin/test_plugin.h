@@ -57,17 +57,17 @@ public:
 
 	mjModelPtr m_;
 	mjDataPtr d_;
-	bool ran_reset              = false;
-	bool ran_control_cb         = false;
-	bool ran_passive_cb         = false;
-	bool ran_render_cb          = false;
-	bool ran_last_cb            = false;
-	bool ran_on_geom_changed_cb = false;
-	bool got_config_param       = false;
-	bool got_lvl1_nested_array  = false;
-	bool got_lvl1_nested_struct = false;
-	bool got_lvl2_nested_array  = false;
-	bool got_lvl2_nested_struct = false;
-	bool should_fail            = false;
+	std::atomic_int ran_reset              = { false };
+	std::atomic_int ran_control_cb         = { false };
+	std::atomic_int ran_passive_cb         = { false };
+	std::atomic_int ran_render_cb          = { false };
+	std::atomic_int ran_last_cb            = { false };
+	std::atomic_int ran_on_geom_changed_cb = { false };
+	std::atomic_int got_config_param       = { false };
+	std::atomic_int got_lvl1_nested_array  = { false };
+	std::atomic_int got_lvl1_nested_struct = { false };
+	std::atomic_int got_lvl2_nested_array  = { false };
+	std::atomic_int got_lvl2_nested_struct = { false };
+	std::atomic_int should_fail            = { false };
 };
 } // namespace mujoco_ros

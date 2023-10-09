@@ -96,35 +96,35 @@ protected:
 
 TEST_F(LoadedPluginFixture, ControlCallback)
 {
-	EXPECT_FALSE(test_plugin->ran_control_cb);
+	EXPECT_FALSE(test_plugin->ran_control_cb.load());
 	EXPECT_TRUE(env_ptr->step());
-	EXPECT_TRUE(test_plugin->ran_control_cb);
+	EXPECT_TRUE(test_plugin->ran_control_cb.load());
 }
 
 TEST_F(LoadedPluginFixture, PassiveCallback)
 {
-	// EXPECT_FALSE(test_plugin->ran_passive_cb);
+	// EXPECT_FALSE(test_plugin->ran_passive_cb.load());
 	EXPECT_TRUE(env_ptr->step());
-	EXPECT_TRUE(test_plugin->ran_passive_cb);
+	EXPECT_TRUE(test_plugin->ran_passive_cb.load());
 }
 
 // TODO: Involves offscreen rendering, can we do this in tests?
 // TEST_F(LoadedPluginFixture, RenderCallback) {
-// 	EXPECT_TRUE(test_plugin->ran_render_cb);
+// 	EXPECT_TRUE(test_plugin->ran_render_cb.load());
 // }
 
 TEST_F(LoadedPluginFixture, LastCallback)
 {
-	EXPECT_FALSE(test_plugin->ran_last_cb);
+	EXPECT_FALSE(test_plugin->ran_last_cb.load());
 	EXPECT_TRUE(env_ptr->step());
-	EXPECT_TRUE(test_plugin->ran_last_cb);
+	EXPECT_TRUE(test_plugin->ran_last_cb.load());
 }
 
 TEST_F(LoadedPluginFixture, OnGeomChangedCallback)
 {
-	EXPECT_FALSE(test_plugin->ran_on_geom_changed_cb);
+	EXPECT_FALSE(test_plugin->ran_on_geom_changed_cb.load());
 	env_ptr->notifyGeomChange();
-	EXPECT_TRUE(test_plugin->ran_on_geom_changed_cb);
+	EXPECT_TRUE(test_plugin->ran_on_geom_changed_cb.load());
 }
 
 TEST_F(BaseEnvFixture, LoadPlugin)
@@ -159,24 +159,24 @@ TEST_F(LoadedPluginFixture, ResetPlugin)
 	EXPECT_LT(seconds, 2) << "Env reset ran into 2 seconds timeout!";
 	env_ptr->step(10);
 
-	EXPECT_TRUE(test_plugin->ran_reset) << "Dummy plugin reset was not called!";
+	EXPECT_TRUE(test_plugin->ran_reset.load()) << "Dummy plugin reset was not called!";
 }
 
 TEST_F(LoadedPluginFixture, GetConfigToplevel)
 {
-	EXPECT_TRUE(test_plugin->got_config_param);
+	EXPECT_TRUE(test_plugin->got_config_param.load());
 }
 
 TEST_F(LoadedPluginFixture, GetConfigArray)
 {
-	EXPECT_TRUE(test_plugin->got_lvl1_nested_array);
-	EXPECT_TRUE(test_plugin->got_lvl2_nested_array);
+	EXPECT_TRUE(test_plugin->got_lvl1_nested_array.load());
+	EXPECT_TRUE(test_plugin->got_lvl2_nested_array.load());
 }
 
 TEST_F(LoadedPluginFixture, GetConfigStruct)
 {
-	EXPECT_TRUE(test_plugin->got_lvl1_nested_struct);
-	EXPECT_TRUE(test_plugin->got_lvl2_nested_struct);
+	EXPECT_TRUE(test_plugin->got_lvl1_nested_struct.load());
+	EXPECT_TRUE(test_plugin->got_lvl2_nested_struct.load());
 }
 
 TEST_F(BaseEnvFixture, FailedLoad)
@@ -212,11 +212,11 @@ TEST_F(BaseEnvFixture, FailedLoad)
 
 		EXPECT_NE(test_plugin, nullptr) << "Dummy plugin was not loaded!";
 
-		EXPECT_FALSE(test_plugin->ran_control_cb);
-		EXPECT_FALSE(test_plugin->ran_passive_cb);
-		EXPECT_FALSE(test_plugin->ran_render_cb);
-		EXPECT_FALSE(test_plugin->ran_last_cb);
-		EXPECT_FALSE(test_plugin->ran_on_geom_changed_cb);
+		EXPECT_FALSE(test_plugin->ran_control_cb.load());
+		EXPECT_FALSE(test_plugin->ran_passive_cb.load());
+		EXPECT_FALSE(test_plugin->ran_render_cb.load());
+		EXPECT_FALSE(test_plugin->ran_last_cb.load());
+		EXPECT_FALSE(test_plugin->ran_on_geom_changed_cb.load());
 	}
 
 	env.shutdown();
@@ -310,7 +310,7 @@ TEST_F(BaseEnvFixture, FailedLoadReset)
 		EXPECT_LT(seconds, 2) << "Env reset ran into 2 seconds timeout!";
 		env.step(10);
 
-		EXPECT_FALSE(test_plugin->ran_reset) << "Dummy plugin should not have beeon reset!";
+		EXPECT_FALSE(test_plugin->ran_reset.load()) << "Dummy plugin should not have beeon reset!";
 	}
 
 	env.shutdown();
