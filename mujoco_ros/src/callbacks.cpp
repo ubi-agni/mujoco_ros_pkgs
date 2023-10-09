@@ -794,9 +794,8 @@ bool MujocoEnv::getEqualityConstraintParametersCB(mujoco_ros_msgs::GetEqualityCo
 				if (mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj2id[eq_id])) {
 					resp.parameters.element2 = mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj2id[eq_id]);
 				}
-				for (int i = 0; i < 5; i++) {
-					polycoef.push_back(model_->eq_data[i]);
-				}
+
+				std::memcpy(polycoef.data(), model_->eq_data + eq_id * mjNEQDATA, 5);
 				resp.parameters.polycoef = polycoef;
 				break;
 			case mjEQ_TENDON:
@@ -804,11 +803,9 @@ bool MujocoEnv::getEqualityConstraintParametersCB(mujoco_ros_msgs::GetEqualityCo
 				if (mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj2id[eq_id])) {
 					resp.parameters.element2 = mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj2id[eq_id]);
 				}
-				for (int i = 0; i < 5; i++) {
-					polycoef.push_back(model_->eq_data[i]);
-				}
-				break;
+				std::memcpy(polycoef.data(), model_->eq_data + eq_id * mjNEQDATA, 5);
 				resp.parameters.polycoef = polycoef;
+				break;
 			default:
 				break;
 		}
