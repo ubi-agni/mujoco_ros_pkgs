@@ -827,7 +827,9 @@ TEST_F(EqualityEnvFixture, SetWeldConstraint)
 
 	mujoco_ros_msgs::SetEqualityConstraintParameters srv;
 	srv.request.parameters.active                     = false;
-	srv.request.parameters.anchor                     = { 3.0, 4.0, 5.0 };
+	srv.request.parameters.anchor.x                   = 5.0;
+	srv.request.parameters.anchor.y                   = 3.0;
+	srv.request.parameters.anchor.z                   = 7.0;
 	srv.request.parameters.name                       = "weld_eq";
 	srv.request.parameters.element1                   = "immovable";
 	srv.request.parameters.element1                   = "";
@@ -845,7 +847,6 @@ TEST_F(EqualityEnvFixture, SetWeldConstraint)
 	srv.request.parameters.relpose.orientation.x      = quat[1];
 	srv.request.parameters.relpose.orientation.y      = quat[2];
 	srv.request.parameters.relpose.orientation.z      = quat[3];
-	srv.request.parameters.anchor                     = { 5, 3, 7 };
 	srv.request.parameters.type.typevalue             = mujoco_ros_msgs::EqualityConstraintType::WELD;
 
 	// Verify values differ to confirm values have changed later on
@@ -867,9 +868,9 @@ TEST_F(EqualityEnvFixture, SetWeldConstraint)
 	EXPECT_NE(m->eq_solimp[weld_eq_id * mjNIMP + 4], srv.request.parameters.solverParameters.power)
 	    << "Solimp power would not change";
 
-	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA], srv.request.parameters.anchor[0]) << "Anchor[0] would not change";
-	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA + 1], srv.request.parameters.anchor[1]) << "Anchor[1] would not change";
-	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA + 2], srv.request.parameters.anchor[2]) << "Anchor[2] would not change";
+	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA], srv.request.parameters.anchor.x) << "Anchor[0] would not change";
+	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA + 1], srv.request.parameters.anchor.y) << "Anchor[1] would not change";
+	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA + 2], srv.request.parameters.anchor.z) << "Anchor[2] would not change";
 	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA + 3], srv.request.parameters.relpose.position.x)
 	    << "Relpose[0] would not change";
 	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA + 4], srv.request.parameters.relpose.position.y)
@@ -907,11 +908,11 @@ TEST_F(EqualityEnvFixture, SetWeldConstraint)
 	EXPECT_DOUBLE_EQ(m->eq_solimp[weld_eq_id * mjNIMP + 4], srv.request.parameters.solverParameters.power)
 	    << "Solimp power was not set correctly";
 
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA], srv.request.parameters.anchor[0])
+	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA], srv.request.parameters.anchor.x)
 	    << "Anchor[0] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 1], srv.request.parameters.anchor[1])
+	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 1], srv.request.parameters.anchor.y)
 	    << "Anchor[1] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 2], srv.request.parameters.anchor[2])
+	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 2], srv.request.parameters.anchor.z)
 	    << "Anchor[2] was not set correctly";
 	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 3], srv.request.parameters.relpose.position.x)
 	    << "Relpose[0] was not set correctly";
@@ -972,11 +973,11 @@ TEST_F(EqualityEnvFixture, GetWeldConstraint)
 	EXPECT_DOUBLE_EQ(m->eq_solimp[weld_eq_id * mjNIMP + 4], srv.response.parameters.solverParameters.power)
 	    << "Solimp power was not set correctly";
 
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA], srv.response.parameters.anchor[0])
+	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA], srv.response.parameters.anchor.x)
 	    << "Anchor[0] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 1], srv.response.parameters.anchor[1])
+	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 1], srv.response.parameters.anchor.y)
 	    << "Anchor[1] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 2], srv.response.parameters.anchor[2])
+	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 2], srv.response.parameters.anchor.z)
 	    << "Anchor[2] was not set correctly";
 	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 3], srv.response.parameters.relpose.position.x)
 	    << "Relpose[0] was not set correctly";

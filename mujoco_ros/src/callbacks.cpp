@@ -680,9 +680,9 @@ bool MujocoEnv::setEqualityConstraintParametersCB(mujoco_ros_msgs::SetEqualityCo
 						model_->eq_obj2id[eq_id] = id2;
 					}
 				}
-				model_->eq_data[eq_id * mjNEQDATA]      = req.parameters.anchor[0];
-				model_->eq_data[eq_id * mjNEQDATA + 1]  = req.parameters.anchor[1];
-				model_->eq_data[eq_id * mjNEQDATA + 2]  = req.parameters.anchor[2];
+				model_->eq_data[eq_id * mjNEQDATA]      = req.parameters.anchor.x;
+				model_->eq_data[eq_id * mjNEQDATA + 1]  = req.parameters.anchor.y;
+				model_->eq_data[eq_id * mjNEQDATA + 2]  = req.parameters.anchor.z;
 				model_->eq_data[eq_id * mjNEQDATA + 3]  = req.parameters.relpose.position.x;
 				model_->eq_data[eq_id * mjNEQDATA + 4]  = req.parameters.relpose.position.y;
 				model_->eq_data[eq_id * mjNEQDATA + 5]  = req.parameters.relpose.position.z;
@@ -763,9 +763,7 @@ bool MujocoEnv::getEqualityConstraintParametersCB(mujoco_ros_msgs::GetEqualityCo
 		resp.parameters.type.typevalue = model_->eq_type[eq_id];
 		resp.parameters.name           = req.name;
 
-		std::vector<float> polycoef = std::vector<float>();
-		std::vector<float> anchor   = std::vector<float>();
-		std::vector<double> vct; // or msg.vct
+		std::vector<float> polycoef = std::vector<float>(5);
 
 		switch (model_->eq_type[eq_id]) {
 			case mjEQ_CONNECT:
@@ -779,10 +777,9 @@ bool MujocoEnv::getEqualityConstraintParametersCB(mujoco_ros_msgs::GetEqualityCo
 				if (mj_id2name(model_.get(), mjOBJ_BODY, model_->eq_obj2id[eq_id])) {
 					resp.parameters.element2 = mj_id2name(model_.get(), mjOBJ_BODY, model_->eq_obj2id[eq_id]);
 				}
-				for (int i = 0; i < 3; i++) {
-					anchor.push_back(model_->eq_data[eq_id * mjNEQDATA + i]);
-				}
-				resp.parameters.anchor                = anchor;
+				resp.parameters.anchor.x              = model_->eq_data[eq_id * mjNEQDATA];
+				resp.parameters.anchor.y              = model_->eq_data[eq_id * mjNEQDATA + 1];
+				resp.parameters.anchor.z              = model_->eq_data[eq_id * mjNEQDATA + 2];
 				resp.parameters.relpose.position.x    = model_->eq_data[eq_id * mjNEQDATA + 3];
 				resp.parameters.relpose.position.y    = model_->eq_data[eq_id * mjNEQDATA + 4];
 				resp.parameters.relpose.position.z    = model_->eq_data[eq_id * mjNEQDATA + 5];
