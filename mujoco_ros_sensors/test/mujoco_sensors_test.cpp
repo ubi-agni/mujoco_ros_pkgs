@@ -314,7 +314,7 @@ TEST_F(TrainEnvFixture, Sensor3DOF)
 	mujoco_ros_msgs::SensorNoiseModel noise_model;
 	noise_model.mean.push_back(0.0);
 	noise_model.mean.push_back(1.0);
-	noise_model.std.push_back(0.25);
+	noise_model.std.push_back(0.025);
 	noise_model.std.push_back(0.0);
 	noise_model.set_flag    = 3;
 	noise_model.sensor_name = "vel_EE";
@@ -393,7 +393,7 @@ TEST_F(TrainEnvFixture, Sensor3DOF)
 	EXPECT_NEAR(means[4], d->sensordata[adr + 1] / cutoff, 0.0001);
 	EXPECT_NEAR(means[5], d->sensordata[adr + 2] / cutoff, 0.0001);
 
-	EXPECT_NEAR(variances[0], 0.0625, 0.01);
+	EXPECT_NEAR(variances[0], 0.000625, 0.0001);
 	EXPECT_EQ(variances[1], 0);
 	EXPECT_EQ(variances[2], 0);
 
@@ -428,7 +428,7 @@ TEST_F(TrainEnvFixture, Framepos)
 	mujoco_ros_msgs::SensorNoiseModel noise_model;
 	noise_model.mean.push_back(0.0);
 	noise_model.mean.push_back(1.0);
-	noise_model.std.push_back(0.25);
+	noise_model.std.push_back(0.025);
 	noise_model.std.push_back(0.0);
 	noise_model.set_flag    = 3;
 	noise_model.sensor_name = "immovable_pos";
@@ -508,7 +508,7 @@ TEST_F(TrainEnvFixture, Framepos)
 	EXPECT_NEAR(means[4], d->sensordata[adr + 1] / cutoff, 0.0001);
 	EXPECT_NEAR(means[5], d->sensordata[adr + 2] / cutoff, 0.0001);
 
-	EXPECT_NEAR(variances[0], 0.0625, 0.01);
+	EXPECT_NEAR(variances[0], 0.000625, 0.0001);
 	EXPECT_EQ(variances[1], 0);
 	EXPECT_EQ(variances[2], 0);
 
@@ -541,7 +541,7 @@ TEST_F(TrainEnvFixture, scalar_stamped)
 
 	mujoco_ros_msgs::SensorNoiseModel noise_model;
 	noise_model.mean.push_back(1.0);
-	noise_model.std.push_back(0.25);
+	noise_model.std.push_back(0.025);
 	noise_model.set_flag    = 1;
 	noise_model.sensor_name = "vel_joint2";
 
@@ -593,7 +593,7 @@ TEST_F(TrainEnvFixture, scalar_stamped)
 	EXPECT_NEAR(means[0], 1, 0.01);
 	EXPECT_NEAR(means[1], d->sensordata[adr] / cutoff, 0.0001);
 
-	EXPECT_NEAR(variances[0], 0.0625, 0.01);
+	EXPECT_NEAR(variances[0], 0.000625, 0.0001);
 	EXPECT_EQ(variances[1], 0);
 }
 
@@ -623,7 +623,7 @@ TEST_F(TrainEnvFixture, quaternion)
 
 	mujoco_ros_msgs::SensorNoiseModel noise_model;
 	noise_model.mean.push_back(1.0);
-	noise_model.std.push_back(0.25);
+	noise_model.std.push_back(0.025);
 	noise_model.set_flag    = 4;
 	noise_model.sensor_name = "immovable_quat";
 
@@ -718,7 +718,7 @@ TEST_F(TrainEnvFixture, quaternion)
 
 	EXPECT_EQ(variances[0], 0);
 	EXPECT_EQ(variances[1], 0);
-	EXPECT_NEAR(variances[2], 0.0625, 0.01);
+	EXPECT_NEAR(variances[2], 0.000625, 0.0001);
 
 	EXPECT_EQ(variances[3], 0);
 	EXPECT_EQ(variances[4], 0);

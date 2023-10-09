@@ -8,6 +8,9 @@
 * re-added setting realtime settings via ros param or in the mujoco model xml.
 * Add missing install of mujoco_ros's `config` and `assets` directories (#28).
 
+### Changed
+* Reduced sensor noise std in tests to reduce wrongful fails due to too stochasticity.
+
 Contributors: @DavidPL1, @LeroyR
 
 <a name="0.7.0"></a>
