@@ -10,6 +10,7 @@
 
 ### Changed
 * Reduced sensor noise std in tests to reduce wrongful fails due to too stochasticity.
+* Updated toplevel README to be more informative.
 
 Contributors: @DavidPL1, @LeroyR
 
