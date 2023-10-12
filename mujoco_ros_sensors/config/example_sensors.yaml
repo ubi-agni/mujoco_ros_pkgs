@@ -1,0 +1,2 @@
+MujocoPlugins:
+  - type: mujoco_ros_sensors/MujocoRosSensorsPlugin
