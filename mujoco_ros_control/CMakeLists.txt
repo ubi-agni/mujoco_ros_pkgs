@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.13)
 
 project(mujoco_ros_control)
 
@@ -7,15 +7,15 @@ set( CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined"
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-
-# Disable optimization to prevent false-positives with memory analisys tools (e.g. asan or valgrind)
-if (ENABLE_SANITIZER OR NO_OPTIM)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -fno-inline")
-  set(CMAKE_BUILD_TYPE "RelWithDebInfo")
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+    message("${PROJECT_NAME}: You did not request a specific build type: Choosing 'Release' for maximum performance")
+    set(CMAKE_BUILD_TYPE Release)
 endif()
 
-if (ENABLE_SANITIZER)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
+set(CMAKE_CXX_FLAGS_SANITIZE "-O0 -fno-inline -fno-omit-frame-pointer -fno-optimize-sibling-calls")
+set(CMAKE_CXX_FLAGS_DEBUG "-O0 -fno-inline")
+
+if (CMAKE_BUILD_TYPE STREQUAL "Sanitize")
   add_link_options(-fsanitize=address)
 endif()
 
@@ -59,19 +59,11 @@ include_directories(
 add_library(${PROJECT_NAME}
   src/mujoco_ros_control_plugin.cpp
 )
-target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC
-  include
-  ${Boost_INCLUDE_DIRS}
-  ${catkin_INCLUDE_DIRS}
-)
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )
 
 add_library(default_mujoco_ros_robot_hw_sim src/default_robot_hw_sim.cpp)
-target_include_directories(default_mujoco_ros_robot_hw_sim SYSTEM PUBLIC
-  ${catkin_INCLUDE_DIRS}
-)
 target_link_libraries(default_mujoco_ros_robot_hw_sim
   ${catkin_LIBRARIES}
 )

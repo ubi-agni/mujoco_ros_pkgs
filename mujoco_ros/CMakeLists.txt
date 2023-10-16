@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
 project(mujoco_ros VERSION 0.7.0 LANGUAGES CXX)
 
+#catkin_lint: ignore uninstalled_plugin
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
@@ -34,7 +36,7 @@ include(ProjectOption)
 # Find catkin macros and libraries
 # if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 # is used, also find other catkin packages
-find_package(catkin REQUIRED
+find_package(catkin REQUIRED COMPONENTS
     roscpp
     pluginlib
     mujoco_ros_msgs
@@ -110,7 +112,6 @@ catkin_package(
     moveit_ros_planning_interface
   INCLUDE_DIRS
     include
-    ${mujoco_INCLUDE_DIRS}
   LIBRARIES
     ${PROJECT_NAME} ${mujoco_LIBRARIES}
 )

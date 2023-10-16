@@ -1,18 +1,18 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.13)
 project(mujoco_ros_sensors)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-
-# Disable optimization to prevent false-positives with memory analisys tools (e.g. asan or valgrind)
-if (ENABLE_SANITIZER OR NO_OPTIM)
-  set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -O0 -fno-inline")
-  set(CMAKE_BUILD_TYPE "RelWithDebInfo")
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+    message("${PROJECT_NAME}: You did not request a specific build type: Choosing 'Release' for maximum performance")
+    set(CMAKE_BUILD_TYPE Release)
 endif()
 
-if (ENABLE_SANITIZER)
-  set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address")
+set(CMAKE_CXX_FLAGS_SANITIZE "${CMAKE_CXX_FLAGS} -O0 -fno-inline -fno-omit-frame-pointer -fno-optimize-sibling-calls")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -O0 -fno-inline")
+
+if (CMAKE_BUILD_TYPE STREQUAL Sanitize)
   add_link_options(-fsanitize=address)
 endif()
 
@@ -51,10 +51,6 @@ include_directories(
 
 add_library(${PROJECT_NAME}
   src/mujoco_sensor_handler_plugin.cpp
-)
-target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC
-  include
-  ${catkin_INCLUDE_DIRS}
 )
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}
