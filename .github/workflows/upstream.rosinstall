@@ -2,8 +2,3 @@
     local-name: actionlib
     uri: https://github.com/rhaschke/actionlib.git
     version: noetic-devel
-
-#- git:
-#    local-name: moveit
-#    uri: https://github.com/ros-planning/moveit.git
-#    version: noetic-devel

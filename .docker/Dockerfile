@@ -22,11 +22,11 @@ RUN \
         wget curl git sudo python3-wstool \
         # Build tools
         python3-catkin-tools \
-        clang clang-format-10 clang-tidy clang-tools \
+        clang clang-format clang-tidy clang-tools \
         ccache && \
     #
     # Install MuJoCo Versions
-    MUJOCO_VERSIONS=${MUJOCO_VERSIONS} ./src/mujoco_ros_pkgs/.docker/ci/mujoco_installer.sh >> mujoco_install.log && \
+    MUJOCO_VERSIONS=${MUJOCO_VERSIONS} ./src/mujoco_ros_pkgs/.docker/mujoco_installer.sh && \
     #
     # Add paths to generic mujoco installs
     echo "export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:\$MUJOCO_DIR/lib:/usr/lib/nvidia\n \

@@ -6,7 +6,6 @@ on:
   push:
     branches:
       - noetic-devel
-      - noetic-master
 
 permissions:
   contents: read
@@ -22,18 +21,12 @@ jobs:
       matrix:
         env:
           - IMAGE: noetic-ci
-            CCOV: true
-            BUILDER: catkin_tools_devel
             MUJOCO_VERSION: 2.3.6
+            CATKIN_LINT: true
+            CCOV: true
           # Skip 2.3.7 compability tests for now
           # - IMAGE: noetic-ci
-          #   CCOV: true
-          #   BUILDER: catkin_tools_devel
           #   MUJOCO_VERSION: 2.3.7
-          # There is no master at the time
-          # - IMAGE: master-ci
-          #   MUJOCO_VERSION: 2.3.6
-          #   CATKIN_LINT: true
     env:
       DOCKER_RUN_OPTS: -e MUJOCO_DIR=/root/mujoco/${{ matrix.env.MUJOCO_VERSION }}
       # For now we have flags defined in the CMakeLists, using all flags makes the build break
@@ -41,11 +34,8 @@ jobs:
       # CXXFLAGS: -Wall -Wextra -Wwrite-strings -Wunreachable-code -Wpointer-arith -Wredundant-decls
       CXXFLAGS: -Wwrite-strings -Wunreachable-code -Wpointer-arith -Wredundant-decls
       CLANG_TIDY_ARGS: --fix --fix-errors --format-style=file
-      DOCKER_IMAGE: docker.io/davidpl1/mujoco_ros:${{ matrix.env.IMAGE }}
+      DOCKER_IMAGE: ubiagni/mujoco_ros:${{ matrix.env.IMAGE }}
       UPSTREAM_WORKSPACE: .github/workflows/upstream.rosinstall
-      # Currently we don't really have a downstream workspace. franka_mujoco_ros comes to mind,
-      # but requires to build moveit. This should maybe happen in the franka_mujoco_ros repo.
-      # DOWNSTREAM_WORKSPACE: .github/workflows/downstream.rosinstall
       # Pull any updates to the upstream workspace
       AFTER_SETUP_UPSTREAM_WORKSPACE: vcs pull $BASEDIR/upstream_ws/src
       AFTER_SETUP_DOWNSTREAM_WORKSPACE: vcs pull $BASEDIR/downstream_ws/src
@@ -72,20 +62,6 @@ jobs:
     name: "${{ matrix.env.IMAGE }} mj-${{ matrix.env.MUJOCO_VERSION }}${{ matrix.env.CATKIN_LINT && ' + catkin_lint' || ''}}${{ matrix.env.CCOV && ' + ccov' || ''}}${{ matrix.env.IKFAST_TEST && ' + ikfast' || ''}}${{ matrix.env.CLANG_TIDY && (github.event_name != 'workflow_dispatch' && ' + clang-tidy (delta)' || ' + clang-tidy (all)') || '' }}"
     runs-on: ubuntu-20.04
     steps:
-      - name: "Free up disk space"
-        if: matrix.env.CCOV
-        run: |
-          sudo apt-get -qq purge build-essential "ghc*"
-          sudo apt-get clean
-          # cleanup docker images not used by us
-          docker system prune -af
-          # shift ccache folder to /mnt on a separate disk
-          sudo mkdir -p /mnt/ccache
-          sudo mkdir ${{ env.CCACHE_DIR }}
-          sudo mount --bind ${{ env.CCACHE_DIR }} /mnt/ccache
-          # free up a lot of stuff from /usr/local
-          sudo rm -rf /usr/local
-          df -h
       - uses: actions/checkout@v3
       - name: Cache upstream workspace
         uses: rhaschke/cache@main
@@ -96,15 +72,6 @@ jobs:
         env:
           GHA_CACHE_SAVE: always
           CACHE_PREFIX: upstream_ws-${{ matrix.env.IMAGE }}-${{ hashFiles('.github/workflows/upstream.rosinstall', '.github/workflows/ci.yaml') }}
-      - name: Cache downstream workspace
-        uses: rhaschke/cache@main
-        with:
-          path: ${{ env.BASEDIR }}/downstream_ws
-          key: ${{ env.CACHE_PREFIX }}-${{ github.run_id }}
-          restore-keys: ${{ env.CACHE_PREFIX }}
-        env:
-          GHA_CACHE_SAVE: always
-          CACHE_PREFIX: downstream_ws-${{ matrix.env.IMAGE }}-${{ hashFiles('.github/workflows/downstream.rosinstall', '.github/workflows/ci.yaml') }}
       # The target directory cache doesn't include the source directory because
       # that comes from the checkout.  See "prepare target_ws for cache" task below
       - name: Cache target workspace

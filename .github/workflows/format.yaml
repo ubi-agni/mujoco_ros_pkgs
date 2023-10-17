@@ -14,26 +14,10 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
-      - name: Check clang-format installed
-        id: clang-format-check
-        run: |
-          must_be_installed=$(whereis clang-format | grep -q "^clang-format:$" && echo true || echo false)
-          echo "must_be_installed=$must_be_installed" >> "$GITHUB_OUTPUT"
       - name: Install clang-format
-        if: ${{ steps.clang-format-check.outputs.must_be_installed }}
-        run: sudo apt update && sudo apt install clang-format -y
+        run: sudo apt-get update && sudo apt-get install clang-format -y
       - name: Install catkin_lint
-        run: |
-          sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list'
-          sudo apt-key adv --keyserver 'hkp://keyserver.ubuntu.com:80' --recv-key C1CF6E31E6BADE8868B172B4F42ED6FBAB17C654
-          sudo apt-get -q update
-          sudo apt-get -q -y install python3-rosdep
-          sudo rm -rf /etc/ros/rosdep/*
-          sudo rosdep init
-          rosdep update
-          sudo apt-get -q -y install catkin-lint
-          export ROS_DISTRO=${{ inputs.distro }}
-      - uses: actions/setup-python@v4
+        uses: rhaschke/install-catkin_lint-action@v1.0
       - uses: pre-commit/action@v3.0.0
         id: precommit
       - name: Upload pre-commit changes

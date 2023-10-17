@@ -8,7 +8,6 @@ on:
   push:
     branches:
       - noetic-devel
-      - master
 
 concurrency: # cancel any previous workflow(s) from the same PR or branch/tag
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -19,27 +18,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        IMAGE: [noetic]
+        ROS_DISTRO: [noetic]
     runs-on: ubuntu-latest
     permissions:
       packages: write
       contents: read
     env:
-      REGISTRY: docker.io
-      IMAGE: docker.io/davidpl1/mujoco_ros:${{ matrix.IMAGE }}-${{ github.job }}
-      ROS_DISTRO: noetic
-      MUJOCO_VERSIONS: '[2.3.6,2.3.7]'
+      IMAGE: ubiagni/mujoco_ros:${{ matrix.ROS_DISTRO }}-${{ github.job }}
+      MUJOCO_VERSIONS: 2.3.6 2.3.7
 
     steps:
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name != 'schedule' }}
-      - name: Login to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.DOCKERHUB_USER }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Check for apt updates
         uses: rhaschke/docker-run-action@v4
         continue-on-error: true
@@ -51,107 +39,24 @@ jobs:
             apt-get update
             have_updates=$(apt-get --simulate upgrade | grep -q "^0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.$" && echo false || echo true)
             echo "no_cache=$have_updates" >> "$GITHUB_OUTPUT"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name != 'schedule' || steps.apt.outputs.no_cache }}
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build and push
         uses: docker/build-push-action@v5
         if: ${{ github.event_name == 'workflow_dispatch' || github.event_name != 'schedule' || steps.apt.outputs.no_cache }}
         with:
-          file: .docker/${{ github.job }}/Dockerfile
+          file: .docker/Dockerfile
           build-args: |
-            ROS_DISTRO=${{ env.ROS_DISTRO }}
+            ROS_DISTRO=${{ matrix.ROS_DISTRO }}
             MUJOCO_VERSIONS=${{ env.MUJOCO_VERSIONS }}
-
+          push: true
           no-cache: ${{ steps.apt.outputs.no_cache || github.event_name == 'workflow_dispatch' }}
           cache-from: type=registry,ref=${{ env.IMAGE }}
           cache-to: type=inline
-          push: true
-          tags: |
-            ${{ env.IMAGE }}
-            ${{ env.REGISTRY }}/davidpl1/mujoco_ros:master-ci-testing
-
-  ci-testing:
-    needs: ci
-    strategy:
-      fail-fast: false
-      matrix:
-        IMAGE: [noetic]
-    runs-on: ubuntu-latest
-    permissions:
-      packages: write
-      contents: read
-    env:
-      IMAGE: docker.io/davidpl1/mujoco_ros:${{ matrix.IMAGE }}-${{ github.job }}
-      REGISTRY: docker.io
-    steps:
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name != 'schedule' }}
-      - name: Login to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.DOCKERHUB_USER }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Check for apt updates
-        uses: rhaschke/docker-run-action@v4
-        continue-on-error: true
-        id: apt
-        with:
-          image: ${{ env.IMAGE }}
-          run: |
-            apt-get update
-            have_updates=$(apt-get --simulate upgrade | grep -q "^0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.$" && echo false || echo true)
-            echo "no_cache=$have_updates" >> "$GITHUB_OUTPUT"
-      - name: Build and Push
-        uses: docker/build-push-action@v5
-        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name != 'schedule' || steps.apt.outputs.no_cache }}
-        with:
-          file: .docker/${{ github.job }}/Dockerfile
-          build-args: IMAGE=${{ matrix.IMAGE }}
-          no-cache: ${{ steps.apt.outputs.no_cache || github.event_name == 'workflow_dispatch' }}
-          cache-from: type=registry,ref=${{ env.IMAGE }}
-          cache-to: type=inline
-          push: true
-          tags: |
-            ${{ env.IMAGE }}
-            ${{ env.REGISTRY }}/davidpl1/mujoco_ros:${{ matrix.IMAGE }}-ci-shadow-fixed
-
-  source:
-    needs: ci-testing
-    strategy:
-      fail-fast: false
-      matrix:
-        IMAGE: [noetic]
-    runs-on: ubuntu-latest
-    permissions:
-      packages: write
-      contents: read
-    env:
-      REGISTRY: docker.io
-      IMAGE: docker.io/davidpl1/mujoco_ros:${{ matrix.IMAGE }}-${{ github.job }}
-      ROS_DISTRO: noetic
-
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Login to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.DOCKERHUB_USER }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: "Remove .dockerignore"
-        run: rm .dockerignore # enforce full source context
-        continue-on-error: true
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: .docker/${{ github.job }}/Dockerfile
-          build-args: IMAGE=${{ matrix.IMAGE }}
-          cache-from: type=registry,ref=${{ env.IMAGE }}
-          cache-to: type=inline
-          push: true
-          tags: |
-            ${{ env.IMAGE }}
-            ${{ env.REGISTRY }}/davidpl1/mujoco_ros:master-ci-testing
+          tags: ${{ env.IMAGE }}
