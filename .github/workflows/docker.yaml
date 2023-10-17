@@ -6,8 +6,6 @@ on:
     - cron: "0 6 * * 6"
   workflow_dispatch:
   push:
-    branches:
-      - noetic-devel
 
 concurrency: # cancel any previous workflow(s) from the same PR or branch/tag
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
