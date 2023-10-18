@@ -23,6 +23,7 @@ RUN \
     apt-get -q install --no-install-recommends -y \
     curl git sudo python3-vcstool \
     # Build tools
+        $(test ${ROS_DISTRO} == "noetic" && echo "python3-catkin-tools" || echo "python3-colcon-common-extensions") \
         clang clang-format clang-tidy clang-tools \
         ccache && \
     #
