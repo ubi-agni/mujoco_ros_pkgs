@@ -26,6 +26,7 @@ jobs:
           # - IMAGE: noetic-ci
           #   MUJOCO_VERSION: 2.3.7
     env:
+      BUILDER: colcon
       DOCKER_RUN_OPTS: -e MUJOCO_DIR=/root/mujoco/${{ matrix.env.MUJOCO_VERSION }}
       # For now we have flags defined in the CMakeLists, using all flags makes the build break
       # I'll fix this once I find some time to do it
@@ -53,7 +54,6 @@ jobs:
       BEFORE_CLANG_TIDY_CHECKS: |
         # Show list of applied checks
         (cd $TARGET_REPO_PATH; clang-tidy --list-checks)
-      BUILDER: ${{ matrix.env.BUILDER || 'catkin_tools' }}
       CC: ${{ matrix.env.CLANG_TIDY && 'clang' }}
       CXX: ${{ matrix.env.CLANG_TIDY && 'clang++' }}
 
