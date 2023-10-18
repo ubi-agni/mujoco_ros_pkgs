@@ -161,8 +161,7 @@ bool MujocoEnv::setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_m
 	return true;
 }
 
-bool MujocoEnv::shutdownCB([[maybe_unused]] std_srvs::Empty::Request &req,
-                           [[maybe_unused]] std_srvs::Empty::Response &res)
+bool MujocoEnv::shutdownCB(std_srvs::Empty::Request & /*req*/, std_srvs::Empty::Response & /*res*/)
 {
 	ROS_DEBUG("Shutdown requested");
 	settings_.exit_request.store(1);
@@ -195,7 +194,7 @@ bool MujocoEnv::reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs:
 	return true;
 }
 
-bool MujocoEnv::resetCB([[maybe_unused]] std_srvs::Empty::Request &req, [[maybe_unused]] std_srvs::Empty::Response &res)
+bool MujocoEnv::resetCB(std_srvs::Empty::Request & /*req*/, std_srvs::Empty::Response & /*res*/)
 {
 	ROS_DEBUG("Reset requested");
 	settings_.reset_request.store(1);

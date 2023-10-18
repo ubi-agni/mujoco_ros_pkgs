@@ -49,13 +49,11 @@ public:
 	virtual ~TestPlugin() {}
 	virtual bool load(mjModelPtr m, mjDataPtr d) override;
 	virtual void reset() override;
-	virtual void controlCallback([[maybe_unused]] mjModelPtr model, [[maybe_unused]] mjDataPtr data) override;
-	virtual void passiveCallback([[maybe_unused]] mjModelPtr model, [[maybe_unused]] mjDataPtr data) override;
-	virtual void renderCallback([[maybe_unused]] mjModelPtr model, [[maybe_unused]] mjDataPtr data,
-	                            [[maybe_unused]] mjvScene *scene) override;
-	virtual void lastStageCallback([[maybe_unused]] mjModelPtr model, [[maybe_unused]] mjDataPtr data) override;
-	virtual void onGeomChanged([[maybe_unused]] mjModelPtr model, [[maybe_unused]] mjDataPtr data,
-	                           [[maybe_unused]] const int geom_id) override;
+	virtual void controlCallback(mjModelPtr model, mjDataPtr data) override;
+	virtual void passiveCallback(mjModelPtr model, mjDataPtr data) override;
+	virtual void renderCallback(mjModelPtr model, mjDataPtr data, mjvScene *scene) override;
+	virtual void lastStageCallback(mjModelPtr model, mjDataPtr data) override;
+	virtual void onGeomChanged(mjModelPtr model, mjDataPtr data, const int geom_id) override;
 
 	mjModelPtr m_;
 	mjDataPtr d_;
