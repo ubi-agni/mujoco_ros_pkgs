@@ -44,11 +44,6 @@ add_dependencies(mujoco_ros_plugin_test
   ${catkin_EXPORTED_TARGETS}
 )
 
-target_include_directories(mujoco_ros_plugin_test
-  PUBLIC
-  ${catkin_INCLUDE_DIRS}
-)
-
 target_link_libraries(mujoco_ros_plugin_test
   mujoco_ros
   mujoco_testplugin

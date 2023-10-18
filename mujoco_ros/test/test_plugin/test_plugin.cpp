@@ -82,27 +82,27 @@ void TestPlugin::reset()
 	ran_reset.store(true);
 }
 
-void TestPlugin::controlCallback(mjModelPtr model, mjDataPtr data)
+void TestPlugin::controlCallback(mjModelPtr /*model*/, mjDataPtr /*data*/)
 {
 	ran_control_cb.store(true);
 }
 
-void TestPlugin::passiveCallback(mjModelPtr model, mjDataPtr data)
+void TestPlugin::passiveCallback(mjModelPtr /*model*/, mjDataPtr /*data*/)
 {
 	ran_passive_cb.store(true);
 }
 
-void TestPlugin::renderCallback(mjModelPtr model, mjDataPtr data, mjvScene *scene)
+void TestPlugin::renderCallback(mjModelPtr /*model*/, mjDataPtr /*data*/, mjvScene * /*scene*/)
 {
 	ran_render_cb.store(true);
 }
 
-void TestPlugin::lastStageCallback(mjModelPtr model, mjDataPtr data)
+void TestPlugin::lastStageCallback(mjModelPtr /*model*/, mjDataPtr /*data*/)
 {
 	ran_last_cb.store(true);
 }
 
-void TestPlugin::onGeomChanged(mjModelPtr model, mjDataPtr data, const int geom_id)
+void TestPlugin::onGeomChanged(mjModelPtr /*model*/, mjDataPtr /*data*/, const /*int*/ geom_id)
 {
 	ran_on_geom_changed_cb.store(true);
 }
