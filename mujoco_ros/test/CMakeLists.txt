@@ -50,7 +50,6 @@ target_include_directories(mujoco_ros_plugin_test
 )
 
 target_link_libraries(mujoco_ros_plugin_test
-  GTest::gtest_main
   mujoco_ros
   mujoco_testplugin
   project_option
