@@ -1,7 +1,7 @@
 ARG ROS_DISTRO=noetic
 FROM ros:${ROS_DISTRO}-ros-base
 
-ARG MUJOCO_VERSIONS=[2.3.6]
+ARG MUJOCO_VERSIONS=2.3.6
 
 ENV TERM xterm
 ENV MUJOCO_DIR=/root/mujoco/2.3.6
