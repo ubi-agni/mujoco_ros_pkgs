@@ -7,17 +7,12 @@ set( CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined"
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
-    message("${PROJECT_NAME}: You did not request a specific build type: Choosing 'Release' for maximum performance")
-    set(CMAKE_BUILD_TYPE Release)
+if(NOT CMAKE_BUILD_TYPE)
+  message(STATUS "CMAKE_BUILD_TYPE not set. Defaulting to 'Release'.")
+  set(CMAKE_BUILD_TYPE Release)
 endif()
 
-set(CMAKE_CXX_FLAGS_SANITIZE "-O0 -fno-inline -fno-omit-frame-pointer -fno-optimize-sibling-calls")
-set(CMAKE_CXX_FLAGS_DEBUG "-O0 -fno-inline")
-
-if (CMAKE_BUILD_TYPE STREQUAL "Sanitize")
-  add_link_options(-fsanitize=address)
-endif()
+set(CMAKE_CXX_FLAGS_SANITIZE "-fsanitize=address -g -O1 -fno-inline -fno-omit-frame-pointer -fno-optimize-sibling-calls")
 
 find_package(catkin REQUIRED COMPONENTS
   roscpp

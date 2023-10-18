@@ -10,21 +10,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-if(NOT CMAKE_CONFIGURATION_TYPES)
-  if(NOT CMAKE_BUILD_TYPE)
-    message(STATUS "Setting build type to 'Release' as none was specified.")
-    set(CMAKE_BUILD_TYPE
-        "Release"
-        CACHE STRING "Choose the type of build, recommanded options are: Debug or Release" FORCE
-    )
-  endif()
-  set(BUILD_TYPES
-      "Debug"
-      "Release"
-      "MinSizeRel"
-      "RelWithDebInfo"
-  )
-  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS ${BUILD_TYPES})
+if(NOT CMAKE_BUILD_TYPE)
+  message(STATUS "CMAKE_BUILD_TYPE not set. Defaulting to 'Release'.")
+  set(CMAKE_BUILD_TYPE Release)
 endif()
 
 set(OpenGL_GL_PREFERENCE GLVND)
@@ -113,7 +101,9 @@ catkin_package(
   INCLUDE_DIRS
     include
   LIBRARIES
-    ${PROJECT_NAME} ${mujoco_LIBRARIES}
+    ${PROJECT_NAME}
+  DEPENDS
+    mujoco
 )
 
 add_subdirectory(src)
