@@ -73,7 +73,7 @@ jobs:
       # The target directory cache doesn't include the source directory because
       # that comes from the checkout.  See "prepare target_ws for cache" task below
       - name: Cache target workspace
-        if: "!matrix.env.CCOV"
+        if: matrix.env.CCOV != true
         uses: rhaschke/cache@main
         with:
           path: ${{ env.BASEDIR }}/target_ws
@@ -97,7 +97,8 @@ jobs:
       - id: ici
         name: Run industrial_ci
         uses: ros-industrial/industrial_ci@master
-        env: ${{ matrix.env }}
+        with:
+          config: ${{toJSON(matrix.env)}}
 
       - name: Upload test artifacts (on failure)
         uses: actions/upload-artifact@v3
