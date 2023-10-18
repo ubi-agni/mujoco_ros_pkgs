@@ -1,10 +1,12 @@
+ARG IMAGE_PREFIX=""
+ARG IMAGE_SUFFIX=""
 ARG ROS_DISTRO=noetic
-FROM ros:${ROS_DISTRO}-ros-base
-
 ARG MUJOCO_VERSIONS=2.3.6
 
+FROM ${IMAGE_PREFIX}ros:${ROS_DISTRO}-ros-base${IMAGE_SUFFIX}
+
 ENV TERM xterm
-ENV MUJOCO_DIR=/root/mujoco/2.3.6
+ENV MUJOCO_DIR=/root/mujoco/${MUJOCO_VERSIONS}
 
 # Setup temporary ROS workspace
 WORKDIR /root/ws_mujoco
@@ -19,9 +21,8 @@ RUN \
     #
     # Base dependencies
     apt-get -q install --no-install-recommends -y \
-        wget curl git sudo python3-wstool \
-        # Build tools
-        python3-catkin-tools \
+    curl git sudo python3-vcstool \
+    # Build tools
         clang clang-format clang-tidy clang-tools \
         ccache && \
     #
@@ -34,12 +35,12 @@ RUN \
     export LIBRARY_PATH=\$LIBRARY_PATH:\$MUJOCO_DIR/lib" >> ${HOME}/.bashrc && \
     #
     # Download upstream repo dependencies
-    wstool init --shallow src ./src/mujoco_ros_pkgs/.github/workflows/upstream.rosinstall && \
+    vcs import --shallow --input ./src/mujoco_ros_pkgs/.github/workflows/upstream.rosinstall src && \
     #
     # Download all dependencies
     rosdep update && \
     DEBIAN_FRONTEND=noninteractive \
-    rosdep install -y --from-paths src --ignore-src --rosdistro ${ROS_DISTRO} --as-root=apt:false && \
+    rosdep install -y --from-paths src --ignore-src --as-root=apt:false && \
     # Remove sources from the container
     rm -rf src && \
     #

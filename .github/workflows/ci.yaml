@@ -17,23 +17,26 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        env:
-          - IMAGE: noetic-ci
-            MUJOCO_VERSION: 2.3.6
-            CATKIN_LINT: true
-            CCOV: true
-          # Skip 2.3.7 compability tests for now
-          # - IMAGE: noetic-ci
-          #   MUJOCO_VERSION: 2.3.7
+        distro: [noetic, one]
+        mujoco: [2.3.6]
+        include:
+          - distro: noetic
+            mujoco: 2.3.6
+            env:
+              CLANG_TIDY: pedantic
+              CATKIN_LINT: true
+              CCOV: true
+
     env:
       BUILDER: colcon
-      DOCKER_RUN_OPTS: -e MUJOCO_DIR=/root/mujoco/${{ matrix.env.MUJOCO_VERSION }}
+      DOCKER_RUN_OPTS: -e MUJOCO_DIR=/root/mujoco/${{ matrix.mujoco }}
+      DOCKER_IMAGE: ubiagni/mujoco_ros:${{ matrix.distro }}-ci
+
       # For now we have flags defined in the CMakeLists, using all flags makes the build break
       # I'll fix this once I find some time to do it
       # CXXFLAGS: -Wall -Wextra -Wwrite-strings -Wunreachable-code -Wpointer-arith -Wredundant-decls
       CXXFLAGS: -Wwrite-strings -Wunreachable-code -Wpointer-arith -Wredundant-decls
       CLANG_TIDY_ARGS: --fix --fix-errors --format-style=file
-      DOCKER_IMAGE: ubiagni/mujoco_ros:${{ matrix.env.IMAGE }}
       UPSTREAM_WORKSPACE: .github/workflows/upstream.rosinstall
       # Pull any updates to the upstream workspace
       AFTER_SETUP_UPSTREAM_WORKSPACE: vcs pull $BASEDIR/upstream_ws/src
@@ -57,7 +60,7 @@ jobs:
       CC: ${{ matrix.env.CLANG_TIDY && 'clang' }}
       CXX: ${{ matrix.env.CLANG_TIDY && 'clang++' }}
 
-    name: "${{ matrix.env.IMAGE }} mj-${{ matrix.env.MUJOCO_VERSION }}${{ matrix.env.CATKIN_LINT && ' + catkin_lint' || ''}}${{ matrix.env.CCOV && ' + ccov' || ''}}${{ matrix.env.IKFAST_TEST && ' + ikfast' || ''}}${{ matrix.env.CLANG_TIDY && (github.event_name != 'workflow_dispatch' && ' + clang-tidy (delta)' || ' + clang-tidy (all)') || '' }}"
+    name: "${{ matrix.distro }} mj-${{ matrix.mujoco }}${{ matrix.env.CATKIN_LINT && ' + catkin_lint' || ''}}${{ matrix.env.CCOV && ' + ccov' || ''}}${{ matrix.env.CLANG_TIDY && (github.event_name != 'workflow_dispatch' && ' + clang-tidy (delta)' || ' + clang-tidy (all)') || '' }}"
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
@@ -69,7 +72,7 @@ jobs:
           restore-keys: ${{ env.CACHE_PREFIX }}
         env:
           GHA_CACHE_SAVE: always
-          CACHE_PREFIX: upstream_ws-${{ matrix.env.IMAGE }}-${{ hashFiles('.github/workflows/upstream.rosinstall', '.github/workflows/ci.yaml') }}
+          CACHE_PREFIX: upstream_ws-${{ matrix.distro }}-${{ hashFiles('.github/workflows/upstream.rosinstall', '.github/workflows/ci.yaml') }}
       # The target directory cache doesn't include the source directory because
       # that comes from the checkout.  See "prepare target_ws for cache" task below
       - name: Cache target workspace
@@ -81,7 +84,7 @@ jobs:
           restore-keys: ${{ env.CACHE_PREFIX }}
         env:
           GHA_CACHE_SAVE: always
-          CACHE_PREFIX: target_ws${{ matrix.env.CCOV && '-ccov' || '' }}-${{ matrix.env.IMAGE }}-${{ hashFiles('**/CMakeLists.txt', '**/package.xml', '.github/workflows/ci.yaml') }}
+          CACHE_PREFIX: target_ws${{ matrix.env.CCOV && '-ccov' || '' }}-${{ matrix.distro }}-${{ hashFiles('**/CMakeLists.txt', '**/package.xml', '.github/workflows/ci.yaml') }}
       - name: Cache ccache
         uses: rhaschke/cache@main
         with:
@@ -92,7 +95,7 @@ jobs:
             ${{ env.CACHE_PREFIX }}
         env:
           GHA_CACHE_SAVE: always
-          CACHE_PREFIX: ccache-${{ matrix.env.IMAGE }}${{ matrix.env.CCOV && '-ccov' || '' }}
+          CACHE_PREFIX: ccache-${{ matrix.distro }}${{ matrix.env.CCOV && '-ccov' || '' }}
 
       - id: ici
         name: Run industrial_ci
@@ -104,7 +107,7 @@ jobs:
         uses: actions/upload-artifact@v3
         if: failure() && (steps.ici.outputs.run_target_test || steps.ici.outputs.target_test_results)
         with:
-          name: test-results-${{ matrix.env.IMAGE }}
+          name: test-results-${{ matrix.distro }}
           path: ${{ env.BASEDIR }}/target_ws/**/test_results/**/*.xml
       - name: Generate codecov report
         uses: rhaschke/lcov-action@main
