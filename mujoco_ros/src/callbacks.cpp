@@ -81,7 +81,7 @@ void MujocoEnv::setupServices()
 	        }));
 
 	action_step_ = std::make_unique<actionlib::SimpleActionServer<mujoco_ros_msgs::StepAction>>(
-	    *nh_, "step", boost::bind(&MujocoEnv::onStepGoal, this, _1), false);
+	    *nh_, "step", boost::bind(&MujocoEnv::onStepGoal, this, boost::placeholders::_1), false);
 	action_step_->start();
 }
 
