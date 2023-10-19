@@ -1,20 +1,15 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.13)
 project(mujoco_ros_sensors)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-
-# Disable optimization to prevent false-positives with memory analisys tools (e.g. asan or valgrind)
-if (ENABLE_SANITIZER OR NO_OPTIM)
-  set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -O0 -fno-inline")
-  set(CMAKE_BUILD_TYPE "RelWithDebInfo")
+if(NOT CMAKE_BUILD_TYPE)
+  message(STATUS "CMAKE_BUILD_TYPE not set. Defaulting to 'Release'.")
+  set(CMAKE_BUILD_TYPE Release)
 endif()
 
-if (ENABLE_SANITIZER)
-  set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address")
-  add_link_options(-fsanitize=address)
-endif()
+set(CMAKE_CXX_FLAGS_SANITIZE "-fsanitize=address -g -O1 -fno-inline -fno-omit-frame-pointer -fno-optimize-sibling-calls")
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -51,10 +46,6 @@ include_directories(
 
 add_library(${PROJECT_NAME}
   src/mujoco_sensor_handler_plugin.cpp
-)
-target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC
-  include
-  ${catkin_INCLUDE_DIRS}
 )
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}

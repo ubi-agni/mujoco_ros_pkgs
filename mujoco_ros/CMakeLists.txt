@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
 project(mujoco_ros VERSION 0.7.0 LANGUAGES CXX)
 
+#catkin_lint: ignore uninstalled_plugin
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
@@ -8,21 +10,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-if(NOT CMAKE_CONFIGURATION_TYPES)
-  if(NOT CMAKE_BUILD_TYPE)
-    message(STATUS "Setting build type to 'Release' as none was specified.")
-    set(CMAKE_BUILD_TYPE
-        "Release"
-        CACHE STRING "Choose the type of build, recommanded options are: Debug or Release" FORCE
-    )
-  endif()
-  set(BUILD_TYPES
-      "Debug"
-      "Release"
-      "MinSizeRel"
-      "RelWithDebInfo"
-  )
-  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS ${BUILD_TYPES})
+if(NOT CMAKE_BUILD_TYPE)
+  message(STATUS "CMAKE_BUILD_TYPE not set. Defaulting to 'Release'.")
+  set(CMAKE_BUILD_TYPE Release)
 endif()
 
 set(OpenGL_GL_PREFERENCE GLVND)
@@ -34,7 +24,7 @@ include(ProjectOption)
 # Find catkin macros and libraries
 # if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 # is used, also find other catkin packages
-find_package(catkin REQUIRED
+find_package(catkin REQUIRED COMPONENTS
     roscpp
     pluginlib
     mujoco_ros_msgs
@@ -110,9 +100,10 @@ catkin_package(
     moveit_ros_planning_interface
   INCLUDE_DIRS
     include
-    ${mujoco_INCLUDE_DIRS}
   LIBRARIES
-    ${PROJECT_NAME} ${mujoco_LIBRARIES}
+    ${PROJECT_NAME}
+  DEPENDS
+    mujoco
 )
 
 add_subdirectory(src)
