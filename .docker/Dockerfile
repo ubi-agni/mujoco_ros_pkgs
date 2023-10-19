@@ -1,12 +1,11 @@
 ARG IMAGE_PREFIX=""
 ARG IMAGE_SUFFIX=""
 ARG ROS_DISTRO=noetic
-ARG MUJOCO_VERSIONS=2.3.6
-
 FROM ${IMAGE_PREFIX}ros:${ROS_DISTRO}-ros-base${IMAGE_SUFFIX}
 
+ARG MUJOCO_VERSIONS=2.3.6
+
 ENV TERM xterm
-ENV MUJOCO_DIR=/root/mujoco/${MUJOCO_VERSIONS}
 
 # Setup temporary ROS workspace
 WORKDIR /root/ws_mujoco
@@ -23,17 +22,12 @@ RUN \
     apt-get -q install --no-install-recommends -y \
     curl git sudo python3-vcstool \
     # Build tools
-        $(test ${ROS_DISTRO} == "noetic" && echo "python3-catkin-tools" || echo "python3-colcon-common-extensions") \
+        $(test "${ROS_DISTRO}" = "noetic" && echo "python3-catkin-tools" || echo "python3-colcon-common-extensions") \
         clang clang-format clang-tidy clang-tools \
         ccache && \
     #
-    # Install MuJoCo Versions
+    # Install MuJoCo versions
     MUJOCO_VERSIONS=${MUJOCO_VERSIONS} ./src/mujoco_ros_pkgs/.docker/mujoco_installer.sh && \
-    #
-    # Add paths to generic mujoco installs
-    echo "export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:\$MUJOCO_DIR/lib:/usr/lib/nvidia\n \
-    export CPATH=\$CPATH:\$MUJOCO_DIR/include\n \
-    export LIBRARY_PATH=\$LIBRARY_PATH:\$MUJOCO_DIR/lib" >> ${HOME}/.bashrc && \
     #
     # Download upstream repo dependencies
     vcs import --shallow --input ./src/mujoco_ros_pkgs/.github/workflows/upstream.rosinstall src && \
