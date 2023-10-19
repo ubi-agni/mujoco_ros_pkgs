@@ -40,7 +40,7 @@
 
 #include <pluginlib/class_list_macros.h>
 
-#include <boost/bind.hpp>
+#include <boost/bind/bind.hpp>
 #include <urdf/model.h>
 #include <chrono>
 #include <thread>
