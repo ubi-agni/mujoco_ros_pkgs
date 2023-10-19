@@ -59,6 +59,9 @@ jobs:
         (cd $TARGET_REPO_PATH; clang-tidy --list-checks)
       CC: ${{ matrix.env.CLANG_TIDY && 'clang' }}
       CXX: ${{ matrix.env.CLANG_TIDY && 'clang++' }}
+      CLANG_TIDY: ${{ matrix.env.CLANG_TIDY || 'false' }}
+      CATKIN_LINT: ${{ matrix.env.CATKIN_LINT || 'false' }}
+      CCOV: ${{ matrix.env.CCOV || 'false' }}
 
     name: "${{ matrix.distro }} mj-${{ matrix.mujoco }}${{ matrix.env.CATKIN_LINT && ' + catkin_lint' || ''}}${{ matrix.env.CCOV && ' + ccov' || ''}}${{ matrix.env.CLANG_TIDY && (github.event_name != 'workflow_dispatch' && ' + clang-tidy (delta)' || ' + clang-tidy (all)') || '' }}"
     runs-on: ubuntu-20.04
@@ -100,7 +103,6 @@ jobs:
       - id: ici
         name: Run industrial_ci
         uses: rhaschke/industrial_ci@ros-one
-        env: ${{ matrix.env }}
 
       - name: Upload test artifacts (on failure)
         uses: actions/upload-artifact@v3
