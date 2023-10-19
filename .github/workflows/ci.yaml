@@ -54,7 +54,7 @@ jobs:
       TARGET_CMAKE_ARGS: >
         -DCMAKE_BUILD_TYPE=${{ matrix.env.CCOV && 'Debug' || 'Release'}}
         -DCMAKE_CXX_FLAGS="-Werror $CXXFLAGS${{ matrix.env.CCOV && ' --coverage -O2 -fno-omit-frame-pointer'}}"
-      UPSTREAM_CMAKE_ARGS: "-DCMAKE_CXX_FLAGS=''"
+      UPSTREAM_CMAKE_ARGS: -DCMAKE_CXX_FLAGS= -DCMAKE_CXX_STANDARD=17
 
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       BASEDIR: ${{ github.workspace }}/.work
