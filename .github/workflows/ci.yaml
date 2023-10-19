@@ -23,9 +23,12 @@ jobs:
           - distro: noetic
             mujoco: 2.3.6
             env:
-              CLANG_TIDY: pedantic
               CATKIN_LINT: true
               CCOV: true
+          - distro: one
+            mujoco: 2.3.6
+            env:
+              CLANG_TIDY: pedantic
 
     env:
       BUILDER: colcon
