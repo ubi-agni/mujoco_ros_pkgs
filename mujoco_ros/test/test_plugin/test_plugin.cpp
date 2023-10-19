@@ -102,7 +102,7 @@ void TestPlugin::lastStageCallback(mjModelPtr /*model*/, mjDataPtr /*data*/)
 	ran_last_cb.store(true);
 }
 
-void TestPlugin::onGeomChanged(mjModelPtr /*model*/, mjDataPtr /*data*/, const /*int*/ geom_id)
+void TestPlugin::onGeomChanged(mjModelPtr /*model*/, mjDataPtr /*data*/, const int /*geom_id*/)
 {
 	ran_on_geom_changed_cb.store(true);
 }
