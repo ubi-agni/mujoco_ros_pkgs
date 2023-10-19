@@ -6,6 +6,12 @@ on:
     - cron: "0 6 * * 6"
   workflow_dispatch:
   push:
+    paths:
+      - '**/package.xml'
+      - .docker
+      - .dockignore
+      - .github/workflows/docker.yml
+      - .github/workflows/*.rosinstall
 
 concurrency: # cancel any previous workflow(s) from the same PR or branch/tag
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
