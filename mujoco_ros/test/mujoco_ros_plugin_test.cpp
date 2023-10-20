@@ -59,7 +59,7 @@ protected:
 	TestPlugin *test_plugin;
 	MujocoEnvTestWrapper *env_ptr;
 
-	virtual void SetUp()
+	void SetUp() override
 	{
 		nh.reset(new ros::NodeHandle("~"));
 		nh->setParam("unpause", false);
@@ -78,7 +78,7 @@ protected:
 		EXPECT_LT(seconds, 2) << "Env loading ran into 2 seconds timeout!";
 
 		auto plugins = env_ptr->getPlugins();
-		for (auto p : plugins) {
+		for (const auto &p : plugins) {
 			test_plugin = dynamic_cast<TestPlugin *>(p.get());
 			if (test_plugin != nullptr) {
 				break;
@@ -86,7 +86,7 @@ protected:
 		}
 	}
 
-	virtual void TearDown()
+	void TearDown() override
 	{
 		test_plugin = nullptr;
 		env_ptr->shutdown();
@@ -203,7 +203,7 @@ TEST_F(BaseEnvFixture, FailedLoad)
 		TestPlugin *test_plugin = nullptr;
 
 		auto plugins = env.getPlugins();
-		for (auto p : plugins) {
+		for (const auto &p : plugins) {
 			test_plugin = dynamic_cast<TestPlugin *>(p.get());
 			if (test_plugin != nullptr) {
 				break;
@@ -247,7 +247,7 @@ TEST_F(BaseEnvFixture, FailedLoadRecoverReload)
 		TestPlugin *test_plugin = nullptr;
 
 		auto plugins = env.getPlugins();
-		for (auto p : plugins) {
+		for (const auto &p : plugins) {
 			test_plugin = dynamic_cast<TestPlugin *>(p.get());
 			if (test_plugin != nullptr) {
 				break;
@@ -294,7 +294,7 @@ TEST_F(BaseEnvFixture, FailedLoadReset)
 		TestPlugin *test_plugin = nullptr;
 
 		auto plugins = env.getPlugins();
-		for (auto p : plugins) {
+		for (const auto &p : plugins) {
 			test_plugin = dynamic_cast<TestPlugin *>(p.get());
 			if (test_plugin != nullptr) {
 				break;

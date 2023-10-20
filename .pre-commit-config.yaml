@@ -15,7 +15,7 @@
 repos:
   # Standard hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.2.0
+    rev: v4.5.0
     hooks:
       # - id: check-added-large-files
       - id: check-case-conflict
@@ -28,7 +28,7 @@ repos:
       - id: trailing-whitespace
 
   - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
-    rev: v9.4.0
+    rev: v9.5.0
     hooks:
       - id: commitlint
         stages: [commit-msg]
@@ -39,7 +39,7 @@ repos:
       - id: clang-format
         name: clang-format
         description: Format files with ClangFormat.
-        entry: clang-format-10
+        entry: clang-format
         language: system
         files: \.(c|cc|cxx|cpp|frag|glsl|h|hpp|hxx|ih|ispc|ipp|java|m|proto|vert)$
         args: ["-fallback-style=none", "-i"]

@@ -47,9 +47,9 @@
 
 namespace mujoco_ros::control {
 
-MujocoRosControlPlugin::~MujocoRosControlPlugin() {}
+MujocoRosControlPlugin::~MujocoRosControlPlugin() = default;
 
-bool MujocoRosControlPlugin::load(mujoco_ros::mjModelPtr m, mujoco_ros::mjDataPtr d)
+bool MujocoRosControlPlugin::load(const mjModel *m, mjData *d)
 {
 	ROS_INFO_STREAM_NAMED("mujoco_ros_control", "Loading mujoco_ros_control plugin ...");
 
@@ -149,7 +149,7 @@ bool MujocoRosControlPlugin::load(mujoco_ros::mjModelPtr m, mujoco_ros::mjDataPt
 	return true;
 }
 
-void MujocoRosControlPlugin::controlCallback(mujoco_ros::mjModelPtr /*model*/, mujoco_ros::mjDataPtr data)
+void MujocoRosControlPlugin::controlCallback(const mjModel * /*model*/, mjData *data)
 {
 	ros::Time sim_time_ros = ros::Time::now();
 
@@ -194,7 +194,7 @@ void MujocoRosControlPlugin::controlCallback(mujoco_ros::mjModelPtr /*model*/, m
 
 void MujocoRosControlPlugin::reset() {}
 
-std::string MujocoRosControlPlugin::getURDF(std::string param_name) const
+std::string MujocoRosControlPlugin::getURDF(const std::string &param_name) const
 {
 	std::string urdf_string;
 

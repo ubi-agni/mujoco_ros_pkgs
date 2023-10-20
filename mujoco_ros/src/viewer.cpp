@@ -682,7 +682,7 @@ void MakeRenderingSection(mujoco_ros::Viewer *viewer, const mjModel *m, int olds
 		if (mjVISSTRING[i][2][0]) {
 			mju::sprintf_arr(defFlag[0].other, " %s", mjVISSTRING[i][2]);
 		} else {
-			mju::sprintf_arr(defFlag[0].other, "");
+			defFlag[0].other[0] = 0;
 		}
 		defFlag[0].pdata = viewer->opt.flags + i;
 		mjui_add(&viewer->ui0, defFlag);
@@ -699,7 +699,7 @@ void MakeRenderingSection(mujoco_ros::Viewer *viewer, const mjModel *m, int olds
 		if (mjRNDSTRING[i][2][0]) {
 			mju::sprintf_arr(defFlag[0].other, " %s", mjRNDSTRING[i][2]);
 		} else {
-			mju::sprintf_arr(defFlag[0].other, "");
+			defFlag[0].other[0] = 0;
 		}
 		defFlag[0].pdata = viewer->scn.flags + i;
 		mjui_add(&viewer->ui0, defFlag);
@@ -978,9 +978,9 @@ mjtNum Timer()
 // clear all times
 void ClearTimers(mjData *d)
 {
-	for (int i = 0; i < mjNTIMER; i++) {
-		d->timer[i].duration = 0;
-		d->timer[i].number   = 0;
+	for (auto &timer : d->timer) {
+		timer.duration = 0;
+		timer.number   = 0;
 	}
 }
 
@@ -1073,7 +1073,7 @@ int ComputeFontScale(const mujoco_ros::PlatformUIAdapter &platform_ui)
 // determine enable/disable item state given category
 int UiPredicate(int category, void *userdata)
 {
-	mujoco_ros::Viewer *viewer = static_cast<mujoco_ros::Viewer *>(userdata);
+	auto *viewer = static_cast<mujoco_ros::Viewer *>(userdata);
 
 	switch (category) {
 		case 2: // require model
@@ -1096,8 +1096,8 @@ int UiPredicate(int category, void *userdata)
 // set window layout
 void UiLayout(mjuiState *state)
 {
-	mujoco_ros::Viewer *viewer = static_cast<mujoco_ros::Viewer *>(state->userdata);
-	mjrRect *rect              = state->rect;
+	auto *viewer  = static_cast<mujoco_ros::Viewer *>(state->userdata);
+	mjrRect *rect = state->rect;
 
 	// set number of rectangles
 	state->nrect = 4;
@@ -1132,7 +1132,7 @@ void UiModify(mjUI *ui, mjuiState *state, mjrContext *con)
 // handle UI event
 void UiEvent(mjuiState *state)
 {
-	mujoco_ros::Viewer *viewer = static_cast<mujoco_ros::Viewer *>(state->userdata);
+	auto *viewer = static_cast<mujoco_ros::Viewer *>(state->userdata);
 
 	// call UI 0 if event is directed to it
 	if ((state->dragrect == viewer->ui0.rectid) || (state->dragrect == 0 && state->mouserect == viewer->ui0.rectid) ||
@@ -1331,7 +1331,7 @@ void UiEvent(mjuiState *state)
 		switch (state->key) {
 			case ' ': // Mode
 				if (viewer->fully_managed_ && viewer->m_) {
-					viewer->pending_.ui_update_run = 1;
+					viewer->pending_.ui_update_run = true;
 					viewer->pert.active            = 0;
 					mjui_update(-1, -1, &viewer->ui0, state, &viewer->platform_ui->mjr_context());
 				}
@@ -1873,8 +1873,8 @@ void Viewer::Sync()
 
 void Viewer::Load(mjModelPtr m, mjDataPtr d, const char *displayed_filename)
 {
-	this->mnew_ = m;
-	this->dnew_ = d;
+	this->mnew_ = std::move(m);
+	this->dnew_ = std::move(d);
 	mju::strcpy_arr(this->filename, displayed_filename);
 
 	{
@@ -1920,9 +1920,9 @@ void Viewer::LoadOnRenderThread()
 	jnt_range_.reserve(util::as_unsigned(this->mnew_->njnt));
 	for (int i = 0; i < this->mnew_->njnt; ++i) {
 		if (this->mnew_->jnt_limited[i]) {
-			jnt_range_.push_back(std::make_pair(this->mnew_->jnt_range[2 * i], this->mnew_->jnt_range[2 * i + 1]));
+			jnt_range_.emplace_back(std::make_pair(this->mnew_->jnt_range[2 * i], this->mnew_->jnt_range[2 * i + 1]));
 		} else {
-			jnt_range_.push_back(std::nullopt);
+			jnt_range_.emplace_back(std::nullopt);
 		}
 	}
 	jnt_range_.shrink_to_fit();
@@ -1943,10 +1943,10 @@ void Viewer::LoadOnRenderThread()
 	actuator_ctrlrange_.reserve(util::as_unsigned(this->mnew_->nu));
 	for (int i = 0; i < this->mnew_->nu; ++i) {
 		if (this->mnew_->actuator_ctrllimited[i]) {
-			actuator_ctrlrange_.push_back(
+			actuator_ctrlrange_.emplace_back(
 			    std::make_pair(this->mnew_->actuator_ctrlrange[2 * i], this->mnew_->actuator_ctrlrange[2 * i + 1]));
 		} else {
-			actuator_ctrlrange_.push_back(std::nullopt);
+			actuator_ctrlrange_.emplace_back(std::nullopt);
 		}
 	}
 	actuator_ctrlrange_.shrink_to_fit();
@@ -2075,12 +2075,13 @@ void Viewer::Render()
 		} else {
 			char intro_message[Viewer::kMaxFilenameLength];
 			mju::sprintf_arr(intro_message, "MuJoCo ROS version %s\nLoad model to visualize", mj_versionString());
-			mjr_overlay(mjFONT_NORMAL, mjGRID_TOPLEFT, rect, intro_message, 0, &this->platform_ui->mjr_context());
+			mjr_overlay(mjFONT_NORMAL, mjGRID_TOPLEFT, rect, intro_message, nullptr, &this->platform_ui->mjr_context());
 		}
 
 		// Show last loading error
 		if (this->load_error[0]) {
-			mjr_overlay(mjFONT_NORMAL, mjGRID_BOTTOMLEFT, rect, this->load_error, 0, &this->platform_ui->mjr_context());
+			mjr_overlay(mjFONT_NORMAL, mjGRID_BOTTOMLEFT, rect, this->load_error, nullptr,
+			            &this->platform_ui->mjr_context());
 		}
 
 		// render UIs
@@ -2155,7 +2156,7 @@ void Viewer::Render()
 
 	// Show last loading error
 	if (this->load_error[0]) {
-		mjr_overlay(mjFONT_NORMAL, mjGRID_BOTTOMLEFT, rect, this->load_error, 0, &this->platform_ui->mjr_context());
+		mjr_overlay(mjFONT_NORMAL, mjGRID_BOTTOMLEFT, rect, this->load_error, nullptr, &this->platform_ui->mjr_context());
 	}
 
 	// Make pause/loading label
@@ -2351,7 +2352,7 @@ void Viewer::RenderLoop()
 					scnstate_.data.warning[mjWARN_VGEOMFULL].number +=
 					    mjv_updateSceneFromState(&scnstate_, &this->opt, &this->pert, &this->cam, mjCAT_ALL, &this->scn);
 				}
-				this->env_->runRenderCbs(this->m_, this->d_, &this->scn);
+				this->env_->runRenderCbs(&this->scn);
 				env_->physics_thread_mutex_.unlock();
 			}
 		} // MutexLock (unblocks simulation thread)

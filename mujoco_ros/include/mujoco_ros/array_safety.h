@@ -30,8 +30,7 @@
 //
 // They do not perform runtime bound checks.
 
-namespace mujoco {
-namespace sample_util {
+namespace mujoco::sample_util {
 
 // returns sizeof(arr)
 // use instead of sizeof() to avoid unintended array-to-pointer decay
@@ -64,7 +63,7 @@ static inline std::size_t strlen_arr(const char (&str)[N])
 // like std::sprintf but will not write beyond the bound of dest
 // dest is guaranteed to be null-terminated
 template <std::size_t N>
-static inline int sprintf_arr(char (&dest)[N], const char *format, ...)
+__attribute__((__format__(__printf__, 2, 0))) static inline int sprintf_arr(char (&dest)[N], const char *format, ...)
 {
 	std::va_list vargs;
 	va_start(vargs, format);
@@ -105,7 +104,6 @@ static inline char *strcpy_arr(char (&dest)[N], const char *src)
 	return &dest[0];
 }
 
-} // namespace sample_util
-} // namespace mujoco
+} // namespace mujoco::sample_util
 
 #endif // MUJOCO_SAMPLE_ARRAY_SAFETY_H_

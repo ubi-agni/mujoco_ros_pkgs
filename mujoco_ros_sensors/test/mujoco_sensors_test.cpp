@@ -75,9 +75,9 @@ int main(int argc, char **argv)
 class MujocoEnvTestWrapper : public MujocoEnv
 {
 public:
-	MujocoEnvTestWrapper(std::string admin_hash = std::string()) : MujocoEnv(admin_hash) {}
-	mjModelPtr getModelPtr() { return model_; }
-	mjDataPtr getDataPtr() { return data_; }
+	MujocoEnvTestWrapper(const std::string &admin_hash = std::string()) : MujocoEnv(admin_hash) {}
+	mjModel *getModelPtr() { return model_.get(); }
+	mjData *getDataPtr() { return data_.get(); }
 	int getPendingSteps() { return num_steps_until_exit_; }
 
 	std::string getFilename() { return std::string(filename_); }
@@ -94,7 +94,7 @@ public:
 
 	const std::string &getHandleNamespace() { return nh_->getNamespace(); }
 
-	void startWithXML(const std::string xml_path)
+	void startWithXML(const std::string &xml_path)
 	{
 		mju::strcpy_arr(queued_filename_, xml_path.c_str());
 		settings_.load_request = 2;
@@ -108,10 +108,10 @@ class TrainEnvFixture : public ::testing::Test
 protected:
 	std::shared_ptr<ros::NodeHandle> nh;
 	MujocoEnvTestWrapper *env_ptr;
-	mjModelPtr m;
-	mjDataPtr d;
+	mjModel *m;
+	mjData *d;
 
-	virtual void SetUp()
+	void SetUp() override
 	{
 		nh.reset(new ros::NodeHandle("~"));
 		nh->setParam("eval_mode", false);
@@ -135,10 +135,8 @@ protected:
 		d = env_ptr->getDataPtr();
 	}
 
-	virtual void TearDown()
+	void TearDown() override
 	{
-		d.reset();
-		m.reset();
 		env_ptr->shutdown();
 		delete env_ptr;
 	}
@@ -149,10 +147,10 @@ class EvalEnvFixture : public ::testing::Test
 protected:
 	std::shared_ptr<ros::NodeHandle> nh;
 	MujocoEnvTestWrapper *env_ptr;
-	mjModelPtr m;
-	mjDataPtr d;
+	mjModel *m;
+	mjData *d;
 
-	virtual void SetUp()
+	void SetUp() override
 	{
 		nh.reset(new ros::NodeHandle("~"));
 		nh->setParam("eval_mode", true);
@@ -176,7 +174,7 @@ protected:
 		d = env_ptr->getDataPtr();
 	}
 
-	virtual void TearDown()
+	void TearDown() override
 	{
 		env_ptr->shutdown();
 		delete env_ptr;
@@ -196,13 +194,12 @@ TEST_F(TrainEnvFixture, SensorCreatedTrain)
 		found_val_top = false;
 
 		if (m->names[m->name_sensoradr[n]]) {
-			sensor_name = mj_id2name(m.get(), mjOBJ_SENSOR, n);
+			sensor_name = mj_id2name(m, mjOBJ_SENSOR, n);
 		} else {
 			continue;
 		}
 
-		for (ros::master::V_TopicInfo::iterator it = master_topics.begin(); it != master_topics.end(); it++) {
-			const ros::master::TopicInfo &info = *it;
+		for (const auto &info : master_topics) {
 			// ROS_INFO_STREAM("Found topic " << info.name);
 			if (info.name.find(sensor_name + "_GT") != std::string::npos) {
 				found_gt_top = true;
@@ -236,14 +233,12 @@ TEST_F(EvalEnvFixture, SensorCreatedEval)
 		found_val_top = false;
 
 		if (m->names[m->name_sensoradr[n]]) {
-			sensor_name = mj_id2name(m.get(), mjOBJ_SENSOR, n);
+			sensor_name = mj_id2name(m, mjOBJ_SENSOR, n);
 		} else {
 			continue;
 		}
 
-		for (ros::master::V_TopicInfo::iterator it = master_topics.begin(); it != master_topics.end(); it++) {
-			const ros::master::TopicInfo &info = *it;
-			// ROS_INFO_STREAM("Found topic " << info.name);
+		for (const auto &info : master_topics) {
 			if (info.name.find(sensor_name + "_GT") != std::string::npos) {
 				found_gt_top = true;
 				ROS_DEBUG_STREAM("Found GT topic for " << sensor_name << " at " << info.name);
@@ -257,13 +252,13 @@ TEST_F(EvalEnvFixture, SensorCreatedEval)
 	}
 }
 
-void getSensorByName(const std::string sensor_name, mujoco_ros::mjModelPtr m, int &n_sensor)
+void getSensorByName(const std::string &sensor_name, mjModel *m, int &n_sensor)
 {
 	std::string name;
 
 	for (int n = 0; n < m->nsensor; n++) {
 		if (m->names[m->name_sensoradr[n]]) {
-			name = mj_id2name(m.get(), mjOBJ_SENSOR, n);
+			name = mj_id2name(m, mjOBJ_SENSOR, n);
 		} else {
 			continue;
 		}

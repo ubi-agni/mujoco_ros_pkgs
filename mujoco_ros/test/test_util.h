@@ -50,11 +50,11 @@ void load_queued_model(MujocoEnv &env)
 	EXPECT_LT(seconds, 2) << "Model could not be loaded in time, ran into 2 second timeout!";
 }
 
-void compare_qpos(mjDataPtr d, int qpos_adr_int, std::string joint_name, const std::vector<double> &values,
+void compare_qpos(mjData *d, int qpos_adr_int, const std::string &joint_name, const std::vector<double> &values,
                   const std::vector<double> &tolerances = {})
 {
 	uint qpos_adr = static_cast<uint>(qpos_adr_int);
-	if (tolerances.size() == 0) {
+	if (tolerances.empty()) {
 		for (size_t i = 0; i < values.size(); i++) {
 			EXPECT_EQ(d->qpos[qpos_adr + i], values[i]) << "qpos of joint '" << joint_name << "' at index " << i << " is "
 			                                            << d->qpos[qpos_adr + i] << " instead of " << values[i] << "!";
@@ -68,11 +68,11 @@ void compare_qpos(mjDataPtr d, int qpos_adr_int, std::string joint_name, const s
 	}
 }
 
-void compare_qvel(mujoco_ros::mjDataPtr d, int dof_adr_int, std::string joint_name, const std::vector<double> &values,
+void compare_qvel(mjData *d, int dof_adr_int, const std::string &joint_name, const std::vector<double> &values,
                   const std::vector<double> &tolerances = {})
 {
 	uint dof_adr = static_cast<uint>(dof_adr_int);
-	if (tolerances.size() == 0) {
+	if (tolerances.empty()) {
 		for (size_t i = 0; i < values.size(); i++) {
 			EXPECT_EQ(d->qvel[dof_adr + i], values[i]) << "qvel of joint '" << joint_name << "' at index " << i << " is "
 			                                           << d->qvel[dof_adr + i] << " instead of " << values[i] << "!";

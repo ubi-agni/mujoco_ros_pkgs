@@ -40,7 +40,7 @@
 
 namespace mujoco_ros::plugin_utils {
 
-bool parsePlugins(const ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &plugin_config_rpc)
+bool parsePlugins(const ros::NodeHandle *nh, XmlRpc::XmlRpcValue &plugin_config_rpc)
 {
 	std::string param_path;
 	if (nh->searchParam(MUJOCO_PLUGIN_PARAM_NAME, param_path) ||
@@ -65,8 +65,8 @@ bool parsePlugins(const ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &plugin_confi
 	return true;
 }
 
-void registerPlugins(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config_rpc, std::vector<MujocoPluginPtr> &plugins,
-                     MujocoEnvPtr env)
+void registerPlugins(ros::NodeHandlePtr &nh, XmlRpc::XmlRpcValue &config_rpc, std::vector<MujocoPluginPtr> &plugins,
+                     MujocoEnv *env)
 {
 	for (int8_t i = 0; i < config_rpc.size(); i++) {
 		if (config_rpc[i].getType() != XmlRpc::XmlRpcValue::TypeStruct) {
@@ -83,7 +83,7 @@ void registerPlugins(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config_rpc, std
 }
 
 bool registerPlugin(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config, std::vector<MujocoPluginPtr> &plugins,
-                    MujocoEnvPtr env)
+                    MujocoEnv *env)
 {
 	ROS_ASSERT(config.getType() == XmlRpc::XmlRpcValue::TypeStruct);
 	std::string type;
@@ -99,7 +99,7 @@ bool registerPlugin(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config, std::vec
 
 	try {
 		MujocoPluginPtr mjplugin_ptr = plugin_loader_ptr_->createInstance(type);
-		mjplugin_ptr->init(config, nh, env);
+		mjplugin_ptr->init(config, std::move(nh), env);
 		plugins.push_back(mjplugin_ptr);
 		ROS_DEBUG_STREAM_NAMED("mujoco_ros_plugin_loader",
 		                       "Added " << type << " to the list of loaded plugins in namespace '" << nh->getNamespace()

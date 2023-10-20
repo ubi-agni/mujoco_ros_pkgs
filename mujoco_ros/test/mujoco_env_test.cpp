@@ -514,7 +514,7 @@ TEST_F(BaseEnvFixture, Reset)
 	EXPECT_TRUE(env.settings_.run) << "Model should keep running after reset!";
 
 	env.settings_.run = 0;
-	int id2           = mujoco_ros::util::jointName2id(env.getModelPtr().get(), "joint2");
+	int id2           = mujoco_ros::util::jointName2id(env.getModelPtr(), "joint2");
 	EXPECT_NE(id2, -1) << "joint2 should exist in model!";
 	env.getDataPtr()->qpos[env.getModelPtr()->jnt_qposadr[id2]] = 0.5;
 	env.getDataPtr()->qvel[env.getModelPtr()->jnt_dofadr[id2]]  = 0.1;

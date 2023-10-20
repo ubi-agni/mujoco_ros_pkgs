@@ -58,7 +58,7 @@ MujocoRosSensorsPlugin::~MujocoRosSensorsPlugin()
 	register_noise_model_server_.shutdown();
 }
 
-bool MujocoRosSensorsPlugin::load(mujoco_ros::mjModelPtr model, mujoco_ros::mjDataPtr data)
+bool MujocoRosSensorsPlugin::load(const mjModel *model, mjData *data)
 {
 	ROS_INFO_NAMED("sensors", "Loading sensors plugin ...");
 	if (env_ptr_->settings_.eval_mode) {
@@ -66,6 +66,42 @@ bool MujocoRosSensorsPlugin::load(mujoco_ros::mjModelPtr model, mujoco_ros::mjDa
 	} else {
 		ROS_WARN_NAMED("sensors", "Train mode is active, ground truth topics will be available!");
 	}
+
+	SENSOR_STRING[mjSENS_TOUCH]          = "touch";
+	SENSOR_STRING[mjSENS_ACCELEROMETER]  = "accelerometer";
+	SENSOR_STRING[mjSENS_VELOCIMETER]    = "velocimeter";
+	SENSOR_STRING[mjSENS_GYRO]           = "gyro";
+	SENSOR_STRING[mjSENS_FORCE]          = "force";
+	SENSOR_STRING[mjSENS_TORQUE]         = "torque";
+	SENSOR_STRING[mjSENS_MAGNETOMETER]   = "magnetometer";
+	SENSOR_STRING[mjSENS_RANGEFINDER]    = "rangefinder";
+	SENSOR_STRING[mjSENS_JOINTPOS]       = "jointpos";
+	SENSOR_STRING[mjSENS_JOINTVEL]       = "jointvel";
+	SENSOR_STRING[mjSENS_TENDONPOS]      = "tendonpos";
+	SENSOR_STRING[mjSENS_TENDONVEL]      = "tendonvel";
+	SENSOR_STRING[mjSENS_ACTUATORPOS]    = "actuatorpos";
+	SENSOR_STRING[mjSENS_ACTUATORVEL]    = "actuatorvel";
+	SENSOR_STRING[mjSENS_ACTUATORFRC]    = "actuatorfrc";
+	SENSOR_STRING[mjSENS_BALLQUAT]       = "ballquat";
+	SENSOR_STRING[mjSENS_BALLANGVEL]     = "ballangvel";
+	SENSOR_STRING[mjSENS_JOINTLIMITPOS]  = "jointlimitpos";
+	SENSOR_STRING[mjSENS_JOINTLIMITVEL]  = "jointlimitvel";
+	SENSOR_STRING[mjSENS_JOINTLIMITFRC]  = "jointlimitfrc";
+	SENSOR_STRING[mjSENS_TENDONLIMITPOS] = "tendonlimitpos";
+	SENSOR_STRING[mjSENS_TENDONLIMITVEL] = "tendonlimitvel";
+	SENSOR_STRING[mjSENS_TENDONLIMITFRC] = "tendonlimitfrc";
+	SENSOR_STRING[mjSENS_FRAMEPOS]       = "framepos";
+	SENSOR_STRING[mjSENS_FRAMEQUAT]      = "framequat";
+	SENSOR_STRING[mjSENS_FRAMEXAXIS]     = "framexaxis";
+	SENSOR_STRING[mjSENS_FRAMEYAXIS]     = "frameyaxis";
+	SENSOR_STRING[mjSENS_FRAMEZAXIS]     = "framezaxis";
+	SENSOR_STRING[mjSENS_FRAMELINVEL]    = "framelinvel";
+	SENSOR_STRING[mjSENS_FRAMEANGVEL]    = "frameangvel";
+	SENSOR_STRING[mjSENS_FRAMELINACC]    = "framelinacc";
+	SENSOR_STRING[mjSENS_FRAMEANGACC]    = "frameangacc";
+	SENSOR_STRING[mjSENS_SUBTREECOM]     = "subtreecom";
+	SENSOR_STRING[mjSENS_SUBTREELINVEL]  = "subtreelinvel";
+	SENSOR_STRING[mjSENS_SUBTREEANGMOM]  = "subtreeangmom";
 
 	std::string sensors_namespace;
 	if (rosparam_config_.hasMember("namespace")) {
@@ -137,7 +173,7 @@ bool MujocoRosSensorsPlugin::registerNoiseModelsCB(mujoco_ros_msgs::RegisterSens
 	return true;
 }
 
-void MujocoRosSensorsPlugin::lastStageCallback(mujoco_ros::mjModelPtr model, mujoco_ros::mjDataPtr data)
+void MujocoRosSensorsPlugin::lastStageCallback(const mjModel *model, mjData *data)
 {
 	std::string sensor_name;
 
@@ -153,7 +189,7 @@ void MujocoRosSensorsPlugin::lastStageCallback(mujoco_ros::mjModelPtr model, muj
 		noise_idx = 0;
 
 		if (model->names[model->name_sensoradr[n]]) {
-			sensor_name = mj_id2name(model.get(), mjOBJ_SENSOR, n);
+			sensor_name = mj_id2name(const_cast<mjModel *>(model), mjOBJ_SENSOR, n);
 		} else {
 			continue;
 		}
@@ -401,7 +437,7 @@ void MujocoRosSensorsPlugin::lastStageCallback(mujoco_ros::mjModelPtr model, muj
 	}
 }
 
-void MujocoRosSensorsPlugin::initSensors(mujoco_ros::mjModelPtr model, mujoco_ros::mjDataPtr data)
+void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 {
 	std::string sensor_name, site, frame_id;
 	for (int n = 0; n < model->nsensor; n++) {
@@ -410,10 +446,10 @@ void MujocoRosSensorsPlugin::initSensors(mujoco_ros::mjModelPtr model, mujoco_ro
 		int parent_id = model->site_bodyid[site_id];
 		int type      = model->sensor_type[n];
 
-		site = mj_id2name(model.get(), model->sensor_objtype[n], site_id);
+		site = mj_id2name(const_cast<mjModel *>(model), model->sensor_objtype[n], site_id);
 
 		if (model->names[model->name_sensoradr[n]]) {
-			sensor_name = mj_id2name(model.get(), mjOBJ_SENSOR, n);
+			sensor_name = mj_id2name(const_cast<mjModel *>(model), mjOBJ_SENSOR, n);
 		} else {
 			ROS_WARN_STREAM_NAMED("sensors",
 			                      "Sensor name resolution error. Skipping sensor of type " << type << " on site " << site);
@@ -439,7 +475,7 @@ void MujocoRosSensorsPlugin::initSensors(mujoco_ros::mjModelPtr model, mujoco_ro
 							refid   = model->site_bodyid[refid];
 							reftype = mjOBJ_BODY;
 						}
-						frame_id = mj_id2name(model.get(), reftype, refid);
+						frame_id = mj_id2name(const_cast<mjModel *>(model), reftype, refid);
 						ROS_DEBUG_STREAM_NAMED("sensors", "Sensor has relative frame with id " << refid << " and type "
 						                                                                       << reftype << " and ref_frame "
 						                                                                       << frame_id);
@@ -474,7 +510,7 @@ void MujocoRosSensorsPlugin::initSensors(mujoco_ros::mjModelPtr model, mujoco_ro
 								refid   = model->site_bodyid[refid];
 								reftype = mjOBJ_BODY;
 							}
-							frame_id = mj_id2name(model.get(), reftype, refid);
+							frame_id = mj_id2name(const_cast<mjModel *>(model), reftype, refid);
 							ROS_DEBUG_STREAM_NAMED("sensors", "Sensor has relative frame with id "
 							                                      << refid << " and type " << reftype << " and ref_frame "
 							                                      << frame_id);
@@ -510,7 +546,7 @@ void MujocoRosSensorsPlugin::initSensors(mujoco_ros::mjModelPtr model, mujoco_ro
 			continue;
 		}
 
-		frame_id = mj_id2name(model.get(), mjOBJ_BODY, parent_id);
+		frame_id = mj_id2name(const_cast<mjModel *>(model), mjOBJ_BODY, parent_id);
 		ROS_DEBUG_STREAM_NAMED("sensors", "Setting up sensor " << sensor_name << " on site " << site << " (frame_id: "
 		                                                       << frame_id << ") of type " << SENSOR_STRING[type]);
 

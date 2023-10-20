@@ -15,5 +15,5 @@ install(TARGETS mujoco_testplugin
 )
 install(FILES
   test_plugin.xml
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/test/test_plugin
 )

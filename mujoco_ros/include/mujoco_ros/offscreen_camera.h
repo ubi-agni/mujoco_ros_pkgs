@@ -36,7 +36,7 @@
 
 #pragma once
 
-#include <math.h>
+#include <cmath>
 
 #include <mujoco_ros/common_types.h>
 
@@ -48,16 +48,15 @@
 #include <tf2_ros/transform_listener.h>
 #include "tf2_geometry_msgs/tf2_geometry_msgs.h"
 
-namespace mujoco_ros {
-namespace rendering {
+namespace mujoco_ros::rendering {
 
 class OffscreenCamera
 {
 public:
-	OffscreenCamera(const uint8_t cam_id, const std::string cam_name, const int width, const int height,
+	OffscreenCamera(const uint8_t cam_id, const std::string &cam_name, const int width, const int height,
 	                const streamType stream_type, const bool use_segid, const float pub_freq,
-	                image_transport::ImageTransport *it, ros::NodeHandlePtr parent_nh,
-	                const mujoco_ros::mjModelPtr model, mujoco_ros::mjDataPtr data, mujoco_ros::MujocoEnv *env_ptr);
+	                image_transport::ImageTransport *it, ros::NodeHandle *parent_nh, const mjModel *model, mjData *data,
+	                mujoco_ros::MujocoEnv *env_ptr);
 
 	~OffscreenCamera()
 	{
@@ -108,5 +107,4 @@ private:
 	// void publishCameraInfo(ros::Time &last_update_time);
 };
 
-} // end namespace rendering
-} // namespace mujoco_ros
+} // end namespace mujoco_ros::rendering
