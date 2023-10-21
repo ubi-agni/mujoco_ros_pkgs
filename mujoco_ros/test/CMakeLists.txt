@@ -50,3 +50,8 @@ target_link_libraries(mujoco_ros_plugin_test
   project_option
   project_warning
 )
+
+install(FILES
+  empty_world.xml
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/test
+)
