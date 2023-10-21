@@ -6,7 +6,16 @@
        value="$(find mujoco_ros)/config/rosconsole.config"/>
 
   <param name="/use_sim_time" value="true"/>
-  <rosparam file="$(find mujoco_ros)/test/test_plugin/plugin_config.yaml" />
+
+  <rosparam>
+    MujocoPlugins:
+    - example_param: 0.0
+      nested_array_param_1:
+      - nested_array_param_2: true
+      nested_struct_param_1:
+        nested_struct_param_2: true
+      type: mujoco_ros/TestPlugin
+  </rosparam>
 
   <test test-name="mujoco_ros_plugin_test" pkg="mujoco_ros" type="mujoco_ros_plugin_test" time-limit="600.0"/>
 </launch>
