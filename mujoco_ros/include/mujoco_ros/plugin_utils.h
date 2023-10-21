@@ -195,7 +195,7 @@ bool registerPlugin(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config_rpc, std:
 void unloadPluginloader();
 void initPluginLoader();
 
-static std::unique_ptr<pluginlib::ClassLoader<MujocoPlugin>> plugin_loader_ptr_;
+static std::shared_ptr<pluginlib::ClassLoader<MujocoPlugin>> plugin_loader_ptr_;
 
 /**
  * @brief Defines under which path the plugin configuration is stored in the ros parameter server.

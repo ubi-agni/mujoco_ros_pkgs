@@ -299,7 +299,7 @@ void MujocoEnv::loadInitialJointStates()
 				num_axes = 1; // single axis value
 				break;
 			default:
-				break;
+				continue;
 		}
 
 		auto *axis_vals = new double[num_axes];
@@ -360,7 +360,7 @@ void MujocoEnv::loadInitialJointStates()
 				num_axes = 1; // single axis value
 				break;
 			default:
-				break;
+				continue;
 		}
 
 		auto *axis_vals = new double[num_axes];
@@ -857,7 +857,7 @@ bool MujocoEnv::initModelFromQueue()
 		ROS_ERROR_STREAM("Loading model from file failed: " << load_error_);
 		ROS_DEBUG("\tRolling back old model");
 
-		if (!is_file && filedata_backup[0]) {
+		if (!is_file && filecontent_size > 0) {
 			mj_deleteFileVFS(&vfs_, "model_string");
 			mj_makeEmptyFileVFS(&vfs_, "model_string", filecontent_size);
 			int file_idx = mj_findFileVFS(&vfs_, "model_string");

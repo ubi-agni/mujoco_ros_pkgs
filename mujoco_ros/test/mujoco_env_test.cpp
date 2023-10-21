@@ -401,9 +401,9 @@ TEST_F(BaseEnvFixture, StepsTerminate)
 		seconds += 0.001;
 	}
 
-	seconds     = 0;
-	int last    = env.getPendingSteps();
-	int current = last;
+	seconds = 0;
+	int current;
+	int last = env.getPendingSteps();
 	while (env.getPendingSteps() > 0) {
 		current = env.getPendingSteps();
 		if (current == last) { // wait for model to be loaded or timeout

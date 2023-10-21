@@ -117,7 +117,7 @@ bool registerPlugin(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config, std::vec
 void initPluginLoader()
 {
 	plugin_loader_ptr_ =
-	    std::make_unique<pluginlib::ClassLoader<mujoco_ros::MujocoPlugin>>("mujoco_ros", "mujoco_ros::MujocoPlugin");
+	    std::make_shared<pluginlib::ClassLoader<mujoco_ros::MujocoPlugin>>("mujoco_ros", "mujoco_ros::MujocoPlugin");
 }
 
 void unloadPluginloader()

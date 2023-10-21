@@ -105,7 +105,7 @@ bool MujocoRosSensorsPlugin::load(const mjModel *model, mjData *data)
 
 	std::string sensors_namespace;
 	if (rosparam_config_.hasMember("namespace")) {
-		sensors_namespace = (std::string)rosparam_config_["namespace"];
+		sensors_namespace = static_cast<std::string>(rosparam_config_["namespace"]);
 	}
 	sensors_nh_.reset(new ros::NodeHandle("/" + sensors_namespace));
 
@@ -223,9 +223,9 @@ void MujocoRosSensorsPlugin::lastStageCallback(const mjModel *model, mjData *dat
 
 					// No noise configured
 					if (config->is_set == 0) {
-						msg.vector.x = (float)(data->sensordata[adr] / cutoff);
-						msg.vector.y = (float)(data->sensordata[adr + 1] / cutoff);
-						msg.vector.z = (float)(data->sensordata[adr + 2] / cutoff);
+						msg.vector.x = static_cast<float>(data->sensordata[adr] / cutoff);
+						msg.vector.y = static_cast<float>(data->sensordata[adr + 1] / cutoff);
+						msg.vector.z = static_cast<float>(data->sensordata[adr + 2] / cutoff);
 
 						config->value_pub.publish(msg);
 
@@ -240,7 +240,7 @@ void MujocoRosSensorsPlugin::lastStageCallback(const mjModel *model, mjData *dat
 						} else {
 							noise = 0;
 						}
-						msg.vector.x = (float)(data->sensordata[adr] + noise / cutoff);
+						msg.vector.x = static_cast<float>(data->sensordata[adr] + noise / cutoff);
 
 						if (config->is_set & 0x02) {
 							// shift and scale standard normal to desired distribution
@@ -262,9 +262,9 @@ void MujocoRosSensorsPlugin::lastStageCallback(const mjModel *model, mjData *dat
 						config->value_pub.publish(msg);
 
 						if (!env_ptr_->settings_.eval_mode) {
-							msg.vector.x = (float)(data->sensordata[adr] / cutoff);
-							msg.vector.y = (float)(data->sensordata[adr + 1] / cutoff);
-							msg.vector.z = (float)(data->sensordata[adr + 2] / cutoff);
+							msg.vector.x = static_cast<float>(data->sensordata[adr] / cutoff);
+							msg.vector.y = static_cast<float>(data->sensordata[adr + 1] / cutoff);
+							msg.vector.z = static_cast<float>(data->sensordata[adr + 2] / cutoff);
 
 							config->gt_pub.publish(msg);
 						}
@@ -279,9 +279,9 @@ void MujocoRosSensorsPlugin::lastStageCallback(const mjModel *model, mjData *dat
 
 				// No noise configured
 				if (config->is_set == 0) {
-					msg.point.x = (float)(data->sensordata[adr] / cutoff);
-					msg.point.y = (float)(data->sensordata[adr + 1] / cutoff);
-					msg.point.z = (float)(data->sensordata[adr + 2] / cutoff);
+					msg.point.x = static_cast<float>(data->sensordata[adr] / cutoff);
+					msg.point.y = static_cast<float>(data->sensordata[adr + 1] / cutoff);
+					msg.point.z = static_cast<float>(data->sensordata[adr + 2] / cutoff);
 
 					config->value_pub.publish(msg);
 
@@ -296,7 +296,7 @@ void MujocoRosSensorsPlugin::lastStageCallback(const mjModel *model, mjData *dat
 					} else {
 						noise = 0;
 					}
-					msg.point.x = (float)(data->sensordata[adr] + noise / cutoff);
+					msg.point.x = static_cast<float>(data->sensordata[adr] + noise / cutoff);
 
 					if (config->is_set & 0x02) {
 						// shift and scale standard normal to desired distribution
@@ -305,7 +305,7 @@ void MujocoRosSensorsPlugin::lastStageCallback(const mjModel *model, mjData *dat
 					} else {
 						noise = 0;
 					}
-					msg.point.y = (float)(data->sensordata[adr + 1] + noise / cutoff);
+					msg.point.y = static_cast<float>(data->sensordata[adr + 1] + noise / cutoff);
 
 					if (config->is_set & 0x04) {
 						// shift and scale standard normal to desired distribution
@@ -313,14 +313,14 @@ void MujocoRosSensorsPlugin::lastStageCallback(const mjModel *model, mjData *dat
 					} else {
 						noise = 0;
 					}
-					msg.point.z = (float)(data->sensordata[adr + 2] + noise / cutoff);
+					msg.point.z = static_cast<float>(data->sensordata[adr + 2] + noise / cutoff);
 
 					config->value_pub.publish(msg);
 
 					if (!env_ptr_->settings_.eval_mode) {
-						msg.point.x = (float)(data->sensordata[adr] / cutoff);
-						msg.point.y = (float)(data->sensordata[adr + 1] / cutoff);
-						msg.point.z = (float)(data->sensordata[adr + 2] / cutoff);
+						msg.point.x = static_cast<float>(data->sensordata[adr] / cutoff);
+						msg.point.y = static_cast<float>(data->sensordata[adr + 1] / cutoff);
+						msg.point.z = static_cast<float>(data->sensordata[adr + 2] / cutoff);
 
 						config->gt_pub.publish(msg);
 					}
@@ -350,7 +350,7 @@ void MujocoRosSensorsPlugin::lastStageCallback(const mjModel *model, mjData *dat
 
 						// No noise configured
 						if (config->is_set == 0) {
-							msg.value = (float)(data->sensordata[adr] / cutoff);
+							msg.value = static_cast<float>(data->sensordata[adr] / cutoff);
 
 							config->value_pub.publish(msg);
 
@@ -360,12 +360,12 @@ void MujocoRosSensorsPlugin::lastStageCallback(const mjModel *model, mjData *dat
 						} else { // Noise set
 							// shift and scale standard normal to desired distribution
 							noise     = noise_dist(rand_generator) * config->sigma[0] + config->mean[0];
-							msg.value = (float)(data->sensordata[adr] + noise / cutoff);
+							msg.value = static_cast<float>(data->sensordata[adr] + noise / cutoff);
 
 							config->value_pub.publish(msg);
 
 							if (!env_ptr_->settings_.eval_mode) {
-								msg.value = (float)(data->sensordata[adr] / cutoff);
+								msg.value = static_cast<float>(data->sensordata[adr] / cutoff);
 
 								config->gt_pub.publish(msg);
 							}
@@ -380,10 +380,10 @@ void MujocoRosSensorsPlugin::lastStageCallback(const mjModel *model, mjData *dat
 					msg.header.frame_id = config->frame_id;
 					msg.header.stamp    = ros::Time::now();
 
-					msg.quaternion.w = (float)(data->sensordata[adr] / cutoff);
-					msg.quaternion.x = (float)(data->sensordata[adr + 1] / cutoff);
-					msg.quaternion.y = (float)(data->sensordata[adr + 2] / cutoff);
-					msg.quaternion.z = (float)(data->sensordata[adr + 3] / cutoff);
+					msg.quaternion.w = static_cast<float>(data->sensordata[adr] / cutoff);
+					msg.quaternion.x = static_cast<float>(data->sensordata[adr + 1] / cutoff);
+					msg.quaternion.y = static_cast<float>(data->sensordata[adr + 2] / cutoff);
+					msg.quaternion.z = static_cast<float>(data->sensordata[adr + 3] / cutoff);
 
 					if (!env_ptr_->settings_.eval_mode) {
 						config->gt_pub.publish(msg);
@@ -441,7 +441,6 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 {
 	std::string sensor_name, site, frame_id;
 	for (int n = 0; n < model->nsensor; n++) {
-		int adr       = model->sensor_adr[n];
 		int site_id   = model->sensor_objid[n];
 		int parent_id = model->site_bodyid[site_id];
 		int type      = model->sensor_type[n];

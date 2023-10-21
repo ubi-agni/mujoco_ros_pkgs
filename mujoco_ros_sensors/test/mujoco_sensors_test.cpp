@@ -221,14 +221,9 @@ TEST_F(EvalEnvFixture, SensorCreatedEval)
 
 	std::string sensor_name;
 
-	int adr, type;
-	mjtNum cutoff;
 	bool found_val_top, found_gt_top;
 
 	for (int n = 0; n < m->nsensor; n++) {
-		adr           = m->sensor_adr[n];
-		type          = m->sensor_type[n];
-		cutoff        = (m->sensor_cutoff[n] > 0 ? m->sensor_cutoff[n] : 1);
 		found_gt_top  = false;
 		found_val_top = false;
 
@@ -289,7 +284,6 @@ TEST_F(TrainEnvFixture, Sensor3DOF)
 	getSensorByName("vel_EE", m, n_sensor);
 
 	int adr    = m->sensor_adr[n_sensor];
-	int type   = m->sensor_type[n_sensor];
 	int cutoff = (m->sensor_cutoff[n_sensor] > 0 ? m->sensor_cutoff[n_sensor] : 1);
 
 	// Check if topics are published
@@ -403,7 +397,6 @@ TEST_F(TrainEnvFixture, Framepos)
 	getSensorByName("immovable_pos", m, n_sensor);
 
 	int adr    = m->sensor_adr[n_sensor];
-	int type   = m->sensor_type[n_sensor];
 	int cutoff = (m->sensor_cutoff[n_sensor] > 0 ? m->sensor_cutoff[n_sensor] : 1);
 
 	// Check if topics are published
@@ -518,7 +511,6 @@ TEST_F(TrainEnvFixture, scalar_stamped)
 	getSensorByName("vel_joint2", m, n_sensor);
 
 	int adr    = m->sensor_adr[n_sensor];
-	int type   = m->sensor_type[n_sensor];
 	int cutoff = (m->sensor_cutoff[n_sensor] > 0 ? m->sensor_cutoff[n_sensor] : 1);
 
 	// Check if topics are published
@@ -598,7 +590,6 @@ TEST_F(TrainEnvFixture, quaternion)
 	getSensorByName("immovable_quat", m, n_sensor);
 
 	int adr    = m->sensor_adr[n_sensor];
-	int type   = m->sensor_type[n_sensor];
 	int cutoff = (m->sensor_cutoff[n_sensor] > 0 ? m->sensor_cutoff[n_sensor] : 1);
 
 	// Check if topics are published
