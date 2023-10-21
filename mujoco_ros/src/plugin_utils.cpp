@@ -97,16 +97,17 @@ bool registerPlugin(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config, std::vec
 
 	ROS_DEBUG_STREAM_NAMED("mujoco_ros_plugin_loader", "Registering plugin of type " << type);
 
+	const std::string &ns = nh->getNamespace();
 	try {
 		MujocoPluginPtr mjplugin_ptr = plugin_loader_ptr_->createInstance(type);
 		mjplugin_ptr->init(config, std::move(nh), env);
 		plugins.push_back(mjplugin_ptr);
 		ROS_DEBUG_STREAM_NAMED("mujoco_ros_plugin_loader",
-		                       "Added " << type << " to the list of loaded plugins in namespace '" << nh->getNamespace()
+		                       "Added " << type << " to the list of loaded plugins in namespace '" << ns
 		                                << "'. List now contains " << plugins.size() << " plugin(s)");
 	} catch (const pluginlib::PluginlibException &ex) {
 		ROS_ERROR_STREAM_NAMED("mujoco_ros_plugin_loader",
-		                       "The plugin failed to load (for namespace " << nh->getNamespace() << " ): " << ex.what());
+		                       "The plugin failed to load (for namespace " << ns << " ): " << ex.what());
 		return false;
 	}
 
