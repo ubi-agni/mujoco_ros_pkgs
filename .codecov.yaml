@@ -10,6 +10,7 @@ coverage:
     patch: off
 
 # While UI is not being tested, ignore UI/rendering related files
+# lodepng is external and was tested beforehand (might include original unittests here at some point)
 ignore:
   - mujoco_ros/include/mujoco_ros/offscreen_camera.h
   - mujoco_ros/include/mujoco_ros/platform_ui_adapter.h
