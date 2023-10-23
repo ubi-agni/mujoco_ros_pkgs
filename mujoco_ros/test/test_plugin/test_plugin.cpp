@@ -66,7 +66,7 @@ bool TestPlugin::load(const mjModel *m, mjData *d)
 	}
 
 	bool tmp_fail = false;
-	node_handle_->param<bool>("should_fail", tmp_fail, false);
+	node_handle_.param<bool>("should_fail", tmp_fail, false);
 	should_fail.store(tmp_fail);
 	if (tmp_fail) {
 		return false;

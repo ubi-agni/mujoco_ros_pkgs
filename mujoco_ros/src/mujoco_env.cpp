@@ -422,7 +422,7 @@ void MujocoEnv::loadPlugins()
 
 	XmlRpc::XmlRpcValue plugin_config;
 	if (plugin_utils::parsePlugins(nh_.get(), plugin_config)) {
-		plugin_utils::registerPlugins(nh_, plugin_config, plugins_, this);
+		plugin_utils::registerPlugins(nh_->getNamespace(), plugin_config, plugins_, this);
 	}
 
 	for (const auto &plugin : plugins_) {

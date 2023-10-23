@@ -48,10 +48,10 @@ public:
 	virtual ~MujocoPlugin() { ROS_DEBUG_STREAM("Deleted plugin of type " << rosparam_config_["type"]); }
 
 	// Called directly after plugin creation
-	void init(const XmlRpc::XmlRpcValue &config, ros::NodeHandlePtr nh, MujocoEnvPtr env_ptr)
+	void init(const XmlRpc::XmlRpcValue &config, const std::string &nh_namespace, MujocoEnvPtr env_ptr)
 	{
 		rosparam_config_ = config;
-		node_handle_     = std::move(nh);
+		node_handle_     = ros::NodeHandle(nh_namespace);
 		env_ptr_         = env_ptr;
 		type_            = static_cast<std::string>(rosparam_config_["type"]);
 	};
@@ -156,7 +156,7 @@ private:
 protected:
 	MujocoPlugin() = default;
 	XmlRpc::XmlRpcValue rosparam_config_;
-	ros::NodeHandlePtr node_handle_;
+	ros::NodeHandle node_handle_;
 	MujocoEnvPtr env_ptr_;
 };
 
@@ -173,24 +173,24 @@ bool parsePlugins(const ros::NodeHandle *nh, XmlRpc::XmlRpcValue &plugin_config_
 /**
  * @brief Calls registerPlugin for each plugin defined in \c config_rpc.
  *
- * @param[in] nh pointer to nodehandle in correct namespace.
+ * @param[in] nh_namespace nodehandle namespace.
  * @param[in] config_rpc config of at least one plugin to load.
  * @param[inout] plugins vector of plugins. If successfully initialized, the plugins are appended to the vector.
  */
-void registerPlugins(ros::NodeHandlePtr &nh, XmlRpc::XmlRpcValue &config_rpc, std::vector<MujocoPluginPtr> &plugins,
-                     MujocoEnv *env);
+void registerPlugins(const std::string &nh_namespace, const XmlRpc::XmlRpcValue &config_rpc,
+                     std::vector<MujocoPluginPtr> &plugins, MujocoEnv *env);
 
 /**
  * @brief Loads a MujocoPlugin defined in \c config_rpc via pluginlib and registers it in the passed plugin vector for
  * further usage.
  *
- * @param[in] nh pointer to nodehandle in correct namespace.
+ * @param[in] nh_namespace nodehandle namespace.
  * @param[in] config_rpc config of the plugin to load.
  * @param[inout] plugins vector of plugins. If successfully initialized, the plugin is appended to the vector.
  * @return true if initializing the plugin was successful, false otherwise.
  */
-bool registerPlugin(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config_rpc, std::vector<MujocoPluginPtr> &plugins,
-                    MujocoEnv *env);
+bool registerPlugin(const std::string &nh_namespace, const XmlRpc::XmlRpcValue &config_rpc,
+                    std::vector<MujocoPluginPtr> &plugins, MujocoEnv *env);
 
 void unloadPluginloader();
 void initPluginLoader();
