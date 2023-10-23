@@ -3,18 +3,26 @@
 
 ### Added
 * Manual steps now run as fast as possbile. I.e., if a viewer is connected, stepping is interrupted to render the UI at 30Hz. (This now also applies to running with unbound real-time, which previously was interrupted at 30Hz regardless if any viewer was connected).
-* Added GitHub Actions for building docker images, CI, and formatting based on MoveIt's configuration.
+* Added GitHub Actions for building docker images, CI, and formatting based on MoveIt's configuration (#30).
 
 ### Fixed
 * re-added setting realtime settings via ros param or in the mujoco model xml.
 * Add missing install of mujoco_ros's `config` and `assets` directories (#28).
 * Added missing example config for `mujoco_ros_sensors`.
+* Fixed catkin lint errors (#31).
+* Resolved clang-tidy warnings.
 
 ### Changed
 * Reduced sensor noise std in tests to reduce wrongful fails due to too stochasticity.
 * Updated toplevel README to be more informative.
+* mujoco_ros_control & mujoco_ros_sensors have a Sanitize build type (#31).
 
-Contributors: @DavidPL1, @LeroyR
+> [!IMPORTANT]
+> #### Breaking Changes
+> * `MujocoPlugin::node_ptr_` now is a NodeHandle instead of a NodeHandlePtr.
+> * MujocoPlugin callbacks now use raw pointers to mjModel and mjData instead of shared pointers in their callbacks (mjModel is even const, thus calls to functions like `mj_id2name` that expect a non-const mjModel pointer need a `const_cast<mjModel *>` to not throw compile errors).
+
+Contributors: @DavidPL1, @LeroyR, @rhaschke
 
 <a name="0.7.0"></a>
 ## [0.7.0] - 2023-08-15
