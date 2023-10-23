@@ -11,10 +11,10 @@ This project is mainly built for Ubuntu Focal with ROS Noetic. But we are workin
 
 ### Continuous Integration
 
-service    | Noetic  | One (coming soon) | Humble (coming soon)
----------- | :-----: |:---:| :----:
-GitHub | [![Format](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/format.yaml/badge.svg?branch=noetic-devel)](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/format.yaml?query=branch%3Anoetic-devel) [![CI](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/ci.yaml/badge.svg?branch=noetic-devel)](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/ci.yaml?query=branch%3Anoetic-devel) | - | - |
-CodeCov | [![codecov](https://codecov.io/gh/ubi-agni/mujoco_ros_pkgs/branch/noetic-devel/graph/badge.svg?token=W7uHKcY0ly)](https://codecov.io/gh/ubi-agni/mujoco_ros_pkgs) | - | - |
+service    | Noetic / One | Humble (coming soon)
+---------- | :-----: | :----:
+GitHub | [![Format](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/format.yaml/badge.svg?branch=noetic-devel)](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/format.yaml?query=branch%3Anoetic-devel) [![CI](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/ci.yaml/badge.svg?branch=noetic-devel)](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/ci.yaml?query=branch%3Anoetic-devel) | - |
+CodeCov | [![codecov](https://codecov.io/gh/ubi-agni/mujoco_ros_pkgs/branch/noetic-devel/graph/badge.svg?token=W7uHKcY0ly)](https://codecov.io/gh/ubi-agni/mujoco_ros_pkgs) | - |
 
 
 # Build Instructions
@@ -28,7 +28,7 @@ export LIBRARY_PATH=$LIBRARY_PATH:$MUJOCO_DIR/lib
 ```
 where `PATH/TO/MUJOCO/DIR` is `~/.mujoco/mujoco-2.3.6` if you used the recommended location to install mujoco (if downloaded as tarball). If you built MuJoCo from source and the install path is known to catkin, you can skip this step.
 
-4. Build with `catkin_build` or `catkin b`.
+4. Build with `catkin_build`, `catkin b` or `colcon build`.
 5. Source your workspace and try `roslaunch mujoco_ros launch_server.launch use_sim_time:=true` to test if it runs.
 
 > **Warning**

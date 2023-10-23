@@ -1,5 +1,5 @@
-<a name="Unreleased"></a>
-## [Unreleased]
+<a name="0.8.0"></a>
+## [0.8.0] - 2023-10-23
 
 ### Added
 * Manual steps now run as fast as possbile. I.e., if a viewer is connected, stepping is interrupted to render the UI at 30Hz. (This now also applies to running with unbound real-time, which previously was interrupted at 30Hz regardless if any viewer was connected).
@@ -230,7 +230,7 @@ Contributors: @DavidPL1, @balandbal
 
 Contributors: @DavidPL1
 
-[Unreleased]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.7.0...HEAD
+[0.8.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.5.0...0.6.0
 [0.5.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.4.0...0.5.0
