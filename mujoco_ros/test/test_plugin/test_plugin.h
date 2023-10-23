@@ -45,18 +45,20 @@ namespace mujoco_ros {
 class TestPlugin : public MujocoPlugin
 {
 public:
-	TestPlugin() {}
-	virtual ~TestPlugin() {}
-	virtual bool load(mjModelPtr m, mjDataPtr d) override;
-	virtual void reset() override;
-	virtual void controlCallback(mjModelPtr model, mjDataPtr data) override;
-	virtual void passiveCallback(mjModelPtr model, mjDataPtr data) override;
-	virtual void renderCallback(mjModelPtr model, mjDataPtr data, mjvScene *scene) override;
-	virtual void lastStageCallback(mjModelPtr model, mjDataPtr data) override;
-	virtual void onGeomChanged(mjModelPtr model, mjDataPtr data, const int geom_id) override;
+	TestPlugin()           = default;
+	~TestPlugin() override = default;
+	bool load(const mjModel *m, mjData *d) override;
+	void reset() override;
+	void controlCallback(const mjModel *model, mjData *data) override;
+	void passiveCallback(const mjModel *model, mjData *data) override;
+	void renderCallback(const mjModel *model, mjData *data, mjvScene *scene) override;
+	void lastStageCallback(const mjModel *model, mjData *data) override;
+	void onGeomChanged(const mjModel *model, mjData *data, const int geom_id) override;
 
-	mjModelPtr m_;
-	mjDataPtr d_;
+	// The env_ptr_ (shared_ptr) in the parent class ensures mjModel and mjData are not destroyed
+	const mjModel *m_;
+	mjData *d_;
+
 	std::atomic_int ran_reset              = { false };
 	std::atomic_int ran_control_cb         = { false };
 	std::atomic_int ran_passive_cb         = { false };

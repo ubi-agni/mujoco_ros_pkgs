@@ -55,7 +55,7 @@ endfunction ()
 
 function (_get_clang_warnings WARNING)
   _get_gcc_clang_common_warnings(COMMON_WARNING)
-  set(${WARNING} ${COMMON_WARNING} -Wimplicit-fallthrough=5 PARENT_SCOPE)
+  set(${WARNING} ${COMMON_WARNING} PARENT_SCOPE)
 endfunction ()
 
 function (_get_gcc_warnings WARNING)

@@ -45,9 +45,13 @@ add_dependencies(mujoco_ros_plugin_test
 )
 
 target_link_libraries(mujoco_ros_plugin_test
-  GTest::gtest_main
   mujoco_ros
   mujoco_testplugin
   project_option
   project_warning
+)
+
+install(FILES
+  empty_world.xml
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/test
 )

@@ -42,7 +42,7 @@
 #include <mujoco/mujoco.h>
 
 #include <boost/program_options.hpp>
-#include <signal.h>
+#include <csignal>
 #include <thread>
 
 namespace {
@@ -54,11 +54,6 @@ void sigint_handler(int /*sig*/)
 
 namespace po  = boost::program_options;
 namespace mju = ::mujoco::sample_util;
-
-// constants
-const double syncMisalign       = 0.1; // maximum mis-alignment before re-sync (simulation seconds)
-const double simRefreshFraction = 0.7; // fraction of refresh available for simulation
-const int kErrorLength          = 1024; // load error string length
 
 using Seconds = std::chrono::duration<double>;
 

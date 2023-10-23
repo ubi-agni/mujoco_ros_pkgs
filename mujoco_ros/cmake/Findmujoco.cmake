@@ -32,7 +32,7 @@ if(NOT mujoco_FOUND)
 			INTERFACE_INCLUDE_DIRECTORIES "${mujoco_INCLUDE_DIRS}"
 		)
 	else()
-		message(FATAL_ERROR "Failed to find mujoco")
+		message(FATAL_ERROR "Failed to find mujoco (MUJOCO_DIR=${MUJOCO_DIR})")
 	endif()
 
 	if(mujoco_FIND_VERSION)

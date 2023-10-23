@@ -61,21 +61,21 @@ namespace mujoco_ros::control {
 class MujocoRosControlPlugin : public mujoco_ros::MujocoPlugin
 {
 public:
-	virtual ~MujocoRosControlPlugin();
+	~MujocoRosControlPlugin() override;
 
 	// Overload entry point
-	virtual bool load(mujoco_ros::mjModelPtr m, mujoco_ros::mjDataPtr d);
+	bool load(const mjModel *m, mjData *d) override;
 
 	// Called on reset
-	virtual void reset();
+	void reset() override;
 
 	// Get URDF from parameter server
-	std::string getURDF(std::string param_name) const;
+	std::string getURDF(const std::string &param_name) const;
 
 	// Get transmissions from URDF
 	bool parseTransmissionsFromURDF(const std::string &urdf_string);
 
-	void controlCallback(mujoco_ros::mjModelPtr model, mujoco_ros::mjDataPtr data);
+	void controlCallback(const mjModel *model, mjData *data) override;
 
 protected:
 	void eStopCB(const std_msgs::BoolConstPtr &e_stop_active);
@@ -91,10 +91,6 @@ protected:
 
 	std::string robot_hw_sim_type_str_;
 	boost::shared_ptr<mujoco_ros::control::RobotHWSim> robot_hw_sim_;
-
-	// Mujoco model and data pointers
-	mujoco_ros::mjModelPtr m_;
-	mujoco_ros::mjDataPtr d_;
 
 	// Controller manager
 	boost::shared_ptr<controller_manager::ControllerManager> controller_manager_;

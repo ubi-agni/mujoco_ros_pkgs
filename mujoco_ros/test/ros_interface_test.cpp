@@ -262,8 +262,8 @@ TEST_F(PendulumEnvFixture, StepGoal)
 
 TEST_F(PendulumEnvFixture, DefaultInitialJointStates)
 {
-	mjModelPtr m = env_ptr->getModelPtr();
-	mjDataPtr d  = env_ptr->getDataPtr();
+	mjModel *m = env_ptr->getModelPtr();
+	mjData *d  = env_ptr->getDataPtr();
 
 	std::map<std::string, std::string> pos_map, vel_map;
 	nh->getParam("initial_joint_positions/joint_map", pos_map);
@@ -277,10 +277,10 @@ TEST_F(PendulumEnvFixture, DefaultInitialJointStates)
 	EXPECT_NEAR(d->time, 0.0, 1e-6) << "Simulation time should be 0.0!";
 
 	int id_balljoint, id1, id2, id_free;
-	id_balljoint = mujoco_ros::util::jointName2id(m.get(), "balljoint");
-	id1          = mujoco_ros::util::jointName2id(m.get(), "joint1");
-	id2          = mujoco_ros::util::jointName2id(m.get(), "joint2");
-	id_free      = mujoco_ros::util::jointName2id(m.get(), "ball_freejoint");
+	id_balljoint = mujoco_ros::util::jointName2id(m, "balljoint");
+	id1          = mujoco_ros::util::jointName2id(m, "joint1");
+	id2          = mujoco_ros::util::jointName2id(m, "joint2");
+	id_free      = mujoco_ros::util::jointName2id(m, "ball_freejoint");
 
 	EXPECT_NE(id_balljoint, -1) << "'balljoint' should be found as joint in model!";
 	EXPECT_NE(id1, -1) << "'joint1' should be found as joint in model!";
@@ -324,15 +324,15 @@ TEST_F(BaseEnvFixture, CustomInitialJointStates)
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 
-	mjDataPtr d  = env.getDataPtr();
-	mjModelPtr m = env.getModelPtr();
+	mjData *d  = env.getDataPtr();
+	mjModel *m = env.getModelPtr();
 
 	int id_balljoint, id1, id2, id_free;
 
-	id_balljoint = mujoco_ros::util::jointName2id(m.get(), "balljoint");
-	id1          = mujoco_ros::util::jointName2id(m.get(), "joint1");
-	id2          = mujoco_ros::util::jointName2id(m.get(), "joint2");
-	id_free      = mujoco_ros::util::jointName2id(m.get(), "ball_freejoint");
+	id_balljoint = mujoco_ros::util::jointName2id(m, "balljoint");
+	id1          = mujoco_ros::util::jointName2id(m, "joint1");
+	id2          = mujoco_ros::util::jointName2id(m, "joint2");
+	id_free      = mujoco_ros::util::jointName2id(m, "ball_freejoint");
 
 	EXPECT_NE(id_balljoint, -1) << "'balljoint' should be found as joint in model!";
 	EXPECT_NE(id1, -1) << "'joint1' should be found as joint in model!";
@@ -370,15 +370,15 @@ TEST_F(PendulumEnvFixture, CustomInitialJointStatesOnReset)
 	vel_map.insert({ "joint2", "1.05" });
 	vel_map.insert({ "ball_freejoint", "1.0 2.0 3.0 10 20 30" });
 
-	mjDataPtr d  = env_ptr->getDataPtr();
-	mjModelPtr m = env_ptr->getModelPtr();
+	mjData *d  = env_ptr->getDataPtr();
+	mjModel *m = env_ptr->getModelPtr();
 
 	int id_balljoint, id1, id2, id_free;
 
-	id_balljoint = mujoco_ros::util::jointName2id(m.get(), "balljoint");
-	id1          = mujoco_ros::util::jointName2id(m.get(), "joint1");
-	id2          = mujoco_ros::util::jointName2id(m.get(), "joint2");
-	id_free      = mujoco_ros::util::jointName2id(m.get(), "ball_freejoint");
+	id_balljoint = mujoco_ros::util::jointName2id(m, "balljoint");
+	id1          = mujoco_ros::util::jointName2id(m, "joint1");
+	id2          = mujoco_ros::util::jointName2id(m, "joint2");
+	id_free      = mujoco_ros::util::jointName2id(m, "ball_freejoint");
 
 	EXPECT_NE(id_balljoint, -1) << "'balljoint' should be found as joint in model!";
 	EXPECT_NE(id1, -1) << "'joint1' should be found as joint in model!";
@@ -432,10 +432,10 @@ TEST_F(PendulumEnvFixture, SetBodyStateCallback)
 
 	int id_free;
 
-	mjModelPtr m = env_ptr->getModelPtr();
-	mjDataPtr d  = env_ptr->getDataPtr();
+	mjModel *m = env_ptr->getModelPtr();
+	mjData *d  = env_ptr->getDataPtr();
 
-	id_free = mujoco_ros::util::jointName2id(m.get(), "ball_freejoint");
+	id_free = mujoco_ros::util::jointName2id(m, "ball_freejoint");
 
 	mujoco_ros_msgs::SetBodyState srv;
 
@@ -519,13 +519,13 @@ TEST_F(PendulumEnvFixture, SetBodyStateCallback)
 	srv.request.set_twist  = false;
 	srv.request.set_mass   = true;
 	srv.request.state.mass = 0.299f;
-	EXPECT_NE(m->body_mass[mj_name2id(m.get(), mjOBJ_BODY, "body_ball")], srv.request.state.mass)
+	EXPECT_NE(m->body_mass[mj_name2id(m, mjOBJ_BODY, "body_ball")], srv.request.state.mass)
 	    << "Mass already has the requested value!"; // Check that mass is different beforehand
 	EXPECT_TRUE(ros::service::call(env_ptr->getHandleNamespace() + "/set_body_state", srv))
 	    << "set body state service call failed!";
 	EXPECT_TRUE(srv.response.success);
 
-	EXPECT_EQ(m->body_mass[mj_name2id(m.get(), mjOBJ_BODY, "body_ball")], srv.request.state.mass)
+	EXPECT_EQ(m->body_mass[mj_name2id(m, mjOBJ_BODY, "body_ball")], srv.request.state.mass)
 	    << "Mass did not change to the requested value";
 	// reset
 	srv.request.set_mass   = false;
@@ -595,11 +595,10 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesCallback)
 	EXPECT_TRUE(ros::service::exists(env_ptr->getHandleNamespace() + "/set_geom_properties", true))
 	    << "Set geom properties service should be available!";
 
-	mjModelPtr m = env_ptr->getModelPtr();
-	mjDataPtr d  = env_ptr->getDataPtr();
+	mjModel *m = env_ptr->getModelPtr();
 
-	int ball_geom_id = mj_name2id(m.get(), mjOBJ_GEOM, "ball");
-	int ball_body_id = mj_name2id(m.get(), mjOBJ_BODY, "body_ball");
+	int ball_geom_id = mj_name2id(m, mjOBJ_GEOM, "ball");
+	int ball_body_id = mj_name2id(m, mjOBJ_BODY, "body_ball");
 
 	EXPECT_NE(ball_geom_id, -1) << "'ball' should be found as geom in model!";
 	EXPECT_NE(ball_body_id, -1) << "'body_ball' should be found as body in model!";

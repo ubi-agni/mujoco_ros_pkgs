@@ -125,28 +125,28 @@ void MujocoEnv::onStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal)
 void MujocoEnv::runControlCbs()
 {
 	for (const auto &plugin : this->cb_ready_plugins_) {
-		plugin->controlCallback(this->model_, this->data_);
+		plugin->controlCallback(this->model_.get(), this->data_.get());
 	}
 }
 
 void MujocoEnv::runPassiveCbs()
 {
 	for (const auto &plugin : this->cb_ready_plugins_) {
-		plugin->passiveCallback(this->model_, this->data_);
+		plugin->passiveCallback(this->model_.get(), this->data_.get());
 	}
 }
 
-void MujocoEnv::runRenderCbs(mjModelPtr model, mjDataPtr data, mjvScene *scene)
+void MujocoEnv::runRenderCbs(mjvScene *scene)
 {
 	for (const auto &plugin : this->cb_ready_plugins_) {
-		plugin->renderCallback(model, data, scene);
+		plugin->renderCallback(this->model_.get(), this->data_.get(), scene);
 	}
 }
 
 void MujocoEnv::runLastStageCbs()
 {
 	for (const auto &plugin : this->cb_ready_plugins_) {
-		plugin->lastStageCallback(this->model_, this->data_);
+		plugin->lastStageCallback(this->model_.get(), this->data_.get());
 	}
 }
 
@@ -287,7 +287,7 @@ bool MujocoEnv::setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req,
 			// Set freejoint position and quaternion
 			if (req.set_pose && !req.reset_qpos) {
 				bool valid_pose = true;
-				if (req.state.pose.header.frame_id != "" && req.state.pose.header.frame_id != "world") {
+				if (!req.state.pose.header.frame_id.empty() && req.state.pose.header.frame_id != "world") {
 					try {
 						tf_bufferPtr_->transform<geometry_msgs::PoseStamped>(req.state.pose, target_pose, "world");
 					} catch (tf2::TransformException &ex) {
@@ -337,10 +337,9 @@ bool MujocoEnv::setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req,
 			// Set freejoint twist
 			if (req.set_twist) {
 				// Only pose can be transformed. Twist will be ignored!
-				if (req.state.twist.header.frame_id != "" && req.state.twist.header.frame_id != "world") {
+				if (!req.state.twist.header.frame_id.empty() && req.state.twist.header.frame_id != "world") {
 					std::string error_msg("Transforming twists from other frames is not supported! Not setting twist.");
-					ROS_WARN_STREAM_COND(req.state.twist.header.frame_id != "" && req.state.twist.header.frame_id != "world",
-					                     error_msg);
+					ROS_WARN_STREAM(error_msg);
 					full_error_msg += error_msg + '\n';
 					resp.success = false;
 				} else {

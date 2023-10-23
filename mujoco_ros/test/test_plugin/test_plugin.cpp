@@ -41,7 +41,7 @@
 using namespace mujoco_ros;
 namespace mujoco_ros {
 
-bool TestPlugin::load(mjModelPtr m, mjDataPtr d)
+bool TestPlugin::load(const mjModel *m, mjData *d)
 {
 	if (rosparam_config_.hasMember("example_param")) {
 		got_config_param.store(true);
@@ -66,7 +66,7 @@ bool TestPlugin::load(mjModelPtr m, mjDataPtr d)
 	}
 
 	bool tmp_fail = false;
-	node_handle_->param<bool>("should_fail", tmp_fail, false);
+	node_handle_.param<bool>("should_fail", tmp_fail, false);
 	should_fail.store(tmp_fail);
 	if (tmp_fail) {
 		return false;
@@ -82,27 +82,27 @@ void TestPlugin::reset()
 	ran_reset.store(true);
 }
 
-void TestPlugin::controlCallback(mjModelPtr /*model*/, mjDataPtr /*data*/)
+void TestPlugin::controlCallback(const mjModel * /*model*/, mjData * /*data*/)
 {
 	ran_control_cb.store(true);
 }
 
-void TestPlugin::passiveCallback(mjModelPtr /*model*/, mjDataPtr /*data*/)
+void TestPlugin::passiveCallback(const mjModel * /*model*/, mjData * /*data*/)
 {
 	ran_passive_cb.store(true);
 }
 
-void TestPlugin::renderCallback(mjModelPtr /*model*/, mjDataPtr /*data*/, mjvScene * /*scene*/)
+void TestPlugin::renderCallback(const mjModel * /*model*/, mjData * /*data*/, mjvScene * /*scene*/)
 {
 	ran_render_cb.store(true);
 }
 
-void TestPlugin::lastStageCallback(mjModelPtr /*model*/, mjDataPtr /*data*/)
+void TestPlugin::lastStageCallback(const mjModel * /*model*/, mjData * /*data*/)
 {
 	ran_last_cb.store(true);
 }
 
-void TestPlugin::onGeomChanged(mjModelPtr /*model*/, mjDataPtr /*data*/, const int /*geom_id*/)
+void TestPlugin::onGeomChanged(const mjModel * /*model*/, mjData * /*data*/, const int /*geom_id*/)
 {
 	ran_on_geom_changed_cb.store(true);
 }

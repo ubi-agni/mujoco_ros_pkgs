@@ -35,7 +35,6 @@ find_package(catkin REQUIRED COMPONENTS
     image_transport
     camera_info_manager
     sensor_msgs
-    moveit_ros_planning_interface
 )
 
 # cmake-format: off
@@ -97,7 +96,6 @@ catkin_package(
     image_transport
     camera_info_manager
     sensor_msgs
-    moveit_ros_planning_interface
   INCLUDE_DIRS
     include
   LIBRARIES

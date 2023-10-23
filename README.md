@@ -11,10 +11,10 @@ This project is mainly built for Ubuntu Focal with ROS Noetic. But we are workin
 
 ### Continuous Integration
 
-service    | Noetic  | One | Humble
+service    | Noetic  | One (coming soon) | Humble (coming soon)
 ---------- | :-----: |:---:| :----:
-GitHub | [![Format](https://github.com/davidpl1/mujoco_ros_pkgs/actions/workflows/format.yaml/badge.svg?branch=noetic-devel)](https://github.com/davidpl1/mujoco_ros_pkgs/actions/workflows/format.yaml?query=branch%3Anoetic-devel) [![CI](https://github.com/davidpl1/mujoco_ros_pkgs/actions/workflows/ci.yaml/badge.svg?branch=noetic-devel)](https://github.com/davidpl1/mujoco_ros_pkgs/actions/workflows/ci.yaml?query=branch%3Anoetic-devel) <td rowspan="2"> Coming Soon</td> <td rowspan="2">Coming Soon</td>
-CodeCov | [![codecov](https://codecov.io/gh/davidpl1/mujoco_ros_pkgs/branch/noetic-devel/graph/badge.svg?token=W7uHKcY0ly)](https://codecov.io/gh/davidpl1/mujoco_ros_pkgs) |
+GitHub | [![Format](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/format.yaml/badge.svg?branch=noetic-devel)](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/format.yaml?query=branch%3Anoetic-devel) [![CI](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/ci.yaml/badge.svg?branch=noetic-devel)](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/ci.yaml?query=branch%3Anoetic-devel) | - | - |
+CodeCov | [![codecov](https://codecov.io/gh/ubi-agni/mujoco_ros_pkgs/branch/noetic-devel/graph/badge.svg?token=W7uHKcY0ly)](https://codecov.io/gh/ubi-agni/mujoco_ros_pkgs) | - | - |
 
 
 # Build Instructions

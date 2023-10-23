@@ -54,15 +54,15 @@ struct JointData
 	std::string name_;
 	std::string hardware_interface_;
 
-	JointData(const std::string &name, const std::string &hardware_interface)
-	    : name_(name), hardware_interface_(hardware_interface)
+	JointData(std::string name, std::string hardware_interface)
+	    : name_(std::move(name)), hardware_interface_(std::move(hardware_interface))
 	{}
 };
 
 class RobotHWSim : public hardware_interface::RobotHW
 {
 public:
-	virtual ~RobotHWSim() {}
+	~RobotHWSim() override = default;
 
 	/**
 	 * @brief Intialize the simulated robot hardware.
@@ -75,7 +75,7 @@ public:
 	 * @param transmissions Transmissions.
 	 * @return \c true if the simulated robot hardware is initialized successfully, \c false if not.
 	 */
-	virtual bool initSim(mujoco_ros::mjModelPtr m_ptr, mujoco_ros::mjDataPtr d_ptr, MujocoEnvPtr mujoco_env_ptr,
+	virtual bool initSim(const mjModel *m_ptr, mjData *d_ptr, mujoco_ros::MujocoEnv *mujoco_env_ptr,
 	                     const std::string &robot_namespace, ros::NodeHandle model_nh,
 	                     const urdf::Model *const urdf_model,
 	                     std::vector<transmission_interface::TransmissionInfo> transmissions) = 0;
@@ -110,8 +110,8 @@ public:
 	virtual void eStopActive(const bool active) {}
 
 protected:
-	mujoco_ros::mjModelPtr m_ptr_;
-	mujoco_ros::mjDataPtr d_ptr_;
-	MujocoEnvPtr mujoco_env_ptr_;
+	const mjModel *m_ptr_;
+	mjData *d_ptr_;
+	mujoco_ros::MujocoEnv *mujoco_env_ptr_;
 };
 } // namespace mujoco_ros::control

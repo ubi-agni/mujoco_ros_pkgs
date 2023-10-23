@@ -54,13 +54,13 @@ struct SensorConfig
 {
 public:
 	SensorConfig() : frame_id(""){};
-	SensorConfig(const std::string frame_id) : frame_id(frame_id){};
+	SensorConfig(std::string frame_id) : frame_id(std::move(frame_id)){};
 
-	void setFrameId(const std::string frame_id) { this->frame_id = frame_id; };
+	void setFrameId(const std::string &frame_id) { this->frame_id = frame_id; };
 
-	void registerPub(ros::Publisher pub) { value_pub = pub; };
+	void registerPub(const ros::Publisher &pub) { value_pub = pub; };
 
-	void registerGTPub(ros::Publisher pub) { gt_pub = pub; };
+	void registerGTPub(const ros::Publisher &pub) { gt_pub = pub; };
 
 	std::string frame_id;
 
@@ -74,23 +74,23 @@ public:
 	uint8_t is_set = 0; // 0 for unset, otherwise binary code for combination of dims
 };
 
-typedef std::shared_ptr<SensorConfig> SensorConfigPtr;
+using SensorConfigPtr = std::shared_ptr<SensorConfig>;
 
 class MujocoRosSensorsPlugin : public mujoco_ros::MujocoPlugin
 {
 public:
-	virtual ~MujocoRosSensorsPlugin();
+	~MujocoRosSensorsPlugin() override;
 
 	// Overload entry point
-	virtual bool load(mujoco_ros::mjModelPtr m, mujoco_ros::mjDataPtr d);
+	bool load(const mjModel *m, mjData *d) override;
 
-	virtual void reset();
+	void reset() override;
 
-	void lastStageCallback(mujoco_ros::mjModelPtr model, mujoco_ros::mjDataPtr data);
+	void lastStageCallback(const mjModel *model, mjData *data) override;
 
 private:
 	ros::NodeHandlePtr sensors_nh_;
-	void initSensors(mujoco_ros::mjModelPtr model, mujoco_ros::mjDataPtr data);
+	void initSensors(const mjModel *model, mjData *data);
 	std::mt19937 rand_generator = std::mt19937(std::random_device{}());
 	std::normal_distribution<double> noise_dist;
 
@@ -102,40 +102,6 @@ private:
 	                           mujoco_ros_msgs::RegisterSensorNoiseModels::Response &rep);
 };
 
-const char *const SENSOR_STRING[] = { [mjSENS_TOUCH]          = "touch",
-	                                   [mjSENS_ACCELEROMETER]  = "accelerometer",
-	                                   [mjSENS_VELOCIMETER]    = "velocimeter",
-	                                   [mjSENS_GYRO]           = "gyro",
-	                                   [mjSENS_FORCE]          = "force",
-	                                   [mjSENS_TORQUE]         = "torque",
-	                                   [mjSENS_MAGNETOMETER]   = "magnetometer",
-	                                   [mjSENS_RANGEFINDER]    = "rangefinder",
-	                                   [mjSENS_JOINTPOS]       = "jointpos",
-	                                   [mjSENS_JOINTVEL]       = "jointvel",
-	                                   [mjSENS_TENDONPOS]      = "tendonpos",
-	                                   [mjSENS_TENDONVEL]      = "tendonvel",
-	                                   [mjSENS_ACTUATORPOS]    = "actuatorpos",
-	                                   [mjSENS_ACTUATORVEL]    = "actuatorvel",
-	                                   [mjSENS_ACTUATORFRC]    = "actuatorfrc",
-	                                   [mjSENS_BALLQUAT]       = "ballquat",
-	                                   [mjSENS_BALLANGVEL]     = "ballangvel",
-	                                   [mjSENS_JOINTLIMITPOS]  = "jointlimitpos",
-	                                   [mjSENS_JOINTLIMITVEL]  = "jointlimitvel",
-	                                   [mjSENS_JOINTLIMITFRC]  = "jointlimitfrc",
-	                                   [mjSENS_TENDONLIMITPOS] = "tendonlimitpos",
-	                                   [mjSENS_TENDONLIMITVEL] = "tendonlimitvel",
-	                                   [mjSENS_TENDONLIMITFRC] = "tendonlimitfrc",
-	                                   [mjSENS_FRAMEPOS]       = "framepos",
-	                                   [mjSENS_FRAMEQUAT]      = "framequat",
-	                                   [mjSENS_FRAMEXAXIS]     = "framexaxis",
-	                                   [mjSENS_FRAMEYAXIS]     = "frameyaxis",
-	                                   [mjSENS_FRAMEZAXIS]     = "framezaxis",
-	                                   [mjSENS_FRAMELINVEL]    = "framelinvel",
-	                                   [mjSENS_FRAMEANGVEL]    = "frameangvel",
-	                                   [mjSENS_FRAMELINACC]    = "framelinacc",
-	                                   [mjSENS_FRAMEANGACC]    = "frameangacc",
-	                                   [mjSENS_SUBTREECOM]     = "subtreecom",
-	                                   [mjSENS_SUBTREELINVEL]  = "subtreelinvel",
-	                                   [mjSENS_SUBTREEANGMOM]  = "subtreeangmom" };
+const char *SENSOR_STRING[35];
 
 } // namespace mujoco_ros::sensors

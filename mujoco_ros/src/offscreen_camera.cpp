@@ -47,11 +47,10 @@
 
 namespace mujoco_ros::rendering {
 
-OffscreenCamera::OffscreenCamera(const uint8_t cam_id, const std::string cam_name, const int width, const int height,
+OffscreenCamera::OffscreenCamera(const uint8_t cam_id, const std::string &cam_name, const int width, const int height,
                                  const streamType stream_type, const bool use_segid, const float pub_freq,
-                                 image_transport::ImageTransport *it, ros::NodeHandlePtr parent_nh,
-                                 const mujoco_ros::mjModelPtr model, mujoco_ros::mjDataPtr data,
-                                 mujoco_ros::MujocoEnv *env_ptr)
+                                 image_transport::ImageTransport *it, ros::NodeHandle *parent_nh, const mjModel *model,
+                                 mjData *data, mujoco_ros::MujocoEnv *env_ptr)
     : cam_id_(cam_id)
     , cam_name_(cam_name)
     , width_(width)
@@ -61,11 +60,11 @@ OffscreenCamera::OffscreenCamera(const uint8_t cam_id, const std::string cam_nam
     , pub_freq_(pub_freq)
 {
 	last_pub_ = ros::Time::now();
-	ros::NodeHandlePtr nh(new ros::NodeHandle(*(parent_nh.get()), "cameras/" + cam_name));
+	ros::NodeHandlePtr nh(new ros::NodeHandle(*parent_nh, "cameras/" + cam_name));
 
 	mjv_defaultOption(&vopt_);
 	mjv_defaultSceneState(&scn_state_);
-	mjv_makeSceneState(model.get(), data.get(), &scn_state_, Viewer::kMaxGeom);
+	mjv_makeSceneState(const_cast<mjModel *>(model), data, &scn_state_, Viewer::kMaxGeom);
 
 	if (stream_type & streamType::RGB) {
 		ROS_DEBUG_NAMED("mujoco_env", "\tCreating rgb publisher");
@@ -90,7 +89,7 @@ OffscreenCamera::OffscreenCamera(const uint8_t cam_id, const std::string cam_nam
 	// https://mujoco.readthedocs.io/en/latest/XMLreference.html#body-camera
 
 	int body_id              = model->cam_bodyid[cam_id];
-	std::string parent_frame = mj_id2name(model.get(), mjOBJ_BODY, body_id);
+	std::string parent_frame = mj_id2name(const_cast<mjModel *>(model), mjOBJ_BODY, body_id);
 	ROS_DEBUG_STREAM("Creating camera frames for cam '" << cam_name << "' with parent link " << parent_frame);
 
 	geometry_msgs::TransformStamped cam_transform;
@@ -234,10 +233,10 @@ bool OffscreenCamera::renderAndPubIfNecessary(mujoco_ros::OffscreenRenderContext
 		size_t size     = depth_msg->step * util::as_unsigned(viewport.height);
 		depth_msg->data.resize(size);
 
-		float *dest_float = reinterpret_cast<float *>(&depth_msg->data[0]);
-		uint index        = 0;
+		auto *dest_float = reinterpret_cast<float *>(&depth_msg->data[0]);
+		uint index       = 0;
 
-		float e = static_cast<float>(scn_state_.model.stat.extent);
+		auto e  = static_cast<float>(scn_state_.model.stat.extent);
 		float f = e * scn_state_.model.vis.map.zfar;
 		float n = e * scn_state_.model.vis.map.znear;
 

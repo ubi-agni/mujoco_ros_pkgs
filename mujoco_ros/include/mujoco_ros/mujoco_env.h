@@ -135,7 +135,7 @@ public:
 	 * @brief Construct a new Mujoco Env object.
 	 *
 	 */
-	MujocoEnv(std::string admin_hash = std::string());
+	MujocoEnv(const std::string &admin_hash = std::string());
 	~MujocoEnv();
 
 	MujocoEnv(const MujocoEnv &) = delete;
@@ -257,11 +257,11 @@ public:
 	void runControlCbs();
 	void runPassiveCbs();
 
-	bool togglePaused(bool paused, std::string admin_hash = std::string());
+	bool togglePaused(bool paused, const std::string &admin_hash = std::string());
 
 	GlfwAdapter *gui_adapter_ = nullptr;
 
-	void runRenderCbs(mjModelPtr model, mjDataPtr data, mjvScene *scene);
+	void runRenderCbs(mjvScene *scene);
 	bool step(int num_steps = 1, bool blocking = true);
 
 protected:
