@@ -746,11 +746,10 @@ TEST_F(PendulumEnvFixture, GetGeomPropertiesCallback)
 
 TEST_F(EqualityEnvFixture, InitialEqualityConstraintValues)
 {
-	mjModelPtr m = env_ptr->getModelPtr();
-	mjDataPtr d  = env_ptr->getDataPtr();
+	mjModel *m = env_ptr->getModelPtr();
 
-	int weld_eq_id  = mj_name2id(m.get(), mjOBJ_EQUALITY, "weld_eq");
-	int joint_eq_id = mj_name2id(m.get(), mjOBJ_EQUALITY, "joint_eq");
+	int weld_eq_id  = mj_name2id(m, mjOBJ_EQUALITY, "weld_eq");
+	int joint_eq_id = mj_name2id(m, mjOBJ_EQUALITY, "joint_eq");
 
 	EXPECT_NE(weld_eq_id, -1) << "weld_eq is not defined in loaded model!";
 	EXPECT_NE(joint_eq_id, -1) << "joint_eq is not defined in loaded model!";
@@ -768,9 +767,9 @@ TEST_F(EqualityEnvFixture, InitialEqualityConstraintValues)
 	EXPECT_DOUBLE_EQ(m->eq_data[joint_eq_id * mjNEQDATA + 2], 0.76) << "Joint constraint polycoef mismatch at index 2";
 	EXPECT_DOUBLE_EQ(m->eq_data[joint_eq_id * mjNEQDATA + 3], 0.66) << "Joint constraint polycoef mismatch at index 3";
 	EXPECT_DOUBLE_EQ(m->eq_data[joint_eq_id * mjNEQDATA + 4], 1) << "Joint constraint polycoef mismatch at index 4";
-	EXPECT_STREQ("joint1", mj_id2name(m.get(), mjOBJ_JOINT, m->eq_obj1id[joint_eq_id]))
+	EXPECT_STREQ("joint1", mj_id2name(m, mjOBJ_JOINT, m->eq_obj1id[joint_eq_id]))
 	    << "Joint constraint joint1 mismatch";
-	EXPECT_STREQ("joint2", mj_id2name(m.get(), mjOBJ_JOINT, m->eq_obj2id[joint_eq_id]))
+	EXPECT_STREQ("joint2", mj_id2name(m, mjOBJ_JOINT, m->eq_obj2id[joint_eq_id]))
 	    << "Joint constraint joint2 mismatch";
 
 	// test weld
@@ -784,7 +783,7 @@ TEST_F(EqualityEnvFixture, InitialEqualityConstraintValues)
 	EXPECT_DOUBLE_EQ(m->eq_solref[weld_eq_id], 0.3) << "Weld constraint solref timeconst mismatch";
 	EXPECT_DOUBLE_EQ(m->eq_solref[weld_eq_id + 1], 0.9) << "Weld constraint solref dampratio mismatch";
 
-	EXPECT_STREQ("immovable", mj_id2name(m.get(), mjOBJ_BODY, m->eq_obj1id[weld_eq_id]))
+	EXPECT_STREQ("immovable", mj_id2name(m, mjOBJ_BODY, m->eq_obj1id[weld_eq_id]))
 	    << "Weld constraint body1 mismatch";
 	EXPECT_EQ(0, m->eq_obj2id[weld_eq_id]) << "Weld constraint body2 mismatch (worldbody)";
 
@@ -811,15 +810,14 @@ TEST_F(EqualityEnvFixture, InitialEqualityConstraintValues)
 // are changes like that valid?
 TEST_F(EqualityEnvFixture, SetWeldConstraint)
 {
-	mjModelPtr m = env_ptr->getModelPtr();
-	mjDataPtr d  = env_ptr->getDataPtr();
+	mjModel *m = env_ptr->getModelPtr();
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
 	EXPECT_TRUE(ros::service::exists(env_ptr->getHandleNamespace() + "/set_eq_constraint_parameters", true))
 	    << "Set eq constraints service should be available!";
 
-	int weld_eq_id = mj_name2id(m.get(), mjOBJ_EQUALITY, "weld_eq");
+	int weld_eq_id = mj_name2id(m, mjOBJ_EQUALITY, "weld_eq");
 	EXPECT_NE(weld_eq_id, -1) << "weld_eq is not defined in loaded model!";
 
 	mjtNum quat[4] = { -0.634, -0.002, -0.733, 0.244 };
@@ -934,8 +932,7 @@ TEST_F(EqualityEnvFixture, SetWeldConstraint)
 
 TEST_F(EqualityEnvFixture, GetWeldConstraint)
 {
-	mjModelPtr m = env_ptr->getModelPtr();
-	mjDataPtr d  = env_ptr->getDataPtr();
+	mjModel *m = env_ptr->getModelPtr();
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
@@ -944,10 +941,10 @@ TEST_F(EqualityEnvFixture, GetWeldConstraint)
 	EXPECT_TRUE(ros::service::exists(env_ptr->getHandleNamespace() + "/get_eq_constraint_parameters", true))
 	    << "Ret geom properties service should be available!";
 
-	int weld_eq_id = mj_name2id(m.get(), mjOBJ_EQUALITY, "weld_eq");
+	int weld_eq_id = mj_name2id(m, mjOBJ_EQUALITY, "weld_eq");
 	EXPECT_NE(weld_eq_id, -1) << "weld_eq is not defined in loaded model!";
 
-	int elem1_id = mj_name2id(m.get(), mjOBJ_BODY, "immovable");
+	int elem1_id = mj_name2id(m, mjOBJ_BODY, "immovable");
 	EXPECT_NE(elem1_id, -1) << "Body with name 'immovable' is not defined in loaded model!";
 
 	mujoco_ros_msgs::GetEqualityConstraintParameters srv;
