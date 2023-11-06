@@ -1,3 +1,11 @@
+<a name="unreleased"></a>
+## Unreleased
+
+### Changed
+* replaced `boost::shared_ptr` with `std::shared_ptr` or `std::unique_ptr` wherever possible (ROS 1 fast intra-process message-passing requires boost::shared_ptr).
+* replaced `shared_ptr` with `unique_ptr` wherever possible.
+* replaced smart pointer constructor initialization with `make_shared` or `make_unique` wherever possible.
+
 <a name="0.8.0"></a>
 ## [0.8.0] - 2023-10-23
 
@@ -230,6 +238,7 @@ Contributors: @DavidPL1, @balandbal
 
 Contributors: @DavidPL1
 
+[unreleased]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.8.0...HEAD
 [0.8.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.5.0...0.6.0

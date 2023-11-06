@@ -42,6 +42,15 @@
 
 namespace mujoco_ros {
 
+OffscreenRenderContext::~OffscreenRenderContext()
+{
+	if (window != nullptr) {
+		glfwMakeContextCurrent(window.get());
+		ROS_DEBUG("Freeing offscreen context");
+		mjr_freeContext(&con);
+	}
+}
+
 void MujocoEnv::initializeRenderResources()
 {
 	image_transport::ImageTransport it(*nh_);
@@ -64,7 +73,6 @@ void MujocoEnv::initializeRenderResources()
 
 	offscreen_.cams.clear();
 
-	rendering::OffscreenCameraPtr cam_ptr;
 	int res_h, res_w;
 	for (uint8_t cam_id = 0; cam_id < this->model_->ncam; cam_id++) {
 		cam_name = mj_id2name(this->model_.get(), mjOBJ_CAMERA, cam_id);
@@ -93,10 +101,9 @@ void MujocoEnv::initializeRenderResources()
 		max_res_h = std::max(res_h, max_res_h);
 		max_res_w = std::max(res_w, max_res_w);
 
-		cam_ptr.reset(new rendering::OffscreenCamera(cam_id, cam_name, res_w, res_h, stream_type, use_segid, pub_freq,
-		                                             &it, nh_.get(), model_.get(), data_.get(), this));
-
-		offscreen_.cams.push_back(cam_ptr);
+		offscreen_.cams.emplace_back(
+		    std::make_unique<rendering::OffscreenCamera>(cam_id, cam_name, res_w, res_h, stream_type, use_segid, pub_freq,
+		                                                 &it, *nh_.get(), model_.get(), data_.get(), this));
 	}
 
 	if (model_->vis.global.offheight < max_res_h || model_->vis.global.offwidth < max_res_w) {
@@ -107,9 +114,9 @@ void MujocoEnv::initializeRenderResources()
 		model_->vis.global.offwidth  = max_res_w;
 	}
 
-	int buffer_size = max_res_w * max_res_h;
-	offscreen_.rgb.reset(new unsigned char[buffer_size * 3], std::default_delete<unsigned char[]>());
-	offscreen_.depth.reset(new float[buffer_size], std::default_delete<float[]>());
+	int buffer_size  = max_res_w * max_res_h;
+	offscreen_.rgb   = std::make_unique<unsigned char[]>(buffer_size * 3);
+	offscreen_.depth = std::make_unique<float[]>(buffer_size);
 
 	ROS_DEBUG_NAMED("offscreen_rendering", "Initializing offscreen rendering utils");
 

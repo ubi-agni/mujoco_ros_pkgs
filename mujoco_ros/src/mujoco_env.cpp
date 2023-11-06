@@ -76,7 +76,7 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 
 	ROS_DEBUG_COND(!settings_.use_sim_time, "use_sim_time is set to false. Not publishing sim time to /clock!");
 
-	nh_.reset(new ros::NodeHandle("~"));
+	nh_ = std::make_unique<ros::NodeHandle>("~");
 	ROS_DEBUG_STREAM("New MujocoEnv created");
 
 	ROS_INFO("Using MuJoCo library version %s", mj_versionString());
@@ -155,9 +155,9 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 	plugin_utils::initPluginLoader();
 
 	static_broadcaster_ = tf2_ros::StaticTransformBroadcaster();
-	tf_bufferPtr_.reset(new tf2_ros::Buffer());
+	tf_bufferPtr_       = std::make_unique<tf2_ros::Buffer>();
 	tf_bufferPtr_->setUsingDedicatedThread(true);
-	tf_listenerPtr_.reset(new tf2_ros::TransformListener(*tf_bufferPtr_));
+	tf_listenerPtr_ = std::make_unique<tf2_ros::TransformListener>(*tf_bufferPtr_);
 }
 
 void MujocoEnv::registerCollisionFunction(int geom_type1, int geom_type2, mjfCollision collision_cb)
@@ -427,7 +427,7 @@ void MujocoEnv::loadPlugins()
 
 	for (const auto &plugin : plugins_) {
 		if (plugin->safe_load(model_.get(), data_.get())) {
-			cb_ready_plugins_.push_back(plugin);
+			cb_ready_plugins_.emplace_back(plugin.get());
 		}
 	}
 	ROS_DEBUG("Done loading MujocoRosPlugins");
@@ -728,11 +728,6 @@ bool MujocoEnv::togglePaused(bool paused, const std::string &admin_hash /*= std:
 	if (settings_.run.load())
 		settings_.env_steps_request.store(0);
 	return true;
-}
-
-const std::vector<MujocoPluginPtr> MujocoEnv::getPlugins()
-{
-	return this->plugins_;
 }
 
 void MujocoEnv::notifyGeomChanged(const int geom_id)

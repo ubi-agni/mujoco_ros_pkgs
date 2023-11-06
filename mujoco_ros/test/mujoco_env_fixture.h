@@ -80,11 +80,11 @@ public:
 class BaseEnvFixture : public ::testing::Test
 {
 protected:
-	boost::shared_ptr<ros::NodeHandle> nh;
+	std::unique_ptr<ros::NodeHandle> nh;
 
 	void SetUp() override
 	{
-		nh.reset(new ros::NodeHandle("~"));
+		nh = std::make_unique<ros::NodeHandle>("~");
 		nh->setParam("unpause", true);
 		nh->setParam("no_x", true);
 		nh->setParam("use_sim_time", true);
@@ -96,12 +96,12 @@ protected:
 class PendulumEnvFixture : public ::testing::Test
 {
 protected:
-	boost::shared_ptr<ros::NodeHandle> nh;
+	std::unique_ptr<ros::NodeHandle> nh;
 	MujocoEnvTestWrapper *env_ptr;
 
 	void SetUp() override
 	{
-		nh.reset(new ros::NodeHandle("~"));
+		nh = std::make_unique<ros::NodeHandle>("~");
 		nh->setParam("unpause", false);
 		nh->setParam("no_x", true);
 		nh->setParam("use_sim_time", true);

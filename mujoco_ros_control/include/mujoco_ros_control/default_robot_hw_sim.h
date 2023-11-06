@@ -128,5 +128,5 @@ protected:
 	bool e_stop_active_, last_e_stop_active_;
 };
 
-using DefaultRobotHWSimPtr = boost::shared_ptr<DefaultRobotHWSim>;
+using DefaultRobotHWSimPtr = std::unique_ptr<DefaultRobotHWSim>;
 } // namespace mujoco_ros::control

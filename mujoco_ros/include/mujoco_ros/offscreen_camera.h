@@ -55,8 +55,8 @@ class OffscreenCamera
 public:
 	OffscreenCamera(const uint8_t cam_id, const std::string &cam_name, const int width, const int height,
 	                const streamType stream_type, const bool use_segid, const float pub_freq,
-	                image_transport::ImageTransport *it, ros::NodeHandle *parent_nh, const mjModel *model, mjData *data,
-	                mujoco_ros::MujocoEnv *env_ptr);
+	                image_transport::ImageTransport *it, const ros::NodeHandle &parent_nh, const mjModel *model,
+	                mjData *data, mujoco_ros::MujocoEnv *env_ptr);
 
 	~OffscreenCamera()
 	{
@@ -96,7 +96,7 @@ public:
 	bool shouldRender(const ros::Time &t);
 
 private:
-	boost::shared_ptr<camera_info_manager::CameraInfoManager> camera_info_manager_;
+	std::unique_ptr<camera_info_manager::CameraInfoManager> camera_info_manager_;
 
 	void publishCameraInfo();
 

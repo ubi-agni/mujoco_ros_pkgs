@@ -74,7 +74,7 @@ public:
 	uint8_t is_set = 0; // 0 for unset, otherwise binary code for combination of dims
 };
 
-using SensorConfigPtr = std::shared_ptr<SensorConfig>;
+using SensorConfigPtr = std::unique_ptr<SensorConfig>;
 
 class MujocoRosSensorsPlugin : public mujoco_ros::MujocoPlugin
 {
@@ -89,7 +89,7 @@ public:
 	void lastStageCallback(const mjModel *model, mjData *data) override;
 
 private:
-	ros::NodeHandlePtr sensors_nh_;
+	ros::NodeHandle sensors_nh_;
 	void initSensors(const mjModel *model, mjData *data);
 	std::mt19937 rand_generator = std::mt19937(std::random_device{}());
 	std::normal_distribution<double> noise_dist;

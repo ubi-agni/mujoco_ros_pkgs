@@ -71,7 +71,7 @@ bool MujocoRosControlPlugin::load(const mjModel *m, mjData *d)
 	if (rosparam_config_.hasMember("robot_namespace")) {
 		robot_namespace_ = (std::string)rosparam_config_["robot_namespace"];
 	}
-	robot_nh_.reset(new ros::NodeHandle("/" + robot_namespace_));
+	robot_nh_ = ros::NodeHandle("/" + robot_namespace_);
 
 	if (rosparam_config_["hardware"].getType() != XmlRpc::XmlRpcValue::TypeStruct) {
 		if (rosparam_config_["hardware"].getType() == XmlRpc::XmlRpcValue::TypeArray) {
@@ -113,7 +113,7 @@ bool MujocoRosControlPlugin::load(const mjModel *m, mjData *d)
 
 	if (rosparam_config_["hardware"].hasMember("eStopTopic")) {
 		const std::string e_stop_topic = (std::string)rosparam_config_["hardware"]["eStopTopic"];
-		e_stop_sub_                    = robot_nh_->subscribe(e_stop_topic, 1, &MujocoRosControlPlugin::eStopCB, this);
+		e_stop_sub_                    = robot_nh_.subscribe(e_stop_topic, 1, &MujocoRosControlPlugin::eStopCB, this);
 	}
 
 	std::string urdf_string = getURDF(robot_description_);
@@ -124,22 +124,23 @@ bool MujocoRosControlPlugin::load(const mjModel *m, mjData *d)
 	}
 
 	try {
-		robot_hw_sim_loader_.reset(new pluginlib::ClassLoader<mujoco_ros::control::RobotHWSim>(
-		    "mujoco_ros_control", "mujoco_ros::control::RobotHWSim"));
+		robot_hw_sim_loader_ = std::make_unique<pluginlib::ClassLoader<mujoco_ros::control::RobotHWSim>>(
+		    "mujoco_ros_control", "mujoco_ros::control::RobotHWSim");
 
-		robot_hw_sim_ = robot_hw_sim_loader_->createInstance(robot_hw_sim_type_str_);
+		robot_hw_sim_ = std::unique_ptr<mujoco_ros::control::RobotHWSim>(
+		    robot_hw_sim_loader_->createUnmanagedInstance(robot_hw_sim_type_str_));
 		urdf::Model urdf_model;
 		const urdf::Model *const urdf_model_ptr = urdf_model.initString(urdf_string) ? &urdf_model : nullptr;
 
 		ROS_DEBUG_STREAM_NAMED("mujoco_ros_control",
 		                       "Trying to initialize robot hw sim of type '" << robot_hw_sim_type_str_ << "'");
-		if (!robot_hw_sim_->initSim(m, d, env_ptr_, robot_namespace_, *robot_nh_, urdf_model_ptr, transmissions_)) {
+		if (!robot_hw_sim_->initSim(m, d, env_ptr_, robot_namespace_, robot_nh_, urdf_model_ptr, transmissions_)) {
 			ROS_FATAL_NAMED("mujoco_ros_control", "Could not initialize robot simulation interface");
 			return false;
 		}
 
 		ROS_DEBUG_STREAM_NAMED("mujoco_ros_control", "Loading controller manager");
-		controller_manager_.reset(new controller_manager::ControllerManager(robot_hw_sim_.get(), *robot_nh_));
+		controller_manager_ = std::make_unique<controller_manager::ControllerManager>(robot_hw_sim_.get(), robot_nh_);
 	} catch (pluginlib::LibraryLoadException &ex) {
 		ROS_FATAL_STREAM_NAMED("mujoco_ros_control", "Failed to create robot simulation interface loader: " << ex.what());
 		return false;
@@ -201,20 +202,20 @@ std::string MujocoRosControlPlugin::getURDF(const std::string &param_name) const
 	// search and wait for robot_description on param server
 	while (urdf_string.empty()) {
 		std::string search_param_name;
-		if (robot_nh_->searchParam(param_name, search_param_name)) {
+		if (robot_nh_.searchParam(param_name, search_param_name)) {
 			ROS_INFO_ONCE_NAMED("mujoco_ros_control",
 			                    "mujoco_ros_control plugin is waiting for model"
 			                    " URDF in parameter [%s] on the ROS param server.",
 			                    search_param_name.c_str());
 
-			robot_nh_->getParam(search_param_name, urdf_string);
+			robot_nh_.getParam(search_param_name, urdf_string);
 		} else {
 			ROS_INFO_ONCE_NAMED("mujoco_ros_control",
 			                    "mujoco_ros_control plugin is waiting for model"
 			                    " URDF in parameter [%s] on the ROS param server.",
 			                    robot_description_.c_str());
 
-			robot_nh_->getParam(param_name, urdf_string);
+			robot_nh_.getParam(param_name, urdf_string);
 		}
 
 		std::this_thread::sleep_for(std::chrono::microseconds(100000));

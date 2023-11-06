@@ -106,14 +106,14 @@ public:
 class TrainEnvFixture : public ::testing::Test
 {
 protected:
-	std::shared_ptr<ros::NodeHandle> nh;
+	std::unique_ptr<ros::NodeHandle> nh;
 	MujocoEnvTestWrapper *env_ptr;
 	mjModel *m;
 	mjData *d;
 
 	void SetUp() override
 	{
-		nh.reset(new ros::NodeHandle("~"));
+		nh = std::make_unique<ros::NodeHandle>("~");
 		nh->setParam("eval_mode", false);
 		nh->setParam("unpause", true);
 		nh->setParam("no_x", true);
@@ -145,14 +145,14 @@ protected:
 class EvalEnvFixture : public ::testing::Test
 {
 protected:
-	std::shared_ptr<ros::NodeHandle> nh;
+	std::unique_ptr<ros::NodeHandle> nh;
 	MujocoEnvTestWrapper *env_ptr;
 	mjModel *m;
 	mjData *d;
 
 	void SetUp() override
 	{
-		nh.reset(new ros::NodeHandle("~"));
+		nh = std::make_unique<ros::NodeHandle>("~");
 		nh->setParam("eval_mode", true);
 		nh->setParam("unpause", true);
 		nh->setParam("no_x", true);

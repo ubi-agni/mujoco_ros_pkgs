@@ -55,13 +55,13 @@ int main(int argc, char **argv)
 class LoadedPluginFixture : public ::testing::Test
 {
 protected:
-	boost::shared_ptr<ros::NodeHandle> nh;
+	std::unique_ptr<ros::NodeHandle> nh;
 	TestPlugin *test_plugin;
 	MujocoEnvTestWrapper *env_ptr;
 
 	void SetUp() override
 	{
-		nh.reset(new ros::NodeHandle("~"));
+		nh = std::make_unique<ros::NodeHandle>("~");
 		nh->setParam("unpause", false);
 		nh->setParam("no_x", true);
 		nh->setParam("use_sim_time", true);
@@ -77,7 +77,7 @@ protected:
 		}
 		EXPECT_LT(seconds, 2) << "Env loading ran into 2 seconds timeout!";
 
-		auto plugins = env_ptr->getPlugins();
+		auto &plugins = env_ptr->getPlugins();
 		for (const auto &p : plugins) {
 			test_plugin = dynamic_cast<TestPlugin *>(p.get());
 			if (test_plugin != nullptr) {
@@ -202,7 +202,7 @@ TEST_F(BaseEnvFixture, FailedLoad)
 	{
 		TestPlugin *test_plugin = nullptr;
 
-		auto plugins = env.getPlugins();
+		auto &plugins = env.getPlugins();
 		for (const auto &p : plugins) {
 			test_plugin = dynamic_cast<TestPlugin *>(p.get());
 			if (test_plugin != nullptr) {
@@ -246,7 +246,7 @@ TEST_F(BaseEnvFixture, FailedLoadRecoverReload)
 	{
 		TestPlugin *test_plugin = nullptr;
 
-		auto plugins = env.getPlugins();
+		auto &plugins = env.getPlugins();
 		for (const auto &p : plugins) {
 			test_plugin = dynamic_cast<TestPlugin *>(p.get());
 			if (test_plugin != nullptr) {
@@ -293,7 +293,7 @@ TEST_F(BaseEnvFixture, FailedLoadReset)
 	{
 		TestPlugin *test_plugin = nullptr;
 
-		auto plugins = env.getPlugins();
+		auto &plugins = env.getPlugins();
 		for (const auto &p : plugins) {
 			test_plugin = dynamic_cast<TestPlugin *>(p.get());
 			if (test_plugin != nullptr) {

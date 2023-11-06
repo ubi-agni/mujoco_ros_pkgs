@@ -96,9 +96,9 @@ bool registerPlugin(const std::string &nh_namespace, const XmlRpc::XmlRpcValue &
 	ROS_DEBUG_STREAM_NAMED("mujoco_ros_plugin_loader", "Registering plugin of type " << type);
 
 	try {
-		MujocoPluginPtr mjplugin_ptr = plugin_loader_ptr_->createInstance(type);
+		MujocoPlugin *mjplugin_ptr = plugin_loader_ptr_->createUnmanagedInstance(type);
 		mjplugin_ptr->init(config, nh_namespace, env);
-		plugins.push_back(mjplugin_ptr);
+		plugins.emplace_back(std::unique_ptr<MujocoPlugin>(mjplugin_ptr));
 		ROS_DEBUG_STREAM_NAMED("mujoco_ros_plugin_loader",
 		                       "Added " << type << " to the list of loaded plugins in namespace '" << nh_namespace
 		                                << "'. List now contains " << plugins.size() << " plugin(s)");
@@ -114,7 +114,7 @@ bool registerPlugin(const std::string &nh_namespace, const XmlRpc::XmlRpcValue &
 void initPluginLoader()
 {
 	plugin_loader_ptr_ =
-	    std::make_shared<pluginlib::ClassLoader<mujoco_ros::MujocoPlugin>>("mujoco_ros", "mujoco_ros::MujocoPlugin");
+	    std::make_unique<pluginlib::ClassLoader<mujoco_ros::MujocoPlugin>>("mujoco_ros", "mujoco_ros::MujocoPlugin");
 }
 
 void unloadPluginloader()

@@ -49,8 +49,8 @@ namespace mujoco_ros::rendering {
 
 OffscreenCamera::OffscreenCamera(const uint8_t cam_id, const std::string &cam_name, const int width, const int height,
                                  const streamType stream_type, const bool use_segid, const float pub_freq,
-                                 image_transport::ImageTransport *it, ros::NodeHandle *parent_nh, const mjModel *model,
-                                 mjData *data, mujoco_ros::MujocoEnv *env_ptr)
+                                 image_transport::ImageTransport *it, const ros::NodeHandle &parent_nh,
+                                 const mjModel *model, mjData *data, mujoco_ros::MujocoEnv *env_ptr)
     : cam_id_(cam_id)
     , cam_name_(cam_name)
     , width_(width)
@@ -60,7 +60,7 @@ OffscreenCamera::OffscreenCamera(const uint8_t cam_id, const std::string &cam_na
     , pub_freq_(pub_freq)
 {
 	last_pub_ = ros::Time::now();
-	ros::NodeHandlePtr nh(new ros::NodeHandle(*parent_nh, "cameras/" + cam_name));
+	ros::NodeHandle nh(parent_nh, "cameras/" + cam_name);
 
 	mjv_defaultOption(&vopt_);
 	mjv_defaultSceneState(&scn_state_);
@@ -120,7 +120,7 @@ OffscreenCamera::OffscreenCamera(const uint8_t cam_id, const std::string &cam_na
 	env_ptr->registerStaticTransform(cam_transform);
 
 	// init camera info manager
-	camera_info_manager_.reset(new camera_info_manager::CameraInfoManager(*(nh.get()), cam_name));
+	camera_info_manager_ = std::make_unique<camera_info_manager::CameraInfoManager>(nh, cam_name);
 
 	// Get camera info
 	mjtNum cam_pos[3];
@@ -153,7 +153,7 @@ OffscreenCamera::OffscreenCamera(const uint8_t cam_id, const std::string &cam_na
 	mju_copy(ci.K.c_array() + 6, extrinsic + 8, 3);
 
 	camera_info_manager_->setCameraInfo(ci);
-	camera_info_pub_ = nh->advertise<sensor_msgs::CameraInfo>("camera_info", 1, true);
+	camera_info_pub_ = nh.advertise<sensor_msgs::CameraInfo>("camera_info", 1, true);
 }
 
 bool OffscreenCamera::shouldRender(const ros::Time &t)
