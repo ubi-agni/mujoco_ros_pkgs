@@ -301,15 +301,15 @@ TEST_F(TrainEnvFixture, Sensor3DOF)
 	                { msgPtr->vector.x, msgPtr->vector.y, msgPtr->vector.z }, 1e-4, true);
 
 	mujoco_ros_msgs::SensorNoiseModel noise_model;
-	noise_model.mean.push_back(0.0);
-	noise_model.mean.push_back(1.0);
-	noise_model.std.push_back(0.025);
-	noise_model.std.push_back(0.0);
+	noise_model.mean.emplace_back(0.0);
+	noise_model.mean.emplace_back(1.0);
+	noise_model.std.emplace_back(0.025);
+	noise_model.std.emplace_back(0.0);
 	noise_model.set_flag    = 3;
 	noise_model.sensor_name = "vel_EE";
 
 	mujoco_ros_msgs::RegisterSensorNoiseModels srv;
-	srv.request.noise_models.push_back(noise_model);
+	srv.request.noise_models.emplace_back(noise_model);
 	srv.request.admin_hash = "example_hash";
 
 	ros::ServiceClient client =
@@ -414,15 +414,15 @@ TEST_F(TrainEnvFixture, Framepos)
 	                { msgPtr->point.x, msgPtr->point.y, msgPtr->point.z }, 0.0001, true);
 
 	mujoco_ros_msgs::SensorNoiseModel noise_model;
-	noise_model.mean.push_back(0.0);
-	noise_model.mean.push_back(1.0);
-	noise_model.std.push_back(0.025);
-	noise_model.std.push_back(0.0);
+	noise_model.mean.emplace_back(0.0);
+	noise_model.mean.emplace_back(1.0);
+	noise_model.std.emplace_back(0.025);
+	noise_model.std.emplace_back(0.0);
 	noise_model.set_flag    = 3;
 	noise_model.sensor_name = "immovable_pos";
 
 	mujoco_ros_msgs::RegisterSensorNoiseModels srv;
-	srv.request.noise_models.push_back(noise_model);
+	srv.request.noise_models.emplace_back(noise_model);
 	srv.request.admin_hash = "example_hash";
 
 	ros::ServiceClient client =
@@ -527,13 +527,13 @@ TEST_F(TrainEnvFixture, scalar_stamped)
 	EXPECT_NEAR(msgPtr_GT->value, msgPtr->value, 0.0001) << "Without noise sensor value should equal GT";
 
 	mujoco_ros_msgs::SensorNoiseModel noise_model;
-	noise_model.mean.push_back(1.0);
-	noise_model.std.push_back(0.025);
+	noise_model.mean.emplace_back(1.0);
+	noise_model.std.emplace_back(0.025);
 	noise_model.set_flag    = 1;
 	noise_model.sensor_name = "vel_joint2";
 
 	mujoco_ros_msgs::RegisterSensorNoiseModels srv;
-	srv.request.noise_models.push_back(noise_model);
+	srv.request.noise_models.emplace_back(noise_model);
 	srv.request.admin_hash = "example_hash";
 
 	ros::ServiceClient client =
@@ -608,13 +608,13 @@ TEST_F(TrainEnvFixture, quaternion)
 	    { msgPtr->quaternion.w, msgPtr->quaternion.x, msgPtr->quaternion.y, msgPtr->quaternion.z }, 0.0001, true);
 
 	mujoco_ros_msgs::SensorNoiseModel noise_model;
-	noise_model.mean.push_back(1.0);
-	noise_model.std.push_back(0.025);
+	noise_model.mean.emplace_back(1.0);
+	noise_model.std.emplace_back(0.025);
 	noise_model.set_flag    = 4;
 	noise_model.sensor_name = "immovable_quat";
 
 	mujoco_ros_msgs::RegisterSensorNoiseModels srv;
-	srv.request.noise_models.push_back(noise_model);
+	srv.request.noise_models.emplace_back(noise_model);
 	srv.request.admin_hash = "example_hash";
 
 	ros::ServiceClient client =

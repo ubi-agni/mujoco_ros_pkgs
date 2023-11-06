@@ -48,22 +48,22 @@ namespace mju = ::mujoco::sample_util;
 
 void MujocoEnv::setupServices()
 {
-	service_servers_.push_back(nh_->advertiseService("set_pause", &MujocoEnv::setPauseCB, this));
-	service_servers_.push_back(nh_->advertiseService("shutdown", &MujocoEnv::shutdownCB, this));
-	service_servers_.push_back(nh_->advertiseService("reload", &MujocoEnv::reloadCB, this));
-	service_servers_.push_back(nh_->advertiseService("reset", &MujocoEnv::resetCB, this));
-	service_servers_.push_back(nh_->advertiseService("set_body_state", &MujocoEnv::setBodyStateCB, this));
-	service_servers_.push_back(nh_->advertiseService("get_body_state", &MujocoEnv::getBodyStateCB, this));
-	service_servers_.push_back(nh_->advertiseService("set_geom_properties", &MujocoEnv::setGeomPropertiesCB, this));
-	service_servers_.push_back(nh_->advertiseService("get_geom_properties", &MujocoEnv::getGeomPropertiesCB, this));
+	service_servers_.emplace_back(nh_->advertiseService("set_pause", &MujocoEnv::setPauseCB, this));
+	service_servers_.emplace_back(nh_->advertiseService("shutdown", &MujocoEnv::shutdownCB, this));
+	service_servers_.emplace_back(nh_->advertiseService("reload", &MujocoEnv::reloadCB, this));
+	service_servers_.emplace_back(nh_->advertiseService("reset", &MujocoEnv::resetCB, this));
+	service_servers_.emplace_back(nh_->advertiseService("set_body_state", &MujocoEnv::setBodyStateCB, this));
+	service_servers_.emplace_back(nh_->advertiseService("get_body_state", &MujocoEnv::getBodyStateCB, this));
+	service_servers_.emplace_back(nh_->advertiseService("set_geom_properties", &MujocoEnv::setGeomPropertiesCB, this));
+	service_servers_.emplace_back(nh_->advertiseService("get_geom_properties", &MujocoEnv::getGeomPropertiesCB, this));
 
-	service_servers_.push_back(nh_->advertiseService<std_srvs::Empty::Request, std_srvs::Empty::Response>(
+	service_servers_.emplace_back(nh_->advertiseService<std_srvs::Empty::Request, std_srvs::Empty::Response>(
 	    "load_initial_joint_states", [&](auto /*&req*/, auto /*&res*/) {
 		    std::lock_guard<std::recursive_mutex> lock(physics_thread_mutex_);
 		    loadInitialJointStates();
 		    return true;
 	    }));
-	service_servers_.push_back(
+	service_servers_.emplace_back(
 	    nh_->advertiseService<mujoco_ros_msgs::GetStateUint::Request, mujoco_ros_msgs::GetStateUint::Response>(
 	        "get_loading_request_state", [&](auto /*&req*/, auto &res) {
 		        int status      = getOperationalStatus();

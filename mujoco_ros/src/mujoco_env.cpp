@@ -189,7 +189,7 @@ void MujocoEnv::registerStaticTransform(geometry_msgs::TransformStamped &transfo
 		++it;
 	}
 
-	static_transforms_.push_back(transform);
+	static_transforms_.emplace_back(transform);
 
 	static_broadcaster_.sendTransform(static_transforms_);
 }
@@ -669,7 +669,7 @@ void MujocoEnv::connectViewer(Viewer *viewer)
 		settings_.headless = false;
 	}
 	if (std::find(connected_viewers_.begin(), connected_viewers_.end(), viewer) == connected_viewers_.end()) {
-		connected_viewers_.push_back(viewer);
+		connected_viewers_.emplace_back(viewer);
 		if (sim_state_.model_valid) {
 			viewer->mnew_ = model_;
 			viewer->dnew_ = data_;
