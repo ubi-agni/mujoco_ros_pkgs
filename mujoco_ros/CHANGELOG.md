@@ -1,6 +1,9 @@
 <a name="unreleased"></a>
 ## Unreleased
 
+### Fixed
+* Repaired SIGINT handler callback. `C-c` in the roslaunch terminal now shuts down the MuJoCo ROS node instead of escalating to SIGTERM.
+
 ### Changed
 * replaced `boost::shared_ptr` with `std::shared_ptr` or `std::unique_ptr` wherever possible (ROS 1 fast intra-process message-passing requires boost::shared_ptr).
 * replaced `shared_ptr` with `unique_ptr` wherever possible.

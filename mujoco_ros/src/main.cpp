@@ -47,9 +47,12 @@
 
 namespace {
 
+std::unique_ptr<mujoco_ros::MujocoEnv> env;
+
 void sigint_handler(int /*sig*/)
 {
-	ros::shutdown();
+	std::printf("Registered C-c. Shutting down MuJoCo ROS Server ...\n");
+	env->settings_.exit_request.store(1);
 }
 
 namespace po  = boost::program_options;
@@ -131,40 +134,39 @@ int main(int argc, char **argv)
 	}
 
 	// TODO(dleins): Should MuJoCo Plugins be loaded?
-	{
-		mujoco_ros::MujocoEnv env(admin_hash);
+	env = std::make_unique<mujoco_ros::MujocoEnv>(admin_hash);
 
-		bool no_x;
-		nh.param("no_x", no_x, false);
+	bool no_x;
+	nh.param("no_x", no_x, false);
 
-		if (!no_x) {
-			nh.param("headless", no_x, false);
-		}
+	if (!no_x) {
+		nh.param("headless", no_x, false);
+	}
 
-		// const char *filename = nullptr;
-		if (!filename.empty()) {
-			mju::strcpy_arr(env.queued_filename_, filename.c_str());
-			env.settings_.load_request = 2;
-		}
+	// const char *filename = nullptr;
+	if (!filename.empty()) {
+		mju::strcpy_arr(env->queued_filename_, filename.c_str());
+		env->settings_.load_request = 2;
+	}
 
-		env.startPhysicsLoop();
-		env.startEventLoop();
+	env->startPhysicsLoop();
+	env->startEventLoop();
 
-		if (!no_x) {
-			ROS_INFO("Launching viewer");
-			// Start simulation UI loop (blocking)
-			// auto viewer = std::make_unique<mujoco_ros::Viewer>(std::make_unique<mujoco_ros::GlfwAdapter>(), &env,
-			//    /* fully_managed = */ true);
-			auto viewer = std::make_unique<mujoco_ros::Viewer>(
-			    std::unique_ptr<mujoco_ros::PlatformUIAdapter>(env.gui_adapter_), &env, /* fully_managed = */ true);
-			viewer->RenderLoop();
-		} else {
-			ROS_INFO("Running headless");
-		}
+	if (!no_x) {
+		ROS_INFO("Launching viewer");
+		// Start simulation UI loop (blocking)
+		// auto viewer = std::make_unique<mujoco_ros::Viewer>(std::make_unique<mujoco_ros::GlfwAdapter>(), &env,
+		//    /* fully_managed = */ true);
+		auto viewer = std::make_unique<mujoco_ros::Viewer>(
+		    std::unique_ptr<mujoco_ros::PlatformUIAdapter>(env->gui_adapter_), env.get(), /* fully_managed = */ true);
+		viewer->RenderLoop();
+	} else {
+		ROS_INFO("Running headless");
+	}
 
-		env.waitForPhysicsJoin();
-		env.waitForEventsJoin();
-	} // end of scope for env for proper destruction
+	env->waitForPhysicsJoin();
+	env->waitForEventsJoin();
+	env.reset();
 
 	ROS_INFO("MuJoCo ROS Simulation Server node is terminating");
 
