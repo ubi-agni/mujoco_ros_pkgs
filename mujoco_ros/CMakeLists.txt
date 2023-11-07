@@ -26,6 +26,7 @@ include(ProjectOption)
 # is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
     roscpp
+    actionlib
     pluginlib
     mujoco_ros_msgs
     urdf
@@ -87,6 +88,7 @@ find_library(GLFW libglfw.so.3)
 catkin_package(
   CATKIN_DEPENDS
     roscpp
+    actionlib
     pluginlib
     mujoco_ros_msgs
     urdf

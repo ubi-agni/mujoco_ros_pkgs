@@ -14,6 +14,7 @@
   <buildtool_depend>catkin</buildtool_depend>
 
   <depend>roscpp</depend>
+  <depend>actionlib</depend>
   <depend>pluginlib</depend>
   <depend>mujoco_ros_msgs</depend>
   <depend>tf2</depend>
