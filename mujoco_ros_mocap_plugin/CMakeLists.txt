@@ -1,0 +1,52 @@
+cmake_minimum_required(VERSION 3.0.2)
+
+project(mujoco_mocap)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+find_package(catkin REQUIRED COMPONENTS
+  mujoco_ros
+)
+
+catkin_package(
+ INCLUDE_DIRS include
+ CATKIN_DEPENDS
+  mujoco_ros
+ LIBRARIES ${PROJECT_NAME}
+)
+
+add_library(${PROJECT_NAME}
+  src/mocap_plugin.cpp
+)
+target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC
+  include
+  ${Boost_INCLUDE_DIRS}
+  ${catkin_INCLUDE_DIRS}
+)
+target_link_libraries(${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)
+
+install(TARGETS ${PROJECT_NAME}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)
+
+install(DIRECTORY config
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+)
+
+install(FILES
+  mocap_plugin.xml
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+)
+
+if(CATKIN_ENABLE_TESTING)
+  add_subdirectory(test)
+endif()
