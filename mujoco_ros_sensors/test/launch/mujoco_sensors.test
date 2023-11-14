@@ -11,5 +11,5 @@
   </rosparam>
 
   <param name="/use_sim_time" value="true"/>
-  <test test-name="mujoco_sensors_test" pkg="mujoco_ros_sensors" type="mujoco_sensors_test" />
+  <test test-name="mujoco_sensors_test" pkg="mujoco_ros_sensors" type="mujoco_sensors_test" time-limit="120.0" />
 </launch>
