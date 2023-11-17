@@ -750,13 +750,18 @@ TEST_F(EqualityEnvFixture, InitialEqualityConstraintValues)
 
 	int weld_eq_id  = mj_name2id(m, mjOBJ_EQUALITY, "weld_eq");
 	int joint_eq_id = mj_name2id(m, mjOBJ_EQUALITY, "joint_eq");
+	int connect_eq_id  = mj_name2id(m, mjOBJ_EQUALITY, "connect_eq");
+	int tendon_eq_id = mj_name2id(m, mjOBJ_EQUALITY, "tendon_eq");
 
 	EXPECT_NE(weld_eq_id, -1) << "weld_eq is not defined in loaded model!";
 	EXPECT_NE(joint_eq_id, -1) << "joint_eq is not defined in loaded model!";
+	EXPECT_NE(connect_eq_id, -1) << "weld_eq is not defined in loaded model!";
+	EXPECT_NE(tendon_eq_id, -1) << "joint_eq is not defined in loaded model!";
 
 	EXPECT_EQ(m->eq_type[weld_eq_id], mjEQ_WELD) << "weld_eq has incorrect type";
 	EXPECT_EQ(m->eq_type[joint_eq_id], mjEQ_JOINT) << "joint_eq has incorrect type";
-
+	EXPECT_EQ(m->eq_type[tendon_eq_id], mjEQ_TENDON) << "weld_eq has incorrect type";
+	EXPECT_EQ(m->eq_type[connect_eq_id], mjEQ_CONNECT) << "connect_eq has incorrect type";
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
 
@@ -767,11 +772,30 @@ TEST_F(EqualityEnvFixture, InitialEqualityConstraintValues)
 	EXPECT_DOUBLE_EQ(m->eq_data[joint_eq_id * mjNEQDATA + 2], 0.76) << "Joint constraint polycoef mismatch at index 2";
 	EXPECT_DOUBLE_EQ(m->eq_data[joint_eq_id * mjNEQDATA + 3], 0.66) << "Joint constraint polycoef mismatch at index 3";
 	EXPECT_DOUBLE_EQ(m->eq_data[joint_eq_id * mjNEQDATA + 4], 1) << "Joint constraint polycoef mismatch at index 4";
-	EXPECT_STREQ("joint1", mj_id2name(m, mjOBJ_JOINT, m->eq_obj1id[joint_eq_id]))
+	EXPECT_STREQ("joint_eq_element1", mj_id2name(m, mjOBJ_JOINT, m->eq_obj1id[joint_eq_id]))
 	    << "Joint constraint joint1 mismatch";
-	EXPECT_STREQ("joint2", mj_id2name(m, mjOBJ_JOINT, m->eq_obj2id[joint_eq_id]))
+	EXPECT_STREQ("joint_eq_element2", mj_id2name(m, mjOBJ_JOINT, m->eq_obj2id[joint_eq_id]))
 	    << "Joint constraint joint2 mismatch";
 
+	//test connect
+	EXPECT_TRUE(m->eq_active[connect_eq_id]) << "Joint constraint mismatch of active state";
+	EXPECT_DOUBLE_EQ(m->eq_data[connect_eq_id * mjNEQDATA+0], 0) << "Anchor mismatch at index 0";
+	EXPECT_DOUBLE_EQ(m->eq_data[connect_eq_id * mjNEQDATA + 1], 0) << "Anchor mismatch at index 1";
+	EXPECT_DOUBLE_EQ(m->eq_data[connect_eq_id * mjNEQDATA + 2], 0) << "Anchor mismatch at index 2";
+	EXPECT_STREQ("immovable", mj_id2name(m, mjOBJ_XBODY, m->eq_obj1id[connect_eq_id]))
+	    << "connect constraint element1 mismatch";
+
+	//test tendon
+	EXPECT_TRUE(m->eq_active[tendon_eq_id]) << "Joint constraint mismatch of active state";
+	EXPECT_DOUBLE_EQ(m->eq_data[tendon_eq_id * mjNEQDATA], 0.5) << "Joint constraint polycoef mismatch at index 0";
+	EXPECT_DOUBLE_EQ(m->eq_data[tendon_eq_id * mjNEQDATA + 1], 0.25) << "Joint constraint polycoef mismatch at index 1";
+	EXPECT_DOUBLE_EQ(m->eq_data[tendon_eq_id * mjNEQDATA + 2], 0.76) << "Joint constraint polycoef mismatch at index 2";
+	EXPECT_DOUBLE_EQ(m->eq_data[tendon_eq_id * mjNEQDATA + 3], 0.66) << "Joint constraint polycoef mismatch at index 3";
+	EXPECT_DOUBLE_EQ(m->eq_data[tendon_eq_id * mjNEQDATA + 4], 1) << "Joint constraint polycoef mismatch at index 4";
+	EXPECT_STREQ("tendon_eq_element1", mj_id2name(m, mjOBJ_TENDON, m->eq_obj1id[tendon_eq_id]))
+	    << "tendon constraint element1 mismatch";
+	EXPECT_STREQ("tendon_eq_element2", mj_id2name(m, mjOBJ_TENDON, m->eq_obj2id[tendon_eq_id]))
+	    << "tendon constraint element2 mismatch";
 	// test weld
 	double solimp[5] = { 0.8, 0.95, 0.002, 0.4, 2.0 };
 	EXPECT_DOUBLE_EQ(m->eq_solimp[weld_eq_id], solimp[0]) << "Weld constraint solimp dmin mismatch";
@@ -808,7 +832,7 @@ TEST_F(EqualityEnvFixture, InitialEqualityConstraintValues)
 
 // TODO: Should we test changing element1 and/or element2?
 // are changes like that valid?
-TEST_F(EqualityEnvFixture, SetWeldConstraint)
+TEST_F(EqualityEnvFixture, SetEqConstraint)
 {
 	mjModel *m = env_ptr->getModelPtr();
 
@@ -816,121 +840,170 @@ TEST_F(EqualityEnvFixture, SetWeldConstraint)
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
 	EXPECT_TRUE(ros::service::exists(env_ptr->getHandleNamespace() + "/set_eq_constraint_parameters", true))
 	    << "Set eq constraints service should be available!";
+	
+	const char * eq_types[4] = {"connect_eq","weld_eq","joint_eq","tendon_eq"};
+	int index = 0;
+	for (const char* eq_constraint:eq_types){
+		int eq_id = mj_name2id(m, mjOBJ_EQUALITY, eq_constraint);
+		EXPECT_NE(eq_id, -1) << "eq constraint is not defined in loaded model!";
 
-	int weld_eq_id = mj_name2id(m, mjOBJ_EQUALITY, "weld_eq");
-	EXPECT_NE(weld_eq_id, -1) << "weld_eq is not defined in loaded model!";
+		mjtNum quat[4] = { -0.634, -0.002, -0.733, 0.244 };
+		mju_normalize4(quat);
 
-	mjtNum quat[4] = { -0.634, -0.002, -0.733, 0.244 };
-	mju_normalize4(quat);
+		mujoco_ros_msgs::SetEqualityConstraintParameters srv;
+		srv.request.parameters.active                     = false;
+		srv.request.parameters.name                       = eq_constraint;
+		srv.request.parameters.type.typevalue = index;
+		srv.request.parameters.solverParameters.dampratio = 0.8;
+		srv.request.parameters.solverParameters.timeconst = 0.2;
+		srv.request.parameters.solverParameters.dmin      = 0.7;
+		srv.request.parameters.solverParameters.dmax      = 0.9;
+		srv.request.parameters.solverParameters.width     = 0.001;
+		srv.request.parameters.solverParameters.midpoint  = 0.5;
+		srv.request.parameters.solverParameters.power     = 3.0;
 
-	mujoco_ros_msgs::SetEqualityConstraintParameters srv;
-	srv.request.parameters.active                     = false;
-	srv.request.parameters.anchor.x                   = 5.0;
-	srv.request.parameters.anchor.y                   = 3.0;
-	srv.request.parameters.anchor.z                   = 7.0;
-	srv.request.parameters.name                       = "weld_eq";
-	srv.request.parameters.element1                   = "immovable";
-	srv.request.parameters.element1                   = "";
-	srv.request.parameters.solverParameters.dampratio = 0.8;
-	srv.request.parameters.solverParameters.timeconst = 0.2;
-	srv.request.parameters.solverParameters.dmin      = 0.7;
-	srv.request.parameters.solverParameters.dmax      = 0.9;
-	srv.request.parameters.solverParameters.width     = 0.001;
-	srv.request.parameters.solverParameters.midpoint  = 0.5;
-	srv.request.parameters.solverParameters.power     = 3.0;
-	srv.request.parameters.relpose.position.x         = 1.2;
-	srv.request.parameters.relpose.position.y         = 1.3;
-	srv.request.parameters.relpose.position.z         = 1.4;
-	srv.request.parameters.relpose.orientation.w      = quat[0];
-	srv.request.parameters.relpose.orientation.x      = quat[1];
-	srv.request.parameters.relpose.orientation.y      = quat[2];
-	srv.request.parameters.relpose.orientation.z      = quat[3];
-	srv.request.parameters.type.typevalue             = mujoco_ros_msgs::EqualityConstraintType::WELD;
+		// constraint specific parameters
+		if (strcmp(eq_constraint, "weld_eq") == 0) {
+			srv.request.parameters.element1                   = "immovable";
+			srv.request.parameters.element1                   = "";
+			srv.request.parameters.anchor.x                   = 5.0;
+			srv.request.parameters.anchor.y                   = 3.0;
+			srv.request.parameters.anchor.z                   = 7.0;
+			srv.request.parameters.relpose.position.x         = 1.2;
+			srv.request.parameters.relpose.position.y         = 1.3;
+			srv.request.parameters.relpose.position.z         = 1.4;
+			srv.request.parameters.relpose.orientation.w      = quat[0];
+			srv.request.parameters.relpose.orientation.x      = quat[1];
+			srv.request.parameters.relpose.orientation.y      = quat[2];
+			srv.request.parameters.relpose.orientation.z      = quat[3];
+			srv.request.parameters.type.typevalue             = mujoco_ros_msgs::EqualityConstraintType::WELD;
+			EXPECT_NE(m->eq_data[eq_id * mjNEQDATA], srv.request.parameters.anchor.x) << "Anchor[0] would not change";
+			EXPECT_NE(m->eq_data[eq_id * mjNEQDATA + 1], srv.request.parameters.anchor.y) << "Anchor[1] would not change";
+			EXPECT_NE(m->eq_data[eq_id * mjNEQDATA + 2], srv.request.parameters.anchor.z) << "Anchor[2] would not change";
+			EXPECT_NE(m->eq_data[eq_id * mjNEQDATA + 3], srv.request.parameters.relpose.position.x)
+				<< "Relpose[0] would not change";
+			EXPECT_NE(m->eq_data[eq_id * mjNEQDATA + 4], srv.request.parameters.relpose.position.y)
+				<< "Relpose[1] would not change";
+			EXPECT_NE(m->eq_data[eq_id * mjNEQDATA + 5], srv.request.parameters.relpose.position.z)
+				<< "Relpose[2] would not change";
+			EXPECT_NE(m->eq_data[eq_id * mjNEQDATA + 6], srv.request.parameters.relpose.orientation.w)
+				<< "Relpose[3] would not change";
+			EXPECT_NE(m->eq_data[eq_id * mjNEQDATA + 7], srv.request.parameters.relpose.orientation.x)
+				<< "Relpose[4] would not change";
+			EXPECT_NE(m->eq_data[eq_id * mjNEQDATA + 8], srv.request.parameters.relpose.orientation.y)
+				<< "Relpose[5] would not change";
+			EXPECT_NE(m->eq_data[eq_id * mjNEQDATA + 9], srv.request.parameters.relpose.orientation.z)
+				<< "Relpose[6] would not change";
+			EXPECT_NE(m->eq_data[eq_id * mjNEQDATA + 10], srv.request.parameters.torquescale)
+				<< "Torquescale would not change";
+    
+		}else if(strcmp(eq_constraint, "connect_eq") == 0){
+			srv.request.parameters.element1                   = "immovable";
+			srv.request.parameters.element2                   = "";
+			srv.request.parameters.anchor.x                   = 5.0;
+			srv.request.parameters.anchor.y                   = 3.0;
+			srv.request.parameters.anchor.z                   = 7.0;
+			EXPECT_NE(m->eq_data[eq_id * mjNEQDATA], srv.request.parameters.anchor.x) << "Anchor[0] would not change";
+			EXPECT_NE(m->eq_data[eq_id * mjNEQDATA + 1], srv.request.parameters.anchor.y) << "Anchor[1] would not change";
+			EXPECT_NE(m->eq_data[eq_id * mjNEQDATA + 2], srv.request.parameters.anchor.z) << "Anchor[2] would not change";
 
-	// Verify values differ to confirm values have changed later on
-	EXPECT_NE(m->eq_active[weld_eq_id], srv.request.parameters.active) << "Constraint is already inactive";
+		}else if(strcmp(eq_constraint, "joint_eq") == 0 || strcmp(eq_constraint, "tendon_eq") == 0){
+			std::string constraint_name = eq_constraint;
+			srv.request.parameters.element1                   = constraint_name+"_element1";
+			srv.request.parameters.element1                   = "";
+			srv.request.parameters.polycoef = std::vector<float>{0.1, 1.0 ,0.2, 0.3, 0.4};
+		}
 
-	EXPECT_NE(m->eq_solref[weld_eq_id * mjNREF], srv.request.parameters.solverParameters.timeconst)
-	    << "Solref timeconst would not change";
-	EXPECT_NE(m->eq_solref[weld_eq_id * mjNREF + 1], srv.request.parameters.solverParameters.dampratio)
-	    << "Solref dampratio would not change";
 
-	EXPECT_NE(m->eq_solimp[weld_eq_id * mjNIMP], srv.request.parameters.solverParameters.dmin)
-	    << "Solimp dmin would not change";
-	EXPECT_NE(m->eq_solimp[weld_eq_id * mjNIMP + 1], srv.request.parameters.solverParameters.dmax)
-	    << "Solimp dmax would not change";
-	EXPECT_NE(m->eq_solimp[weld_eq_id * mjNIMP + 2], srv.request.parameters.solverParameters.width)
-	    << "Solimp width would not change";
-	EXPECT_NE(m->eq_solimp[weld_eq_id * mjNIMP + 3], srv.request.parameters.solverParameters.midpoint)
-	    << "Solimp midpoint would not change";
-	EXPECT_NE(m->eq_solimp[weld_eq_id * mjNIMP + 4], srv.request.parameters.solverParameters.power)
-	    << "Solimp power would not change";
 
-	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA], srv.request.parameters.anchor.x) << "Anchor[0] would not change";
-	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA + 1], srv.request.parameters.anchor.y) << "Anchor[1] would not change";
-	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA + 2], srv.request.parameters.anchor.z) << "Anchor[2] would not change";
-	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA + 3], srv.request.parameters.relpose.position.x)
-	    << "Relpose[0] would not change";
-	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA + 4], srv.request.parameters.relpose.position.y)
-	    << "Relpose[1] would not change";
-	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA + 5], srv.request.parameters.relpose.position.z)
-	    << "Relpose[2] would not change";
-	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA + 6], srv.request.parameters.relpose.orientation.w)
-	    << "Relpose[3] would not change";
-	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA + 7], srv.request.parameters.relpose.orientation.x)
-	    << "Relpose[4] would not change";
-	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA + 8], srv.request.parameters.relpose.orientation.y)
-	    << "Relpose[5] would not change";
-	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA + 9], srv.request.parameters.relpose.orientation.z)
-	    << "Relpose[6] would not change";
-	EXPECT_NE(m->eq_data[weld_eq_id * mjNEQDATA + 10], srv.request.parameters.torquescale)
-	    << "Torquescale would not change";
+		// Verify values differ to confirm values have changed later on
+		EXPECT_NE(m->eq_active[eq_id], srv.request.parameters.active) << "Constraint is already inactive";
 
-	EXPECT_TRUE(ros::service::call(env_ptr->getHandleNamespace() + "/set_eq_constraint_parameters", srv))
-	    << "Set geom properties service call failed!";
-	EXPECT_TRUE(srv.response.success);
+		EXPECT_NE(m->eq_solref[eq_id * mjNREF], srv.request.parameters.solverParameters.timeconst)
+			<< "Solref timeconst would not change";
+		EXPECT_NE(m->eq_solref[eq_id * mjNREF + 1], srv.request.parameters.solverParameters.dampratio)
+			<< "Solref dampratio would not change";
 
-	EXPECT_DOUBLE_EQ(m->eq_solref[weld_eq_id * mjNREF], srv.request.parameters.solverParameters.timeconst)
-	    << "Solref timeconst was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_solref[weld_eq_id * mjNREF + 1], srv.request.parameters.solverParameters.dampratio)
-	    << "Solref dampration was not set correctly";
+		EXPECT_NE(m->eq_solimp[eq_id * mjNIMP], srv.request.parameters.solverParameters.dmin)
+			<< "Solimp dmin would not change";
+		EXPECT_NE(m->eq_solimp[eq_id * mjNIMP + 1], srv.request.parameters.solverParameters.dmax)
+			<< "Solimp dmax would not change";
+		EXPECT_NE(m->eq_solimp[eq_id * mjNIMP + 2], srv.request.parameters.solverParameters.width)
+			<< "Solimp width would not change";
+		EXPECT_NE(m->eq_solimp[eq_id * mjNIMP + 3], srv.request.parameters.solverParameters.midpoint)
+			<< "Solimp midpoint would not change";
+		EXPECT_NE(m->eq_solimp[eq_id * mjNIMP + 4], srv.request.parameters.solverParameters.power)
+			<< "Solimp power would not change";
 
-	EXPECT_DOUBLE_EQ(m->eq_solimp[weld_eq_id * mjNIMP], srv.request.parameters.solverParameters.dmin)
-	    << "Solimp dmin was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_solimp[weld_eq_id * mjNIMP + 1], srv.request.parameters.solverParameters.dmax)
-	    << "Solimp dmax was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_solimp[weld_eq_id * mjNIMP + 2], srv.request.parameters.solverParameters.width)
-	    << "Solimp width was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_solimp[weld_eq_id * mjNIMP + 3], srv.request.parameters.solverParameters.midpoint)
-	    << "Solimp midpoint was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_solimp[weld_eq_id * mjNIMP + 4], srv.request.parameters.solverParameters.power)
-	    << "Solimp power was not set correctly";
 
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA], srv.request.parameters.anchor.x)
-	    << "Anchor[0] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 1], srv.request.parameters.anchor.y)
-	    << "Anchor[1] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 2], srv.request.parameters.anchor.z)
-	    << "Anchor[2] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 3], srv.request.parameters.relpose.position.x)
-	    << "Relpose[0] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 4], srv.request.parameters.relpose.position.y)
-	    << "Relpose[1] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 5], srv.request.parameters.relpose.position.z)
-	    << "Relpose[2] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 6], srv.request.parameters.relpose.orientation.w)
-	    << "Relpose[3] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 7], srv.request.parameters.relpose.orientation.x)
-	    << "Relpose[4] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 8], srv.request.parameters.relpose.orientation.y)
-	    << "Relpose[5] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 9], srv.request.parameters.relpose.orientation.z)
-	    << "Relpose[6] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 10], srv.request.parameters.torquescale)
-	    << "Torquescale was not set correctly";
+		EXPECT_TRUE(ros::service::call(env_ptr->getHandleNamespace() + "/set_eq_constraint_parameters", srv))
+			<< "Set eq constraint service call failed!";
+		EXPECT_TRUE(srv.response.success);
+
+		EXPECT_DOUBLE_EQ(m->eq_solref[eq_id * mjNREF], srv.request.parameters.solverParameters.timeconst)
+			<< "Solref timeconst was not set correctly";
+		EXPECT_DOUBLE_EQ(m->eq_solref[eq_id * mjNREF + 1], srv.request.parameters.solverParameters.dampratio)
+			<< "Solref dampration was not set correctly";
+
+		EXPECT_DOUBLE_EQ(m->eq_solimp[eq_id * mjNIMP], srv.request.parameters.solverParameters.dmin)
+			<< "Solimp dmin was not set correctly";
+		EXPECT_DOUBLE_EQ(m->eq_solimp[eq_id * mjNIMP + 1], srv.request.parameters.solverParameters.dmax)
+			<< "Solimp dmax was not set correctly";
+		EXPECT_DOUBLE_EQ(m->eq_solimp[eq_id * mjNIMP + 2], srv.request.parameters.solverParameters.width)
+			<< "Solimp width was not set correctly";
+		EXPECT_DOUBLE_EQ(m->eq_solimp[eq_id * mjNIMP + 3], srv.request.parameters.solverParameters.midpoint)
+			<< "Solimp midpoint was not set correctly";
+		EXPECT_DOUBLE_EQ(m->eq_solimp[eq_id * mjNIMP + 4], srv.request.parameters.solverParameters.power)
+			<< "Solimp power was not set correctly";
+		if (strcmp(eq_constraint, "weld_eq") == 0) {
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA], srv.request.parameters.anchor.x)
+				<< "Anchor[0] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 1], srv.request.parameters.anchor.y)
+				<< "Anchor[1] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 2], srv.request.parameters.anchor.z)
+				<< "Anchor[2] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 3], srv.request.parameters.relpose.position.x)
+				<< "Relpose[0] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 4], srv.request.parameters.relpose.position.y)
+				<< "Relpose[1] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 5], srv.request.parameters.relpose.position.z)
+				<< "Relpose[2] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 6], srv.request.parameters.relpose.orientation.w)
+				<< "Relpose[3] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 7], srv.request.parameters.relpose.orientation.x)
+				<< "Relpose[4] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 8], srv.request.parameters.relpose.orientation.y)
+				<< "Relpose[5] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 9], srv.request.parameters.relpose.orientation.z)
+				<< "Relpose[6] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 10], srv.request.parameters.torquescale)
+				<< "Torquescale was not set correctly";
+		
+		}else if(strcmp(eq_constraint, "connect_eq") == 0){
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA], srv.request.parameters.anchor.x)
+				<< "Anchor[0] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 1], srv.request.parameters.anchor.y)
+				<< "Anchor[1] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 2], srv.request.parameters.anchor.z)
+				<< "Anchor[2] was not set correctly";
+
+		}else if(strcmp(eq_constraint, "joint_eq") == 0 || strcmp(eq_constraint, "tendon_eq") == 0){
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA], srv.request.parameters.polycoef[0])
+				<< "Polyceof[0] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 1], srv.request.parameters.polycoef[1])
+				<< "Polycoef[1] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 2], srv.request.parameters.polycoef[2])
+				<< "Polycoef[2] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 3], srv.request.parameters.polycoef[3])
+				<< "Polycoef[3] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 4], srv.request.parameters.polycoef[4])
+				<< "Polycoef[3] was not set correctly";
+		}
+		index++;
+	}
 }
 
-TEST_F(EqualityEnvFixture, GetWeldConstraint)
+TEST_F(EqualityEnvFixture, GetEqConstraint)
 {
 	mjModel *m = env_ptr->getModelPtr();
 
@@ -941,55 +1014,82 @@ TEST_F(EqualityEnvFixture, GetWeldConstraint)
 	EXPECT_TRUE(ros::service::exists(env_ptr->getHandleNamespace() + "/get_eq_constraint_parameters", true))
 	    << "Ret geom properties service should be available!";
 
-	int weld_eq_id = mj_name2id(m, mjOBJ_EQUALITY, "weld_eq");
-	EXPECT_NE(weld_eq_id, -1) << "weld_eq is not defined in loaded model!";
+	const char * eq_types[4] = {"weld_eq","tendon_eq","joint_eq","connect_eq"};
 
-	int elem1_id = mj_name2id(m, mjOBJ_BODY, "immovable");
-	EXPECT_NE(elem1_id, -1) << "Body with name 'immovable' is not defined in loaded model!";
+	for (const char* eq_constraint:eq_types){
+		int eq_id = mj_name2id(m, mjOBJ_EQUALITY, eq_constraint);
+		EXPECT_NE(eq_id, -1) << "eq constraint is not defined in loaded model!";
 
-	mujoco_ros_msgs::GetEqualityConstraintParameters srv;
-	srv.request.name = "weld_eq";
-	EXPECT_TRUE(ros::service::call(env_ptr->getHandleNamespace() + "/get_eq_constraint_parameters", srv))
-	    << "Get eq constraints service call failed!";
-	EXPECT_TRUE(srv.response.success);
 
-	EXPECT_EQ(m->eq_obj1id[weld_eq_id], elem1_id) << "Weld constraint body1 was not set correctly";
-	EXPECT_NEAR(m->eq_solref[weld_eq_id * mjNREF], srv.response.parameters.solverParameters.timeconst, 1e-5)
-	    << "Solref timeconst was not set correctly";
-	EXPECT_NEAR(m->eq_solref[weld_eq_id * mjNREF + 1], srv.response.parameters.solverParameters.dampratio, 1e-5)
-	    << "Solref dampration was not set correctly";
+		mujoco_ros_msgs::GetEqualityConstraintParameters srv;
+		srv.request.name = eq_constraint;
+		EXPECT_TRUE(ros::service::call(env_ptr->getHandleNamespace() + "/get_eq_constraint_parameters", srv))
+			<< "Get eq constraints service call failed!";
+		EXPECT_TRUE(srv.response.success);
 
-	EXPECT_NEAR(m->eq_solimp[weld_eq_id * mjNIMP], srv.response.parameters.solverParameters.dmin, 1e-5)
-	    << "Solimp dmin was not set correctly";
-	EXPECT_NEAR(m->eq_solimp[weld_eq_id * mjNIMP + 1], srv.response.parameters.solverParameters.dmax, 1e-5)
-	    << "Solimp dmax was not set correctly";
-	EXPECT_NEAR(m->eq_solimp[weld_eq_id * mjNIMP + 2], srv.response.parameters.solverParameters.width, 1e-5)
-	    << "Solimp width was not set correctly";
-	EXPECT_NEAR(m->eq_solimp[weld_eq_id * mjNIMP + 3], srv.response.parameters.solverParameters.midpoint, 1e-5)
-	    << "Solimp midpoint was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_solimp[weld_eq_id * mjNIMP + 4], srv.response.parameters.solverParameters.power)
-	    << "Solimp power was not set correctly";
+		EXPECT_NEAR(m->eq_solref[eq_id * mjNREF], srv.response.parameters.solverParameters.timeconst, 1e-5)
+			<< "Solref timeconst was not set correctly";
+		EXPECT_NEAR(m->eq_solref[eq_id * mjNREF + 1], srv.response.parameters.solverParameters.dampratio, 1e-5)
+			<< "Solref dampration was not set correctly";
 
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA], srv.response.parameters.anchor.x)
-	    << "Anchor[0] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 1], srv.response.parameters.anchor.y)
-	    << "Anchor[1] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 2], srv.response.parameters.anchor.z)
-	    << "Anchor[2] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 3], srv.response.parameters.relpose.position.x)
-	    << "Relpose[0] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 4], srv.response.parameters.relpose.position.y)
-	    << "Relpose[1] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 5], srv.response.parameters.relpose.position.z)
-	    << "Relpose[2] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 6], srv.response.parameters.relpose.orientation.w)
-	    << "Relpose[3] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 7], srv.response.parameters.relpose.orientation.x)
-	    << "Relpose[4] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 8], srv.response.parameters.relpose.orientation.y)
-	    << "Relpose[5] was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_data[weld_eq_id * mjNEQDATA + 9], srv.response.parameters.relpose.orientation.z)
-	    << "Relpose[6] was not set correctly";
-	EXPECT_NEAR(m->eq_data[weld_eq_id * mjNEQDATA + 10], srv.response.parameters.torquescale, 1e-5)
-	    << "Torquescale was not set correctly";
+		EXPECT_NEAR(m->eq_solimp[eq_id * mjNIMP], srv.response.parameters.solverParameters.dmin, 1e-5)
+			<< "Solimp dmin was not set correctly";
+		EXPECT_NEAR(m->eq_solimp[eq_id * mjNIMP + 1], srv.response.parameters.solverParameters.dmax, 1e-5)
+			<< "Solimp dmax was not set correctly";
+		EXPECT_NEAR(m->eq_solimp[eq_id * mjNIMP + 2], srv.response.parameters.solverParameters.width, 1e-5)
+			<< "Solimp width was not set correctly";
+		EXPECT_NEAR(m->eq_solimp[eq_id * mjNIMP + 3], srv.response.parameters.solverParameters.midpoint, 1e-5)
+			<< "Solimp midpoint was not set correctly";
+		EXPECT_DOUBLE_EQ(m->eq_solimp[eq_id * mjNIMP + 4], srv.response.parameters.solverParameters.power)
+			<< "Solimp power was not set correctly";
+
+		if (strcmp(eq_constraint, "weld_eq") == 0) {
+			int elem1_id = mj_name2id(m, mjOBJ_BODY, "immovable");
+			EXPECT_NE(elem1_id, -1) << "Body with name 'immovable' is not defined in loaded model!";
+			EXPECT_EQ(m->eq_obj1id[eq_id], elem1_id) << "Weld constraint body1 was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA], srv.response.parameters.anchor.x)
+				<< "Anchor[0] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 1], srv.response.parameters.anchor.y)
+				<< "Anchor[1] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 2], srv.response.parameters.anchor.z)
+				<< "Anchor[2] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 3], srv.response.parameters.relpose.position.x)
+				<< "Relpose[0] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 4], srv.response.parameters.relpose.position.y)
+				<< "Relpose[1] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 5], srv.response.parameters.relpose.position.z)
+				<< "Relpose[2] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 6], srv.response.parameters.relpose.orientation.w)
+				<< "Relpose[3] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 7], srv.response.parameters.relpose.orientation.x)
+				<< "Relpose[4] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 8], srv.response.parameters.relpose.orientation.y)
+				<< "Relpose[5] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 9], srv.response.parameters.relpose.orientation.z)
+				<< "Relpose[6] was not set correctly";
+			EXPECT_NEAR(m->eq_data[eq_id * mjNEQDATA + 10], srv.response.parameters.torquescale, 1e-5)
+				<< "Torquescale was not set correctly";
+		}else if(strcmp(eq_constraint, "connect_eq") == 0){
+			int elem1_id = mj_name2id(m, mjOBJ_BODY, "immovable");
+			EXPECT_NE(elem1_id, -1) << "Body with name 'immovable' is not defined in loaded model!";
+			EXPECT_EQ(m->eq_obj1id[eq_id], elem1_id) << "Weld constraint body1 was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA], srv.response.parameters.anchor.x)
+				<< "Anchor[0] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 1], srv.response.parameters.anchor.y)
+				<< "Anchor[1] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 2], srv.response.parameters.anchor.z)
+				<< "Anchor[2] was not set correctly";
+		}else if(strcmp(eq_constraint, "joint_eq") == 0 || strcmp(eq_constraint, "tendon_eq") == 0){
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA], srv.response.parameters.polycoef[0])
+				<< "polycoef[]0] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 1], srv.response.parameters.polycoef[1])
+				<< "polycoef[]1] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 2], srv.response.parameters.polycoef[2])
+				<< "polycoef[]2] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 3], srv.response.parameters.polycoef[3])
+				<< "polycoef[3] was not set correctly";
+			EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA + 4], srv.response.parameters.polycoef[4])
+				<< "polycoef[4] was not set correctly";
+		}
+	}
 }
