@@ -668,6 +668,11 @@ bool MujocoEnv::setEqualityConstraintParametersCB(mujoco_ros_msgs::SetEqualityCo
 						model_->eq_obj2id[eq_id] = id2;
 					}
 				}
+				model_->eq_data[eq_id * mjNEQDATA]     = req.parameters.polycoef[0];
+				model_->eq_data[eq_id * mjNEQDATA + 1] = req.parameters.polycoef[1];
+				model_->eq_data[eq_id * mjNEQDATA + 2] = req.parameters.polycoef[2];
+				model_->eq_data[eq_id * mjNEQDATA + 3] = req.parameters.polycoef[3];
+				model_->eq_data[eq_id * mjNEQDATA + 4] = req.parameters.polycoef[4];
 				break;
 			case mjEQ_WELD:
 				id1 = mj_name2id(model_.get(), mjOBJ_XBODY, req.parameters.element1.c_str());
@@ -721,6 +726,9 @@ bool MujocoEnv::setEqualityConstraintParametersCB(mujoco_ros_msgs::SetEqualityCo
 						model_->eq_obj2id[eq_id] = id2;
 					}
 				}
+				model_->eq_data[eq_id * mjNEQDATA]      = req.parameters.anchor.x;
+				model_->eq_data[eq_id * mjNEQDATA + 1]  = req.parameters.anchor.y;
+				model_->eq_data[eq_id * mjNEQDATA + 2]  = req.parameters.anchor.z;
 				break;
 			default:
 				break;
@@ -794,17 +802,28 @@ bool MujocoEnv::getEqualityConstraintParametersCB(mujoco_ros_msgs::GetEqualityCo
 				if (mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj2id[eq_id])) {
 					resp.parameters.element2 = mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj2id[eq_id]);
 				}
-
-				std::memcpy(polycoef.data(), model_->eq_data + eq_id * mjNEQDATA, 5);
-				resp.parameters.polycoef = polycoef;
+				//Todo: correct usage of memcpy
+				//std::memcpy(polycoef.data(), model_->eq_data + eq_id * mjNEQDATA, 5);
+				//resp.parameters.polycoef = polycoef;
+				resp.parameters.polycoef = {float(model_->eq_data[eq_id * mjNEQDATA]),
+											float(model_->eq_data[eq_id * mjNEQDATA+1]),
+											float(model_->eq_data[eq_id * mjNEQDATA+2]),
+											float(model_->eq_data[eq_id * mjNEQDATA+3]),
+											float(model_->eq_data[eq_id * mjNEQDATA+4])};
 				break;
 			case mjEQ_TENDON:
 				resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj1id[eq_id]);
 				if (mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj2id[eq_id])) {
 					resp.parameters.element2 = mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj2id[eq_id]);
 				}
-				std::memcpy(polycoef.data(), model_->eq_data + eq_id * mjNEQDATA, 5);
-				resp.parameters.polycoef = polycoef;
+				//Todo: correct usage of memcpy
+				//std::memcpy(polycoef.data(), model_->eq_data + eq_id * mjNEQDATA, 5);
+				//resp.parameters.polycoef = polycoef;
+				resp.parameters.polycoef = {float(model_->eq_data[eq_id * mjNEQDATA]),
+											float(model_->eq_data[eq_id * mjNEQDATA+1]),
+											float(model_->eq_data[eq_id * mjNEQDATA+2]),
+											float(model_->eq_data[eq_id * mjNEQDATA+3]),
+											float(model_->eq_data[eq_id * mjNEQDATA+4])};
 				break;
 			default:
 				break;
