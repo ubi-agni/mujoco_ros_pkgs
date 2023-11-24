@@ -10,4 +10,3 @@ This can be used in conjunction with a MuJoCo weld constraint to set position an
 # Licensing
 
 This work is licensed under the BSD 3-Clause License (see LICENSE).
-The original work it is based on was released under a BSD 3-Clause License (see LICENSE-ORIGINAL).

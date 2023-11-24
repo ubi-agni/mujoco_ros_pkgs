@@ -47,13 +47,13 @@
 
 namespace mujoco_ros::mocap {
 
-bool validateMocapMsg(const mujoco_ros_msgs::MocapState &msg, mujoco_ros::mjModelPtr m) {
+bool validateMocapMsg(const mujoco_ros_msgs::MocapState &msg, const mjModel *m) {
 	for (int idx = 0; idx < msg.pose.size(); idx++) {
 		if (msg.pose[idx].header.frame_id != "world" && msg.pose[idx].header.frame_id != "") {
 			ROS_ERROR_STREAM("mocap plugin expects poses in world frame, but got pose in frame " << msg.pose[idx].header.frame_id);
 			return false;
 		} else {
-			int body_id = mj_name2id(m.get(), mjOBJ_BODY, msg.name[idx].c_str());
+			int body_id = mj_name2id(m, mjOBJ_BODY, msg.name[idx].c_str());
 			if (body_id == -1) {
 				ROS_ERROR_STREAM("mocap plugin got pose for unknown body " << msg.name[idx]);
 				return false;
@@ -70,14 +70,14 @@ bool validateMocapMsg(const mujoco_ros_msgs::MocapState &msg, mujoco_ros::mjMode
 void MocapPlugin::mocapStateCallback(const mujoco_ros_msgs::MocapState::ConstPtr &msg)
 {
 	ROS_DEBUG("Got target poses");
-	if (!validateMocapMsg(*msg, m)) return;
+	if (!validateMocapMsg(*msg, m_)) return;
 	last_mocap_state_ = mujoco_ros_msgs::MocapState(*msg);
 }
 
-void MocapPlugin::controlCallback(mujoco_ros::mjModelPtr m, mujoco_ros::mjDataPtr d)
+void MocapPlugin::controlCallback(const mjModel *m, mjData *d)
 {
 	for (int idx = 0; idx < last_mocap_state_.pose.size(); idx++) {
-		int bodyid  = mj_name2id(m.get(), mjOBJ_BODY, last_mocap_state_.name[idx].c_str());
+		int bodyid  = mj_name2id(m, mjOBJ_BODY, last_mocap_state_.name[idx].c_str());
 
 		if (bodyid == -1) return;
 		int mocap_data_id = m->body_mocapid[bodyid];
@@ -104,7 +104,7 @@ void MocapPlugin::controlCallback(mujoco_ros::mjModelPtr m, mujoco_ros::mjDataPt
 }
 
 bool MocapPlugin::mocapServiceCallback(mujoco_ros_msgs::SetMocapState::Request &req, mujoco_ros_msgs::SetMocapState::Response &resp) {
-	if (!validateMocapMsg(req.mocap_state, m)) {
+	if (!validateMocapMsg(req.mocap_state, m_)) {
 		resp.success = false;
 		return true;
 	}
@@ -113,7 +113,7 @@ bool MocapPlugin::mocapServiceCallback(mujoco_ros_msgs::SetMocapState::Request &
 	return true;
 }
 
-bool MocapPlugin::load(mujoco_ros::mjModelPtr m, mujoco_ros::mjDataPtr d)
+bool MocapPlugin::load(const mjModel *m, mjData *d)
 {
 	// Check that ROS has been initialized
 	if (!ros::isInitialized()) {
@@ -121,11 +121,11 @@ bool MocapPlugin::load(mujoco_ros::mjModelPtr m, mujoco_ros::mjDataPtr d)
 		return false;
 	}
 
-	this->m = m;
-	this->d = d;
+	m_ = m;
+	d_ = d;
 	
-	pose_subscriber_ = node_handle_->subscribe("mocap_poses", 1, &MocapPlugin::mocapStateCallback, this);
-	pose_service_ = node_handle_->advertiseService("set_mocap_state", &MocapPlugin::mocapServiceCallback, this);
+	pose_subscriber_ = node_handle_.subscribe("mocap_poses", 1, &MocapPlugin::mocapStateCallback, this);
+	pose_service_ = node_handle_.advertiseService("set_mocap_state", &MocapPlugin::mocapServiceCallback, this);
 	ROS_INFO("Mocap plugin initialized");
 	return true;
 }

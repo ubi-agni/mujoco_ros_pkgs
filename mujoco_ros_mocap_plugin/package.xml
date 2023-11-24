@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>mujoco_mocap</name>
-  <version>1.0.0</version>
+  <version>0.8.0</version>
   <description>The mujoco_mocap plugin package</description>
 
   <url type="repository">https://github.com/ubi-agni/mujoco_mocap_plugin</url>

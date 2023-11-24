@@ -56,18 +56,19 @@ public:
 	~MocapPlugin() override = default;
 
 	// Overload entry point
-	virtual bool load(mujoco_ros::mjModelPtr m, mujoco_ros::mjDataPtr d) override;
+	virtual bool load(const mjModel *m, mjData *d) override;
 	// Called on reset
 	virtual void reset() override;
 
-	virtual void controlCallback(mujoco_ros::mjModelPtr m, mujoco_ros::mjDataPtr d) override;
+	virtual void controlCallback(const mjModel *m, mjData *d) override;
 
 private:
 	void mocapStateCallback(const mujoco_ros_msgs::MocapState::ConstPtr &msg);
 	bool mocapServiceCallback(mujoco_ros_msgs::SetMocapState::Request &req, mujoco_ros_msgs::SetMocapState::Response &resp);
 
-	mujoco_ros::mjModelPtr m;
-	mujoco_ros::mjDataPtr d;
+	
+	const mjModel *m_;
+	mjData *d_;
 
 	ros::Subscriber pose_subscriber_;
 	ros::ServiceServer pose_service_;
