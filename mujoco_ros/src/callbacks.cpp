@@ -56,7 +56,7 @@ void MujocoEnv::setupServices()
 	service_servers_.emplace_back(nh_->advertiseService("get_body_state", &MujocoEnv::getBodyStateCB, this));
 	service_servers_.emplace_back(nh_->advertiseService("set_geom_properties", &MujocoEnv::setGeomPropertiesCB, this));
 	service_servers_.emplace_back(nh_->advertiseService("get_geom_properties", &MujocoEnv::getGeomPropertiesCB, this));
-	
+
 	service_servers_.emplace_back(
 	    nh_->advertiseService("set_eq_constraint_parameters", &MujocoEnv::setEqualityConstraintParametersCB, this));
 
@@ -726,9 +726,9 @@ bool MujocoEnv::setEqualityConstraintParametersCB(mujoco_ros_msgs::SetEqualityCo
 						model_->eq_obj2id[eq_id] = id2;
 					}
 				}
-				model_->eq_data[eq_id * mjNEQDATA]      = req.parameters.anchor.x;
-				model_->eq_data[eq_id * mjNEQDATA + 1]  = req.parameters.anchor.y;
-				model_->eq_data[eq_id * mjNEQDATA + 2]  = req.parameters.anchor.z;
+				model_->eq_data[eq_id * mjNEQDATA]     = req.parameters.anchor.x;
+				model_->eq_data[eq_id * mjNEQDATA + 1] = req.parameters.anchor.y;
+				model_->eq_data[eq_id * mjNEQDATA + 2] = req.parameters.anchor.z;
 				break;
 			default:
 				break;
@@ -802,28 +802,28 @@ bool MujocoEnv::getEqualityConstraintParametersCB(mujoco_ros_msgs::GetEqualityCo
 				if (mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj2id[eq_id])) {
 					resp.parameters.element2 = mj_id2name(model_.get(), mjOBJ_JOINT, model_->eq_obj2id[eq_id]);
 				}
-				//Todo: correct usage of memcpy
-				//std::memcpy(polycoef.data(), model_->eq_data + eq_id * mjNEQDATA, 5);
-				//resp.parameters.polycoef = polycoef;
-				resp.parameters.polycoef = {float(model_->eq_data[eq_id * mjNEQDATA]),
-											float(model_->eq_data[eq_id * mjNEQDATA+1]),
-											float(model_->eq_data[eq_id * mjNEQDATA+2]),
-											float(model_->eq_data[eq_id * mjNEQDATA+3]),
-											float(model_->eq_data[eq_id * mjNEQDATA+4])};
+				// Todo: correct usage of memcpy
+				// std::memcpy(polycoef.data(), model_->eq_data + eq_id * mjNEQDATA, 5);
+				// resp.parameters.polycoef = polycoef;
+				resp.parameters.polycoef = { float(model_->eq_data[eq_id * mjNEQDATA]),
+					                          float(model_->eq_data[eq_id * mjNEQDATA + 1]),
+					                          float(model_->eq_data[eq_id * mjNEQDATA + 2]),
+					                          float(model_->eq_data[eq_id * mjNEQDATA + 3]),
+					                          float(model_->eq_data[eq_id * mjNEQDATA + 4]) };
 				break;
 			case mjEQ_TENDON:
 				resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj1id[eq_id]);
 				if (mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj2id[eq_id])) {
 					resp.parameters.element2 = mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj2id[eq_id]);
 				}
-				//Todo: correct usage of memcpy
-				//std::memcpy(polycoef.data(), model_->eq_data + eq_id * mjNEQDATA, 5);
-				//resp.parameters.polycoef = polycoef;
-				resp.parameters.polycoef = {float(model_->eq_data[eq_id * mjNEQDATA]),
-											float(model_->eq_data[eq_id * mjNEQDATA+1]),
-											float(model_->eq_data[eq_id * mjNEQDATA+2]),
-											float(model_->eq_data[eq_id * mjNEQDATA+3]),
-											float(model_->eq_data[eq_id * mjNEQDATA+4])};
+				// Todo: correct usage of memcpy
+				// std::memcpy(polycoef.data(), model_->eq_data + eq_id * mjNEQDATA, 5);
+				// resp.parameters.polycoef = polycoef;
+				resp.parameters.polycoef = { float(model_->eq_data[eq_id * mjNEQDATA]),
+					                          float(model_->eq_data[eq_id * mjNEQDATA + 1]),
+					                          float(model_->eq_data[eq_id * mjNEQDATA + 2]),
+					                          float(model_->eq_data[eq_id * mjNEQDATA + 3]),
+					                          float(model_->eq_data[eq_id * mjNEQDATA + 4]) };
 				break;
 			default:
 				break;

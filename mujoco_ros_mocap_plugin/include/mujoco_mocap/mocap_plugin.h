@@ -64,9 +64,9 @@ public:
 
 private:
 	void mocapStateCallback(const mujoco_ros_msgs::MocapState::ConstPtr &msg);
-	bool mocapServiceCallback(mujoco_ros_msgs::SetMocapState::Request &req, mujoco_ros_msgs::SetMocapState::Response &resp);
+	bool mocapServiceCallback(mujoco_ros_msgs::SetMocapState::Request &req,
+	                          mujoco_ros_msgs::SetMocapState::Response &resp);
 
-	
 	const mjModel *m_;
 	mjData *d_;
 
