@@ -5,7 +5,7 @@ bool active
 string classParam
 string element1
 string element2
-float32 torquescale
+float64 torquescale
 geometry_msgs/Vector3 anchor
 geometry_msgs/Pose relpose
-float32[] polycoef
+float64[] polycoef

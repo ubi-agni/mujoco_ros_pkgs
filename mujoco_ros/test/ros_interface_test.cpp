@@ -910,7 +910,7 @@ TEST_F(EqualityEnvFixture, SetEqConstraint)
 			std::string constraint_name     = eq_constraint;
 			srv.request.parameters.element1 = constraint_name + "_element1";
 			srv.request.parameters.element1 = "";
-			srv.request.parameters.polycoef = std::vector<float>{ 0.1, 1.0, 0.2, 0.3, 0.4 };
+			srv.request.parameters.polycoef = std::vector<double>{ 0.1, 1.0, 0.2, 0.3, 0.4 };
 		}
 
 		// Verify values differ to confirm values have changed later on

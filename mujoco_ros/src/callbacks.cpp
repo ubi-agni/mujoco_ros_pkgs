@@ -805,11 +805,9 @@ bool MujocoEnv::getEqualityConstraintParametersCB(mujoco_ros_msgs::GetEqualityCo
 				// Todo: correct usage of memcpy
 				// std::memcpy(polycoef.data(), model_->eq_data + eq_id * mjNEQDATA, 5);
 				// resp.parameters.polycoef = polycoef;
-				resp.parameters.polycoef = { float(model_->eq_data[eq_id * mjNEQDATA]),
-					                          float(model_->eq_data[eq_id * mjNEQDATA + 1]),
-					                          float(model_->eq_data[eq_id * mjNEQDATA + 2]),
-					                          float(model_->eq_data[eq_id * mjNEQDATA + 3]),
-					                          float(model_->eq_data[eq_id * mjNEQDATA + 4]) };
+				resp.parameters.polycoef = { model_->eq_data[eq_id * mjNEQDATA], model_->eq_data[eq_id * mjNEQDATA + 1],
+					                          model_->eq_data[eq_id * mjNEQDATA + 2], model_->eq_data[eq_id * mjNEQDATA + 3],
+					                          model_->eq_data[eq_id * mjNEQDATA + 4] };
 				break;
 			case mjEQ_TENDON:
 				resp.parameters.element1 = mj_id2name(model_.get(), mjOBJ_TENDON, model_->eq_obj1id[eq_id]);
@@ -819,11 +817,9 @@ bool MujocoEnv::getEqualityConstraintParametersCB(mujoco_ros_msgs::GetEqualityCo
 				// Todo: correct usage of memcpy
 				// std::memcpy(polycoef.data(), model_->eq_data + eq_id * mjNEQDATA, 5);
 				// resp.parameters.polycoef = polycoef;
-				resp.parameters.polycoef = { float(model_->eq_data[eq_id * mjNEQDATA]),
-					                          float(model_->eq_data[eq_id * mjNEQDATA + 1]),
-					                          float(model_->eq_data[eq_id * mjNEQDATA + 2]),
-					                          float(model_->eq_data[eq_id * mjNEQDATA + 3]),
-					                          float(model_->eq_data[eq_id * mjNEQDATA + 4]) };
+				resp.parameters.polycoef = { model_->eq_data[eq_id * mjNEQDATA], model_->eq_data[eq_id * mjNEQDATA + 1],
+					                          model_->eq_data[eq_id * mjNEQDATA + 2], model_->eq_data[eq_id * mjNEQDATA + 3],
+					                          model_->eq_data[eq_id * mjNEQDATA + 4] };
 				break;
 			default:
 				break;
