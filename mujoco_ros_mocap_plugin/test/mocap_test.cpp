@@ -59,7 +59,7 @@ protected:
 	mujoco_ros::mocap::MocapPlugin *mocap_plugin;
 	MujocoEnvTestWrapper *env_ptr;
 
-	virtual void SetUp()
+	void SetUp() override
 	{
 		nh.reset(new ros::NodeHandle("~"));
 		nh->setParam("unpause", false);
@@ -85,7 +85,7 @@ protected:
 		}
 	}
 
-	virtual void TearDown()
+	void TearDown() override
 	{
 		mocap_plugin = nullptr;
 		env_ptr->shutdown();

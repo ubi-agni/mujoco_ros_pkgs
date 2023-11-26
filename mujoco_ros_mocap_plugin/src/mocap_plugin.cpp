@@ -50,7 +50,7 @@ namespace mujoco_ros::mocap {
 bool validateMocapMsg(const mujoco_ros_msgs::MocapState &msg, const mjModel *m)
 {
 	for (int idx = 0; idx < msg.pose.size(); idx++) {
-		if (msg.pose[idx].header.frame_id != "world" && msg.pose[idx].header.frame_id != "") {
+		if (msg.pose[idx].header.frame_id != "world" && !msg.pose[idx].header.frame_id.empty()) {
 			ROS_ERROR_STREAM("mocap plugin expects poses in world frame, but got pose in frame "
 			                 << msg.pose[idx].header.frame_id);
 			return false;

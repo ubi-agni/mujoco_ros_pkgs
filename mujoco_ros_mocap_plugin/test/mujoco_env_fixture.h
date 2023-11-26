@@ -45,7 +45,7 @@ namespace mju = ::mujoco::sample_util;
 class MujocoEnvTestWrapper : public MujocoEnv
 {
 public:
-	MujocoEnvTestWrapper(std::string admin_hash = std::string()) : MujocoEnv(admin_hash) {}
+	MujocoEnvTestWrapper(const std::string &admin_hash = std::string()) : MujocoEnv(admin_hash) {}
 	mjModelPtr getModelPtr() { return model_; }
 	mjDataPtr getDataPtr() { return data_; }
 	int getPendingSteps() { return num_steps_until_exit_; }
@@ -67,7 +67,7 @@ public:
 
 	const std::string &getHandleNamespace() { return nh_->getNamespace(); }
 
-	void startWithXML(const std::string xml_path)
+	void startWithXML(const std::string &xml_path)
 	{
 		mju::strcpy_arr(queued_filename_, xml_path.c_str());
 		settings_.load_request = 2;
@@ -81,7 +81,7 @@ class BaseEnvFixture : public ::testing::Test
 protected:
 	boost::shared_ptr<ros::NodeHandle> nh;
 
-	virtual void SetUp()
+	void SetUp() override
 	{
 		nh.reset(new ros::NodeHandle("~"));
 		nh->setParam("unpause", true);
@@ -89,5 +89,5 @@ protected:
 		nh->setParam("use_sim_time", true);
 	}
 
-	virtual void TearDown() {}
+	void TearDown() override {}
 };

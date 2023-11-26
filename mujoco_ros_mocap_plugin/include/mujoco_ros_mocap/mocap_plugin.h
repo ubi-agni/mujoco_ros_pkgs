@@ -56,11 +56,11 @@ public:
 	~MocapPlugin() override = default;
 
 	// Overload entry point
-	virtual bool load(const mjModel *m, mjData *d) override;
+	bool load(const mjModel *m, mjData *d) override;
 	// Called on reset
-	virtual void reset() override;
+	void reset() override;
 
-	virtual void controlCallback(const mjModel *m, mjData *d) override;
+	void controlCallback(const mjModel *m, mjData *d) override;
 
 private:
 	void mocapStateCallback(const mujoco_ros_msgs::MocapState::ConstPtr &msg);

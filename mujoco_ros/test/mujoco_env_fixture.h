@@ -133,7 +133,7 @@ protected:
 	boost::shared_ptr<ros::NodeHandle> nh;
 	MujocoEnvTestWrapper *env_ptr;
 
-	virtual void SetUp()
+	void SetUp() override
 	{
 		nh.reset(new ros::NodeHandle("~"));
 		nh->setParam("unpause", false);
@@ -168,7 +168,7 @@ protected:
 		EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
 	}
 
-	virtual void TearDown()
+	void TearDown() override
 	{
 		env_ptr->shutdown();
 		delete env_ptr;
