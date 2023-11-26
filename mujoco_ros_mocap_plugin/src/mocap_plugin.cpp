@@ -43,7 +43,7 @@
 #include <iostream>
 #include <vector>
 
-#include <mujoco_mocap/mocap_plugin.h>
+#include <mujoco_ros_mocap/mocap_plugin.h>
 
 namespace mujoco_ros::mocap {
 

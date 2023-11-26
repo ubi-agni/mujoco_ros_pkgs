@@ -34,7 +34,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* Authors: Julian Leichert*/
+/* Authors: David Leins, Julian Leichert*/
 
 #pragma once
 

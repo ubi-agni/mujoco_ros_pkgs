@@ -1,2 +1,2 @@
 MujocoPlugins:
-  - type: mujoco_mocap/MocapPlugin
+  - type: mujoco_ros_mocap/MocapPlugin

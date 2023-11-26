@@ -38,7 +38,7 @@
 
 #include <ros/package.h>
 
-#include <mujoco_mocap/mocap_plugin.h>
+#include <mujoco_ros_mocap/mocap_plugin.h>
 #include "mujoco_env_fixture.h"
 
 #include <mujoco_ros/mujoco_env.h>
@@ -48,7 +48,7 @@
 int main(int argc, char **argv)
 {
 	testing::InitGoogleTest(&argc, argv);
-	ros::init(argc, argv, "mujoco_ros_plugin_test");
+	ros::init(argc, argv, "mujoco_ros_mocap_test");
 	return RUN_ALL_TESTS();
 }
 
@@ -67,7 +67,7 @@ protected:
 		nh->setParam("use_sim_time", true);
 
 		env_ptr              = new MujocoEnvTestWrapper();
-		std::string xml_path = ros::package::getPath("mujoco_mocap") + "/assets/mocap_world.xml";
+		std::string xml_path = ros::package::getPath("mujoco_ros_mocap") + "/assets/mocap_world.xml";
 		env_ptr->startWithXML(xml_path);
 
 		float seconds = 0;
@@ -76,8 +76,8 @@ protected:
 			seconds += 0.001;
 		}
 		EXPECT_LT(seconds, 2) << "Env loading ran into 2 seconds timeout!";
-		auto plugins = env_ptr->getPlugins();
-		for (auto p : plugins) {
+		auto &plugins = env_ptr->getPlugins();
+		for (const auto &p : plugins) {
 			mocap_plugin = dynamic_cast<mujoco_ros::mocap::MocapPlugin *>(p.get());
 			if (mocap_plugin != nullptr) {
 				break;
@@ -92,6 +92,11 @@ protected:
 		delete env_ptr;
 	}
 };
+
+TEST_F(MocapPluginFixture, PluginExists)
+{
+	EXPECT_TRUE(mocap_plugin != nullptr);
+}
 
 TEST_F(MocapPluginFixture, ControlCallback)
 {

@@ -1,4 +1,4 @@
-<library path="lib/libmujoco_mocap">
+<library path="lib/libmujoco_ros_mocap">
   <class
     name="mujoco_ros_mocap/MocapPlugin"
     type="mujoco_ros::mocap::MocapPlugin"

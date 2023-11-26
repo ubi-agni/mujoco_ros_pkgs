@@ -7,6 +7,6 @@
 
   <param name="/use_sim_time" value="true"/>
 
-  <rosparam file="$(find mujoco_mocap)/config/mocap_example_config.yaml" subst_value="true" />
-  <test test-name="mujoco_mocap_test" pkg="mujoco_ros_mocap" type="mujoco_mocap_test" />
+  <rosparam file="$(find mujoco_ros_mocap)/config/mocap_example_config.yaml" subst_value="true" />
+  <test test-name="mujoco_mocap_test" pkg="mujoco_ros_mocap" type="mocap_test" />
 </launch>
