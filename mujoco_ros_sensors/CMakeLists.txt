@@ -46,6 +46,8 @@ include_directories(
 
 add_library(${PROJECT_NAME}
   src/mujoco_sensor_handler_plugin.cpp
+  src/serialization.cpp
+  src/compound_sensors.cpp
 )
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}

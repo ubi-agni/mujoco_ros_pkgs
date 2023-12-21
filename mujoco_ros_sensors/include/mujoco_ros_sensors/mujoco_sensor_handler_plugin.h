@@ -38,7 +38,7 @@
 
 #pragma once
 
-#include <ros/ros.h>
+#include <mujoco_ros_sensors/sensors.h>
 
 #include <mujoco_ros/common_types.h>
 #include <mujoco_ros/plugin_utils.h>
@@ -46,35 +46,11 @@
 
 #include <mujoco_ros_msgs/RegisterSensorNoiseModels.h>
 
+#include <ros/ros.h>
+
 #include <random>
 
 namespace mujoco_ros::sensors {
-
-struct SensorConfig
-{
-public:
-	SensorConfig() : frame_id(""){};
-	SensorConfig(std::string frame_id) : frame_id(std::move(frame_id)){};
-
-	void setFrameId(const std::string &frame_id) { this->frame_id = frame_id; };
-
-	void registerPub(const ros::Publisher &pub) { value_pub = pub; };
-
-	void registerGTPub(const ros::Publisher &pub) { gt_pub = pub; };
-
-	std::string frame_id;
-
-	ros::Publisher gt_pub;
-	ros::Publisher value_pub;
-
-	// Noise params
-	double mean[3];
-	double sigma[3];
-
-	uint8_t is_set = 0; // 0 for unset, otherwise binary code for combination of dims
-};
-
-using SensorConfigPtr = std::unique_ptr<SensorConfig>;
 
 class MujocoRosSensorsPlugin : public mujoco_ros::MujocoPlugin
 {
@@ -91,10 +67,11 @@ public:
 private:
 	ros::NodeHandle sensors_nh_;
 	void initSensors(const mjModel *model, mjData *data);
-	std::mt19937 rand_generator = std::mt19937(std::random_device{}());
-	std::normal_distribution<double> noise_dist;
+	std::mt19937 rand_generator_ = std::mt19937(std::random_device{}());
+	std::normal_distribution<double> noise_dist_;
 
-	std::map<std::string, SensorConfigPtr> sensor_map_;
+	std::map<std::string, RosSensorInterfaceBase *> sensor_map_;
+	std::map<std::string, RosSensorInterfaceBase *> enabled_sensors_;
 
 	ros::ServiceServer register_noise_model_server_;
 
