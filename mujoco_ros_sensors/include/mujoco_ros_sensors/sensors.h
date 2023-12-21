@@ -41,6 +41,9 @@
 #include <geometry_msgs/Vector3Stamped.h>
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/QuaternionStamped.h>
+#include <geometry_msgs/WrenchStamped.h>
+#include <geometry_msgs/TwistStamped.h>
+#include <geometry_msgs/PoseStamped.h>
 #include <sensor_msgs/Imu.h>
 
 #include <mujoco_ros_sensors/serialization.h>
@@ -80,6 +83,12 @@ public:
 	virtual void publish(const bool publish_gt, const mjData *data, std::normal_distribution<double> &dist,
 	                     std::mt19937 &gen) = 0;
 
+	void unregisterPublishers(bool eval_mode);
+
+	int getType() const { return type_; }
+
+	std::string getFrameId() const { return frame_id_; }
+
 protected:
 	std::string frame_id_;
 	std::string sensor_name_;
@@ -92,6 +101,7 @@ protected:
 	mjtNum *sigma_noise_;
 
 	uint dofs_;
+	int type_ = -1;
 
 	uint8_t noise_set_ = 0; // 0 for unset, otherwise binary code for set dimensions
 };
@@ -100,8 +110,8 @@ template <typename T>
 class RosSensorInterface : public RosSensorInterfaceBase
 {
 public:
-	RosSensorInterface(const std::string &frame_id, const std::string &sensor_name, const int dofs, const int adr,
-	                   const mjtNum cutoff, bool eval_mode, ros::NodeHandle *sensors_nh);
+	RosSensorInterface(const std::string &frame_id, const std::string &sensor_name, const int dofs, const int type,
+	                   const int adr, const mjtNum cutoff, bool eval_mode, ros::NodeHandle *sensors_nh);
 
 	void publish(const bool publish_gt, const mjData *data, std::normal_distribution<double> &dist,
 	             std::mt19937 &gen) override;
@@ -111,6 +121,67 @@ public:
 private:
 	int adr_;
 	mjtNum cutoff_;
+};
+
+class WrenchSensor : public RosSensorInterfaceBase
+{
+public:
+	WrenchSensor(const std::string &sensor_name, std::vector<RosSensorInterfaceBase *> &wrench_sensors, bool eval_mode,
+	             ros::NodeHandle *sensors_nh);
+
+	void publish(const bool publish_gt, const mjData *data, std::normal_distribution<double> &dist,
+	             std::mt19937 &gen) override;
+
+private:
+	RosSensorInterface<geometry_msgs::Vector3Stamped> *force_  = nullptr;
+	RosSensorInterface<geometry_msgs::Vector3Stamped> *torque_ = nullptr;
+};
+
+class TwistSensor : public RosSensorInterfaceBase
+{
+public:
+	TwistSensor(const std::string &sensor_name, std::vector<RosSensorInterfaceBase *> &twist_sensors, bool eval_mode,
+	            ros::NodeHandle *sensors_nh);
+
+	void publish(const bool publish_gt, const mjData *data, std::normal_distribution<double> &dist,
+	             std::mt19937 &gen) override;
+
+private:
+	RosSensorInterface<geometry_msgs::Vector3Stamped> *linear_velocity_  = nullptr;
+	RosSensorInterface<geometry_msgs::Vector3Stamped> *angular_velocity_ = nullptr;
+};
+
+class PoseSensor : public RosSensorInterfaceBase
+{
+public:
+	PoseSensor(const std::string &sensor_name, std::vector<RosSensorInterfaceBase *> &pose_sensors, bool eval_mode,
+	           ros::NodeHandle *sensors_nh);
+
+	void publish(const bool publish_gt, const mjData *data, std::normal_distribution<double> &dist,
+	             std::mt19937 &gen) override;
+
+private:
+	RosSensorInterface<geometry_msgs::PointStamped> *position_         = nullptr;
+	RosSensorInterface<geometry_msgs::QuaternionStamped> *orientation_ = nullptr;
+};
+
+class IMUSensor : public RosSensorInterfaceBase
+{
+public:
+	IMUSensor(const std::string &sensor_name, std::vector<RosSensorInterfaceBase *> &imu_sensors, bool eval_mode,
+	          ros::NodeHandle *sensors_nh);
+
+	void publish(const bool publish_gt, const mjData *data, std::normal_distribution<double> &dist,
+	             std::mt19937 &gen) override;
+
+private:
+	RosSensorInterface<geometry_msgs::Vector3Stamped> *linear_acceleration_  = nullptr;
+	RosSensorInterface<geometry_msgs::Vector3Stamped> *angular_acceleration_ = nullptr;
+	RosSensorInterface<geometry_msgs::QuaternionStamped> *orientation_       = nullptr;
+
+	mjtNum lin_cov_[9];
+	mjtNum ang_cov_[9];
+	mjtNum ori_cov_[9];
 };
 
 // template impl needs to be in header
@@ -128,7 +199,7 @@ void RosSensorInterface<T>::publish(const bool publish_gt, const mjData *data, s
 
 template <typename T>
 RosSensorInterface<T>::RosSensorInterface(const std::string &frame_id, const std::string &sensor_name, const int dofs,
-                                          const int adr, const mjtNum cutoff, bool eval_mode,
+                                          const int type, const int adr, const mjtNum cutoff, bool eval_mode,
                                           ros::NodeHandle *sensors_nh)
     : RosSensorInterfaceBase(frame_id, sensor_name, dofs), adr_(adr), cutoff_(cutoff)
 {
@@ -136,6 +207,7 @@ RosSensorInterface<T>::RosSensorInterface(const std::string &frame_id, const std
 	if (!eval_mode) {
 		gt_pub_ = sensors_nh->advertise<T>(sensor_name + "_GT", 1);
 	}
+	type_ = type;
 };
 
 template <typename T>
@@ -151,5 +223,7 @@ void RosSensorInterface<T>::addNoise(T &msg, std::normal_distribution<double> &d
 {
 	mujoco_ros::sensors::addNoise(msg, mu_noise_, sigma_noise_, noise_set_, dist, gen);
 }
+
+extern const char *SENSOR_STRING[35];
 
 } // namespace mujoco_ros::sensors

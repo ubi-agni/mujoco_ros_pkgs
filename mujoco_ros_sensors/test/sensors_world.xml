@@ -21,11 +21,12 @@
             <body name="middle_link">
                 <geom type="capsule" fromto="0 0 0.6  0.0 0 0.3" size="0.04"/>
                 <joint name="joint1" type="hinge" pos="0 0 0.6" axis="0 1 0"/>
-                <!-- <joint name="joint2" type="hinge" pos="0 0 0.6" axis="1 0 0"/> -->
+                <site name="joint1_site" pos="0 0 0.6" rgba="1 0 0 1" size="0.001" />
+
                 <body name="end_link">
+                    <site name="joint2_site" pos="0 0 0.1" rgba="1 0 0 1" size="0.001" />
                     <geom name="EE" type="capsule" fromto="0 0 0.3  0.0 0 0.1" size="0.02"/>
                     <joint name="joint2" type="hinge" pos="0.0 0 0.3" axis="0 1 0"/>
-                    <site name="joint2_site" pos="0 0 0" rgba="1 0 0 1" size="0.001" />
                 </body>
             </body>
         </body>
@@ -43,7 +44,23 @@
         <framepos  name="immovable_pos"  objtype="xbody" objname="immovable" />
         <framequat name="immovable_quat" objtype="xbody" objname="immovable" />
 
-        <velocimeter name="vel_EE" site="joint2_site" />
+        <framepos  name="pos_joint1"  objtype="site" objname="joint1_site" />
+        <framequat name="quat_joint1" objtype="site" objname="joint1_site" />
+
+        <velocimeter name="vel_EE"      site="joint2_site" />
         <jointvel    name="vel_joint2"  joint="joint2" />
+
+        <force  name="force_EE"  site="joint2_site" />
+        <torque name="torque_EE" site="joint2_site" />
+
+        <framelinvel name="linvel_EE" objtype="site" objname="joint2_site" />
+        <frameangvel name="angvel_EE" objtype="site" objname="joint2_site" />
+
+        <framelinacc name="linacc_EE"  objtype="site" objname="joint2_site" />
+        <frameangacc name="gyro_EE"    objtype="site" objname="joint2_site" />
+        <framequat   name="quat_EE"    objtype="site" objname="joint2_site" />
+
+        <torque name="torque_joint1" site="joint1_site" />
     </sensor>
+
 </mujoco>

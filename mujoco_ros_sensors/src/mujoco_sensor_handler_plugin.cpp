@@ -195,8 +195,8 @@ void MujocoRosSensorsPlugin::lastStageCallback(const mjModel *model, mjData *dat
 {
 	std::string sensor_name;
 
-	std::map<std::string, RosSensorInterfaceBase *>::iterator pos = sensor_map_.begin();
-	while (pos != sensor_map_.end()) {
+	std::map<std::string, RosSensorInterfaceBase *>::iterator pos = enabled_sensors_.begin();
+	while (pos != enabled_sensors_.end()) {
 		RosSensorInterfaceBase *sensor = pos->second;
 		sensor->publish(!env_ptr_->settings_.eval_mode, data, noise_dist_, rand_generator_);
 		pos++;
@@ -223,8 +223,8 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 			continue;
 		}
 
-		bool global_frame = false;
-		frame_id          = "world";
+		bool matched = false;
+		frame_id     = "world";
 		switch (type) {
 			// Global or relative frame 3 DoF sensors
 			{
@@ -232,6 +232,7 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 				case mjSENS_FRAMEYAXIS:
 				case mjSENS_FRAMEZAXIS:
 				case mjSENS_FRAMELINVEL:
+				case mjSENS_FRAMEANGVEL:
 				case mjSENS_FRAMELINACC:
 				case mjSENS_FRAMEANGACC:
 					int refid = model->sensor_refid[n];
@@ -247,7 +248,8 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 						                                                                       << frame_id);
 					}
 					sensor_map_[sensor_name] = new RosSensorInterface<geometry_msgs::Vector3Stamped>(
-					    frame_id, sensor_name, 3, adr, cutoff, env_ptr_->settings_.eval_mode, &sensors_nh_);
+					    frame_id, sensor_name, 3, type, adr, cutoff, env_ptr_->settings_.eval_mode, &sensors_nh_);
+					matched = true;
 					break;
 			}
 			// Global frame 3 DoF sensors
@@ -255,8 +257,8 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 			case mjSENS_SUBTREELINVEL:
 			case mjSENS_SUBTREEANGMOM:
 				sensor_map_[sensor_name] = new RosSensorInterface<geometry_msgs::Vector3Stamped>(
-				    frame_id, sensor_name, 3, adr, cutoff, env_ptr_->settings_.eval_mode, &sensors_nh_);
-				global_frame = true;
+				    frame_id, sensor_name, 3, type, adr, cutoff, env_ptr_->settings_.eval_mode, &sensors_nh_);
+				matched = true;
 				break;
 				// Global or local frame position sensors (1 DoF)
 				{
@@ -274,8 +276,8 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 							                                      << frame_id);
 						}
 						sensor_map_[sensor_name] = new RosSensorInterface<geometry_msgs::PointStamped>(
-						    frame_id, sensor_name, 3, adr, cutoff, env_ptr_->settings_.eval_mode, &sensors_nh_);
-						global_frame = true;
+						    frame_id, sensor_name, 3, type, adr, cutoff, env_ptr_->settings_.eval_mode, &sensors_nh_);
+						matched = true;
 						break;
 				}
 
@@ -283,14 +285,13 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 			case mjSENS_BALLQUAT:
 			case mjSENS_FRAMEQUAT:
 				sensor_map_[sensor_name] = new RosSensorInterface<geometry_msgs::QuaternionStamped>(
-				    frame_id, sensor_name, 3, adr, cutoff, env_ptr_->settings_.eval_mode, &sensors_nh_);
-				global_frame = true;
+				    frame_id, sensor_name, 3, type, adr, cutoff, env_ptr_->settings_.eval_mode, &sensors_nh_);
+				matched = true;
 				break;
 		}
 
-		// If global_frame was explicitly set to true or frame_id was overridden by relative frame
-		// the sensor is already registered and we can skip checking the remaining types
-		if (global_frame || frame_id != "world") {
+		// If the sensor is already registered and we can skip checking the remaining types
+		if (matched) {
 			ROS_DEBUG_STREAM_NAMED("sensors", "Setting up sensor " << sensor_name << " on site " << site << " (frame_id: "
 			                                                       << frame_id << ") of type " << SENSOR_STRING[type]);
 			continue;
@@ -311,7 +312,7 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 			case mjSENS_MAGNETOMETER:
 			case mjSENS_BALLANGVEL:
 				sensor_map_[sensor_name] = new RosSensorInterface<geometry_msgs::Vector3Stamped>(
-				    frame_id, sensor_name, 3, adr, cutoff, env_ptr_->settings_.eval_mode, &sensors_nh_);
+				    frame_id, sensor_name, 3, type, adr, cutoff, env_ptr_->settings_.eval_mode, &sensors_nh_);
 				break;
 
 			// Scalar type sensors
@@ -331,7 +332,7 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 			case mjSENS_TENDONLIMITVEL:
 			case mjSENS_TENDONLIMITFRC:
 				sensor_map_[sensor_name] = new RosSensorInterface<mujoco_ros_msgs::ScalarStamped>(
-				    frame_id, sensor_name, 1, adr, cutoff, env_ptr_->settings_.eval_mode, &sensors_nh_);
+				    frame_id, sensor_name, 1, type, adr, cutoff, env_ptr_->settings_.eval_mode, &sensors_nh_);
 				break;
 
 			default:
@@ -340,6 +341,88 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 				break;
 		}
 	}
+
+	// Copy all found sensors into enabled_sensors_ map
+	enabled_sensors_ = sensor_map_;
+
+	if (!rosparam_config_.hasMember("compound_sensors")) {
+		ROS_DEBUG_NAMED("sensors", "No compound sensors configured");
+		return;
+	}
+	ROS_DEBUG_STREAM("Processing compound sensors (n = " << rosparam_config_["compound_sensors"].size() << ")");
+	for (uint i = 0; i < rosparam_config_["compound_sensors"].size(); i++) {
+		const auto compound_sensor = rosparam_config_["compound_sensors"][i];
+
+		// Check if definition contains name, type, and sensors, otherwise skip
+		if (!compound_sensor.hasMember("name")) {
+			ROS_ERROR_STREAM_NAMED("sensors", "Compound sensor definition " << i << " has no name. Skipping");
+			continue;
+		}
+		std::string compound_sensor_name = static_cast<std::string>(compound_sensor["name"]);
+		if (!compound_sensor.hasMember("type") ||
+		    (compound_sensor["type"] != "IMUSensor" && compound_sensor["type"] != "WrenchSensor" &&
+		     compound_sensor["type"] != "TwistSensor" && compound_sensor["type"] != "PoseSensor")) {
+			ROS_ERROR_STREAM_NAMED("sensors",
+			                       "Compound sensor '" << compound_sensor_name << "' has no valid type. Skipping");
+			continue;
+		}
+		if (!compound_sensor.hasMember("sensors")) {
+			ROS_ERROR_STREAM_NAMED("sensors", "Compound sensor '" << compound_sensor_name << "' has no sensors. Skipping");
+			continue;
+		}
+
+		ROS_DEBUG_STREAM_NAMED("sensors", "Setting up compound sensor " << compound_sensor_name);
+
+		std::vector<RosSensorInterfaceBase *> compound_sensor_interfaces;
+		for (uint j = 0; j < compound_sensor["sensors"].size(); j++) {
+			const auto &sub_sensor = compound_sensor["sensors"][j];
+			ROS_DEBUG_STREAM("Processing sub sensor " << sub_sensor << " of compound sensor " << compound_sensor_name);
+			const std::map<std::string, RosSensorInterfaceBase *>::const_iterator &pos = sensor_map_.find(sub_sensor);
+			if (pos == sensor_map_.end()) {
+				ROS_ERROR_STREAM_NAMED("sensors", "No sensor with name '" << sub_sensor
+				                                                          << "' was registered on init. Skipping "
+				                                                             "compound sensor");
+				continue;
+			}
+			// Remove sensor used in compound sensor from enabled_sensors_ map
+			compound_sensor_interfaces.emplace_back(pos->second);
+			enabled_sensors_.erase(sub_sensor);
+			// Unregister publishers for sensor
+			pos->second->unregisterPublishers(env_ptr_->settings_.eval_mode);
+			ROS_DEBUG_STREAM("Unregistered publishers for sensor " << sub_sensor);
+		}
+
+		// TODO(dleins): Use factory pattern for better maintainability or is that overkill?
+		RosSensorInterfaceBase *compound_sensor_inst = nullptr;
+		try {
+			if (compound_sensor["type"] == "IMUSensor") {
+				compound_sensor_inst = new IMUSensor(compound_sensor_name, compound_sensor_interfaces,
+				                                     env_ptr_->settings_.eval_mode, &sensors_nh_);
+			} else if (compound_sensor["type"] == "WrenchSensor") {
+				compound_sensor_inst = new WrenchSensor(compound_sensor_name, compound_sensor_interfaces,
+				                                        env_ptr_->settings_.eval_mode, &sensors_nh_);
+			} else if (compound_sensor["type"] == "TwistSensor") {
+				compound_sensor_inst = new TwistSensor(compound_sensor_name, compound_sensor_interfaces,
+				                                       env_ptr_->settings_.eval_mode, &sensors_nh_);
+			} else if (compound_sensor["type"] == "PoseSensor") {
+				compound_sensor_inst = new PoseSensor(compound_sensor_name, compound_sensor_interfaces,
+				                                      env_ptr_->settings_.eval_mode, &sensors_nh_);
+			}
+		} catch (const std::runtime_error &e) {
+			ROS_ERROR_STREAM_NAMED("sensors",
+			                       "Error while setting up compound sensor " << compound_sensor_name << ": " << e.what());
+			continue;
+		}
+
+		// TODO(dleins): is further composition sensible? Alphabetical sorting of yaml could cause problems
+		// Add compound sensor to enabled sensors and register for deletion (and further composition ?)
+		enabled_sensors_[compound_sensor_name] = compound_sensor_inst;
+		sensor_map_[compound_sensor_name]      = compound_sensor_inst;
+		ROS_DEBUG_STREAM_NAMED("sensors", "Added compound sensor " << compound_sensor_name << " to enabled sensors");
+	}
+
+	ROS_DEBUG_STREAM_NAMED("sensors", "Enabled sensors: " << enabled_sensors_.size());
+	ROS_DEBUG_STREAM_NAMED("sensors", "All sensors: " << sensor_map_.size());
 }
 
 // Nothing to do on reset

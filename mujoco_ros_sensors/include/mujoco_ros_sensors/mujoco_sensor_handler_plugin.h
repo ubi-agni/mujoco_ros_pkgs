@@ -71,7 +71,7 @@ private:
 	std::normal_distribution<double> noise_dist_;
 
 	std::map<std::string, RosSensorInterfaceBase *> sensor_map_;
-	// std::vector<RosSensorInterfaceBase *> enabled_sensors_;
+	std::map<std::string, RosSensorInterfaceBase *> enabled_sensors_;
 
 	ros::ServiceServer register_noise_model_server_;
 

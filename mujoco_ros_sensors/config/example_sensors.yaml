@@ -1,2 +1,24 @@
 MujocoPlugins:
   - type: mujoco_ros_sensors/MujocoRosSensorsPlugin
+    compound_sensors:
+      - name: test_imu
+        type: IMUSensor
+        sensors:
+          - linacc_EE
+          - gyro_EE
+          - quat_EE
+      - name: test_wrench
+        type: WrenchSensor
+        sensors:
+          - force_EE
+          - torque_EE
+      - name: test_twist
+        type: TwistSensor
+        sensors:
+          - linvel_EE
+          - angvel_EE
+      - name: test_pose
+        type: PoseSensor
+        sensors:
+          - pos_joint1
+          - quat_joint1
