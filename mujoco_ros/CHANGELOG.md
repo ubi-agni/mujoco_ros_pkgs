@@ -4,11 +4,16 @@
 ### Fixed
 * Repaired SIGINT handler callback. `C-c` in the roslaunch terminal now shuts down the MuJoCo ROS node instead of escalating to SIGTERM.
 * Added actionlib to the list of mujoco_ros' dependencies.
+* Fixed bug where cutoff was not correctly applied to noisy sensors.
 
 ### Changed
 * replaced `boost::shared_ptr` with `std::shared_ptr` or `std::unique_ptr` wherever possible (ROS 1 fast intra-process message-passing requires boost::shared_ptr).
 * replaced `shared_ptr` with `unique_ptr` wherever possible.
 * replaced smart pointer constructor initialization with `make_shared` or `make_unique` wherever possible.
+* **Sensors overhaul:**
+* * Increased sensor unit test speed by parallelly buffering and running computations for statistics.
+* * Renamed sensor unit tests to serialization types for more clarity.
+* * Replaced `SensorConfig` with `RosSensorInterfaceBase` and derived, templated `RosSensorInterface` classes with specialized serializers and noise management.
 
 <a name="0.8.0"></a>
 ## [0.8.0] - 2023-10-23

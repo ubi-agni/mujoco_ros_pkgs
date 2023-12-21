@@ -54,7 +54,8 @@
 #include <ros/ros.h>
 #include <ros/package.h>
 #include <chrono>
-#include <thread>
+
+#include <queue>
 
 using namespace mujoco_ros;
 namespace mju = ::mujoco::sample_util;
@@ -278,7 +279,7 @@ void compare_vectors(std::vector<double> a, std::vector<double> b, double tol, b
 	}
 }
 
-TEST_F(TrainEnvFixture, Sensor3DOF)
+TEST_F(TrainEnvFixture, Vector3Sensor)
 {
 	int n_sensor;
 	getSensorByName("vel_EE", m, n_sensor);
@@ -316,39 +317,55 @@ TEST_F(TrainEnvFixture, Sensor3DOF)
 	    nh->serviceClient<mujoco_ros_msgs::RegisterSensorNoiseModels>("/sensors/register_noise_models");
 	EXPECT_TRUE(client.call(srv)) << "Service call failed!";
 
-	// Pause sim for synchronous message
+	// Pause sim for synchronous messages
 	env_ptr->settings_.run.store(0);
-
-	msgPtr    = ros::topic::waitForMessage<geometry_msgs::Vector3Stamped>("/vel_EE");
-	msgPtr_GT = ros::topic::waitForMessage<geometry_msgs::Vector3Stamped>("/vel_EE_GT");
 
 	// GT == Sensor reading
 	compare_vectors({ msgPtr_GT->vector.x, msgPtr_GT->vector.y, msgPtr_GT->vector.z },
 	                { d->sensordata[adr] / cutoff, d->sensordata[adr + 1] / cutoff, d->sensordata[adr + 2] / cutoff },
 	                0.0001, true);
 
+	// Create message buffers
+	std::deque<geometry_msgs::Vector3StampedConstPtr> value_buf;
+	std::deque<geometry_msgs::Vector3StampedConstPtr> gt_buf;
+
+	// Create callbacks to fill message buffers
+	auto value_cb = [&value_buf](auto msg) { value_buf.push_back(msg); };
+
+	auto gt_cb = [&gt_buf](auto msg) { gt_buf.push_back(msg); };
+
+	auto value_sub = nh->subscribe<geometry_msgs::Vector3Stamped>("/vel_EE", 1, value_cb);
+	auto gt_sub    = nh->subscribe<geometry_msgs::Vector3Stamped>("/vel_EE_GT", 1, gt_cb);
+
+	env_ptr->settings_.env_steps_request.store(1000);
+
 	int n               = 0;
 	double means[6]     = { 0.0 };
 	double deltas[6]    = { 0.0 };
 	double variances[6] = { 0.0 };
 
-	for (int i = 0; i <= 1000; i++) {
-		env_ptr->settings_.env_steps_request.store(1);
-
-		while (env_ptr->settings_.env_steps_request.load() != 0) {
+	while (n < 1000) {
+		if (value_buf.empty() || gt_buf.empty()) {
+			if (env_ptr->settings_.env_steps_request.load() == 0) {
+				env_ptr->settings_.env_steps_request.store(1000 - n); // Request missing steps
+			}
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			continue;
 		}
-		msgPtr    = ros::topic::waitForMessage<geometry_msgs::Vector3Stamped>("/vel_EE");
-		msgPtr_GT = ros::topic::waitForMessage<geometry_msgs::Vector3Stamped>("/vel_EE_GT");
+
+		auto msg    = value_buf.front();
+		auto msg_GT = gt_buf.front();
+		value_buf.pop_front();
+		gt_buf.pop_front();
 
 		n += 1;
-		deltas[0] = (msgPtr->vector.x - msgPtr_GT->vector.x) - means[0];
-		deltas[1] = (msgPtr->vector.y - msgPtr_GT->vector.y) - means[1];
-		deltas[2] = (msgPtr->vector.z - msgPtr_GT->vector.z) - means[2];
+		deltas[0] = (msg->vector.x - msg_GT->vector.x) - means[0];
+		deltas[1] = (msg->vector.y - msg_GT->vector.y) - means[1];
+		deltas[2] = (msg->vector.z - msg_GT->vector.z) - means[2];
 
-		deltas[3] = msgPtr_GT->vector.x - means[3];
-		deltas[4] = msgPtr_GT->vector.y - means[4];
-		deltas[5] = msgPtr_GT->vector.z - means[5];
+		deltas[3] = msg_GT->vector.x - means[3];
+		deltas[4] = msg_GT->vector.y - means[4];
+		deltas[5] = msg_GT->vector.z - means[5];
 
 		means[0] += deltas[0] / n;
 		means[1] += deltas[1] / n;
@@ -358,13 +375,13 @@ TEST_F(TrainEnvFixture, Sensor3DOF)
 		means[4] += deltas[4] / n;
 		means[5] += deltas[5] / n;
 
-		variances[0] += deltas[0] * ((msgPtr->vector.x - msgPtr_GT->vector.x) - means[0]);
-		variances[1] += deltas[1] * ((msgPtr->vector.y - msgPtr_GT->vector.y) - means[1]);
-		variances[2] += deltas[2] * ((msgPtr->vector.z - msgPtr_GT->vector.z) - means[2]);
+		variances[0] += deltas[0] * ((msg->vector.x - msg_GT->vector.x) - means[0]);
+		variances[1] += deltas[1] * ((msg->vector.y - msg_GT->vector.y) - means[1]);
+		variances[2] += deltas[2] * ((msg->vector.z - msg_GT->vector.z) - means[2]);
 
-		variances[3] += deltas[3] * (msgPtr_GT->vector.x - means[3]);
-		variances[4] += deltas[4] * (msgPtr_GT->vector.y - means[4]);
-		variances[5] += deltas[5] * (msgPtr_GT->vector.z - means[5]);
+		variances[3] += deltas[3] * (msg_GT->vector.x - means[3]);
+		variances[4] += deltas[4] * (msg_GT->vector.y - means[4]);
+		variances[5] += deltas[5] * (msg_GT->vector.z - means[5]);
 	}
 
 	variances[0] /= n - 1;
@@ -391,7 +408,7 @@ TEST_F(TrainEnvFixture, Sensor3DOF)
 	EXPECT_EQ(variances[5], 0);
 }
 
-TEST_F(TrainEnvFixture, Framepos)
+TEST_F(TrainEnvFixture, PointSensor)
 {
 	int n_sensor;
 	getSensorByName("immovable_pos", m, n_sensor);
@@ -428,41 +445,55 @@ TEST_F(TrainEnvFixture, Framepos)
 	ros::ServiceClient client =
 	    nh->serviceClient<mujoco_ros_msgs::RegisterSensorNoiseModels>("/sensors/register_noise_models");
 	EXPECT_TRUE(client.call(srv)) << "Service call failed!";
-	// sensor_plugin->registerNoiseModelsCB(srv.request, srv.response);
 
 	// Pause sim for synchronous message
 	env_ptr->settings_.run.store(0);
-
-	msgPtr    = ros::topic::waitForMessage<geometry_msgs::PointStamped>("/immovable_pos");
-	msgPtr_GT = ros::topic::waitForMessage<geometry_msgs::PointStamped>("/immovable_pos_GT");
 
 	// GT == Sensor reading
 	compare_vectors({ msgPtr_GT->point.x, msgPtr_GT->point.y, msgPtr_GT->point.z },
 	                { d->sensordata[adr] / cutoff, d->sensordata[adr + 1] / cutoff, d->sensordata[adr + 2] / cutoff },
 	                0.0001, true);
 
+	// Create message buffers
+	std::deque<geometry_msgs::PointStampedConstPtr> value_buf;
+	std::deque<geometry_msgs::PointStampedConstPtr> gt_buf;
+
+	// Create callbacks to fill message buffers
+	auto value_cb = [&value_buf](auto msg) { value_buf.push_back(msg); };
+	auto gt_cb    = [&gt_buf](auto msg) { gt_buf.push_back(msg); };
+
+	auto value_sub = nh->subscribe<geometry_msgs::PointStamped>("/immovable_pos", 1, value_cb);
+	auto gt_sub    = nh->subscribe<geometry_msgs::PointStamped>("/immovable_pos_GT", 1, gt_cb);
+
+	env_ptr->settings_.env_steps_request.store(1000);
+
 	int n               = 0;
 	double means[6]     = { 0.0 };
 	double deltas[6]    = { 0.0 };
 	double variances[6] = { 0.0 };
 
-	for (int i = 0; i <= 1000; i++) {
-		env_ptr->settings_.env_steps_request.store(1);
-
-		while (env_ptr->settings_.env_steps_request.load() != 0) {
+	while (n < 1000) {
+		if (value_buf.empty() || gt_buf.empty()) {
+			if (env_ptr->settings_.env_steps_request.load() == 0) {
+				env_ptr->settings_.env_steps_request.store(1000 - n); // Request missing steps
+			}
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			continue;
 		}
-		msgPtr    = ros::topic::waitForMessage<geometry_msgs::PointStamped>("/immovable_pos");
-		msgPtr_GT = ros::topic::waitForMessage<geometry_msgs::PointStamped>("/immovable_pos_GT");
+
+		auto msg    = value_buf.front();
+		auto msg_GT = gt_buf.front();
+		value_buf.pop_front();
+		gt_buf.pop_front();
 
 		n += 1;
-		deltas[0] = (msgPtr->point.x - msgPtr_GT->point.x) - means[0];
-		deltas[1] = (msgPtr->point.y - msgPtr_GT->point.y) - means[1];
-		deltas[2] = (msgPtr->point.z - msgPtr_GT->point.z) - means[2];
+		deltas[0] = (msg->point.x - msg_GT->point.x) - means[0];
+		deltas[1] = (msg->point.y - msg_GT->point.y) - means[1];
+		deltas[2] = (msg->point.z - msg_GT->point.z) - means[2];
 
-		deltas[3] = msgPtr_GT->point.x - means[3];
-		deltas[4] = msgPtr_GT->point.y - means[4];
-		deltas[5] = msgPtr_GT->point.z - means[5];
+		deltas[3] = msg_GT->point.x - means[3];
+		deltas[4] = msg_GT->point.y - means[4];
+		deltas[5] = msg_GT->point.z - means[5];
 
 		means[0] += deltas[0] / n;
 		means[1] += deltas[1] / n;
@@ -472,13 +503,13 @@ TEST_F(TrainEnvFixture, Framepos)
 		means[4] += deltas[4] / n;
 		means[5] += deltas[5] / n;
 
-		variances[0] += deltas[0] * ((msgPtr->point.x - msgPtr_GT->point.x) - means[0]);
-		variances[1] += deltas[1] * ((msgPtr->point.y - msgPtr_GT->point.y) - means[1]);
-		variances[2] += deltas[2] * ((msgPtr->point.z - msgPtr_GT->point.z) - means[2]);
+		variances[0] += deltas[0] * ((msg->point.x - msg_GT->point.x) - means[0]);
+		variances[1] += deltas[1] * ((msg->point.y - msg_GT->point.y) - means[1]);
+		variances[2] += deltas[2] * ((msg->point.z - msg_GT->point.z) - means[2]);
 
-		variances[3] += deltas[3] * (msgPtr_GT->point.x - means[3]);
-		variances[4] += deltas[4] * (msgPtr_GT->point.y - means[4]);
-		variances[5] += deltas[5] * (msgPtr_GT->point.z - means[5]);
+		variances[3] += deltas[3] * (msg_GT->point.x - means[3]);
+		variances[4] += deltas[4] * (msg_GT->point.y - means[4]);
+		variances[5] += deltas[5] * (msg_GT->point.z - means[5]);
 	}
 
 	variances[0] /= n - 1;
@@ -505,7 +536,7 @@ TEST_F(TrainEnvFixture, Framepos)
 	EXPECT_EQ(variances[5], 0);
 }
 
-TEST_F(TrainEnvFixture, scalar_stamped)
+TEST_F(TrainEnvFixture, ScalarSensor)
 {
 	int n_sensor;
 	getSensorByName("vel_joint2", m, n_sensor);
@@ -540,38 +571,53 @@ TEST_F(TrainEnvFixture, scalar_stamped)
 	    nh->serviceClient<mujoco_ros_msgs::RegisterSensorNoiseModels>("/sensors/register_noise_models");
 	EXPECT_TRUE(client.call(srv)) << "Service call failed!";
 
+	// GT == Sensor reading
+	EXPECT_NEAR(msgPtr_GT->value, d->sensordata[adr] / cutoff, 0.0001) << "GT differs from actual sensor value";
+
 	// Pause sim for synchronous message
 	env_ptr->settings_.run.store(0);
 
-	msgPtr_GT = ros::topic::waitForMessage<mujoco_ros_msgs::ScalarStamped>("/vel_joint2_GT");
-	msgPtr    = ros::topic::waitForMessage<mujoco_ros_msgs::ScalarStamped>("/vel_joint2");
+	// Create message buffers
+	std::deque<mujoco_ros_msgs::ScalarStampedConstPtr> value_buf;
+	std::deque<mujoco_ros_msgs::ScalarStampedConstPtr> gt_buf;
 
-	// GT == Sensor reading
-	EXPECT_NEAR(msgPtr_GT->value, d->sensordata[adr] / cutoff, 0.0001) << "GT differs from actual sensor value";
+	// Create callbacks to fill message buffers
+	auto value_cb = [&value_buf](auto msg) { value_buf.push_back(msg); };
+	auto gt_cb    = [&gt_buf](auto msg) { gt_buf.push_back(msg); };
+
+	auto value_sub = nh->subscribe<mujoco_ros_msgs::ScalarStamped>("/vel_joint2", 1, value_cb);
+	auto gt_sub    = nh->subscribe<mujoco_ros_msgs::ScalarStamped>("/vel_joint2_GT", 1, gt_cb);
+
+	env_ptr->settings_.env_steps_request.store(1000);
 
 	int n               = 0;
 	double means[2]     = { 0.0 };
 	double deltas[2]    = { 0.0 };
 	double variances[2] = { 0.0 };
 
-	for (int i = 0; i <= 1000; i++) {
-		env_ptr->settings_.env_steps_request.store(1);
-
-		while (env_ptr->settings_.env_steps_request.load() != 0) {
+	while (n < 1000) {
+		if (value_buf.empty() || gt_buf.empty()) {
+			if (env_ptr->settings_.env_steps_request.load() == 0) {
+				env_ptr->settings_.env_steps_request.store(1000 - n); // Request missing steps
+			}
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			continue;
 		}
-		msgPtr_GT = ros::topic::waitForMessage<mujoco_ros_msgs::ScalarStamped>("/vel_joint2_GT");
-		msgPtr    = ros::topic::waitForMessage<mujoco_ros_msgs::ScalarStamped>("/vel_joint2");
+
+		auto msg    = value_buf.front();
+		auto msg_GT = gt_buf.front();
+		value_buf.pop_front();
+		gt_buf.pop_front();
 
 		n += 1;
-		deltas[0] = (msgPtr->value - msgPtr_GT->value) - means[0];
-		deltas[1] = msgPtr_GT->value - means[1];
+		deltas[0] = (msg->value - msg_GT->value) - means[0];
+		deltas[1] = msg_GT->value - means[1];
 
 		means[0] += deltas[0] / n;
 		means[1] += deltas[1] / n;
 
-		variances[0] += deltas[0] * ((msgPtr->value - msgPtr_GT->value) - means[0]);
-		variances[1] += deltas[1] * (msgPtr_GT->value - means[1]);
+		variances[0] += deltas[0] * ((msg->value - msg_GT->value) - means[0]);
+		variances[1] += deltas[1] * (msg_GT->value - means[1]);
 	}
 
 	variances[0] /= n - 1;
@@ -584,7 +630,7 @@ TEST_F(TrainEnvFixture, scalar_stamped)
 	EXPECT_EQ(variances[1], 0);
 }
 
-TEST_F(TrainEnvFixture, quaternion)
+TEST_F(TrainEnvFixture, QuaternionSensor)
 {
 	int n_sensor;
 	getSensorByName("immovable_quat", m, n_sensor);
@@ -624,15 +670,23 @@ TEST_F(TrainEnvFixture, quaternion)
 	// Pause sim for synchronous message
 	env_ptr->settings_.run.store(0);
 
-	msgPtr    = ros::topic::waitForMessage<geometry_msgs::QuaternionStamped>("/immovable_quat");
-	msgPtr_GT = ros::topic::waitForMessage<geometry_msgs::QuaternionStamped>("/immovable_quat_GT");
-
 	// GT == Sensor reading
 	compare_vectors(
 	    { msgPtr_GT->quaternion.w, msgPtr_GT->quaternion.x, msgPtr_GT->quaternion.y, msgPtr_GT->quaternion.z },
 	    { d->sensordata[adr] / cutoff, d->sensordata[adr + 1] / cutoff, d->sensordata[adr + 2] / cutoff,
 	      d->sensordata[adr + 3] / cutoff },
 	    0.0001, true);
+
+	// Create message buffers
+	std::deque<geometry_msgs::QuaternionStampedConstPtr> value_buf;
+	std::deque<geometry_msgs::QuaternionStampedConstPtr> gt_buf;
+
+	// Create callbacks to fill message buffers
+	auto value_cb = [&value_buf](auto msg) { value_buf.push_back(msg); };
+	auto gt_cb    = [&gt_buf](auto msg) { gt_buf.push_back(msg); };
+
+	auto value_sub = nh->subscribe<geometry_msgs::QuaternionStamped>("/immovable_quat", 1, value_cb);
+	auto gt_sub    = nh->subscribe<geometry_msgs::QuaternionStamped>("/immovable_quat_GT", 1, gt_cb);
 
 	int n               = 0;
 	double means[6]     = { 0.0 };
@@ -643,19 +697,24 @@ TEST_F(TrainEnvFixture, quaternion)
 	tf2::Matrix3x3 m;
 	double r, p, y, R, P, Y;
 
-	for (int i = 0; i <= 1000; i++) {
-		env_ptr->settings_.env_steps_request.store(1);
-
-		while (env_ptr->settings_.env_steps_request.load() != 0) {
+	while (n < 1000) {
+		if (value_buf.empty() || gt_buf.empty()) {
+			if (env_ptr->settings_.env_steps_request.load() == 0) {
+				env_ptr->settings_.env_steps_request.store(1000 - n); // Request missing steps
+			}
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			continue;
 		}
-		msgPtr    = ros::topic::waitForMessage<geometry_msgs::QuaternionStamped>("/immovable_quat");
-		msgPtr_GT = ros::topic::waitForMessage<geometry_msgs::QuaternionStamped>("/immovable_quat_GT");
+
+		auto msg    = value_buf.front();
+		auto msg_GT = gt_buf.front();
+		value_buf.pop_front();
+		gt_buf.pop_front();
 
 		n += 1;
 
-		tf2::fromMsg(msgPtr->quaternion, q);
-		tf2::fromMsg(msgPtr_GT->quaternion, q_GT);
+		tf2::fromMsg(msg->quaternion, q);
+		tf2::fromMsg(msg_GT->quaternion, q_GT);
 
 		m = tf2::Matrix3x3(q);
 		m.getRPY(r, p, y);
