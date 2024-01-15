@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - noetic-devel
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  default:
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [noetic, one]
+        mujoco: [2.3.6]
+        include:
+          - distro: noetic
+            mujoco: 2.3.6
+            env:
+              CATKIN_LINT: true
+              CCOV: true
+          - distro: one
+            mujoco: 2.3.6
+            env:
+              CLANG_TIDY: pedantic
+
+    env:
+      BUILDER: colcon
+      DOCKER_RUN_OPTS: -e MUJOCO_DIR=/root/mujoco/${{ matrix.mujoco }}
+      DOCKER_IMAGE: ubiagni/mujoco_ros:${{ matrix.distro }}-ci
+
+      # For now we have flags defined in the CMakeLists, using all flags makes the build break
+      # I'll fix this once I find some time to do it
+      # CXXFLAGS: -Wall -Wextra -Wwrite-strings -Wunreachable-code -Wpointer-arith -Wredundant-decls
+      CXXFLAGS: -Wwrite-strings -Wunreachable-code -Wpointer-arith -Wredundant-decls
+      CLANG_TIDY_ARGS: --fix --fix-errors --format-style=file
+      UPSTREAM_WORKSPACE: .github/workflows/upstream.rosinstall
+      # Pull any updates to the upstream workspace
+      AFTER_SETUP_UPSTREAM_WORKSPACE: vcs pull $BASEDIR/upstream_ws/src
+      AFTER_SETUP_DOWNSTREAM_WORKSPACE: vcs pull $BASEDIR/downstream_ws/src
+      # Clear ccache stats before and log the stats after the build
+      AFTER_SETUP_CCACHE: ccache --zero-stats --max-size=10.0G
+      AFTER_BUILD_TARGET_WORKSPACE: ccache --show-stats
+      AFTER_BUILD_DOWNSTREAM_WORKSPACE: ccache --show-stats
+      # Compile CCOV with Debug. Enable -Werror.
+      TARGET_CMAKE_ARGS: >
+        -DCMAKE_BUILD_TYPE=${{ matrix.env.CCOV && 'Debug' || 'Release'}}
+        -DCMAKE_CXX_FLAGS="-Werror $CXXFLAGS${{ matrix.env.CCOV && ' --coverage -O2 -fno-omit-frame-pointer'}}"
+      UPSTREAM_CMAKE_ARGS: -DCMAKE_CXX_FLAGS= -DCMAKE_CXX_STANDARD=17
+
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      BASEDIR: ${{ github.workspace }}/.work
+      CLANG_TIDY_BASE_REF: ${{ github.event_name != 'workflow_dispatch' && (github.base_ref || github.ref) || '' }}
+      BEFORE_CLANG_TIDY_CHECKS: |
+        # Show list of applied checks
+        (cd $TARGET_REPO_PATH; clang-tidy --list-checks)
+      CC: ${{ matrix.env.CLANG_TIDY && 'clang' }}
+      CXX: ${{ matrix.env.CLANG_TIDY && 'clang++' }}
+      CLANG_TIDY: ${{ matrix.env.CLANG_TIDY || 'false' }}
+      CATKIN_LINT: ${{ matrix.env.CATKIN_LINT || 'false' }}
+      CCOV: ${{ matrix.env.CCOV || 'false' }}
+
+    name: "${{ matrix.distro }} mj-${{ matrix.mujoco }}${{ matrix.env.CATKIN_LINT && ' + catkin_lint' || ''}}${{ matrix.env.CCOV && ' + ccov' || ''}}${{ matrix.env.CLANG_TIDY && (github.event_name != 'workflow_dispatch' && ' + clang-tidy (delta)' || ' + clang-tidy (all)') || '' }}"
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+      - name: Cache upstream workspace
+        uses: rhaschke/cache@main
+        with:
+          path: ${{ env.BASEDIR }}/upstream_ws
+          key: ${{ env.CACHE_PREFIX }}-${{ github.run_id }}
+          restore-keys: ${{ env.CACHE_PREFIX }}
+        env:
+          GHA_CACHE_SAVE: always
+          CACHE_PREFIX: upstream_ws-${{ matrix.distro }}-${{ hashFiles('.github/workflows/upstream.rosinstall', '.github/workflows/ci.yaml') }}
+      # The target directory cache doesn't include the source directory because
+      # that comes from the checkout.  See "prepare target_ws for cache" task below
+      - name: Cache target workspace
+        if: matrix.env.CCOV != true
+        uses: rhaschke/cache@main
+        with:
+          path: ${{ env.BASEDIR }}/target_ws
+          key: ${{ env.CACHE_PREFIX }}-${{ github.run_id }}
+          restore-keys: ${{ env.CACHE_PREFIX }}
+        env:
+          GHA_CACHE_SAVE: always
+          CACHE_PREFIX: target_ws${{ matrix.env.CCOV && '-ccov' || '' }}-${{ matrix.distro }}-${{ hashFiles('**/CMakeLists.txt', '**/package.xml', '.github/workflows/ci.yaml') }}
+      - name: Cache ccache
+        uses: rhaschke/cache@main
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ env.CACHE_PREFIX }}-${{ github.sha }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ env.CACHE_PREFIX }}-${{ github.sha }}
+            ${{ env.CACHE_PREFIX }}
+        env:
+          GHA_CACHE_SAVE: always
+          CACHE_PREFIX: ccache-${{ matrix.distro }}${{ matrix.env.CCOV && '-ccov' || '' }}
+
+      - id: ici
+        name: Run industrial_ci
+        uses: rhaschke/industrial_ci@ros-one
+
+      - name: Upload test artifacts (on failure)
+        uses: actions/upload-artifact@v3
+        if: failure() && (steps.ici.outputs.run_target_test || steps.ici.outputs.target_test_results)
+        with:
+          name: test-results-${{ matrix.distro }}
+          path: ${{ env.BASEDIR }}/target_ws/**/test_results/**/*.xml
+      - name: Generate codecov report
+        uses: rhaschke/lcov-action@main
+        if: always() && matrix.env.CCOV && steps.ici.outputs.target_test_results == '0'
+        with:
+          docker: $DOCKER_IMAGE
+          workdir: ${{ env.BASEDIR }}/target_ws
+          ignore: '"*/target_ws/build/*" "*/target_ws/install/*" "*/test/*"'
+      - name: Upload codecov report
+        uses: codecov/codecov-action@v3
+        if: always() && matrix.env.CCOV && steps.ici.outputs.target_test_results == '0'
+        with:
+          files: ${{ env.BASEDIR }}/target_ws/coverage.info
+      - name: Upload clang-tidy changes
+        uses: rhaschke/upload-git-patch-action@main
+        if: always() && matrix.env.CLANG_TIDY
+        with:
+          name: clang-tidy
+          path: ${{ env.BASEDIR }}/target_ws/src/$(basename $(pwd))
+      - name: Prepare target_ws for cache
+        if: always() && !matrix.env.CCOV
+        run: |
+          du -sh ${{ env.BASEDIR }}/target_ws
+          sudo find ${{ env.BASEDIR }}/target_ws -wholename '*/test_results/*' -delete
+          sudo rm -rf ${{ env.BASEDIR }}/target_ws/src ${{ env.BASEDIR }}/target_ws/logs
+          du -sh ${{ env.BASEDIR }}/target_ws

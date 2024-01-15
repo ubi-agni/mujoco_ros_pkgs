@@ -1,11 +1,40 @@
-<a name="Unreleased"></a>
-## [Unreleased]
+<a name="unreleased"></a>
+## Unreleased
+
+### Fixed
+* Repaired SIGINT handler callback. `C-c` in the roslaunch terminal now shuts down the MuJoCo ROS node instead of escalating to SIGTERM.
+* Added actionlib to the list of mujoco_ros' dependencies.
+
+### Changed
+* replaced `boost::shared_ptr` with `std::shared_ptr` or `std::unique_ptr` wherever possible (ROS 1 fast intra-process message-passing requires boost::shared_ptr).
+* replaced `shared_ptr` with `unique_ptr` wherever possible.
+* replaced smart pointer constructor initialization with `make_shared` or `make_unique` wherever possible.
+
+<a name="0.8.0"></a>
+## [0.8.0] - 2023-10-23
 
 ### Added
 * Manual steps now run as fast as possbile. I.e., if a viewer is connected, stepping is interrupted to render the UI at 30Hz. (This now also applies to running with unbound real-time, which previously was interrupted at 30Hz regardless if any viewer was connected).
+* Added GitHub Actions for building docker images, CI, and formatting based on MoveIt's configuration (#30).
 
 ### Fixed
 * re-added setting realtime settings via ros param or in the mujoco model xml.
+* Add missing install of mujoco_ros's `config` and `assets` directories (#28).
+* Added missing example config for `mujoco_ros_sensors`.
+* Fixed catkin lint errors (#31).
+* Resolved clang-tidy warnings.
+
+### Changed
+* Reduced sensor noise std in tests to reduce wrongful fails due to too stochasticity.
+* Updated toplevel README to be more informative.
+* mujoco_ros_control & mujoco_ros_sensors have a Sanitize build type (#31).
+
+> [!IMPORTANT]
+> #### Breaking Changes
+> * `MujocoPlugin::node_ptr_` now is a NodeHandle instead of a NodeHandlePtr.
+> * MujocoPlugin callbacks now use raw pointers to mjModel and mjData instead of shared pointers in their callbacks (mjModel is even const, thus calls to functions like `mj_id2name` that expect a non-const mjModel pointer need a `const_cast<mjModel *>` to not throw compile errors).
+
+Contributors: @DavidPL1, @LeroyR, @rhaschke
 
 <a name="0.7.0"></a>
 ## [0.7.0] - 2023-08-15
@@ -213,7 +242,8 @@ Contributors: @DavidPL1, @balandbal
 
 Contributors: @DavidPL1
 
-[Unreleased]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.7.0...HEAD
+[unreleased]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.8.0...HEAD
+[0.8.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.5.0...0.6.0
 [0.5.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.4.0...0.5.0

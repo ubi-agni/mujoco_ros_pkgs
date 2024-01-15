@@ -23,6 +23,10 @@ freely, subject to the following restrictions:
     distribution.
 */
 
+/*
+This file was changed from the original to comply with this project's formatting and clang-tidy configuration
+*/
+
 #ifndef LODEPNG_H
 #define LODEPNG_H
 
@@ -118,8 +122,7 @@ or comment out LODEPNG_COMPILE_CPP below*/
 
 #ifdef LODEPNG_COMPILE_PNG
 /*The PNG color types (also used for raw image).*/
-typedef enum LodePNGColorType
-{
+using LodePNGColorType = enum LodePNGColorType {
 	LCT_GREY       = 0, /*grayscale: 1,2,4,8,16 bit*/
 	LCT_RGB        = 2, /*RGB: 8,16 bit*/
 	LCT_PALETTE    = 3, /*palette: 1,2,4,8 bit*/
@@ -131,7 +134,7 @@ typedef enum LodePNGColorType
 	the valid color type names above, or numeric values like 1 or 7 when checking for
 	particular disallowed color type byte values, or cast to integer to print it.*/
 	LCT_MAX_OCTET_VALUE = 255
-} LodePNGColorType;
+};
 
 #ifdef LODEPNG_COMPILE_DECODER
 /*
@@ -290,7 +293,7 @@ const char *lodepng_error_text(unsigned code);
 
 #ifdef LODEPNG_COMPILE_DECODER
 /*Settings for zlib decompression*/
-typedef struct LodePNGDecompressSettings LodePNGDecompressSettings;
+using LodePNGDecompressSettings = struct LodePNGDecompressSettings;
 struct LodePNGDecompressSettings
 {
 	/* Check LodePNGDecoderSettings for more ignorable errors such as ignore_crc */
@@ -326,7 +329,7 @@ void lodepng_decompress_settings_init(LodePNGDecompressSettings *settings);
 Settings for zlib compression. Tweaking these settings tweaks the balance
 between speed and compression ratio.
 */
-typedef struct LodePNGCompressSettings LodePNGCompressSettings;
+using LodePNGCompressSettings = struct LodePNGCompressSettings;
 struct LodePNGCompressSettings /*deflate = compress*/
 {
 	/*LZ77 related settings*/
@@ -358,7 +361,7 @@ Color mode of an image. Contains all information required to decode the pixel
 bits to RGBA colors. This information is the same as used in the PNG file
 format, and is used both for PNG and raw image data in LodePNG.
 */
-typedef struct LodePNGColorMode
+using LodePNGColorMode = struct LodePNGColorMode
 {
 	/*header (IHDR)*/
 	LodePNGColorType colortype; /*color type, see PNG standard or documentation further in this header file*/
@@ -399,7 +402,7 @@ typedef struct LodePNGColorMode
 	unsigned key_r; /*red/grayscale component of color key*/
 	unsigned key_g; /*green component of color key*/
 	unsigned key_b; /*blue component of color key*/
-} LodePNGColorMode;
+};
 
 /*init, cleanup and copy functions to use with this struct*/
 void lodepng_color_mode_init(LodePNGColorMode *info);
@@ -441,19 +444,19 @@ size_t lodepng_get_raw_size(unsigned w, unsigned h, const LodePNGColorMode *colo
 
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
 /*The information of a Time chunk in PNG.*/
-typedef struct LodePNGTime
+using LodePNGTime = struct LodePNGTime
 {
-	unsigned year; /*2 bytes used (0-65535)*/
-	unsigned month; /*1-12*/
-	unsigned day; /*1-31*/
-	unsigned hour; /*0-23*/
-	unsigned minute; /*0-59*/
-	unsigned second; /*0-60 (to allow for leap seconds)*/
-} LodePNGTime;
+	unsigned year   = 0; /*2 bytes used (0-65535)*/
+	unsigned month  = 1; /*1-12*/
+	unsigned day    = 1; /*1-31*/
+	unsigned hour   = 0; /*0-23*/
+	unsigned minute = 0; /*0-59*/
+	unsigned second = 0; /*0-60 (to allow for leap seconds)*/
+};
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 
 /*Information about the PNG image, except pixels, width and height.*/
-typedef struct LodePNGInfo
+using LodePNGInfo = struct LodePNGInfo
 {
 	/*header (IHDR), palette (PLTE) and transparency (tRNS) chunks*/
 	unsigned compression_method; /*compression method of the original file. Always 0.*/
@@ -535,10 +538,11 @@ typedef struct LodePNGInfo
 	LodePNGTime time;
 
 	/*phys chunk (pHYs)*/
-	unsigned phys_defined; /*if 0, there is no pHYs chunk and the values below are undefined, if 1 else there is one*/
-	unsigned phys_x; /*pixels per unit in x direction*/
-	unsigned phys_y; /*pixels per unit in y direction*/
-	unsigned phys_unit; /*may be 0 (unknown unit) or 1 (metre)*/
+	unsigned phys_defined =
+	    0; /*if 0, there is no pHYs chunk and the values below are undefined, if 1 else there is one*/
+	unsigned phys_x    = 0; /*pixels per unit in x direction*/
+	unsigned phys_y    = 0; /*pixels per unit in y direction*/
+	unsigned phys_unit = 0; /*may be 0 (unknown unit) or 1 (metre)*/
 
 	/*
 	Color profile related chunks: gAMA, cHRM, sRGB, iCPP, sBIT
@@ -551,19 +555,19 @@ typedef struct LodePNGInfo
 	*/
 
 	/* gAMA chunk: optional, overridden by sRGB or iCCP if those are present. */
-	unsigned gama_defined; /* Whether a gAMA chunk is present (0 = not present, 1 = present). */
-	unsigned gama_gamma; /* Gamma exponent times 100000 */
+	unsigned gama_defined = 0; /* Whether a gAMA chunk is present (0 = not present, 1 = present). */
+	unsigned gama_gamma   = 0; /* Gamma exponent times 100000 */
 
 	/* cHRM chunk: optional, overridden by sRGB or iCCP if those are present. */
-	unsigned chrm_defined; /* Whether a cHRM chunk is present (0 = not present, 1 = present). */
-	unsigned chrm_white_x; /* White Point x times 100000 */
-	unsigned chrm_white_y; /* White Point y times 100000 */
-	unsigned chrm_red_x; /* Red x times 100000 */
-	unsigned chrm_red_y; /* Red y times 100000 */
-	unsigned chrm_green_x; /* Green x times 100000 */
-	unsigned chrm_green_y; /* Green y times 100000 */
-	unsigned chrm_blue_x; /* Blue x times 100000 */
-	unsigned chrm_blue_y; /* Blue y times 100000 */
+	unsigned chrm_defined = 0; /* Whether a cHRM chunk is present (0 = not present, 1 = present). */
+	unsigned chrm_white_x = 0; /* White Point x times 100000 */
+	unsigned chrm_white_y = 0; /* White Point y times 100000 */
+	unsigned chrm_red_x   = 0; /* Red x times 100000 */
+	unsigned chrm_red_y   = 0; /* Red y times 100000 */
+	unsigned chrm_green_x = 0; /* Green x times 100000 */
+	unsigned chrm_green_y = 0; /* Green y times 100000 */
+	unsigned chrm_blue_x  = 0; /* Blue x times 100000 */
+	unsigned chrm_blue_y  = 0; /* Blue y times 100000 */
 
 	/*
 	sRGB chunk: optional. May not appear at the same time as iCCP.
@@ -571,7 +575,8 @@ typedef struct LodePNGInfo
 	If cHRM is also present cHRM must contain respectively 31270,32900,64000,33000,30000,60000,15000,6000.
 	*/
 	unsigned srgb_defined; /* Whether an sRGB chunk is present (0 = not present, 1 = present). */
-	unsigned srgb_intent; /* Rendering intent: 0=perceptual, 1=rel. colorimetric, 2=saturation, 3=abs. colorimetric */
+	unsigned srgb_intent =
+	    0; /* Rendering intent: 0=perceptual, 1=rel. colorimetric, 2=saturation, 3=abs. colorimetric */
 
 	/*
 	iCCP chunk: optional. May not appear at the same time as sRGB.
@@ -602,7 +607,7 @@ typedef struct LodePNGInfo
 	correctly and use lodepng_set_icc and lodepng_clear_icc.
 	*/
 	unsigned char *iccp_profile;
-	unsigned iccp_profile_size; /* The size of iccp_profile in bytes */
+	unsigned iccp_profile_size = 0; /* The size of iccp_profile in bytes */
 
 	/*
 	sBIT chunk: significant bits. Optional metadata, only set this if needed.
@@ -665,7 +670,7 @@ typedef struct LodePNGInfo
 	unsigned char *unknown_chunks_data[3];
 	size_t unknown_chunks_size[3]; /*size in bytes of the unknown chunks, given for protection*/
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
-} LodePNGInfo;
+};
 
 /*init, cleanup and copy functions to use with this struct*/
 void lodepng_info_init(LodePNGInfo *info);
@@ -705,7 +710,7 @@ unsigned lodepng_convert(unsigned char *out, const unsigned char *in, const Lode
 Settings for the decoder. This contains settings for the PNG and the Zlib
 decoder, but not the Info settings from the Info structs.
 */
-typedef struct LodePNGDecoderSettings
+using LodePNGDecoderSettings = struct LodePNGDecoderSettings
 {
 	LodePNGDecompressSettings zlibsettings; /*in here is the setting to ignore Adler32 checksums*/
 
@@ -736,15 +741,14 @@ typedef struct LodePNGDecoderSettings
 	legitimate profile could be to hog memory. */
 	size_t max_icc_size;
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
-} LodePNGDecoderSettings;
+};
 
 void lodepng_decoder_settings_init(LodePNGDecoderSettings *settings);
 #endif /*LODEPNG_COMPILE_DECODER*/
 
 #ifdef LODEPNG_COMPILE_ENCODER
 /*automatically use color type with less bits per pixel if losslessly possible. Default: AUTO*/
-typedef enum LodePNGFilterStrategy
-{
+using LodePNGFilterStrategy = enum LodePNGFilterStrategy {
 	/*every filter at zero*/
 	LFS_ZERO = 0,
 	/*every filter at 1, 2, 3 or 4 (paeth), unlike LFS_ZERO not a good choice, but for testing*/
@@ -764,12 +768,12 @@ typedef enum LodePNGFilterStrategy
 	LFS_BRUTE_FORCE,
 	/*use predefined_filters buffer: you specify the filter type for each scanline*/
 	LFS_PREDEFINED
-} LodePNGFilterStrategy;
+};
 
 /*Gives characteristics about the integer RGBA colors of the image (count, alpha channel usage, bit depth, ...),
 which helps decide which color model to use for encoding.
 Used internally by default if "auto_convert" is enabled. Public because it's useful for custom algorithms.*/
-typedef struct LodePNGColorStats
+using LodePNGColorStats = struct LodePNGColorStats
 {
 	unsigned colored; /*not grayscale*/
 	unsigned key; /*image is not opaque and color key is possible instead of full alpha*/
@@ -788,7 +792,7 @@ typedef struct LodePNGColorStats
 	unsigned allow_palette; /*default 1. if 0, disallow choosing palette colortype in auto_choose_color, and don't count
 	                           numcolors*/
 	unsigned allow_greyscale; /*default 1. if 0, choose RGB or RGBA even if the image only has gray colors*/
-} LodePNGColorStats;
+};
 
 void lodepng_color_stats_init(LodePNGColorStats *stats);
 
@@ -798,7 +802,7 @@ unsigned lodepng_compute_color_stats(LodePNGColorStats *stats, const unsigned ch
                                      const LodePNGColorMode *mode_in);
 
 /*Settings for the encoder.*/
-typedef struct LodePNGEncoderSettings
+using LodePNGEncoderSettings = struct LodePNGEncoderSettings
 {
 	LodePNGCompressSettings zlibsettings; /*settings for the zlib encoder, such as window size, ...*/
 
@@ -831,14 +835,14 @@ typedef struct LodePNGEncoderSettings
 	/*encode text chunks as zTXt chunks instead of tEXt chunks, and use compression in iTXt chunks*/
 	unsigned text_compression;
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
-} LodePNGEncoderSettings;
+};
 
 void lodepng_encoder_settings_init(LodePNGEncoderSettings *settings);
 #endif /*LODEPNG_COMPILE_ENCODER*/
 
 #if defined(LODEPNG_COMPILE_DECODER) || defined(LODEPNG_COMPILE_ENCODER)
 /*The settings, state and information for extended encoding and decoding.*/
-typedef struct LodePNGState
+using LodePNGState = struct LodePNGState
 {
 #ifdef LODEPNG_COMPILE_DECODER
 	LodePNGDecoderSettings decoder; /*the decoding settings*/
@@ -849,7 +853,7 @@ typedef struct LodePNGState
 	LodePNGColorMode info_raw; /*specifies the format in which you would like to get the raw pixel buffer*/
 	LodePNGInfo info_png; /*info of the PNG image obtained after decoding*/
 	unsigned error;
-} LodePNGState;
+};
 
 /*init, cleanup and copy functions to use with this struct*/
 void lodepng_state_init(LodePNGState *state);

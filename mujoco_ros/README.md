@@ -1,11 +1,5 @@
 # MuJoCo Ros
 
-This is a ROS package that wraps the [MuJoCo physics engine](https://mujoco.org/) into a ros package.
-It is an extension of the MuJoCo [simulate](https://github.com/deepmind/mujoco/blob/2.1.1/sample/simulate.cc) program, with ROS integration and the possibility to load plugins via pluginlib.
-
-As an example for extended functionality via plugin, take a look at [mujoco_ros_control](https://github.com/ubi-agni/mujoco_ros_pkgs/tree/noetic-devel/mujoco_ros_control), [mujoco_screw_plugin](https://github.com/ubi-agni/mujoco_screw_plugin), [mujoco_contact_surfaces](https://github.com/ubi-agni/mujoco_contact_surfaces) or [mujoco_ros_sensors](https://github.com/ubi-agni/mujoco_ros_pkgs/tree/noetic-devel/mujoco_ros_sensors).
-
-For an example of the Franka Emika Panda using ROS control in MuJoCo, see [franka_ros_mujoco](https://github.com/ubi-agni/franka_ros_mujoco).
 
 ## Plugins
 Plugins provide an easy way of including new functionality into _mujoco\_ros_. The lifecycle of a Plugin is as follows:
@@ -64,27 +58,3 @@ cam_config:
 ```
 
 As long as the image transport topics have no subscribers, the offscreen camera images are not rendered. This way no computational overhead is caused until the images are requested explicitly.
-
-___
-
-# Build Instructions
-1. Make sure MuJoCo is installed (the current build uses version 2.3.3) and runs on your machine.
-2. Create a new ROS workspace or include this repository into an existing workspace.
-3. Before building, make sure that your compiler knows where to find the MuJoCo library, e.g. by running
-```bash
-export MUJOCO_DIR=PATH/TO/MUJOCO/DIR
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$MUJOCO_DIR/lib
-export LIBRARY_PATH=$LIBRARY_PATH:$MUJOCO_DIR/lib
-```
-where `PATH/TO/MUJOCO/DIR` is `~/.mujoco/mujoco-2.3.3` if you used the recommended location to install mujoco (if downloaded as tarball). If you built MuJoCo from source and the install path is known to catkin, you can skip this step.
-
-4. Build with `catkin_build` or `catkin b`.
-5. Source your workspace and try `roslaunch mujoco_ros demo.launch` to test if it runs.
-
-> **Warning**
-> To prevent action servers ignoring actions for a limited time after resetting the simulation, until https://github.com/ros/actionlib/pull/203 is merged, you need to build the PR branch and any packages implementing action servers (like MoveIt) yourself. Additionally, for the Franka Emika Panda robot, until https://github.com/frankaemika/franka_ros/pull/292 is merged, you need to build the PR branch yourself, otherwise controlling the robot after time resets is buggy.
-
-# Licensing
-
-This work is licensed under the BSD 3-Clause License (see LICENSE).
-It is built on top of MuJoCo 2.3.3, which was released under an Apache 2.0 License. For the original MuJoCo and further third party licenses, see [THIRD_PARTY_NOTICES](./THIRD_PARTY_NOTICES).

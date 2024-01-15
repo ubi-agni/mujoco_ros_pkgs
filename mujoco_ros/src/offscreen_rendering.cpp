@@ -42,6 +42,15 @@
 
 namespace mujoco_ros {
 
+OffscreenRenderContext::~OffscreenRenderContext()
+{
+	if (window != nullptr) {
+		glfwMakeContextCurrent(window.get());
+		ROS_DEBUG("Freeing offscreen context");
+		mjr_freeContext(&con);
+	}
+}
+
 void MujocoEnv::initializeRenderResources()
 {
 	image_transport::ImageTransport it(*nh_);
@@ -64,27 +73,37 @@ void MujocoEnv::initializeRenderResources()
 
 	offscreen_.cams.clear();
 
-	rendering::OffscreenCameraPtr cam_ptr;
 	int res_h, res_w;
 	for (uint8_t cam_id = 0; cam_id < this->model_->ncam; cam_id++) {
 		cam_name = mj_id2name(this->model_.get(), mjOBJ_CAMERA, cam_id);
 		ROS_DEBUG_STREAM_NAMED("offscreen_rendering",
 		                       "Found camera '" << cam_name << "' with id " << cam_id << ". Setting up publishers...");
 
-		stream_type = rendering::streamType(
-		    this->nh_->param<int>(cam_config_path + "/" + cam_name + "/stream_type", rendering::streamType::RGB));
-		pub_freq  = this->nh_->param<float>(cam_config_path + "/" + cam_name + "/frequency", 15);
-		use_segid = this->nh_->param<bool>(cam_config_path + "/" + cam_name + "/use_segid", true);
-		res_w     = this->nh_->param<int>(cam_config_path + "/" + cam_name + "/width", 720);
-		res_h     = this->nh_->param<int>(cam_config_path + "/" + cam_name + "/height", 480);
+		std::string param_path(cam_config_path);
+		param_path += "/" + cam_name;
+		std::string stream_type_string(param_path);
+		stream_type_string += "/stream_type";
+		std::string pub_freq_string(param_path);
+		pub_freq_string += "/frequency";
+		std::string segid_string(param_path);
+		segid_string += "/use_segid";
+		std::string res_w_string(param_path);
+		res_w_string += "/width";
+		std::string res_h_string(param_path);
+		res_h_string += "/height";
+
+		stream_type = rendering::streamType(this->nh_->param<int>(stream_type_string, rendering::streamType::RGB));
+		pub_freq    = this->nh_->param<float>(pub_freq_string, 15);
+		use_segid   = this->nh_->param<bool>(segid_string, true);
+		res_w       = this->nh_->param<int>(res_w_string, 720);
+		res_h       = this->nh_->param<int>(res_h_string, 480);
 
 		max_res_h = std::max(res_h, max_res_h);
 		max_res_w = std::max(res_w, max_res_w);
 
-		cam_ptr.reset(new rendering::OffscreenCamera(cam_id, cam_name, res_w, res_h, stream_type, use_segid, pub_freq,
-		                                             &it, nh_, model_, data_, this));
-
-		offscreen_.cams.push_back(cam_ptr);
+		offscreen_.cams.emplace_back(
+		    std::make_unique<rendering::OffscreenCamera>(cam_id, cam_name, res_w, res_h, stream_type, use_segid, pub_freq,
+		                                                 &it, *nh_.get(), model_.get(), data_.get(), this));
 	}
 
 	if (model_->vis.global.offheight < max_res_h || model_->vis.global.offwidth < max_res_w) {
@@ -95,9 +114,9 @@ void MujocoEnv::initializeRenderResources()
 		model_->vis.global.offwidth  = max_res_w;
 	}
 
-	int buffer_size = max_res_w * max_res_h;
-	offscreen_.rgb.reset(new unsigned char[buffer_size * 3], std::default_delete<unsigned char[]>());
-	offscreen_.depth.reset(new float[buffer_size], std::default_delete<float[]>());
+	int buffer_size  = max_res_w * max_res_h;
+	offscreen_.rgb   = std::make_unique<unsigned char[]>(buffer_size * 3);
+	offscreen_.depth = std::make_unique<float[]>(buffer_size);
 
 	ROS_DEBUG_NAMED("offscreen_rendering", "Initializing offscreen rendering utils");
 
@@ -166,7 +185,7 @@ void MujocoEnv::offscreenRenderLoop()
 				settings_.visual_init_request = false;
 			}
 
-			for (auto cam_ptr : offscreen_.cams) {
+			for (const auto &cam_ptr : offscreen_.cams) {
 				cam_ptr->renderAndPublish(&offscreen_);
 				// ROS_DEBUG_STREAM("Done rendering for t=" << cam_ptr->scn_state_.data.time);
 			}

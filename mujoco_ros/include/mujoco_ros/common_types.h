@@ -60,7 +60,7 @@ using streamType = enum streamType_ : uint8_t {
 };
 
 class OffscreenCamera;
-using OffscreenCameraPtr = boost::shared_ptr<OffscreenCamera>;
+using OffscreenCameraPtr = std::unique_ptr<OffscreenCamera>;
 
 } // namespace rendering
 
@@ -69,23 +69,23 @@ struct OffscreenRenderContext;
 
 /**
  * @def mjModelPtr
- * @brief boost::shared_ptr to mjModel
+ * @brief std::shared_ptr to mjModel
  */
-using mjModelPtr = boost::shared_ptr<mjModel>;
+using mjModelPtr = std::shared_ptr<mjModel>;
 /**
  * @def mjDataPtr
- * @brief boost::shared_ptr to mjData
+ * @brief std::shared_ptr to mjData
  */
-using mjDataPtr = boost::shared_ptr<mjData>;
+using mjDataPtr = std::shared_ptr<mjData>;
 
 // MujocoPlugin
 class MujocoPlugin;
 
 /**
  * @def MujocoPluginPtr
- * @brief boost::shared_ptr to MujocoPlugin
+ * @brief std::unique_ptr to MujocoPlugin
  */
-using MujocoPluginPtr = boost::shared_ptr<MujocoPlugin>;
+using MujocoPluginPtr = std::unique_ptr<MujocoPlugin>;
 
 // MujocoEnvironment
 class MujocoEnv;

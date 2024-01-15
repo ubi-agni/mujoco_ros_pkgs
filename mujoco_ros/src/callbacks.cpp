@@ -48,22 +48,22 @@ namespace mju = ::mujoco::sample_util;
 
 void MujocoEnv::setupServices()
 {
-	service_servers_.push_back(nh_->advertiseService("set_pause", &MujocoEnv::setPauseCB, this));
-	service_servers_.push_back(nh_->advertiseService("shutdown", &MujocoEnv::shutdownCB, this));
-	service_servers_.push_back(nh_->advertiseService("reload", &MujocoEnv::reloadCB, this));
-	service_servers_.push_back(nh_->advertiseService("reset", &MujocoEnv::resetCB, this));
-	service_servers_.push_back(nh_->advertiseService("set_body_state", &MujocoEnv::setBodyStateCB, this));
-	service_servers_.push_back(nh_->advertiseService("get_body_state", &MujocoEnv::getBodyStateCB, this));
-	service_servers_.push_back(nh_->advertiseService("set_geom_properties", &MujocoEnv::setGeomPropertiesCB, this));
-	service_servers_.push_back(nh_->advertiseService("get_geom_properties", &MujocoEnv::getGeomPropertiesCB, this));
+	service_servers_.emplace_back(nh_->advertiseService("set_pause", &MujocoEnv::setPauseCB, this));
+	service_servers_.emplace_back(nh_->advertiseService("shutdown", &MujocoEnv::shutdownCB, this));
+	service_servers_.emplace_back(nh_->advertiseService("reload", &MujocoEnv::reloadCB, this));
+	service_servers_.emplace_back(nh_->advertiseService("reset", &MujocoEnv::resetCB, this));
+	service_servers_.emplace_back(nh_->advertiseService("set_body_state", &MujocoEnv::setBodyStateCB, this));
+	service_servers_.emplace_back(nh_->advertiseService("get_body_state", &MujocoEnv::getBodyStateCB, this));
+	service_servers_.emplace_back(nh_->advertiseService("set_geom_properties", &MujocoEnv::setGeomPropertiesCB, this));
+	service_servers_.emplace_back(nh_->advertiseService("get_geom_properties", &MujocoEnv::getGeomPropertiesCB, this));
 
-	service_servers_.push_back(nh_->advertiseService<std_srvs::Empty::Request, std_srvs::Empty::Response>(
+	service_servers_.emplace_back(nh_->advertiseService<std_srvs::Empty::Request, std_srvs::Empty::Response>(
 	    "load_initial_joint_states", [&](auto /*&req*/, auto /*&res*/) {
 		    std::lock_guard<std::recursive_mutex> lock(physics_thread_mutex_);
 		    loadInitialJointStates();
 		    return true;
 	    }));
-	service_servers_.push_back(
+	service_servers_.emplace_back(
 	    nh_->advertiseService<mujoco_ros_msgs::GetStateUint::Request, mujoco_ros_msgs::GetStateUint::Response>(
 	        "get_loading_request_state", [&](auto /*&req*/, auto &res) {
 		        int status      = getOperationalStatus();
@@ -81,7 +81,7 @@ void MujocoEnv::setupServices()
 	        }));
 
 	action_step_ = std::make_unique<actionlib::SimpleActionServer<mujoco_ros_msgs::StepAction>>(
-	    *nh_, "step", boost::bind(&MujocoEnv::onStepGoal, this, _1), false);
+	    *nh_, "step", boost::bind(&MujocoEnv::onStepGoal, this, boost::placeholders::_1), false);
 	action_step_->start();
 }
 
@@ -125,28 +125,28 @@ void MujocoEnv::onStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal)
 void MujocoEnv::runControlCbs()
 {
 	for (const auto &plugin : this->cb_ready_plugins_) {
-		plugin->controlCallback(this->model_, this->data_);
+		plugin->controlCallback(this->model_.get(), this->data_.get());
 	}
 }
 
 void MujocoEnv::runPassiveCbs()
 {
 	for (const auto &plugin : this->cb_ready_plugins_) {
-		plugin->passiveCallback(this->model_, this->data_);
+		plugin->passiveCallback(this->model_.get(), this->data_.get());
 	}
 }
 
-void MujocoEnv::runRenderCbs(mjModelPtr model, mjDataPtr data, mjvScene *scene)
+void MujocoEnv::runRenderCbs(mjvScene *scene)
 {
 	for (const auto &plugin : this->cb_ready_plugins_) {
-		plugin->renderCallback(model, data, scene);
+		plugin->renderCallback(this->model_.get(), this->data_.get(), scene);
 	}
 }
 
 void MujocoEnv::runLastStageCbs()
 {
 	for (const auto &plugin : this->cb_ready_plugins_) {
-		plugin->lastStageCallback(this->model_, this->data_);
+		plugin->lastStageCallback(this->model_.get(), this->data_.get());
 	}
 }
 
@@ -161,8 +161,7 @@ bool MujocoEnv::setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_m
 	return true;
 }
 
-bool MujocoEnv::shutdownCB([[maybe_unused]] std_srvs::Empty::Request &req,
-                           [[maybe_unused]] std_srvs::Empty::Response &res)
+bool MujocoEnv::shutdownCB(std_srvs::Empty::Request & /*req*/, std_srvs::Empty::Response & /*res*/)
 {
 	ROS_DEBUG("Shutdown requested");
 	settings_.exit_request.store(1);
@@ -195,7 +194,7 @@ bool MujocoEnv::reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs:
 	return true;
 }
 
-bool MujocoEnv::resetCB([[maybe_unused]] std_srvs::Empty::Request &req, [[maybe_unused]] std_srvs::Empty::Response &res)
+bool MujocoEnv::resetCB(std_srvs::Empty::Request & /*req*/, std_srvs::Empty::Response & /*res*/)
 {
 	ROS_DEBUG("Reset requested");
 	settings_.reset_request.store(1);
@@ -288,7 +287,7 @@ bool MujocoEnv::setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req,
 			// Set freejoint position and quaternion
 			if (req.set_pose && !req.reset_qpos) {
 				bool valid_pose = true;
-				if (req.state.pose.header.frame_id != "" && req.state.pose.header.frame_id != "world") {
+				if (!req.state.pose.header.frame_id.empty() && req.state.pose.header.frame_id != "world") {
 					try {
 						tf_bufferPtr_->transform<geometry_msgs::PoseStamped>(req.state.pose, target_pose, "world");
 					} catch (tf2::TransformException &ex) {
@@ -338,10 +337,9 @@ bool MujocoEnv::setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req,
 			// Set freejoint twist
 			if (req.set_twist) {
 				// Only pose can be transformed. Twist will be ignored!
-				if (req.state.twist.header.frame_id != "" && req.state.twist.header.frame_id != "world") {
+				if (!req.state.twist.header.frame_id.empty() && req.state.twist.header.frame_id != "world") {
 					std::string error_msg("Transforming twists from other frames is not supported! Not setting twist.");
-					ROS_WARN_STREAM_COND(req.state.twist.header.frame_id != "" && req.state.twist.header.frame_id != "world",
-					                     error_msg);
+					ROS_WARN_STREAM(error_msg);
 					full_error_msg += error_msg + '\n';
 					resp.success = false;
 				} else {

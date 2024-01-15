@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>mujoco_ros</name>
-  <version>0.7.0</version>
+  <version>0.8.0</version>
   <description>The mujoco_ros package</description>
 
   <maintainer email="dleins@techfak.uni-bielefeld.de">David P. Leins</maintainer>
@@ -14,6 +14,7 @@
   <buildtool_depend>catkin</buildtool_depend>
 
   <depend>roscpp</depend>
+  <depend>actionlib</depend>
   <depend>pluginlib</depend>
   <depend>mujoco_ros_msgs</depend>
   <depend>tf2</depend>
@@ -23,7 +24,6 @@
   <depend>image_transport</depend>
   <depend>camera_info_manager</depend>
   <depend>sensor_msgs</depend>
-  <depend>moveit_ros_planning_interface</depend>
   <depend version_gte="1.13.2">urdf</depend>
   <test_depend>rostest</test_depend>
 

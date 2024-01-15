@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
     <name>mujoco_ros_pkgs</name> <!-- This is a meta package! -->
-    <version>0.7.0</version>
+    <version>0.8.0</version>
     <description>Interface for using ROS with the <a href="https://mujoco.org/">MuJoCo</a> simulator.</description>
 
     <license>BSD</license>

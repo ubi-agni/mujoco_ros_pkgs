@@ -46,12 +46,12 @@ namespace mju = ::mujoco::sample_util;
 class MujocoEnvTestWrapper : public MujocoEnv
 {
 public:
-	MujocoEnvTestWrapper(std::string admin_hash = std::string()) : MujocoEnv(admin_hash) {}
-	mjModelPtr getModelPtr() { return model_; }
-	mjDataPtr getDataPtr() { return data_; }
+	MujocoEnvTestWrapper(const std::string &admin_hash = std::string()) : MujocoEnv(admin_hash) {}
+	mjModel *getModelPtr() { return model_.get(); }
+	mjData *getDataPtr() { return data_.get(); }
 	int getPendingSteps() { return num_steps_until_exit_; }
 
-	std::string getFilename() { return std::string(filename_); }
+	std::string getFilename() { return { filename_ }; }
 	int isPhysicsRunning() { return is_physics_running_; }
 	int isEventRunning() { return is_event_running_; }
 	int isRenderingRunning() { return is_rendering_running_; }
@@ -68,7 +68,7 @@ public:
 
 	const std::string &getHandleNamespace() { return nh_->getNamespace(); }
 
-	void startWithXML(const std::string xml_path)
+	void startWithXML(const std::string &xml_path)
 	{
 		mju::strcpy_arr(queued_filename_, xml_path.c_str());
 		settings_.load_request = 2;
@@ -80,28 +80,28 @@ public:
 class BaseEnvFixture : public ::testing::Test
 {
 protected:
-	boost::shared_ptr<ros::NodeHandle> nh;
+	std::unique_ptr<ros::NodeHandle> nh;
 
-	virtual void SetUp()
+	void SetUp() override
 	{
-		nh.reset(new ros::NodeHandle("~"));
+		nh = std::make_unique<ros::NodeHandle>("~");
 		nh->setParam("unpause", true);
 		nh->setParam("no_x", true);
 		nh->setParam("use_sim_time", true);
 	}
 
-	virtual void TearDown() {}
+	void TearDown() override {}
 };
 
 class PendulumEnvFixture : public ::testing::Test
 {
 protected:
-	boost::shared_ptr<ros::NodeHandle> nh;
+	std::unique_ptr<ros::NodeHandle> nh;
 	MujocoEnvTestWrapper *env_ptr;
 
-	virtual void SetUp()
+	void SetUp() override
 	{
-		nh.reset(new ros::NodeHandle("~"));
+		nh = std::make_unique<ros::NodeHandle>("~");
 		nh->setParam("unpause", false);
 		nh->setParam("no_x", true);
 		nh->setParam("use_sim_time", true);
@@ -120,7 +120,7 @@ protected:
 		EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
 	}
 
-	virtual void TearDown()
+	void TearDown() override
 	{
 		env_ptr->shutdown();
 		delete env_ptr;

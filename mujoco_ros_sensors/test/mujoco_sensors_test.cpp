@@ -75,9 +75,9 @@ int main(int argc, char **argv)
 class MujocoEnvTestWrapper : public MujocoEnv
 {
 public:
-	MujocoEnvTestWrapper(std::string admin_hash = std::string()) : MujocoEnv(admin_hash) {}
-	mjModelPtr getModelPtr() { return model_; }
-	mjDataPtr getDataPtr() { return data_; }
+	MujocoEnvTestWrapper(const std::string &admin_hash = std::string()) : MujocoEnv(admin_hash) {}
+	mjModel *getModelPtr() { return model_.get(); }
+	mjData *getDataPtr() { return data_.get(); }
 	int getPendingSteps() { return num_steps_until_exit_; }
 
 	std::string getFilename() { return std::string(filename_); }
@@ -94,7 +94,7 @@ public:
 
 	const std::string &getHandleNamespace() { return nh_->getNamespace(); }
 
-	void startWithXML(const std::string xml_path)
+	void startWithXML(const std::string &xml_path)
 	{
 		mju::strcpy_arr(queued_filename_, xml_path.c_str());
 		settings_.load_request = 2;
@@ -106,14 +106,14 @@ public:
 class TrainEnvFixture : public ::testing::Test
 {
 protected:
-	std::shared_ptr<ros::NodeHandle> nh;
+	std::unique_ptr<ros::NodeHandle> nh;
 	MujocoEnvTestWrapper *env_ptr;
-	mjModelPtr m;
-	mjDataPtr d;
+	mjModel *m;
+	mjData *d;
 
-	virtual void SetUp()
+	void SetUp() override
 	{
-		nh.reset(new ros::NodeHandle("~"));
+		nh = std::make_unique<ros::NodeHandle>("~");
 		nh->setParam("eval_mode", false);
 		nh->setParam("unpause", true);
 		nh->setParam("no_x", true);
@@ -135,10 +135,8 @@ protected:
 		d = env_ptr->getDataPtr();
 	}
 
-	virtual void TearDown()
+	void TearDown() override
 	{
-		d.reset();
-		m.reset();
 		env_ptr->shutdown();
 		delete env_ptr;
 	}
@@ -147,14 +145,14 @@ protected:
 class EvalEnvFixture : public ::testing::Test
 {
 protected:
-	std::shared_ptr<ros::NodeHandle> nh;
+	std::unique_ptr<ros::NodeHandle> nh;
 	MujocoEnvTestWrapper *env_ptr;
-	mjModelPtr m;
-	mjDataPtr d;
+	mjModel *m;
+	mjData *d;
 
-	virtual void SetUp()
+	void SetUp() override
 	{
-		nh.reset(new ros::NodeHandle("~"));
+		nh = std::make_unique<ros::NodeHandle>("~");
 		nh->setParam("eval_mode", true);
 		nh->setParam("unpause", true);
 		nh->setParam("no_x", true);
@@ -176,7 +174,7 @@ protected:
 		d = env_ptr->getDataPtr();
 	}
 
-	virtual void TearDown()
+	void TearDown() override
 	{
 		env_ptr->shutdown();
 		delete env_ptr;
@@ -196,13 +194,12 @@ TEST_F(TrainEnvFixture, SensorCreatedTrain)
 		found_val_top = false;
 
 		if (m->names[m->name_sensoradr[n]]) {
-			sensor_name = mj_id2name(m.get(), mjOBJ_SENSOR, n);
+			sensor_name = mj_id2name(m, mjOBJ_SENSOR, n);
 		} else {
 			continue;
 		}
 
-		for (ros::master::V_TopicInfo::iterator it = master_topics.begin(); it != master_topics.end(); it++) {
-			const ros::master::TopicInfo &info = *it;
+		for (const auto &info : master_topics) {
 			// ROS_INFO_STREAM("Found topic " << info.name);
 			if (info.name.find(sensor_name + "_GT") != std::string::npos) {
 				found_gt_top = true;
@@ -224,26 +221,19 @@ TEST_F(EvalEnvFixture, SensorCreatedEval)
 
 	std::string sensor_name;
 
-	int adr, type;
-	mjtNum cutoff;
 	bool found_val_top, found_gt_top;
 
 	for (int n = 0; n < m->nsensor; n++) {
-		adr           = m->sensor_adr[n];
-		type          = m->sensor_type[n];
-		cutoff        = (m->sensor_cutoff[n] > 0 ? m->sensor_cutoff[n] : 1);
 		found_gt_top  = false;
 		found_val_top = false;
 
 		if (m->names[m->name_sensoradr[n]]) {
-			sensor_name = mj_id2name(m.get(), mjOBJ_SENSOR, n);
+			sensor_name = mj_id2name(m, mjOBJ_SENSOR, n);
 		} else {
 			continue;
 		}
 
-		for (ros::master::V_TopicInfo::iterator it = master_topics.begin(); it != master_topics.end(); it++) {
-			const ros::master::TopicInfo &info = *it;
-			// ROS_INFO_STREAM("Found topic " << info.name);
+		for (const auto &info : master_topics) {
 			if (info.name.find(sensor_name + "_GT") != std::string::npos) {
 				found_gt_top = true;
 				ROS_DEBUG_STREAM("Found GT topic for " << sensor_name << " at " << info.name);
@@ -257,13 +247,13 @@ TEST_F(EvalEnvFixture, SensorCreatedEval)
 	}
 }
 
-void getSensorByName(const std::string sensor_name, mujoco_ros::mjModelPtr m, int &n_sensor)
+void getSensorByName(const std::string &sensor_name, mjModel *m, int &n_sensor)
 {
 	std::string name;
 
 	for (int n = 0; n < m->nsensor; n++) {
 		if (m->names[m->name_sensoradr[n]]) {
-			name = mj_id2name(m.get(), mjOBJ_SENSOR, n);
+			name = mj_id2name(m, mjOBJ_SENSOR, n);
 		} else {
 			continue;
 		}
@@ -294,7 +284,6 @@ TEST_F(TrainEnvFixture, Sensor3DOF)
 	getSensorByName("vel_EE", m, n_sensor);
 
 	int adr    = m->sensor_adr[n_sensor];
-	int type   = m->sensor_type[n_sensor];
 	int cutoff = (m->sensor_cutoff[n_sensor] > 0 ? m->sensor_cutoff[n_sensor] : 1);
 
 	// Check if topics are published
@@ -312,15 +301,15 @@ TEST_F(TrainEnvFixture, Sensor3DOF)
 	                { msgPtr->vector.x, msgPtr->vector.y, msgPtr->vector.z }, 1e-4, true);
 
 	mujoco_ros_msgs::SensorNoiseModel noise_model;
-	noise_model.mean.push_back(0.0);
-	noise_model.mean.push_back(1.0);
-	noise_model.std.push_back(0.25);
-	noise_model.std.push_back(0.0);
+	noise_model.mean.emplace_back(0.0);
+	noise_model.mean.emplace_back(1.0);
+	noise_model.std.emplace_back(0.025);
+	noise_model.std.emplace_back(0.0);
 	noise_model.set_flag    = 3;
 	noise_model.sensor_name = "vel_EE";
 
 	mujoco_ros_msgs::RegisterSensorNoiseModels srv;
-	srv.request.noise_models.push_back(noise_model);
+	srv.request.noise_models.emplace_back(noise_model);
 	srv.request.admin_hash = "example_hash";
 
 	ros::ServiceClient client =
@@ -393,7 +382,7 @@ TEST_F(TrainEnvFixture, Sensor3DOF)
 	EXPECT_NEAR(means[4], d->sensordata[adr + 1] / cutoff, 0.0001);
 	EXPECT_NEAR(means[5], d->sensordata[adr + 2] / cutoff, 0.0001);
 
-	EXPECT_NEAR(variances[0], 0.0625, 0.01);
+	EXPECT_NEAR(variances[0], 0.000625, 0.0001);
 	EXPECT_EQ(variances[1], 0);
 	EXPECT_EQ(variances[2], 0);
 
@@ -408,7 +397,6 @@ TEST_F(TrainEnvFixture, Framepos)
 	getSensorByName("immovable_pos", m, n_sensor);
 
 	int adr    = m->sensor_adr[n_sensor];
-	int type   = m->sensor_type[n_sensor];
 	int cutoff = (m->sensor_cutoff[n_sensor] > 0 ? m->sensor_cutoff[n_sensor] : 1);
 
 	// Check if topics are published
@@ -426,15 +414,15 @@ TEST_F(TrainEnvFixture, Framepos)
 	                { msgPtr->point.x, msgPtr->point.y, msgPtr->point.z }, 0.0001, true);
 
 	mujoco_ros_msgs::SensorNoiseModel noise_model;
-	noise_model.mean.push_back(0.0);
-	noise_model.mean.push_back(1.0);
-	noise_model.std.push_back(0.25);
-	noise_model.std.push_back(0.0);
+	noise_model.mean.emplace_back(0.0);
+	noise_model.mean.emplace_back(1.0);
+	noise_model.std.emplace_back(0.025);
+	noise_model.std.emplace_back(0.0);
 	noise_model.set_flag    = 3;
 	noise_model.sensor_name = "immovable_pos";
 
 	mujoco_ros_msgs::RegisterSensorNoiseModels srv;
-	srv.request.noise_models.push_back(noise_model);
+	srv.request.noise_models.emplace_back(noise_model);
 	srv.request.admin_hash = "example_hash";
 
 	ros::ServiceClient client =
@@ -508,7 +496,7 @@ TEST_F(TrainEnvFixture, Framepos)
 	EXPECT_NEAR(means[4], d->sensordata[adr + 1] / cutoff, 0.0001);
 	EXPECT_NEAR(means[5], d->sensordata[adr + 2] / cutoff, 0.0001);
 
-	EXPECT_NEAR(variances[0], 0.0625, 0.01);
+	EXPECT_NEAR(variances[0], 0.000625, 0.0001);
 	EXPECT_EQ(variances[1], 0);
 	EXPECT_EQ(variances[2], 0);
 
@@ -523,7 +511,6 @@ TEST_F(TrainEnvFixture, scalar_stamped)
 	getSensorByName("vel_joint2", m, n_sensor);
 
 	int adr    = m->sensor_adr[n_sensor];
-	int type   = m->sensor_type[n_sensor];
 	int cutoff = (m->sensor_cutoff[n_sensor] > 0 ? m->sensor_cutoff[n_sensor] : 1);
 
 	// Check if topics are published
@@ -540,13 +527,13 @@ TEST_F(TrainEnvFixture, scalar_stamped)
 	EXPECT_NEAR(msgPtr_GT->value, msgPtr->value, 0.0001) << "Without noise sensor value should equal GT";
 
 	mujoco_ros_msgs::SensorNoiseModel noise_model;
-	noise_model.mean.push_back(1.0);
-	noise_model.std.push_back(0.25);
+	noise_model.mean.emplace_back(1.0);
+	noise_model.std.emplace_back(0.025);
 	noise_model.set_flag    = 1;
 	noise_model.sensor_name = "vel_joint2";
 
 	mujoco_ros_msgs::RegisterSensorNoiseModels srv;
-	srv.request.noise_models.push_back(noise_model);
+	srv.request.noise_models.emplace_back(noise_model);
 	srv.request.admin_hash = "example_hash";
 
 	ros::ServiceClient client =
@@ -593,7 +580,7 @@ TEST_F(TrainEnvFixture, scalar_stamped)
 	EXPECT_NEAR(means[0], 1, 0.01);
 	EXPECT_NEAR(means[1], d->sensordata[adr] / cutoff, 0.0001);
 
-	EXPECT_NEAR(variances[0], 0.0625, 0.01);
+	EXPECT_NEAR(variances[0], 0.000625, 0.0001);
 	EXPECT_EQ(variances[1], 0);
 }
 
@@ -603,7 +590,6 @@ TEST_F(TrainEnvFixture, quaternion)
 	getSensorByName("immovable_quat", m, n_sensor);
 
 	int adr    = m->sensor_adr[n_sensor];
-	int type   = m->sensor_type[n_sensor];
 	int cutoff = (m->sensor_cutoff[n_sensor] > 0 ? m->sensor_cutoff[n_sensor] : 1);
 
 	// Check if topics are published
@@ -622,13 +608,13 @@ TEST_F(TrainEnvFixture, quaternion)
 	    { msgPtr->quaternion.w, msgPtr->quaternion.x, msgPtr->quaternion.y, msgPtr->quaternion.z }, 0.0001, true);
 
 	mujoco_ros_msgs::SensorNoiseModel noise_model;
-	noise_model.mean.push_back(1.0);
-	noise_model.std.push_back(0.25);
+	noise_model.mean.emplace_back(1.0);
+	noise_model.std.emplace_back(0.025);
 	noise_model.set_flag    = 4;
 	noise_model.sensor_name = "immovable_quat";
 
 	mujoco_ros_msgs::RegisterSensorNoiseModels srv;
-	srv.request.noise_models.push_back(noise_model);
+	srv.request.noise_models.emplace_back(noise_model);
 	srv.request.admin_hash = "example_hash";
 
 	ros::ServiceClient client =
@@ -718,7 +704,7 @@ TEST_F(TrainEnvFixture, quaternion)
 
 	EXPECT_EQ(variances[0], 0);
 	EXPECT_EQ(variances[1], 0);
-	EXPECT_NEAR(variances[2], 0.0625, 0.01);
+	EXPECT_NEAR(variances[2], 0.000625, 0.0001);
 
 	EXPECT_EQ(variances[3], 0);
 	EXPECT_EQ(variances[4], 0);

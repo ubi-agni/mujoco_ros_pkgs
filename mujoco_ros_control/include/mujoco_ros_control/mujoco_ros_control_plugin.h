@@ -42,6 +42,7 @@
 #include <boost/thread.hpp>
 
 #include <string>
+#include <memory> // std::unique_ptr
 
 #include <ros/ros.h>
 #include <pluginlib/class_loader.h>
@@ -61,27 +62,27 @@ namespace mujoco_ros::control {
 class MujocoRosControlPlugin : public mujoco_ros::MujocoPlugin
 {
 public:
-	virtual ~MujocoRosControlPlugin();
+	~MujocoRosControlPlugin() override;
 
 	// Overload entry point
-	virtual bool load(mujoco_ros::mjModelPtr m, mujoco_ros::mjDataPtr d);
+	bool load(const mjModel *m, mjData *d) override;
 
 	// Called on reset
-	virtual void reset();
+	void reset() override;
 
 	// Get URDF from parameter server
-	std::string getURDF(std::string param_name) const;
+	std::string getURDF(const std::string &param_name) const;
 
 	// Get transmissions from URDF
 	bool parseTransmissionsFromURDF(const std::string &urdf_string);
 
-	void controlCallback(mujoco_ros::mjModelPtr model, mujoco_ros::mjDataPtr data);
+	void controlCallback(const mjModel *model, mjData *data) override;
 
 protected:
 	void eStopCB(const std_msgs::BoolConstPtr &e_stop_active);
 
 	// Interface loader
-	boost::shared_ptr<pluginlib::ClassLoader<mujoco_ros::control::RobotHWSim>> robot_hw_sim_loader_;
+	std::unique_ptr<pluginlib::ClassLoader<mujoco_ros::control::RobotHWSim>> robot_hw_sim_loader_;
 
 	std::string robot_description_;
 	std::string robot_namespace_;
@@ -90,14 +91,10 @@ protected:
 	std::vector<transmission_interface::TransmissionInfo> transmissions_;
 
 	std::string robot_hw_sim_type_str_;
-	boost::shared_ptr<mujoco_ros::control::RobotHWSim> robot_hw_sim_;
-
-	// Mujoco model and data pointers
-	mujoco_ros::mjModelPtr m_;
-	mujoco_ros::mjDataPtr d_;
+	std::unique_ptr<mujoco_ros::control::RobotHWSim> robot_hw_sim_;
 
 	// Controller manager
-	boost::shared_ptr<controller_manager::ControllerManager> controller_manager_;
+	std::unique_ptr<controller_manager::ControllerManager> controller_manager_;
 
 	// Timing
 	ros::Duration control_period_;
@@ -108,7 +105,7 @@ protected:
 	ros::Subscriber e_stop_sub_;
 
 	// Nodehandle in robot namespace
-	ros::NodeHandlePtr robot_nh_;
+	ros::NodeHandle robot_nh_;
 };
 
 } // namespace mujoco_ros::control

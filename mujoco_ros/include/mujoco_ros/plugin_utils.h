@@ -48,10 +48,10 @@ public:
 	virtual ~MujocoPlugin() { ROS_DEBUG_STREAM("Deleted plugin of type " << rosparam_config_["type"]); }
 
 	// Called directly after plugin creation
-	void init(const XmlRpc::XmlRpcValue &config, ros::NodeHandlePtr nh, MujocoEnvPtr env_ptr)
+	void init(const XmlRpc::XmlRpcValue &config, const std::string &nh_namespace, MujocoEnvPtr env_ptr)
 	{
 		rosparam_config_ = config;
-		node_handle_     = nh;
+		node_handle_     = ros::NodeHandle(nh_namespace);
 		env_ptr_         = env_ptr;
 		type_            = static_cast<std::string>(rosparam_config_["type"]);
 	};
@@ -66,7 +66,7 @@ public:
 	 * @return true if plugin could be loaded without errors.
 	 * @return false if errors occurred during loading.
 	 */
-	bool safe_load(mjModelPtr m, mjDataPtr d)
+	bool safe_load(const mjModel *m, mjData *d)
 	{
 		loading_successful_ = load(m, d);
 		if (!loading_successful_)
@@ -91,50 +91,48 @@ public:
 	 * To apply control, write into \c mjData.ctrl, \c mjData.qfrc_applied and/or \c mjData.xfrc_applied.
 	 * If defined, this function will be called by the mujoco step function at the appropriate time.
 	 *
-	 * @param[in] model pointer to mjModel.
+	 * @param[in] model pointer to const mjModel.
 	 * @param[in] data pointer to mjData.
 	 */
-	virtual void controlCallback([[maybe_unused]] mjModelPtr model, [[maybe_unused]] mjDataPtr data){};
+	virtual void controlCallback(const mjModel * /*model*/, mjData * /*data*/){};
 
 	/**
 	 * @brief Override this function to compute and apply custom passive (i.e. non-controlled) forces.
 	 * This callback should add to the vector \c mjData.qfrc_passive instead of overwriting it, otherwise
 	 * the standard passive forces will be lost.
 	 *
-	 * @param[in] model pointer to mjModel.
+	 * @param[in] model pointer to const mjModel.
 	 * @param[in] data pointer to mjData.
 	 */
-	virtual void passiveCallback([[maybe_unused]] mjModelPtr model, [[maybe_unused]] mjDataPtr data){};
+	virtual void passiveCallback(const mjModel * /*model*/, mjData * /*data*/){};
 
 	/**
 	 * @brief Override this callback to add custom visualisations to the scene.
 	 *
-	 * @param[in] model pointer to mjModel.
+	 * @param[in] model pointer to const mjModel.
 	 * @param[in] data pointer to mjData.
 	 * @param[in] scene pointer to mjvScene.
 	 */
-	virtual void renderCallback([[maybe_unused]] mjModelPtr model, [[maybe_unused]] mjDataPtr data,
-	                            [[maybe_unused]] mjvScene *scene){};
+	virtual void renderCallback(const mjModel * /*model*/, mjData * /*data*/, mjvScene * /*scene*/){};
 
 	/**
 	 * @brief Override this callback to add custom behavior at the end of a mujoco_ros simulation step.
 	 * Note that unlike `controlCallback` and `passiveCallback` this callback will not be called when mujoco runs
 	 * individual sub-steps.
 	 *
-	 * @param[in] model pointer to mjModel.
+	 * @param[in] model pointer to const mjModel.
 	 * @param[in] data pointer to mjData.
 	 */
-	virtual void lastStageCallback([[maybe_unused]] mjModelPtr model, [[maybe_unused]] mjDataPtr data){};
+	virtual void lastStageCallback(const mjModel * /*model*/, mjData * /*data*/){};
 
 	/**
 	 * @brief Override this callback to add custom behavior when a geom has been changed in the model.
 	 *
-	 * @param[in] model pointer to mjModel.
+	 * @param[in] model pointer to const mjModel.
 	 * @param[in] data pointer to mjData.
 	 * @param[in] geom_id id of the geom thas has been changed.
 	 */
-	virtual void onGeomChanged([[maybe_unused]] mjModelPtr model, [[maybe_unused]] mjDataPtr data,
-	                           [[maybe_unused]] const int geom_id){};
+	virtual void onGeomChanged(const mjModel * /*model*/, mjData * /*data*/, const int /*geom_id*/){};
 
 protected:
 	/**
@@ -145,7 +143,7 @@ protected:
 	 * @return true on succesful load.
 	 * @return false if load was not successful.
 	 */
-	virtual bool load(mjModelPtr m, mjDataPtr d) = 0;
+	virtual bool load(const mjModel *m, mjData *d) = 0;
 
 	/**
 	 * @brief Called on reset.
@@ -156,9 +154,9 @@ private:
 	bool loading_successful_ = false;
 
 protected:
-	MujocoPlugin() {}
+	MujocoPlugin() = default;
 	XmlRpc::XmlRpcValue rosparam_config_;
-	ros::NodeHandlePtr node_handle_;
+	ros::NodeHandle node_handle_;
 	MujocoEnvPtr env_ptr_;
 };
 
@@ -170,29 +168,29 @@ namespace plugin_utils {
  * @param[in] nh Pointer to nodehandle where to first look for the plugin config.
  * @param[inout] plugin_config_rpc If any configuration is found, it is stored in this variable.
  */
-bool parsePlugins(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &plugin_config_rpc);
+bool parsePlugins(const ros::NodeHandle *nh, XmlRpc::XmlRpcValue &plugin_config_rpc);
 
 /**
  * @brief Calls registerPlugin for each plugin defined in \c config_rpc.
  *
- * @param[in] nh pointer to nodehandle in correct namespace.
+ * @param[in] nh_namespace nodehandle namespace.
  * @param[in] config_rpc config of at least one plugin to load.
  * @param[inout] plugins vector of plugins. If successfully initialized, the plugins are appended to the vector.
  */
-void registerPlugins(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config_rpc, std::vector<MujocoPluginPtr> &plugins,
-                     MujocoEnvPtr env);
+void registerPlugins(const std::string &nh_namespace, const XmlRpc::XmlRpcValue &config_rpc,
+                     std::vector<MujocoPluginPtr> &plugins, MujocoEnv *env);
 
 /**
  * @brief Loads a MujocoPlugin defined in \c config_rpc via pluginlib and registers it in the passed plugin vector for
  * further usage.
  *
- * @param[in] nh pointer to nodehandle in correct namespace.
+ * @param[in] nh_namespace nodehandle namespace.
  * @param[in] config_rpc config of the plugin to load.
  * @param[inout] plugins vector of plugins. If successfully initialized, the plugin is appended to the vector.
  * @return true if initializing the plugin was successful, false otherwise.
  */
-bool registerPlugin(ros::NodeHandlePtr nh, XmlRpc::XmlRpcValue &config_rpc, std::vector<MujocoPluginPtr> &plugins,
-                    MujocoEnvPtr env);
+bool registerPlugin(const std::string &nh_namespace, const XmlRpc::XmlRpcValue &config_rpc,
+                    std::vector<MujocoPluginPtr> &plugins, MujocoEnv *env);
 
 void unloadPluginloader();
 void initPluginLoader();

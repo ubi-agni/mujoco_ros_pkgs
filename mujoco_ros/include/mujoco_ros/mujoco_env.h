@@ -102,9 +102,9 @@ struct CollisionFunctionDefault
 struct OffscreenRenderContext
 {
 	mjvCamera cam;
-	boost::shared_ptr<unsigned char[]> rgb;
-	boost::shared_ptr<float[]> depth;
-	boost::shared_ptr<GLFWwindow> window;
+	std::unique_ptr<unsigned char[]> rgb;
+	std::unique_ptr<float[]> depth;
+	std::shared_ptr<GLFWwindow> window;
 	mjrContext con = {};
 	mjvScene scn   = {};
 
@@ -118,14 +118,7 @@ struct OffscreenRenderContext
 
 	std::vector<rendering::OffscreenCameraPtr> cams;
 
-	~OffscreenRenderContext()
-	{
-		if (window != nullptr) {
-			glfwMakeContextCurrent(window.get());
-			ROS_DEBUG("Freeing offscreen context");
-			mjr_freeContext(&con);
-		}
-	};
+	~OffscreenRenderContext();
 };
 
 class MujocoEnv
@@ -135,7 +128,7 @@ public:
 	 * @brief Construct a new Mujoco Env object.
 	 *
 	 */
-	MujocoEnv(std::string admin_hash = std::string());
+	MujocoEnv(const std::string &admin_hash = std::string());
 	~MujocoEnv();
 
 	MujocoEnv(const MujocoEnv &) = delete;
@@ -202,7 +195,7 @@ public:
 		bool model_valid        = false;
 	} sim_state_;
 
-	const std::vector<MujocoPluginPtr> getPlugins();
+	std::vector<MujocoPluginPtr> const &getPlugins() const { return plugins_; }
 
 	/**
 	 * @brief Register a custom collision function for collisions between two geom types.
@@ -257,15 +250,15 @@ public:
 	void runControlCbs();
 	void runPassiveCbs();
 
-	bool togglePaused(bool paused, std::string admin_hash = std::string());
+	bool togglePaused(bool paused, const std::string &admin_hash = std::string());
 
 	GlfwAdapter *gui_adapter_ = nullptr;
 
-	void runRenderCbs(mjModelPtr model, mjDataPtr data, mjvScene *scene);
+	void runRenderCbs(mjvScene *scene);
 	bool step(int num_steps = 1, bool blocking = true);
 
 protected:
-	std::vector<MujocoPluginPtr> cb_ready_plugins_;
+	std::vector<MujocoPlugin *> cb_ready_plugins_; // objects managed by plugins_
 	XmlRpc::XmlRpcValue rpc_plugin_config_;
 	std::vector<MujocoPluginPtr> plugins_;
 
@@ -294,8 +287,8 @@ protected:
 	tf2_ros::StaticTransformBroadcaster static_broadcaster_;
 
 	// ROS TF2
-	boost::shared_ptr<tf2_ros::Buffer> tf_bufferPtr_;
-	boost::shared_ptr<tf2_ros::TransformListener> tf_listenerPtr_;
+	std::unique_ptr<tf2_ros::Buffer> tf_bufferPtr_;
+	std::unique_ptr<tf2_ros::TransformListener> tf_listenerPtr_;
 
 	/// Pointer to mjModel
 	mjModelPtr model_; // technically could be a unique_ptr, but setting the deleter correctly is not trivial
@@ -306,7 +299,7 @@ protected:
 
 	void publishSimTime(mjtNum time);
 	ros::Publisher clock_pub_;
-	boost::shared_ptr<ros::NodeHandle> nh_;
+	std::unique_ptr<ros::NodeHandle> nh_;
 
 	void runLastStageCbs();
 

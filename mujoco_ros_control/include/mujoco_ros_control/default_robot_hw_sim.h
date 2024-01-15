@@ -60,16 +60,15 @@ namespace mujoco_ros::control {
 class DefaultRobotHWSim : public mujoco_ros::control::RobotHWSim
 {
 public:
-	virtual bool initSim(mujoco_ros::mjModelPtr m_ptr, mujoco_ros::mjDataPtr d_ptr,
-	                     mujoco_ros::MujocoEnvPtr mujoco_env_ptr, const std::string &robot_namespace,
-	                     ros::NodeHandle model_nh, const urdf::Model *const urdf_model,
-	                     std::vector<transmission_interface::TransmissionInfo> transmissions);
+	bool initSim(const mjModel *m_ptr, mjData *d_ptr, mujoco_ros::MujocoEnv *mujoco_env_ptr,
+	             const std::string &robot_namespace, ros::NodeHandle model_nh, const urdf::Model *const urdf_model,
+	             std::vector<transmission_interface::TransmissionInfo> transmissions) override;
 
-	virtual void readSim(ros::Time time, ros::Duration period);
+	void readSim(ros::Time time, ros::Duration period) override;
 
-	virtual void writeSim(ros::Time time, ros::Duration period);
+	void writeSim(ros::Time time, ros::Duration period) override;
 
-	virtual void eStopActive(const bool Active);
+	void eStopActive(const bool Active) override;
 
 protected:
 	// Methods used to control a joint.
@@ -129,5 +128,5 @@ protected:
 	bool e_stop_active_, last_e_stop_active_;
 };
 
-typedef boost::shared_ptr<DefaultRobotHWSim> DefaultRobotHWSimPtr;
+using DefaultRobotHWSimPtr = std::unique_ptr<DefaultRobotHWSim>;
 } // namespace mujoco_ros::control

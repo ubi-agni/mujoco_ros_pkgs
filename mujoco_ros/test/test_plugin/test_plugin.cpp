@@ -41,32 +41,34 @@
 using namespace mujoco_ros;
 namespace mujoco_ros {
 
-bool TestPlugin::load(mjModelPtr m, mjDataPtr d)
+bool TestPlugin::load(const mjModel *m, mjData *d)
 {
 	if (rosparam_config_.hasMember("example_param")) {
-		got_config_param = true;
+		got_config_param.store(true);
 	}
 
 	if (rosparam_config_.hasMember("nested_array_param_1")) {
 		if (rosparam_config_["nested_array_param_1"].getType() == XmlRpc::XmlRpcValue::TypeArray) {
-			got_lvl1_nested_array = true;
+			got_lvl1_nested_array.store(true);
 			if (rosparam_config_["nested_array_param_1"][0].hasMember("nested_array_param_2")) {
-				got_lvl2_nested_array = true;
+				got_lvl2_nested_array.store(true);
 			}
 		}
 	}
 
 	if (rosparam_config_.hasMember("nested_struct_param_1")) {
 		if (rosparam_config_["nested_struct_param_1"].getType() == XmlRpc::XmlRpcValue::TypeStruct) {
-			got_lvl1_nested_struct = true;
+			got_lvl1_nested_struct.store(true);
 			if (rosparam_config_["nested_struct_param_1"].hasMember("nested_struct_param_2")) {
-				got_lvl2_nested_struct = true;
+				got_lvl2_nested_struct.store(true);
 			}
 		}
 	}
 
-	node_handle_->param<bool>("should_fail", should_fail, false);
-	if (should_fail) {
+	bool tmp_fail = false;
+	node_handle_.param<bool>("should_fail", tmp_fail, false);
+	should_fail.store(tmp_fail);
+	if (tmp_fail) {
 		return false;
 	}
 
@@ -77,32 +79,32 @@ bool TestPlugin::load(mjModelPtr m, mjDataPtr d)
 
 void TestPlugin::reset()
 {
-	ran_reset = true;
+	ran_reset.store(true);
 }
 
-void TestPlugin::controlCallback(mjModelPtr model, mjDataPtr data)
+void TestPlugin::controlCallback(const mjModel * /*model*/, mjData * /*data*/)
 {
-	ran_control_cb = true;
+	ran_control_cb.store(true);
 }
 
-void TestPlugin::passiveCallback(mjModelPtr model, mjDataPtr data)
+void TestPlugin::passiveCallback(const mjModel * /*model*/, mjData * /*data*/)
 {
-	ran_passive_cb = true;
+	ran_passive_cb.store(true);
 }
 
-void TestPlugin::renderCallback(mjModelPtr model, mjDataPtr data, mjvScene *scene)
+void TestPlugin::renderCallback(const mjModel * /*model*/, mjData * /*data*/, mjvScene * /*scene*/)
 {
-	ran_render_cb = true;
+	ran_render_cb.store(true);
 }
 
-void TestPlugin::lastStageCallback(mjModelPtr model, mjDataPtr data)
+void TestPlugin::lastStageCallback(const mjModel * /*model*/, mjData * /*data*/)
 {
-	ran_last_cb = true;
+	ran_last_cb.store(true);
 }
 
-void TestPlugin::onGeomChanged(mjModelPtr model, mjDataPtr data, const int geom_id)
+void TestPlugin::onGeomChanged(const mjModel * /*model*/, mjData * /*data*/, const int /*geom_id*/)
 {
-	ran_on_geom_changed_cb = true;
+	ran_on_geom_changed_cb.store(true);
 }
 } // namespace mujoco_ros
 

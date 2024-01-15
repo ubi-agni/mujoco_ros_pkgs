@@ -48,14 +48,14 @@ double clamp(const double val, const double min_val, const double max_val)
 
 namespace mujoco_ros::control {
 
-bool DefaultRobotHWSim::initSim(mujoco_ros::mjModelPtr m_ptr, mujoco_ros::mjDataPtr d_ptr,
-                                MujocoEnvPtr /*mujoco_env_ptr*/, const std::string &robot_namespace,
-                                ros::NodeHandle model_nh, const urdf::Model *const urdf_model,
+bool DefaultRobotHWSim::initSim(const mjModel *m_ptr, mjData *d_ptr, MujocoEnv * /*mujoco_env_ptr*/,
+                                const std::string &robot_namespace, ros::NodeHandle model_nh,
+                                const urdf::Model *const urdf_model,
                                 std::vector<transmission_interface::TransmissionInfo> transmissions)
 {
 	// getJointLimits() searches joint_limit_nh for joint limit parameters. The format of each
 	// parameters name is "joint_limits/<joint name>" an example is "joint_limits/axle_joint"
-	const ros::NodeHandle joint_limit_nh(model_nh);
+	const ros::NodeHandle &joint_limit_nh(model_nh);
 
 	m_ptr_ = m_ptr;
 	d_ptr_ = d_ptr;
@@ -84,7 +84,7 @@ bool DefaultRobotHWSim::initSim(mujoco_ros::mjModelPtr m_ptr, mujoco_ros::mjData
 	for (unsigned int j = 0; j < n_dof_; j++) {
 		ROS_DEBUG_STREAM_NAMED("default_robot_hw_sim", "\tparsing transmission " << j);
 		// Check that this transmission has one joint
-		if (transmissions[j].joints_.size() == 0) {
+		if (transmissions[j].joints_.empty()) {
 			ROS_WARN_STREAM_NAMED("default_robot_hw_sim",
 			                      "Transmission " << transmissions[j].name_ << " has no associated joints.");
 			mujoco_joint_ids_[j] = -1;
@@ -180,7 +180,7 @@ bool DefaultRobotHWSim::initSim(mujoco_ros::mjModelPtr m_ptr, mujoco_ros::mjData
 			                                                  << joint_names_[j]);
 		}
 
-		int joint_id = mujoco_ros::util::jointName2id(m_ptr.get(), joint_names_[j]);
+		int joint_id = mujoco_ros::util::jointName2id(const_cast<mjModel *>(m_ptr), joint_names_[j]);
 		if (joint_id < 0) {
 			ROS_ERROR_STREAM_NAMED("default_robot_hw_sim", "This robot has a joint named '"
 			                                                   << joint_names_[j]
@@ -201,6 +201,8 @@ bool DefaultRobotHWSim::initSim(mujoco_ros::mjModelPtr m_ptr, mujoco_ros::mjData
 						break;
 					case VELOCITY:
 						joint_control_methods_[j] = VELOCITY_PID;
+						break;
+					default:
 						break;
 				}
 			}
@@ -413,6 +415,9 @@ void DefaultRobotHWSim::registerJointLimits(const std::string &joint_name,
 				vj_limits_interface_.registerHandle(limits_handle);
 				break;
 			}
+
+			default:
+				break;
 		}
 	} else {
 		switch (ctrl_method) {
@@ -433,6 +438,9 @@ void DefaultRobotHWSim::registerJointLimits(const std::string &joint_name,
 				vj_sat_interface_.registerHandle(sat_handle);
 				break;
 			}
+
+			default:
+				break;
 		}
 	}
 }

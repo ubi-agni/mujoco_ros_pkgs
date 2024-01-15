@@ -14,6 +14,7 @@
 #     test = Including new or correcting previous tests
 #     build = Changes that affect the build system or external dependencies
 #     revert = Reverts a previous commit
+#     gh = github related changes (actions, workflows, ...)
 #
 #   <scope> can specify which part of the codebase is affected by the commit.
 #
