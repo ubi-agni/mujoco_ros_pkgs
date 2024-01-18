@@ -441,7 +441,10 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 		int site_id   = model->sensor_objid[n];
 		int parent_id = model->site_bodyid[site_id];
 		int type      = model->sensor_type[n];
-
+		if (type == mjSENS_USER) {
+			ROS_INFO_STREAM_NAMED("sensors", "Skipping USER sensor");
+			continue;
+		}
 		site = mj_id2name(const_cast<mjModel *>(model), model->sensor_objtype[n], site_id);
 
 		if (model->names[model->name_sensoradr[n]]) {
