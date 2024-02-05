@@ -1,12 +1,12 @@
 # solimp parameters
 
-float32 dmin
-float32 dmax
-float32 width
-float32 midpoint
-float32 power
+float64 dmin
+float64 dmax
+float64 width
+float64 midpoint
+float64 power
 
 # solref parameters
 
-float32 timeconst
-float32 dampratio
+float64 timeconst
+float64 dampratio

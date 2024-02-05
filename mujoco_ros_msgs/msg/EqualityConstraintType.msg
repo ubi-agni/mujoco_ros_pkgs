@@ -1,4 +1,4 @@
-uint16 typevalue
+uint16 value
 uint16 CONNECT=0
 uint16 WELD=1
 uint16 JOINT=2

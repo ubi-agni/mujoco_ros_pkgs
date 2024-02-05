@@ -70,6 +70,7 @@
 #include <mujoco_ros_msgs/GetBodyState.h>
 #include <mujoco_ros_msgs/SetGeomProperties.h>
 #include <mujoco_ros_msgs/GetGeomProperties.h>
+#include <mujoco_ros_msgs/EqualityConstraintParameters.h>
 #include <mujoco_ros_msgs/GetEqualityConstraintParameters.h>
 #include <mujoco_ros_msgs/SetEqualityConstraintParameters.h>
 #include <mujoco_ros_msgs/SetGravity.h>
@@ -94,7 +95,8 @@ struct CollisionFunctionDefault
 {
 	CollisionFunctionDefault(int geom_type1, int geom_type2, mjfCollision collision_cb)
 	    : geom_type1_(geom_type1), geom_type2_(geom_type2), collision_cb_(collision_cb)
-	{}
+	{
+	}
 
 	int geom_type1_;
 	int geom_type2_;
@@ -323,10 +325,12 @@ protected:
 	                         mujoco_ros_msgs::SetGeomProperties::Response &resp);
 	bool getGeomPropertiesCB(mujoco_ros_msgs::GetGeomProperties::Request &req,
 	                         mujoco_ros_msgs::GetGeomProperties::Response &resp);
-	bool setEqualityConstraintParametersCB(mujoco_ros_msgs::SetEqualityConstraintParameters::Request &req,
-	                                       mujoco_ros_msgs::SetEqualityConstraintParameters::Response &resp);
-	bool getEqualityConstraintParametersCB(mujoco_ros_msgs::GetEqualityConstraintParameters::Request &req,
-	                                       mujoco_ros_msgs::GetEqualityConstraintParameters::Response &resp);
+	bool setEqualityConstraintParametersArrayCB(mujoco_ros_msgs::SetEqualityConstraintParameters::Request &req,
+	                                            mujoco_ros_msgs::SetEqualityConstraintParameters::Response &resp);
+	bool setEqualityConstraintParameters(const mujoco_ros_msgs::EqualityConstraintParameters &parameters);
+	bool getEqualityConstraintParametersArrayCB(mujoco_ros_msgs::GetEqualityConstraintParameters::Request &req,
+	                                            mujoco_ros_msgs::GetEqualityConstraintParameters::Response &resp);
+	bool getEqualityConstraintParameters(mujoco_ros_msgs::EqualityConstraintParameters &parameters);
 	// Action calls
 	void onStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal);
 
