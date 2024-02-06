@@ -16,6 +16,8 @@
   <depend>mujoco_ros</depend>
   <depend>mujoco_ros_msgs</depend>
 
+  <test_depend>rostest</test_depend>
+
   <export>
     <mujoco_ros plugin="${prefix}/mocap_plugin.xml" />
   </export>
