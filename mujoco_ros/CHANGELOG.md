@@ -1,6 +1,10 @@
 <a name="unreleased"></a>
 ## Unreleased
 
+### Added
+* Mocap plugin to programmatically control mocap bodies.
+* Services to alter equality constraints. Note that by MuJoCo's design no new constraints can be added, though.
+
 ### Fixed
 * Repaired SIGINT handler callback. `C-c` in the roslaunch terminal now shuts down the MuJoCo ROS node instead of escalating to SIGTERM.
 * Added actionlib to the list of mujoco_ros' dependencies.
@@ -9,6 +13,8 @@
 * replaced `boost::shared_ptr` with `std::shared_ptr` or `std::unique_ptr` wherever possible (ROS 1 fast intra-process message-passing requires boost::shared_ptr).
 * replaced `shared_ptr` with `unique_ptr` wherever possible.
 * replaced smart pointer constructor initialization with `make_shared` or `make_unique` wherever possible.
+
+Contributors: @DavidPL1, @acodeodyssey
 
 <a name="0.8.0"></a>
 ## [0.8.0] - 2023-10-23

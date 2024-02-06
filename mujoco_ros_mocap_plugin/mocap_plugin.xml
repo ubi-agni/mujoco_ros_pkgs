@@ -1,0 +1,10 @@
+<library path="lib/libmujoco_ros_mocap">
+  <class
+    name="mujoco_ros_mocap/MocapPlugin"
+    type="mujoco_ros::mocap::MocapPlugin"
+    base_class_type="mujoco_ros::MujocoPlugin">
+    <description>
+      Mujoco plugin to set position and orientation of mocap bodies from ROS
+    </description>
+  </class>
+</library>

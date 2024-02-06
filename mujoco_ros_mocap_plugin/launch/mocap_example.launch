@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+  <launch>
+  <arg name="modelfile"            default="$(find mujoco_mocap)/assets/mocap_world.xml" doc="MuJoCo xml file to load. Should define robot model and world." />
+  <arg name="mujoco_plugin_config" default="$(find mujoco_mocap)/config/mocap_example_config.yaml"                                        doc="Optionally provide the path to a yaml with plugin configurations to load" />
+
+  <env name="ROSCONSOLE_FORMAT" value="[${severity}] [${time}] [${logger}] [${node}]: ${message}"/>
+  <env if="$(arg verbose)" name="ROSCONSOLE_CONFIG_FILE"
+       value="$(find mujoco_ros)/rosconsole.config"/>
+
+  <include file="$(find mujoco_ros)/launch/launch_server.launch" pass_all_args="true">
+    <arg name="use_sim_time" value="true" />
+  </include>
+</launch>

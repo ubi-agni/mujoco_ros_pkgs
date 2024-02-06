@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<launch>
+
+  <env name="ROSCONSOLE_FORMAT" value="[${severity}] [${time}] [${logger}] [${node}]: ${message}"/>
+  <env name="ROSCONSOLE_CONFIG_FILE"
+       value="$(find mujoco_ros)/config/rosconsole.config"/>
+
+  <param name="/use_sim_time" value="true"/>
+
+  <rosparam file="$(find mujoco_ros_mocap)/config/mocap_example_config.yaml" subst_value="true" />
+  <test test-name="mujoco_mocap_test" pkg="mujoco_ros_mocap" type="mocap_test" />
+</launch>
