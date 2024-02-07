@@ -130,6 +130,8 @@ int main(int argc, char **argv)
 
 	std::printf("MuJoCo version %s\n", mj_versionString());
 	if (mjVERSION_HEADER != mj_version()) {
+		ROS_ERROR_STREAM("Headers (" << mjVERSION_HEADER << ") and library (" << mj_versionString()
+		                             << ") have different versions");
 		mju_error("Headers and library have different versions");
 	}
 
