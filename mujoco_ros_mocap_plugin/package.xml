@@ -4,8 +4,8 @@
   <version>0.8.0</version>
   <description>The mujoco_ros_mocap plugin package</description>
 
-  <url type="repository">https://github.com/ubi-agni/mujoco_mocap_plugin</url>
-  <url type="bugtracker">https://github.com/ubi-agni/mujoco_mocap_plugin/issues</url>
+  <url type="repository">https://github.com/ubi-agni/mujoco_ros_pkgs</url>
+  <url type="bugtracker">https://github.com/ubi-agni/mujoco_ros_pkgs/issues</url>
 
   <maintainer email="dleins@techfak.de">David Leins</maintainer>
   <author>David Leins</author>
