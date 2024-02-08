@@ -508,7 +508,7 @@ void MujocoEnv::physicsLoop()
 							for (const auto &cam_ptr : offscreen_.cams) {
 								if (cam_ptr->shouldRender(ros::Time(data_->time))) {
 									mjv_updateSceneState(model_.get(), data_.get(), &cam_ptr->vopt_, &cam_ptr->scn_state_);
-									runRenderCbs(&cam_ptr->scn_state_.plugincache);
+									runRenderCbs(&cam_ptr->scn_state_.scratch);
 									offscreen_.request_pending.store(true);
 								}
 							}
@@ -562,7 +562,7 @@ void MujocoEnv::physicsLoop()
 								for (const auto &cam_ptr : offscreen_.cams) {
 									if (cam_ptr->shouldRender(ros::Time(data_->time))) {
 										mjv_updateSceneState(model_.get(), data_.get(), &cam_ptr->vopt_, &cam_ptr->scn_state_);
-										runRenderCbs(&cam_ptr->scn_state_.plugincache);
+										runRenderCbs(&cam_ptr->scn_state_.scratch);
 										offscreen_.request_pending.store(true);
 									}
 								}
@@ -603,7 +603,7 @@ void MujocoEnv::physicsLoop()
 								for (const auto &cam_ptr : offscreen_.cams) {
 									if (cam_ptr->shouldRender(ros::Time(data_->time))) {
 										mjv_updateSceneState(model_.get(), data_.get(), &cam_ptr->vopt_, &cam_ptr->scn_state_);
-										runRenderCbs(&cam_ptr->scn_state_.plugincache);
+										runRenderCbs(&cam_ptr->scn_state_.scratch);
 										offscreen_.request_pending.store(true);
 									}
 								}
@@ -812,7 +812,7 @@ bool MujocoEnv::initModelFromQueue()
 	int vfs_id              = mj_findFileVFS(&vfs_, "model_string");
 	size_t filecontent_size = 0;
 	if (vfs_id > -1) {
-		filecontent_size = static_cast<size_t>(vfs_.filesize[vfs_id]);
+		filecontent_size = vfs_.filesize[vfs_id];
 	}
 
 	char *filedata_backup = new char[filecontent_size];

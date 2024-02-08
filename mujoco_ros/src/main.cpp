@@ -155,12 +155,16 @@ int main(int argc, char **argv)
 	env->startEventLoop();
 
 	if (!no_x) {
+		// mjvCamera cam;
+		// mjvOption opt;
+		// mjv_defaultCamera(&cam);
+		// mjv_defaultOption(&opt);
 		ROS_INFO("Launching viewer");
-		// Start simulation UI loop (blocking)
-		// auto viewer = std::make_unique<mujoco_ros::Viewer>(std::make_unique<mujoco_ros::GlfwAdapter>(), &env,
-		//    /* fully_managed = */ true);
-		auto viewer = std::make_unique<mujoco_ros::Viewer>(
-		    std::unique_ptr<mujoco_ros::PlatformUIAdapter>(env->gui_adapter_), env.get(), /* fully_managed = */ true);
+		auto viewer =
+		    // std::make_unique<mujoco_ros::Viewer>(std::unique_ptr<mujoco_ros::PlatformUIAdapter>(env->gui_adapter_),
+		    //                                      env.get(), &cam, &opt, /* is_passive = */ false);
+		    std::make_unique<mujoco_ros::Viewer>(std::unique_ptr<mujoco_ros::PlatformUIAdapter>(env->gui_adapter_),
+		                                         env.get(), /* is_passive = */ false);
 		viewer->RenderLoop();
 	} else {
 		ROS_INFO("Running headless");

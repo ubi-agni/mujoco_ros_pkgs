@@ -144,6 +144,7 @@ const mjuiDef defFile[] = {
 const char help_content[] = "Space\n"
                             "+  -\n"
                             "Right arrow\n"
+                            "Left arrow\n"
                             "[  ]\n"
                             "Esc\n"
                             "Double-click\n"
@@ -165,7 +166,8 @@ const char help_content[] = "Space\n"
 
 const char help_title[] = "Play / Pause\n"
                           "Speed up / down\n"
-                          "Step\n"
+                          "Step forward\n"
+                          "Step back\n"
                           "Cycle cameras\n"
                           "Free camera\n"
                           "Select\n"
@@ -184,6 +186,10 @@ const char help_title[] = "Play / Pause\n"
                           "Full screen\n"
                           "Show UI shortcuts\n"
                           "Expand/collapse all";
+
+// number of lines in the Constraint ("Counts") and Cost ("Convergence") figures
+static constexpr int kConstraintNum = 5;
+static constexpr int kCostNum       = 3;
 
 // init profiler figures
 void InitializeProfiler(mujoco_ros::Viewer *viewer)
@@ -221,6 +227,20 @@ void InitializeProfiler(mujoco_ros::Viewer *viewer)
 	viewer->figcost.figurergba[3]       = 0.5f;
 	viewer->figsize.figurergba[3]       = 0.5f;
 	viewer->figtimer.figurergba[3]      = 0.5f;
+
+	// repeat line colors for constraint and cost figures
+	mjvFigure *fig = &viewer->figcost;
+	for (int i = kCostNum; i < mjMAXLINE; i++) {
+		fig->linergb[i][0] = fig->linergb[i - kCostNum][0];
+		fig->linergb[i][1] = fig->linergb[i - kCostNum][1];
+		fig->linergb[i][2] = fig->linergb[i - kCostNum][2];
+	}
+	fig = &viewer->figconstraint;
+	for (int i = kConstraintNum; i < mjMAXLINE; i++) {
+		fig->linergb[i][0] = fig->linergb[i - kConstraintNum][0];
+		fig->linergb[i][1] = fig->linergb[i - kConstraintNum][1];
+		fig->linergb[i][2] = fig->linergb[i - kConstraintNum][2];
+	}
 
 	// legends
 	mju::strcpy_arr(viewer->figconstraint.linename[0], "total");
@@ -272,64 +292,83 @@ void InitializeProfiler(mujoco_ros::Viewer *viewer)
 	viewer->figtimer.range[1][1]      = 0.4f;
 
 	// init x axis on history figures (do not show yet)
-	for (int n = 0; n < 6; n++)
+	for (int n = 0; n < 6; n++) {
 		for (int i = 0; i < mjMAXLINEPNT; i++) {
 			viewer->figtimer.linedata[n][2 * i] = -i;
 			viewer->figsize.linedata[n][2 * i]  = -i;
 		}
+	}
 }
 
 // update profiler figures
 void UpdateProfiler(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *d)
 {
-	// update constraint figure
-	viewer->figconstraint.linepnt[0] = mjMIN(mjMIN(d->solver_iter, mjNSOLVER), mjMAXLINEPNT);
-	for (size_t i = 1; i < 5; i++) {
-		viewer->figconstraint.linepnt[i] = viewer->figconstraint.linepnt[0];
-	}
-	if (m->opt.solver == mjSOL_PGS) {
-		viewer->figconstraint.linepnt[3] = 0;
-		viewer->figconstraint.linepnt[4] = 0;
-	}
-	if (m->opt.solver == mjSOL_CG) {
-		viewer->figconstraint.linepnt[4] = 0;
-	}
-	for (size_t i = 0; i < viewer->figconstraint.linepnt[0]; i++) {
-		// x
-		viewer->figconstraint.linedata[0][2 * i] = static_cast<float>(i);
-		viewer->figconstraint.linedata[1][2 * i] = static_cast<float>(i);
-		viewer->figconstraint.linedata[2][2 * i] = static_cast<float>(i);
-		viewer->figconstraint.linedata[3][2 * i] = static_cast<float>(i);
-		viewer->figconstraint.linedata[4][2 * i] = static_cast<float>(i);
+	// reset lines in Constraint and Cost figures
+	memset(viewer->figconstraint.linepnt, 0, mjMAXLINE * sizeof(int));
+	memset(viewer->figcost.linepnt, 0, mjMAXLINE * sizeof(int));
 
-		// y
-		viewer->figconstraint.linedata[0][2 * i + 1] = static_cast<float>(d->nefc);
-		viewer->figconstraint.linedata[1][2 * i + 1] = static_cast<float>(d->solver[i].nactive);
-		viewer->figconstraint.linedata[2][2 * i + 1] = static_cast<float>(d->solver[i].nchange);
-		viewer->figconstraint.linedata[3][2 * i + 1] = static_cast<float>(d->solver[i].neval);
-		viewer->figconstraint.linedata[4][2 * i + 1] = static_cast<float>(d->solver[i].nupdate);
-	}
+	// number of islands that have diagnostics
+	int nisland = mjMIN(d->solver_nisland, mjNISLAND);
 
-	// update cost figure
-	viewer->figcost.linepnt[0] = mjMIN(mjMIN(d->solver_iter, mjNSOLVER), mjMAXLINEPNT);
-	for (int i = 1; i < 3; i++) {
-		viewer->figcost.linepnt[i] = viewer->figcost.linepnt[0];
-	}
-	if (m->opt.solver == mjSOL_PGS) {
-		viewer->figcost.linepnt[1] = 0;
-		viewer->figcost.linepnt[2] = 0;
-	}
+	for (int k = 0; k < nisland; k++) {
+		// === update Constarint ("Counts") figure
 
-	for (size_t i = 0; i < viewer->figcost.linepnt[0]; i++) {
-		// x
-		viewer->figcost.linedata[0][2 * i] = static_cast<float>(i);
-		viewer->figcost.linedata[1][2 * i] = static_cast<float>(i);
-		viewer->figcost.linedata[2][2 * i] = static_cast<float>(i);
+		// number of points to plot, starting line
+		int npoints = mjMIN(mjMIN(d->solver_niter[k], mjNSOLVER), mjMAXLINEPNT);
+		int start   = kConstraintNum * k;
 
-		// y
-		viewer->figcost.linedata[0][2 * i + 1] = mju_log10(mju_max(mjMINVAL, d->solver[i].improvement));
-		viewer->figcost.linedata[1][2 * i + 1] = mju_log10(mju_max(mjMINVAL, d->solver[i].gradient));
-		viewer->figcost.linedata[2][2 * i + 1] = mju_log10(mju_max(mjMINVAL, d->solver[i].lineslope));
+		viewer->figconstraint.linepnt[start + 0] = npoints;
+		for (int i = 1; i < kConstraintNum; i++) {
+			viewer->figconstraint.linepnt[start + i] = npoints;
+		}
+		if (m->opt.solver == mjSOL_PGS) {
+			viewer->figconstraint.linepnt[start + 3] = 0;
+			viewer->figconstraint.linepnt[start + 4] = 0;
+		}
+		if (m->opt.solver == mjSOL_CG) {
+			viewer->figconstraint.linepnt[start + 4] = 0;
+		}
+		for (int i = 0; i < npoints; i++) {
+			// x
+			viewer->figconstraint.linedata[start + 0][2 * i] = static_cast<float>(i);
+			viewer->figconstraint.linedata[start + 1][2 * i] = static_cast<float>(i);
+			viewer->figconstraint.linedata[start + 2][2 * i] = static_cast<float>(i);
+			viewer->figconstraint.linedata[start + 3][2 * i] = static_cast<float>(i);
+			viewer->figconstraint.linedata[start + 4][2 * i] = static_cast<float>(i);
+
+			// y
+			int nefc                                             = nisland == 1 ? d->nefc : d->island_efcnum[k];
+			viewer->figconstraint.linedata[start + 0][2 * i + 1] = static_cast<float>(nefc);
+			const mjSolverStat *stat                             = d->solver + k * mjNSOLVER + i;
+			viewer->figconstraint.linedata[start + 1][2 * i + 1] = static_cast<float>(stat->nactive);
+			viewer->figconstraint.linedata[start + 2][2 * i + 1] = static_cast<float>(stat->nchange);
+			viewer->figconstraint.linedata[start + 3][2 * i + 1] = static_cast<float>(stat->neval);
+			viewer->figconstraint.linedata[start + 4][2 * i + 1] = static_cast<float>(stat->nupdate);
+		}
+
+		// update cost figure
+		start                              = kCostNum * k;
+		viewer->figcost.linepnt[start + 0] = npoints;
+		for (int i = 1; i < kCostNum; i++) {
+			viewer->figcost.linepnt[start + i] = npoints;
+		}
+		if (m->opt.solver == mjSOL_PGS) {
+			viewer->figcost.linepnt[start + 1] = 0;
+			viewer->figcost.linepnt[start + 2] = 0;
+		}
+
+		for (size_t i = 0; i < viewer->figcost.linepnt[0]; i++) {
+			// x
+			viewer->figcost.linedata[start + 0][2 * i] = static_cast<float>(i);
+			viewer->figcost.linedata[start + 1][2 * i] = static_cast<float>(i);
+			viewer->figcost.linedata[start + 2][2 * i] = static_cast<float>(i);
+
+			// y
+			const mjSolverStat *stat                       = d->solver + k * mjNSOLVER + i;
+			viewer->figcost.linedata[start + 0][2 * i + 1] = mju_log10(mju_max(mjMINVAL, stat->improvement));
+			viewer->figcost.linedata[start + 1][2 * i + 1] = mju_log10(mju_max(mjMINVAL, stat->gradient));
+			viewer->figcost.linedata[start + 2][2 * i + 1] = mju_log10(mju_max(mjMINVAL, stat->lineslope));
+		}
 	}
 
 	// get timers: total, collision, prepare, solve, other
@@ -339,34 +378,42 @@ void UpdateProfiler(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *
 		total  = d->timer[mjTIMER_FORWARD].duration;
 		number = d->timer[mjTIMER_FORWARD].number;
 	}
-	number         = mjMAX(1, number);
-	float tdata[5] = { static_cast<float>(total / number),
-		                static_cast<float>(d->timer[mjTIMER_POS_COLLISION].duration / number),
-		                static_cast<float>(d->timer[mjTIMER_POS_MAKE].duration / number) +
-		                    static_cast<float>(d->timer[mjTIMER_POS_PROJECT].duration / number),
-		                static_cast<float>(d->timer[mjTIMER_CONSTRAINT].duration / number), 0 };
-	tdata[4]       = tdata[0] - tdata[1] - tdata[2] - tdata[3];
+	if (number) { // skip update if no measurements
+		float tdata[5] = { static_cast<float>(total / number),
+			                static_cast<float>(d->timer[mjTIMER_POS_COLLISION].duration / number),
+			                static_cast<float>(d->timer[mjTIMER_POS_MAKE].duration / number) +
+			                    static_cast<float>(d->timer[mjTIMER_POS_PROJECT].duration / number),
+			                static_cast<float>(d->timer[mjTIMER_CONSTRAINT].duration / number), 0 };
+		tdata[4]       = tdata[0] - tdata[1] - tdata[2] - tdata[3];
 
-	// update figtimer
-	int pnt = mjMIN(201, viewer->figtimer.linepnt[0] + 1);
-	for (int n = 0; n < 5; n++) {
-		// shift data
-		for (int i = pnt - 1; i > 0; i--) {
-			viewer->figtimer.linedata[n][2 * i + 1] = viewer->figtimer.linedata[n][2 * i - 1];
+		// update figtimer
+		int pnt = mjMIN(201, viewer->figtimer.linepnt[0] + 1);
+		for (int n = 0; n < 5; n++) {
+			// shift data
+			for (int i = pnt - 1; i > 0; i--) {
+				viewer->figtimer.linedata[n][2 * i + 1] = viewer->figtimer.linedata[n][2 * i - 1];
+			}
+
+			// assign new
+			viewer->figtimer.linepnt[n]     = pnt;
+			viewer->figtimer.linedata[n][1] = tdata[n];
 		}
+	}
 
-		// assign new
-		viewer->figtimer.linepnt[n]     = pnt;
-		viewer->figtimer.linedata[n][1] = tdata[n];
+	// get total number of iterations and nonzeros
+	mjtNum sqrt_nnz  = 0;
+	int solver_niter = 0;
+	for (int island = 0; island < nisland; island++) {
+		sqrt_nnz += mju_sqrt(d->solver_nnz[island]);
+		solver_niter += d->solver_niter[island];
 	}
 
 	// get sizes: nv, nbody, nefc, sqrt(nnz), ncont, iter
-	float sdata[6] = { static_cast<float>(m->nv),   static_cast<float>(m->nbody),
-		                static_cast<float>(d->nefc), static_cast<float>(mju_sqrt(d->solver_nnz)),
-		                static_cast<float>(d->ncon), static_cast<float>(d->solver_iter) };
+	float sdata[6] = { static_cast<float>(m->nv),    static_cast<float>(m->nbody), static_cast<float>(d->nefc),
+		                static_cast<float>(sqrt_nnz), static_cast<float>(d->ncon),  static_cast<float>(solver_niter) };
 
 	// update figsize
-	pnt = mjMIN(201, viewer->figsize.linepnt[0] + 1);
+	int pnt = mjMIN(201, viewer->figsize.linepnt[0] + 1);
 	for (int n = 0; n < 6; n++) {
 		// shift data
 		for (int i = pnt - 1; i > 0; i--) {
@@ -484,6 +531,27 @@ void ShowSensor(mujoco_ros::Viewer *viewer, mjrRect rect)
 	mjr_figure(viewport, &viewer->figsensor, &viewer->platform_ui->mjr_context());
 }
 
+// load state from history buffer
+static void LoadScrubState(mujoco_ros::Viewer *viewer)
+{
+	// get index into circular buffer
+	int i = (viewer->scrub_index + viewer->history_cursor_) % viewer->nhistory_;
+	i     = (i + viewer->nhistory_) % viewer->nhistory_;
+
+	// load state
+	mjtNum *state = &viewer->history_[i * viewer->state_size_];
+	mj_setState(viewer->m_.get(), viewer->d_.get(), state, mjSTATE_INTEGRATION);
+
+	// call forward dynamics
+	mj_forward(viewer->m_.get(), viewer->d_.get());
+}
+
+// update an entire section of ui0
+static void mjui0_update_section(mujoco_ros::Viewer *viewer, int section)
+{
+	mjui_update(section, -1, &viewer->ui0, &viewer->uistate, &viewer->platform_ui->mjr_context());
+}
+
 // prepare info text
 void UpdateInfoText(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *d,
                     char (&title)[mujoco_ros::Viewer::kMaxFilenameLength],
@@ -491,14 +559,22 @@ void UpdateInfoText(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *
 {
 	char tmp[20];
 
-	// compute solver error
+	// number of islands with statistics
+	int nisland = mjMIN(d->solver_nisland, mjNISLAND);
+
+	// compute solver error (maximum over islands)
 	mjtNum solerr = 0;
-	if (d->solver_iter) {
-		int ind = mjMIN(d->solver_iter - 1, mjNSOLVER - 1);
-		solerr  = mju_min(d->solver[ind].improvement, d->solver[ind].gradient);
-		if (solerr == 0) {
-			solerr = mju_max(d->solver[ind].improvement, d->solver[ind].gradient);
+	for (int i = 0; i < nisland; i++) {
+		mjtNum solerr_i = 0;
+		if (d->solver_niter[i]) {
+			int ind                  = mjMIN(d->solver_niter[i], mjNSOLVER) - 1;
+			const mjSolverStat *stat = d->solver + i * mjNSOLVER + ind;
+			solerr_i                 = mju_min(stat->improvement, stat->gradient);
+			if (solerr_i == 0) {
+				solerr_i = mju_max(stat->improvement, stat->gradient);
+			}
 		}
+		solerr = mju_max(solerr, solerr_i);
 	}
 	solerr = mju_log10(mju_max(mjMINVAL, solerr));
 
@@ -510,18 +586,18 @@ void UpdateInfoText(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *
 		mju::sprintf_arr(fps, "%.0f ", viewer->fps_);
 	}
 
+	int solver_niter = 0;
+	for (int i = 0; i < nisland; i++) {
+		solver_niter += d->solver_niter[i];
+	}
+
 	// prepare info text
-	mju::strcpy_arr(title, "Time\nSize\nPruning\nCPU\nSolver   \nFPS\nMemory");
-	int broad_pruning = d->nbodypair_broad ? static_cast<int>((100.0 * d->nbodypair_narrow) / d->nbodypair_broad) : 0;
-	int mid_pruning   = d->ngeompair_mid ? static_cast<int>((100.0 * d->nbodypair_narrow) / d->ngeompair_mid) : 0;
-	mju::sprintf_arr(content, "%-9.3f\n%d  (%d con)\nb: %d%% m: %d%%\n%.3f\n%.1f  (%d it)\n%s\n%.2g of %s", d->time,
-	                 d->nefc, d->ncon, broad_pruning, mid_pruning,
+	mju::strcpy_arr(title, "Time\nSize\nCPU\nSolver   \nFPS\nMemory");
+	mju::sprintf_arr(content, "%-9.3f\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%s\n%.2g of %s", d->time, d->nefc, d->ncon,
 	                 viewer->run ? d->timer[mjTIMER_STEP].duration / mjMAX(1, d->timer[mjTIMER_STEP].number) :
 	                               d->timer[mjTIMER_FORWARD].duration / mjMAX(1, d->timer[mjTIMER_FORWARD].number),
-	                 solerr, d->solver_iter, fps,
-	                 static_cast<double>(d->maxuse_arena) /
-	                     static_cast<double>(util::as_unsigned(d->nstack) * sizeof(mjtNum)),
-	                 mju_writeNumBytes(util::as_unsigned(d->nstack) * sizeof(mjtNum)));
+	                 solerr, solver_niter, fps, d->maxuse_arena / static_cast<double>(util::as_unsigned(d->narena)),
+	                 mju_writeNumBytes(util::as_unsigned(d->narena)));
 
 	// add Energy if enabled
 	{
@@ -537,6 +613,13 @@ void UpdateInfoText(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *
 			                 mju_log10(mju_max(mjMINVAL, d->solver_fwdinv[1])));
 			mju::strcat_arr(content, tmp);
 			mju::strcat_arr(title, "\nFwdInv");
+		}
+
+		// add islands if enabled
+		if (mjENABLED(mjENBL_ISLAND)) {
+			mju::sprintf_arr(tmp, "\n%d", d->nisland);
+			mju::strcat_arr(content, tmp);
+			mju::strcat_arr(title, "\nIslands");
 		}
 	}
 }
@@ -575,11 +658,10 @@ void UpdateWatch(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *d)
 // make physics section of UI
 void MakePhysicsSection(mujoco_ros::Viewer *viewer, int oldstate)
 {
-	mjOption *opt            = viewer->fully_managed_ ? &viewer->m_->opt : &viewer->scnstate_.model.opt;
+	mjOption *opt            = viewer->is_passive_ ? &viewer->scnstate_.model.opt : &viewer->m_->opt;
 	mjuiDef defPhysics[]     = { { mjITEM_SECTION, "Physics", oldstate, nullptr, "AP" },
 		                          { mjITEM_SELECT, "Integrator", 2, &(opt->integrator),
 		                            "Euler\nRK4\nimplicit\nimplicitfast" },
-		                          { mjITEM_SELECT, "Collision", 2, &(opt->collision), "All\nPair\nDynamic" },
 		                          { mjITEM_SELECT, "Cone", 2, &(opt->cone), "Pyramidal\nElliptic" },
 		                          { mjITEM_SELECT, "Jacobian", 2, &(opt->jacobian), "Dense\nSparse\nAuto" },
 		                          { mjITEM_SELECT, "Solver", 2, &(opt->solver), "PGS\nCG\nNewton" },
@@ -587,11 +669,15 @@ void MakePhysicsSection(mujoco_ros::Viewer *viewer, int oldstate)
 		                          { mjITEM_EDITNUM, "Timestep", 2, &(opt->timestep), "1 0 1" },
 		                          { mjITEM_EDITINT, "Iterations", 2, &(opt->iterations), "1 0 1000" },
 		                          { mjITEM_EDITNUM, "Tolerance", 2, &(opt->tolerance), "1 0 1" },
+		                          { mjITEM_EDITINT, "LS Iter", 2, &(opt->ls_iterations), "1 0 100" },
+		                          { mjITEM_EDITNUM, "LS Tol", 2, &(opt->ls_tolerance), "1 0 0.1" },
 		                          { mjITEM_EDITINT, "Noslip Iter", 2, &(opt->noslip_iterations), "1 0 1000" },
 		                          { mjITEM_EDITNUM, "Noslip Tol", 2, &(opt->noslip_tolerance), "1 0 1" },
-		                          { mjITEM_EDITINT, "MRR Iter", 2, &(opt->mpr_iterations), "1 0 1000" },
+		                          { mjITEM_EDITINT, "MPR Iter", 2, &(opt->mpr_iterations), "1 0 1000" },
 		                          { mjITEM_EDITNUM, "MPR Tol", 2, &(opt->mpr_tolerance), "1 0 1" },
 		                          { mjITEM_EDITNUM, "API Rate", 2, &(opt->apirate), "1 0 1000" },
+		                          { mjITEM_EDITINT, "SDF Iter", 2, &(opt->sdf_iterations), "1 1 20" },
+		                          { mjITEM_EDITINT, "SDF Init", 2, &(opt->sdf_initpoints), "1 1 100" },
 		                          { mjITEM_SEPARATOR, "Physical Parameters", 1 },
 		                          { mjITEM_EDITNUM, "Gravity", 2, opt->gravity, "3" },
 		                          { mjITEM_EDITNUM, "Wind", 2, opt->wind, "3" },
@@ -606,6 +692,7 @@ void MakePhysicsSection(mujoco_ros::Viewer *viewer, int oldstate)
 		                          { mjITEM_EDITNUM, "Margin", 2, &(opt->o_margin), "1" },
 		                          { mjITEM_EDITNUM, "Sol Imp", 2, &(opt->o_solimp), "5" },
 		                          { mjITEM_EDITNUM, "Sol Ref", 2, &(opt->o_solref), "2" },
+		                          { mjITEM_EDITNUM, "Friction", 2, &(opt->o_friction), "5" },
 		                          { mjITEM_END } };
 
 	// add physics
@@ -636,7 +723,7 @@ void MakeRenderingSection(mujoco_ros::Viewer *viewer, const mjModel *m, int olds
 		                        { mjITEM_SELECT, "Camera", 2, &(viewer->camera), "Free\nTracking" },
 		                        { mjITEM_SELECT, "Label", 2, &(viewer->opt.label),
 		                          "None\nBody\nJoint\nGeom\nSite\nCamera\nLight\nTendon\n"
-		                          "Actuator\nConstraint\nSkin\nSelection\nSel Pnt\nContact\nForce" },
+		                          "Actuator\nConstraint\nFlex\nSkin\nSelection\nSel Pnt\nContact\nForce\nIsland" },
 		                        { mjITEM_SELECT, "Frame", 2, &(viewer->opt.frame),
 		                          "None\nBody\nGeom\nSite\nCamera\nLight\nContact\nWorld" },
 		                        { mjITEM_BUTTON, "Copy camera", 2, nullptr, "" },
@@ -647,7 +734,7 @@ void MakeRenderingSection(mujoco_ros::Viewer *viewer, const mjModel *m, int olds
 	// add model cameras, up to UI limit
 	for (int i = 0; i < mjMIN(m->ncam, mjMAXUIMULTI - 2); i++) {
 		// prepare name
-		char camname[mjMAXUITEXT] = "\n";
+		char camname[mjMAXUINAME] = "\n";
 		if (m->names[m->name_camadr[i]]) {
 			mju::strcat_arr(camname, m->names + m->name_camadr[i]);
 		} else {
@@ -689,7 +776,9 @@ void MakeRenderingSection(mujoco_ros::Viewer *viewer, const mjModel *m, int olds
 	}
 
 	// create tree slider
-	mjuiDef defTree[] = { { mjITEM_SLIDERINT, "Tree depth", 2, &viewer->opt.bvh_depth, "0 15" }, { mjITEM_END } };
+	mjuiDef defTree[] = { { mjITEM_SLIDERINT, "Tree depth", 2, &viewer->opt.bvh_depth, "0 20" },
+		                   { mjITEM_SLIDERINT, "Flex layer", 2, &viewer->opt.flex_layer, "0 10" },
+		                   { mjITEM_END } };
 	mjui_add(&viewer->ui0, defTree);
 
 	// add rendering flags
@@ -709,8 +798,8 @@ void MakeRenderingSection(mujoco_ros::Viewer *viewer, const mjModel *m, int olds
 // make visualization section of UI
 void MakeVisualizationSection(mujoco_ros::Viewer *viewer, const mjModel * /*m*/, int oldstate)
 {
-	mjStatistic *stat = viewer->fully_managed_ ? &viewer->m_->stat : &viewer->scnstate_.model.stat;
-	mjVisual *vis     = viewer->fully_managed_ ? &viewer->m_->vis : &viewer->scnstate_.model.vis;
+	mjStatistic *stat = viewer->is_passive_ ? &viewer->scnstate_.model.stat : &viewer->m_->stat;
+	mjVisual *vis     = viewer->is_passive_ ? &viewer->scnstate_.model.vis : &viewer->m_->vis;
 
 	mjuiDef defVisualization[] = { { mjITEM_SECTION, "Visualization", oldstate, nullptr, "AV" },
 		                            { mjITEM_SEPARATOR, "Headlight", 1 },
@@ -803,6 +892,13 @@ void MakeGroupSection(mujoco_ros::Viewer *viewer, int oldstate)
 		                    { mjITEM_CHECKBYTE, "Actuator 3", 2, viewer->opt.actuatorgroup + 3, "" },
 		                    { mjITEM_CHECKBYTE, "Actuator 4", 2, viewer->opt.actuatorgroup + 4, "" },
 		                    { mjITEM_CHECKBYTE, "Actuator 5", 2, viewer->opt.actuatorgroup + 5, "" },
+		                    { mjITEM_SEPARATOR, "Flex groups", 1 },
+		                    { mjITEM_CHECKBYTE, "Flex 0", 2, viewer->opt.flexgroup, "" },
+		                    { mjITEM_CHECKBYTE, "Flex 1", 2, viewer->opt.flexgroup + 1, "" },
+		                    { mjITEM_CHECKBYTE, "Flex 2", 2, viewer->opt.flexgroup + 2, "" },
+		                    { mjITEM_CHECKBYTE, "Flex 3", 2, viewer->opt.flexgroup + 3, "" },
+		                    { mjITEM_CHECKBYTE, "Flex 4", 2, viewer->opt.flexgroup + 4, "" },
+		                    { mjITEM_CHECKBYTE, "Flex 5", 2, viewer->opt.flexgroup + 5, "" },
 		                    { mjITEM_SEPARATOR, "Skin groups", 1 },
 		                    { mjITEM_CHECKBYTE, "Skin 0", 2, viewer->opt.skingroup, "" },
 		                    { mjITEM_CHECKBYTE, "Skin 1", 2, viewer->opt.skingroup + 1, "" },
@@ -836,7 +932,7 @@ void MakeJointSection(mujoco_ros::Viewer *viewer, int oldstate)
 			}
 
 			// set data and name
-			if (viewer->fully_managed_) {
+			if (!viewer->is_passive_) {
 				defSlider[0].pdata = &viewer->d_->qpos[util::as_unsigned(viewer->m_->jnt_qposadr[i])];
 			} else {
 				defSlider[0].pdata = &viewer->qpos_[util::as_unsigned(viewer->jnt_qposadr_[i])];
@@ -884,7 +980,7 @@ void MakeControlSection(mujoco_ros::Viewer *viewer, int oldstate)
 		}
 
 		// set data and name
-		if (viewer->fully_managed_) {
+		if (!viewer->is_passive_) {
 			defSlider[0].pdata = &viewer->d_->ctrl[i];
 		} else {
 			defSlider[0].pdata = &viewer->ctrl_[i];
@@ -1077,16 +1173,16 @@ int UiPredicate(int category, void *userdata)
 
 	switch (category) {
 		case 2: // require model
-			return viewer->m_ || !viewer->fully_managed_;
+			return viewer->m_ || viewer->is_passive_;
 
 		case 3: // require model and nkey
-			return viewer->fully_managed_ && viewer->nkey_;
+			return !viewer->is_passive_ && viewer->nkey_;
 
 		case 4: // require model and paused
 			return viewer->m_ && !viewer->run;
 
 		case 5: // require model and fully managed mode
-			return viewer->fully_managed_ && viewer->m_;
+			return !viewer->is_passive_ && viewer->m_;
 
 		default:
 			return 1;
@@ -1227,12 +1323,18 @@ void UiEvent(mjuiState *state)
 				case 7: // Save key
 					viewer->pending_.save_key = true;
 					break;
+
+				case 11: // History scrubber
+					viewer->pending_.ui_update_run     = true;
+					viewer->pending_.load_from_history = true;
+					mjui0_update_section(viewer, SECT_SIMULATION);
+					break;
 			}
 		}
 
 		// physics section
 		else if (it && it->sectionid == SECT_PHYSICS && viewer->m_) {
-			mjOption *opt = viewer->fully_managed_ ? &viewer->m_->opt : &viewer->scnstate_.model.opt;
+			mjOption *opt = !viewer->is_passive_ ? &viewer->scnstate_.model.opt : &viewer->m_->opt;
 
 			// update disable flags in mjOption
 			opt->disableflags = 0;
@@ -1266,7 +1368,7 @@ void UiEvent(mjuiState *state)
 				} else {
 					viewer->cam.type = mjCAMERA_FREE;
 					viewer->camera   = 0;
-					mjui_update(SECT_RENDERING, -1, &viewer->ui0, &viewer->uistate, &viewer->platform_ui->mjr_context());
+					mjui0_update_section(viewer, SECT_RENDERING);
 				}
 			} else {
 				viewer->cam.type       = mjCAMERA_FIXED;
@@ -1334,17 +1436,47 @@ void UiEvent(mjuiState *state)
 	if (state->type == mjEVENT_KEY && state->key != 0) {
 		switch (state->key) {
 			case ' ': // Mode
-				if (viewer->fully_managed_ && viewer->m_) {
+				if (!viewer->is_passive_ && viewer->m_) {
 					viewer->pending_.ui_update_run = true;
 					viewer->pert.active            = 0;
-					mjui_update(-1, -1, &viewer->ui0, state, &viewer->platform_ui->mjr_context());
+
+					if (viewer->env_->settings_.run.load())
+						viewer->scrub_index = 0; // reset scrubber
+					mjui0_update_section(viewer, -1);
 				}
 				break;
 
 			case mjKEY_RIGHT: // step forward
-				if (!viewer->env_->settings_.run.load()) {
+				if (!viewer->is_passive_ && !viewer->env_->settings_.run.load()) {
 					ClearTimers(viewer->d_.get());
-					viewer->env_->settings_.env_steps_request.fetch_add(1);
+
+					// currently in scrubber: increment scrub, load state, update slider UI
+					if (viewer->scrub_index < 0) {
+						viewer->scrub_index++;
+						viewer->pending_.load_from_history = true;
+						mjui0_update_section(viewer, SECT_SIMULATION);
+					}
+
+					// not in scrubber: step
+					else {
+						viewer->env_->settings_.env_steps_request.fetch_add(1);
+					}
+				}
+				break;
+
+			case mjKEY_LEFT: // step backward
+				if (!viewer->is_passive_ && viewer->m_) {
+					viewer->pending_.ui_update_run = true;
+					ClearTimers(viewer->d_.get());
+
+					// decrement scrub, load state
+					viewer->scrub_index                = mjMAX(viewer->scrub_index - 1, 1 - viewer->nhistory_);
+					viewer->pending_.load_from_history = true;
+
+					// Update slider UI, profiler, sensor
+					mjui0_update_section(viewer, SECT_SIMULATION);
+					UpdateProfiler(viewer, viewer->m_.get(), viewer->d_.get());
+					UpdateSensor(viewer, viewer->m_.get(), viewer->d_.get());
 				}
 				break;
 
@@ -1356,7 +1488,7 @@ void UiEvent(mjuiState *state)
 				break;
 
 			case mjKEY_PAGE_UP: // select parent body
-				if ((viewer->m_ || !viewer->fully_managed_) && viewer->pert.select > 0) {
+				if ((viewer->m_ || viewer->is_passive_) && viewer->pert.select > 0) {
 					viewer->pert.select     = viewer->body_parentid_[util::as_unsigned(viewer->pert.select)];
 					viewer->pert.skinselect = -1;
 
@@ -1369,7 +1501,7 @@ void UiEvent(mjuiState *state)
 				break;
 
 			case ']': // cycle up fixed cameras
-				if ((viewer->m_ || !viewer->fully_managed_) && viewer->ncam_) {
+				if ((viewer->m_ || viewer->is_passive_) && viewer->ncam_) {
 					viewer->cam.type = mjCAMERA_FIXED;
 					// camera = {0 or 1} are reserved for the free and tracking cameras
 					if (viewer->camera < 2 || viewer->camera == 2 + viewer->ncam_ - 1) {
@@ -1378,12 +1510,12 @@ void UiEvent(mjuiState *state)
 						viewer->camera += 1;
 					}
 					viewer->cam.fixedcamid = viewer->camera - 2;
-					mjui_update(SECT_RENDERING, -1, &viewer->ui0, &viewer->uistate, &viewer->platform_ui->mjr_context());
+					mjui0_update_section(viewer, SECT_RENDERING);
 				}
 				break;
 
 			case '[': // cycle down fixed cameras
-				if ((viewer->m_ || !viewer->fully_managed_) && viewer->ncam_) {
+				if ((viewer->m_ || viewer->is_passive_) && viewer->ncam_) {
 					viewer->cam.type = mjCAMERA_FIXED;
 					// camera = {0 or 1} are reserved for the free and tracking cameras
 					if (viewer->camera <= 2) {
@@ -1392,32 +1524,32 @@ void UiEvent(mjuiState *state)
 						viewer->camera -= 1;
 					}
 					viewer->cam.fixedcamid = viewer->camera - 2;
-					mjui_update(SECT_RENDERING, -1, &viewer->ui0, &viewer->uistate, &viewer->platform_ui->mjr_context());
+					mjui0_update_section(viewer, SECT_RENDERING);
 				}
 				break;
 
 			case mjKEY_F6: // cycle frame visualisation
-				if (viewer->m_ || !viewer->fully_managed_) {
+				if (viewer->m_ || viewer->is_passive_) {
 					viewer->opt.frame = (viewer->opt.frame + 1) % mjNFRAME;
-					mjui_update(SECT_RENDERING, -1, &viewer->ui0, &viewer->uistate, &viewer->platform_ui->mjr_context());
+					mjui0_update_section(viewer, SECT_RENDERING);
 				}
 				break;
 
 			case mjKEY_F7: // cycle label visualisation
-				if (viewer->m_ || !viewer->fully_managed_) {
+				if (viewer->m_ || viewer->is_passive_) {
 					viewer->opt.label = (viewer->opt.label + 1) % mjNLABEL;
-					mjui_update(SECT_RENDERING, -1, &viewer->ui0, &viewer->uistate, &viewer->platform_ui->mjr_context());
+					mjui0_update_section(viewer, SECT_RENDERING);
 				}
 				break;
 
 			case mjKEY_ESCAPE: // free camera
 				viewer->cam.type = mjCAMERA_FREE;
 				viewer->camera   = 0;
-				mjui_update(SECT_RENDERING, -1, &viewer->ui0, &viewer->uistate, &viewer->platform_ui->mjr_context());
+				mjui0_update_section(viewer, SECT_RENDERING);
 				break;
 
 			case '-': // slow down
-				if (viewer->fully_managed_) {
+				if (!viewer->is_passive_) {
 					int numclicks =
 					    sizeof(mujoco_ros::MujocoEnv::percentRealTime) / sizeof(mujoco_ros::MujocoEnv::percentRealTime[0]);
 					if (viewer->real_time_index < numclicks - 1 && !state->shift) {
@@ -1428,7 +1560,7 @@ void UiEvent(mjuiState *state)
 				break;
 
 			case '=': // speed up
-				if (viewer->fully_managed_ && viewer->real_time_index > 0 && !state->shift) {
+				if (!viewer->is_passive_ && viewer->real_time_index > 0 && !state->shift) {
 					viewer->real_time_index--;
 					viewer->pending_.ui_update_speed = true;
 				}
@@ -1441,7 +1573,7 @@ void UiEvent(mjuiState *state)
 	// 3D scroll
 	if (state->type == mjEVENT_SCROLL && state->mouserect == 3) {
 		// emulate vertical mouse motion = 2% of window height
-		if (viewer->fully_managed_) {
+		if (viewer->m_ && !viewer->is_passive_) {
 			mjv_moveCamera(viewer->m_.get(), mjMOUSE_ZOOM, 0, -zoom_increment * state->sy, &viewer->scn, &viewer->cam);
 		} else {
 			mjv_moveCameraFromState(&viewer->scnstate_, mjMOUSE_ZOOM, 0, -zoom_increment * state->sy, &viewer->scn,
@@ -1454,7 +1586,7 @@ void UiEvent(mjuiState *state)
 	if (state->type == mjEVENT_PRESS && state->mouserect == 3) {
 		// set perturbation
 		int newperturb = 0;
-		if (state->control && viewer->pert.select > 0 && (viewer->m_ || !viewer->fully_managed_)) {
+		if (state->control && viewer->pert.select > 0 && (viewer->m_ || viewer->is_passive_)) {
 			// right: translate;  left: rotate
 			if (state->right) {
 				newperturb = mjPERT_TRANSLATE;
@@ -1467,7 +1599,7 @@ void UiEvent(mjuiState *state)
 		}
 
 		// handle double-click
-		if (state->doubleclick && (viewer->m_ || !viewer->fully_managed_)) {
+		if (state->doubleclick && (viewer->m_ || viewer->is_passive_)) {
 			viewer->pending_.select = true;
 			std::memcpy(&viewer->pending_.select_state, state, sizeof(viewer->pending_.select_state));
 
@@ -1480,7 +1612,7 @@ void UiEvent(mjuiState *state)
 	}
 
 	// 3D release
-	if (state->type == mjEVENT_RELEASE && state->dragrect == 3 && (viewer->m_ || !viewer->fully_managed_)) {
+	if (state->type == mjEVENT_RELEASE && state->dragrect == 3 && (viewer->m_ || viewer->is_passive_)) {
 		// stop perturbation
 		viewer->pert.active         = 0;
 		viewer->pending_.newperturb = 0;
@@ -1488,7 +1620,7 @@ void UiEvent(mjuiState *state)
 	}
 
 	// 3D move
-	if (state->type == mjEVENT_MOVE && state->dragrect == 3 && (viewer->m_ || !viewer->fully_managed_)) {
+	if (state->type == mjEVENT_MOVE && state->dragrect == 3 && (viewer->m_ || viewer->is_passive_)) {
 		// determine action based on mouse button
 		mjtMouse action;
 		if (state->right) {
@@ -1502,7 +1634,7 @@ void UiEvent(mjuiState *state)
 		// move perturb or camera
 		mjrRect r = state->rect[3];
 		if (viewer->pert.active) {
-			if (viewer->fully_managed_) {
+			if (!viewer->is_passive_) {
 				mjv_movePerturb(viewer->m_.get(), viewer->d_.get(), action, state->dx / r.height, -state->dy / r.height,
 				                &viewer->scn, &viewer->pert);
 			} else {
@@ -1510,7 +1642,7 @@ void UiEvent(mjuiState *state)
 				                         &viewer->scn, &viewer->pert);
 			}
 		} else {
-			if (viewer->fully_managed_) {
+			if (!viewer->is_passive_) {
 				mjv_moveCamera(viewer->m_.get(), action, state->dx / r.height, -state->dy / r.height, &viewer->scn,
 				               &viewer->cam);
 			} else {
@@ -1522,7 +1654,7 @@ void UiEvent(mjuiState *state)
 	}
 
 	// Dropped files
-	if (state->type == mjEVENT_FILESDROP && state->dropcount > 0) {
+	if (state->type == mjEVENT_FILESDROP && state->dropcount > 0 && !viewer->is_passive_) {
 		while (viewer->dropload_request.load()) {
 		}
 		mju::strcpy_arr(viewer->dropfilename, state->droppaths[0]);
@@ -1541,20 +1673,23 @@ void UiEvent(mjuiState *state)
 namespace mujoco_ros {
 namespace mju = ::mujoco::sample_util;
 
-Viewer::Viewer(std::unique_ptr<PlatformUIAdapter> platform_ui_adapter, MujocoEnv *env, bool fully_managed)
-    : fully_managed_(fully_managed)
+Viewer::Viewer(std::unique_ptr<PlatformUIAdapter> platform_ui_adapter, MujocoEnv *env, bool is_passive)
+    : is_passive_(is_passive)
     , env_(env)
-    , scn(env->scn_)
     , pert(env->pert_)
     , platform_ui(std::move(platform_ui_adapter))
     , uistate(this->platform_ui->state())
 {
+	mjv_defaultScene(&scn);
 	mjv_defaultSceneState(&scnstate_);
 	env_->connectViewer(this);
 }
 
+// synchronize model and data
+// operations which require holding the mutex, prevents racing with physics thread
 void Viewer::Sync()
 {
+	MutexLock lock(this->mtx);
 	if (!m_ || !d_) {
 		return;
 	}
@@ -1568,8 +1703,8 @@ void Viewer::Sync()
 		return;
 	}
 
-	bool update_profiler = this->profiler && (this->run || !this->m_);
-	bool update_sensor   = this->sensor && (this->run || !this->m_);
+	bool update_profiler = this->profiler && (this->pause_update || this->run);
+	bool update_sensor   = this->sensor && (this->pause_update || this->run);
 
 	for (size_t i = 0; i < m_->njnt; i++) {
 		std::optional<std::pair<mjtNum, mjtNum>> range;
@@ -1617,7 +1752,7 @@ void Viewer::Sync()
 		}
 	}
 
-	if (!fully_managed_) {
+	if (is_passive_) {
 		// synchronize m_->opt with changes made via the UI
 #define X(name)                                                   \
 	if (IsDifferent(scnstate_.model.opt.name, mjopt_prev_.name)) { \
@@ -1639,8 +1774,8 @@ void Viewer::Sync()
 		X(o_margin);
 		X(o_solref);
 		X(o_solimp);
+		X(o_friction);
 		X(integrator);
-		X(collision);
 		X(cone);
 		X(jacobian);
 		X(solver);
@@ -1649,6 +1784,8 @@ void Viewer::Sync()
 		X(mpr_iterations);
 		X(disableflags);
 		X(enableflags);
+		X(sdf_initpoints);
+		X(sdf_iterations);
 #undef X
 
 		// synchronize number of mjWARN_VGEOMFULL warnings
@@ -1703,9 +1840,11 @@ void Viewer::Sync()
 
 	if (pending_.ui_reset) {
 		env_->settings_.reset_request.store(1);
-		pending_.ui_reset = false;
-		update_profiler   = true;
-		update_sensor     = true;
+		pending_.ui_reset             = false;
+		update_profiler               = true;
+		update_sensor                 = true;
+		scrub_index                   = 0;
+		pending_.ui_update_simulation = true;
 	}
 
 	if (pending_.ui_reload) {
@@ -1731,6 +1870,13 @@ void Viewer::Sync()
 	if (pending_.copy_pose) {
 		CopyPose(this, m_.get(), d_.get());
 		pending_.copy_pose = false;
+	}
+
+	if (pending_.load_from_history) {
+		LoadScrubState(this);
+		update_profiler            = true;
+		update_sensor              = true;
+		pending_.load_from_history = false;
 	}
 
 	if (pending_.load_key) {
@@ -1786,10 +1932,11 @@ void Viewer::Sync()
 		// find geom and 3D click point, get corresponding body
 		mjrRect r = pending_.select_state.rect[3];
 		mjtNum selpnt[3];
-		int selgeom, selskin;
-		int selbody = mjv_select(m_.get(), d_.get(), &this->opt, static_cast<mjtNum>(r.width) / r.height,
-		                         (pending_.select_state.x - r.left) / r.width,
-		                         (pending_.select_state.y - r.bottom) / r.height, &this->scn, selpnt, &selgeom, &selskin);
+		int selgeom, selflex, selskin;
+		int selbody =
+		    mjv_select(m_.get(), d_.get(), &this->opt, static_cast<mjtNum>(r.width) / r.height,
+		               (pending_.select_state.x - r.left) / r.width, (pending_.select_state.y - r.bottom) / r.height,
+		               &this->scn, selpnt, &selgeom, &selflex, &selskin);
 
 		// set lookat point, start tracking is requested
 		if (selmode == 2 || selmode == 3) {
@@ -1816,6 +1963,7 @@ void Viewer::Sync()
 			if (selbody >= 0) {
 				// record selection
 				this->pert.select     = selbody;
+				this->pert.flexselect = selflex;
 				this->pert.skinselect = selskin;
 
 				// compute localpos
@@ -1824,16 +1972,31 @@ void Viewer::Sync()
 				mju_mulMatTVec(this->pert.localpos, d_->xmat + 9 * this->pert.select, tmp, 3, 3);
 			} else {
 				this->pert.select     = 0;
+				this->pert.flexselect = -1;
 				this->pert.skinselect = -1;
 			}
 		}
 		pending_.select = false;
 	}
 
-	if (fully_managed_) {
+	if (!is_passive_) {
 		mjv_updateScene(m_.get(), d_.get(), &this->opt, &this->pert, &this->cam, mjCAT_ALL, &this->scn);
 	} else {
 		mjv_updateSceneState(m_.get(), d_.get(), &this->opt, &scnstate_);
+
+		// append geoms from user_scn to scnstate_ scratch space
+		if (user_scn) {
+			int ngeom   = user_scn->ngeom;
+			int maxgeom = scnstate_.scratch.maxgeom - scnstate_.scratch.ngeom;
+			if (ngeom > maxgeom) {
+				mj_warning(d_.get(), mjWARN_VGEOMFULL, scnstate_.scratch.maxgeom);
+				ngeom = maxgeom;
+			}
+			if (ngeom > 0) {
+				std::memcpy(scnstate_.scratch.geoms + scnstate_.scratch.ngeom, user_scn->geoms, sizeof(mjvGeom) * ngeom);
+				scnstate_.scratch.ngeom += ngeom;
+			}
+		}
 		mjopt_prev_          = scnstate_.model.opt;
 		warn_vgeomfull_prev_ = scnstate_.data.warning[mjWARN_VGEOMFULL].number;
 	}
@@ -1860,7 +2023,7 @@ void Viewer::Sync()
 	// clear timers once profiler info has been copied
 	ClearTimers(d_.get());
 
-	if (this->run || !this->fully_managed_) {
+	if (this->run || this->is_passive_) {
 		// clear old perturbations, apply new
 		mju_zero(d_->xfrc_applied, 6 * m_->nbody);
 		mjv_applyPerturbPose(m_.get(), d_.get(), &this->pert, 0); // move mocap bodies only
@@ -1872,6 +2035,24 @@ void Viewer::Sync()
 	if (pending_.ui_exit) {
 		env_->settings_.exit_request.store(1);
 		this->exit_request.store(1);
+	}
+}
+
+void Viewer::LoadMessage(const char *displayed_filename)
+{
+	mju::strcpy_arr(this->filename, displayed_filename);
+
+	{
+		MutexLock lock(mtx);
+		this->loadrequest = 3;
+	}
+}
+
+void Viewer::LoadMessageClear(void)
+{
+	{
+		MutexLock lock(mtx);
+		this->loadrequest = 0;
 	}
 }
 
@@ -1898,33 +2079,32 @@ void Viewer::LoadOnRenderThread()
 	this->m_ = this->mnew_;
 	this->d_ = this->dnew_;
 
-	ncam_ = this->mnew_->ncam;
-	nkey_ = this->mnew_->nkey;
-	body_parentid_.resize(util::as_unsigned(this->mnew_->nbody));
-	std::memcpy(body_parentid_.data(), this->mnew_->body_parentid,
-	            sizeof(this->mnew_->body_parentid[0]) * util::as_unsigned(this->mnew_->nbody));
+	ncam_ = this->m_->ncam;
+	nkey_ = this->m_->nkey;
+	body_parentid_.resize(util::as_unsigned(this->m_->nbody));
+	std::memcpy(body_parentid_.data(), this->m_->body_parentid,
+	            sizeof(this->m_->body_parentid[0]) * util::as_unsigned(this->m_->nbody));
 	body_parentid_.shrink_to_fit();
 
-	jnt_type_.resize(util::as_unsigned(this->mnew_->njnt));
-	std::memcpy(jnt_type_.data(), this->mnew_->jnt_type,
-	            sizeof(this->mnew_->jnt_type[0]) * util::as_unsigned(this->mnew_->njnt));
+	jnt_type_.resize(util::as_unsigned(this->m_->njnt));
+	std::memcpy(jnt_type_.data(), this->m_->jnt_type, sizeof(this->m_->jnt_type[0]) * util::as_unsigned(this->m_->njnt));
 	jnt_type_.shrink_to_fit();
 
-	jnt_group_.resize(util::as_unsigned(this->mnew_->njnt));
-	std::memcpy(jnt_group_.data(), this->mnew_->jnt_group,
-	            sizeof(this->mnew_->jnt_group[0]) * util::as_unsigned(this->mnew_->njnt));
+	jnt_group_.resize(util::as_unsigned(this->m_->njnt));
+	std::memcpy(jnt_group_.data(), this->m_->jnt_group,
+	            sizeof(this->m_->jnt_group[0]) * util::as_unsigned(this->m_->njnt));
 	jnt_group_.shrink_to_fit();
 
-	jnt_qposadr_.resize(util::as_unsigned(this->mnew_->njnt));
-	std::memcpy(jnt_qposadr_.data(), this->mnew_->jnt_qposadr,
-	            sizeof(this->mnew_->jnt_qposadr[0]) * util::as_unsigned(this->mnew_->njnt));
+	jnt_qposadr_.resize(util::as_unsigned(this->m_->njnt));
+	std::memcpy(jnt_qposadr_.data(), this->m_->jnt_qposadr,
+	            sizeof(this->m_->jnt_qposadr[0]) * util::as_unsigned(this->m_->njnt));
 	jnt_qposadr_.shrink_to_fit();
 
 	jnt_range_.clear();
-	jnt_range_.reserve(util::as_unsigned(this->mnew_->njnt));
-	for (int i = 0; i < this->mnew_->njnt; ++i) {
-		if (this->mnew_->jnt_limited[i]) {
-			jnt_range_.emplace_back(std::make_pair(this->mnew_->jnt_range[2 * i], this->mnew_->jnt_range[2 * i + 1]));
+	jnt_range_.reserve(util::as_unsigned(this->m_->njnt));
+	for (int i = 0; i < this->m_->njnt; ++i) {
+		if (this->m_->jnt_limited[i]) {
+			jnt_range_.emplace_back(std::make_pair(this->m_->jnt_range[2 * i], this->m_->jnt_range[2 * i + 1]));
 		} else {
 			jnt_range_.emplace_back(std::nullopt);
 		}
@@ -1932,23 +2112,23 @@ void Viewer::LoadOnRenderThread()
 	jnt_range_.shrink_to_fit();
 
 	jnt_names_.clear();
-	jnt_names_.reserve(util::as_unsigned(this->mnew_->njnt));
-	for (int i = 0; i < this->mnew_->njnt; ++i) {
-		jnt_names_.emplace_back(this->mnew_->names + this->mnew_->name_jntadr[i]);
+	jnt_names_.reserve(util::as_unsigned(this->m_->njnt));
+	for (int i = 0; i < this->m_->njnt; ++i) {
+		jnt_names_.emplace_back(this->m_->names + this->m_->name_jntadr[i]);
 	}
 	jnt_names_.shrink_to_fit();
 
-	actuator_group_.resize(util::as_unsigned(this->mnew_->nu));
-	std::memcpy(actuator_group_.data(), this->mnew_->actuator_group,
-	            sizeof(this->mnew_->actuator_group[0]) * util::as_unsigned(this->mnew_->nu));
+	actuator_group_.resize(util::as_unsigned(this->m_->nu));
+	std::memcpy(actuator_group_.data(), this->m_->actuator_group,
+	            sizeof(this->m_->actuator_group[0]) * util::as_unsigned(this->m_->nu));
 	actuator_group_.shrink_to_fit();
 
 	actuator_ctrlrange_.clear();
-	actuator_ctrlrange_.reserve(util::as_unsigned(this->mnew_->nu));
-	for (int i = 0; i < this->mnew_->nu; ++i) {
-		if (this->mnew_->actuator_ctrllimited[i]) {
+	actuator_ctrlrange_.reserve(util::as_unsigned(this->m_->nu));
+	for (int i = 0; i < this->m_->nu; ++i) {
+		if (this->m_->actuator_ctrllimited[i]) {
 			actuator_ctrlrange_.emplace_back(
-			    std::make_pair(this->mnew_->actuator_ctrlrange[2 * i], this->mnew_->actuator_ctrlrange[2 * i + 1]));
+			    std::make_pair(this->m_->actuator_ctrlrange[2 * i], this->m_->actuator_ctrlrange[2 * i + 1]));
 		} else {
 			actuator_ctrlrange_.emplace_back(std::nullopt);
 		}
@@ -1956,35 +2136,56 @@ void Viewer::LoadOnRenderThread()
 	actuator_ctrlrange_.shrink_to_fit();
 
 	actuator_names_.clear();
-	actuator_names_.reserve(util::as_unsigned(this->mnew_->nu));
-	for (int i = 0; i < this->mnew_->nu; ++i) {
-		actuator_names_.emplace_back(this->mnew_->names + this->mnew_->name_actuatoradr[i]);
+	actuator_names_.reserve(util::as_unsigned(this->m_->nu));
+	for (int i = 0; i < this->m_->nu; ++i) {
+		actuator_names_.emplace_back(this->m_->names + this->m_->name_actuatoradr[i]);
 	}
 	actuator_names_.shrink_to_fit();
 
-	qpos_.resize(util::as_unsigned(this->mnew_->nq));
-	std::memcpy(qpos_.data(), this->mnew_->qpos0, sizeof(this->mnew_->qpos0[0]) * util::as_unsigned(this->mnew_->nq));
+	qpos_.resize(util::as_unsigned(this->m_->nq));
+	std::memcpy(qpos_.data(), this->m_->qpos0, sizeof(this->m_->qpos0[0]) * util::as_unsigned(this->m_->nq));
 	qpos_.shrink_to_fit();
 	qpos_prev_ = qpos_;
 
-	ctrl_.resize(util::as_unsigned(this->mnew_->nu));
-	std::memcpy(ctrl_.data(), this->dnew_->ctrl, sizeof(this->dnew_->ctrl[0]) * util::as_unsigned(this->mnew_->nu));
+	ctrl_.resize(util::as_unsigned(this->m_->nu));
+	std::memcpy(ctrl_.data(), this->d_->ctrl, sizeof(this->d_->ctrl[0]) * util::as_unsigned(this->m_->nu));
 	ctrl_.shrink_to_fit();
 	ctrl_prev_ = ctrl_;
 
-	// re-create scene and context
-	if (this->fully_managed_) {
-		mjv_makeScene(this->mnew_.get(), &this->scn, this->kMaxGeom);
-	} else {
-		mjv_makeScene(this->mnew_.get(), &this->scn, this->kMaxGeom);
-		mjopt_prev_          = mnew_->opt;
-		opt_prev_            = opt;
-		cam_prev_            = cam;
-		warn_vgeomfull_prev_ = dnew_->warning[mjWARN_VGEOMFULL].number;
-		mjv_makeSceneState(this->mnew_.get(), this->dnew_.get(), &this->scnstate_, this->kMaxGeom);
+	if (!this->is_passive_) {
+		constexpr int kHistoryLength   = 2000;
+		constexpr int kMaxHistoryBytes = 1e8;
+
+		// get state size, size of history buffer
+		state_size_       = mj_stateSize(this->m_.get(), mjSTATE_INTEGRATION);
+		int state_bytes   = state_size_ * sizeof(mjtNum);
+		int history_bytes = mjMIN(state_bytes * kHistoryLength, kMaxHistoryBytes);
+		nhistory_         = history_bytes / state_bytes;
+
+		// allocate history buffer, reset cursor and UI slider
+		history_.clear();
+		history_.resize(nhistory_ * state_size_);
+		history_cursor_ = 0;
+		scrub_index     = 0;
+
+		// fill buffer with initial state
+		mj_getState(this->m_.get(), this->d_.get(), history_.data(), mjSTATE_INTEGRATION);
+		for (int i = 1; i < nhistory_; ++i) {
+			mju_copy(&history_[i * state_size_], history_.data(), state_size_);
+		}
 	}
 
-	this->platform_ui->RefreshMjrContext(this->mnew_.get(), 50 * (this->font + 1));
+	// re-create scene and context
+	mjv_makeScene(this->m_.get(), &this->scn, this->kMaxGeom);
+	if (this->is_passive_) {
+		mjopt_prev_          = m_->opt;
+		opt_prev_            = opt;
+		cam_prev_            = cam;
+		warn_vgeomfull_prev_ = d_->warning[mjWARN_VGEOMFULL].number;
+		mjv_makeSceneState(this->m_.get(), this->d_.get(), &this->scnstate_, this->kMaxGeom);
+	}
+
+	this->platform_ui->RefreshMjrContext(this->m_.get(), 50 * (this->font + 1));
 	UiModify(&this->ui0, &this->uistate, &this->platform_ui->mjr_context());
 	UiModify(&this->ui1, &this->uistate, &this->platform_ui->mjr_context());
 
@@ -2000,36 +2201,40 @@ void Viewer::LoadOnRenderThread()
 
 	// align and scale view unless reloading the same file
 	if (this->filename[0] && mju::strcmp_arr(this->filename, this->previous_filename)) {
-		AlignAndScaleView(this, this->mnew_.get());
+		AlignAndScaleView(this, this->m_.get());
 		mju::strcpy_arr(this->previous_filename, this->filename);
 	}
 
 	// update scene
-	if (fully_managed_) {
-		mjv_updateScene(this->mnew_.get(), this->dnew_.get(), &this->opt, &this->pert, &this->cam, mjCAT_ALL, &this->scn);
+	if (!is_passive_) {
+		mjv_updateScene(this->m_.get(), this->d_.get(), &this->opt, &this->pert, &this->cam, mjCAT_ALL, &this->scn);
 	} else {
-		mjv_updateSceneState(this->mnew_.get(), this->dnew_.get(), &this->opt, &this->scnstate_);
+		mjv_updateSceneState(this->m_.get(), this->d_.get(), &this->opt, &this->scnstate_);
 	}
 
 	// set window title to model name
-	if (this->mnew_->names) {
+	if (this->m_->names) {
 		char title[200] = "MuJoCo ROS Viewer : ";
-		mju::strcat_arr(title, this->mnew_->names);
+		mju::strcat_arr(title, this->m_->names);
 		platform_ui->SetWindowTitle(title);
 	}
 
 	// set keyframe range and divisions
 	this->ui0.sect[SECT_SIMULATION].item[5].slider.range[0]  = 0;
-	this->ui0.sect[SECT_SIMULATION].item[5].slider.range[1]  = mjMAX(0, this->mnew_->nkey - 1);
-	this->ui0.sect[SECT_SIMULATION].item[5].slider.divisions = mjMAX(1, this->mnew_->nkey - 1);
+	this->ui0.sect[SECT_SIMULATION].item[5].slider.range[1]  = mjMAX(0, this->m_->nkey - 1);
+	this->ui0.sect[SECT_SIMULATION].item[5].slider.divisions = mjMAX(1, this->m_->nkey - 1);
+
+	// set scrubber range and divisions
+	this->ui0.sect[SECT_SIMULATION].item[11].slider.range[0]  = 1 - nhistory_;
+	this->ui0.sect[SECT_SIMULATION].item[11].slider.divisions = nhistory_;
 
 	// rebuild UI sections
-	MakeUiSections(this, this->mnew_.get(), this->dnew_.get());
+	MakeUiSections(this, this->m_.get(), this->d_.get());
 
 	// full UI update
 	UiModify(&this->ui0, &this->uistate, &this->platform_ui->mjr_context());
 	UiModify(&this->ui1, &this->uistate, &this->platform_ui->mjr_context());
-	UpdateSettings(this, this->mnew_.get());
+	UpdateSettings(this, this->m_.get());
 
 	// clear request
 	ROS_DEBUG("Notifying load request complete");
@@ -2039,7 +2244,7 @@ void Viewer::LoadOnRenderThread()
 	// set real time index
 	int numclicks   = sizeof(MujocoEnv::percentRealTime) / sizeof(MujocoEnv::percentRealTime[0]);
 	float min_error = 1e6;
-	float desired   = mju_log(100 * this->mnew_->vis.global.realtime);
+	float desired   = mju_log(100 * this->m_->vis.global.realtime);
 	for (int click = 0; click < numclicks; click++) {
 		float error = mju_abs(mju_log(MujocoEnv::percentRealTime[click]) - desired);
 		if (error < min_error) {
@@ -2069,13 +2274,13 @@ void Viewer::Render()
 	}
 
 	// No model
-	if (!this->m_) {
+	if (!is_passive_ && !this->m_) {
 		// blank screen
 		mjr_rectangle(rect, 0.2f, 0.3f, 0.4f, 1);
 
 		// label
 		if (this->loadrequest) {
-			mjr_overlay(mjFONT_BIG, mjGRID_TOPRIGHT, smallrect, "Loading ...", nullptr, &this->platform_ui->mjr_context());
+			mjr_overlay(mjFONT_BIG, mjGRID_TOP, smallrect, "LOADING...", nullptr, &this->platform_ui->mjr_context());
 		} else {
 			char intro_message[Viewer::kMaxFilenameLength];
 			mju::sprintf_arr(intro_message, "MuJoCo ROS version %s\nLoad model to visualize", mj_versionString());
@@ -2104,17 +2309,17 @@ void Viewer::Render()
 
 	// Update UI sections from last sync
 	if (this->ui0_enable && this->ui0.sect[SECT_WATCH].state) {
-		mjui_update(SECT_WATCH, -1, &this->ui0, &this->uistate, &this->platform_ui->mjr_context());
+		mjui0_update_section(this, SECT_WATCH);
 	}
 
 	if (pending_.ui_update_physics) {
 		if (this->ui0_enable && this->ui0.sect[SECT_PHYSICS].state) {
-			mjui_update(SECT_PHYSICS, -1, &this->ui0, &this->uistate, &this->platform_ui->mjr_context());
+			mjui0_update_section(this, SECT_PHYSICS);
 		}
 		pending_.ui_update_physics = false;
 	}
 
-	if (!fully_managed_) {
+	if (is_passive_) {
 		if (this->ui0_enable && this->ui0.sect[SECT_RENDERING].state &&
 		    (cam_prev_.type != cam.type || cam_prev_.fixedcamid != cam.fixedcamid ||
 		     cam_prev_.trackbodyid != cam.trackbodyid || opt_prev_.label != opt.label || opt_prev_.frame != opt.frame ||
@@ -2125,9 +2330,9 @@ void Viewer::Render()
 		if (this->ui0_enable && this->ui0.sect[SECT_RENDERING].state &&
 		    (IsDifferent(opt_prev_.geomgroup, opt.geomgroup) || IsDifferent(opt_prev_.sitegroup, opt.sitegroup) ||
 		     IsDifferent(opt_prev_.jointgroup, opt.jointgroup) || IsDifferent(opt_prev_.tendongroup, opt.tendongroup) ||
-		     IsDifferent(opt_prev_.actuatorgroup, opt.actuatorgroup) ||
+		     IsDifferent(opt_prev_.actuatorgroup, opt.actuatorgroup) || IsDifferent(opt_prev_.flexgroup, opt.flexgroup) ||
 		     IsDifferent(opt_prev_.skingroup, opt.skingroup))) {
-			mjui_update(SECT_GROUP, -1, &this->ui0, &this->uistate, &this->platform_ui->mjr_context());
+			mjui0_update_section(this, SECT_GROUP);
 		}
 
 		opt_prev_ = opt;
@@ -2136,7 +2341,7 @@ void Viewer::Render()
 
 	if (pending_.ui_update_rendering) {
 		if (this->ui0_enable && this->ui0.sect[SECT_RENDERING].state) {
-			mjui_update(SECT_RENDERING, -1, &this->ui0, &this->uistate, &this->platform_ui->mjr_context());
+			mjui0_update_section(this, SECT_RENDERING);
 		}
 		pending_.ui_update_rendering = false;
 	}
@@ -2163,10 +2368,10 @@ void Viewer::Render()
 		mjr_overlay(mjFONT_NORMAL, mjGRID_BOTTOMLEFT, rect, this->load_error, nullptr, &this->platform_ui->mjr_context());
 	}
 
-	// Make pause/loading label
-	std::string pauseloadlabel;
+	// show pause/loading label
 	if (!this->run || this->loadrequest) {
-		pauseloadlabel = this->loadrequest ? "loading ..." : "paused";
+		const char *label = this->loadrequest ? "LOADING..." : "PAUSE";
+		mjr_overlay(mjFONT_BIG, mjGRID_TOP, smallrect, label, nullptr, &this->platform_ui->mjr_context());
 	}
 
 	// Get desired and actual percent-of-realtime
@@ -2193,12 +2398,9 @@ void Viewer::Render()
 		              actual_real_time);
 	}
 
-	// Draw top left overlay
-	if (!pauseloadlabel.empty() || rtlabel[0]) {
-		std::string newline      = !pauseloadlabel.empty() && rtlabel[0] ? "\n" : "";
-		std::string topleftlabel = rtlabel + newline + pauseloadlabel;
-		mjr_overlay(mjFONT_BIG, mjGRID_TOPLEFT, smallrect, topleftlabel.c_str(), nullptr,
-		            &this->platform_ui->mjr_context());
+	// show real-time overlay
+	if (rtlabel[0]) {
+		mjr_overlay(mjFONT_BIG, mjGRID_TOPLEFT, smallrect, rtlabel, nullptr, &this->platform_ui->mjr_context());
 	}
 
 	// Show UI 0
@@ -2275,8 +2477,10 @@ void Viewer::RenderLoop()
 	InitializeSensor(this);
 
 	// Make empty scene
-	mjv_defaultScene(&this->scn);
-	mjv_makeScene(nullptr, &this->scn, kMaxGeom);
+	if (!is_passive_) {
+		mjv_defaultScene(&this->scn);
+		mjv_makeScene(nullptr, &this->scn, kMaxGeom);
+	}
 
 	if (!this->platform_ui->IsGPUAccelerated()) {
 		this->scn.flags[mjRND_SHADOW]     = 0;
@@ -2341,23 +2545,41 @@ void Viewer::RenderLoop()
 			// Load model (not on first pass, to show "loading" label)
 			if (this->loadrequest == 1) {
 				this->LoadOnRenderThread();
-			} else if (this->loadrequest > 1) {
+			} else if (this->loadrequest == 2) {
 				this->loadrequest = 1;
 			}
 
 			// Poll and handle events
 			this->platform_ui->PollEvents();
 
+			// upload assets if requested
+			bool upload_notify = false;
+			if (hfield_upload_ != -1) {
+				mjr_uploadHField(m_.get(), &platform_ui->mjr_context(), hfield_upload_);
+				hfield_upload_ = -1;
+				upload_notify  = true;
+			}
+			if (mesh_upload_ != -1) {
+				mjr_uploadMesh(m_.get(), &platform_ui->mjr_context(), mesh_upload_);
+				mesh_upload_  = -1;
+				upload_notify = true;
+			}
+			if (texture_upload_ != -1) {
+				mjr_uploadTexture(m_.get(), &platform_ui->mjr_context(), texture_upload_);
+				texture_upload_ = -1;
+				upload_notify   = true;
+			}
+			if (upload_notify) {
+				cond_upload_.notify_all();
+			}
+
 			// Update scene, doing a full sync if the environment is not busy loading
-			if (this->env_->getOperationalStatus() == 0) {
-				std::lock_guard<std::recursive_mutex> lk_py(env_->physics_thread_mutex_);
+			if (!this->is_passive_ && this->env_->getOperationalStatus() == 0) {
 				Sync();
-				if (!fully_managed_ && scn.maxgeom > 0) {
-					scnstate_.data.warning[mjWARN_VGEOMFULL].number +=
-					    mjv_updateSceneFromState(&scnstate_, &this->opt, &this->pert, &this->cam, mjCAT_ALL, &this->scn);
-				}
-				this->env_->runRenderCbs(&this->scn);
-				env_->physics_thread_mutex_.unlock();
+			} else {
+				scnstate_.data.warning[mjWARN_VGEOMFULL].number +=
+				    mjv_updateSceneFromState(&scnstate_, &this->opt, &this->pert, &this->cam, mjCAT_ALL, &this->scn);
+				// TODO(dleins): run mjros render callbacks?
 			}
 		} // MutexLock (unblocks simulation thread)
 
@@ -2375,7 +2597,7 @@ void Viewer::RenderLoop()
 		}
 	}
 
-	if (fully_managed_) {
+	if (!is_passive_) {
 		mjv_freeScene(&this->scn);
 	} else {
 		mjv_freeScene(&this->scn);
@@ -2384,6 +2606,50 @@ void Viewer::RenderLoop()
 
 	this->exit_request.store(2);
 	env_->disconnectViewer(this);
+}
+
+void Viewer::AddToHistory()
+{
+	if (history_.empty()) {
+		return;
+	}
+
+	// circular increment of cursor
+	history_cursor_ = (history_cursor_ + 1) % nhistory_;
+
+	// add state at cursor
+	mjtNum *state = &history_[state_size_ * history_cursor_];
+	mj_getState(m_.get(), d_.get(), state, mjSTATE_INTEGRATION);
+}
+
+void Viewer::UpdateHField(int hfieldid)
+{
+	MutexLock lock(this->mtx);
+	if (!m_ || hfieldid < 0 || hfieldid >= m_->nhfield) {
+		return;
+	}
+	hfield_upload_ = hfieldid;
+	cond_upload_.wait(lock, [this]() { return hfield_upload_ == -1; });
+}
+
+void Viewer::UpdateMesh(int meshid)
+{
+	MutexLock lock(this->mtx);
+	if (!m_ || meshid < 0 || meshid >= m_->nmesh) {
+		return;
+	}
+	mesh_upload_ = meshid;
+	cond_upload_.wait(lock, [this]() { return mesh_upload_ == -1; });
+}
+
+void Viewer::UpdateTexture(int texid)
+{
+	MutexLock lock(this->mtx);
+	if (!m_ || texid < 0 || texid >= m_->ntex) {
+		return;
+	}
+	texture_upload_ = texid;
+	cond_upload_.wait(lock, [this]() { return texture_upload_ == -1; });
 }
 
 } // namespace mujoco_ros

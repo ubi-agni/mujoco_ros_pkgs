@@ -29,7 +29,7 @@ jobs:
       contents: read
     env:
       IMAGE: ubiagni/mujoco_ros:${{ matrix.ROS_DISTRO }}-${{ github.job }}
-      MUJOCO_VERSIONS: 2.3.6 2.3.7
+      MUJOCO_VERSIONS: 3.0.0
 
     steps:
       - name: Check for apt updates

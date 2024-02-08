@@ -1,5 +1,5 @@
 <mujoco model="3DOF">
-    <option collision="all" timestep="0.001" gravity="0 0 -9.81" cone="elliptic" />
+    <option timestep="0.001" gravity="0 0 -9.81" cone="elliptic" />
     <compiler angle="radian" />
 
     <visual>

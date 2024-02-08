@@ -747,6 +747,7 @@ TEST_F(PendulumEnvFixture, GetGeomPropertiesCallback)
 TEST_F(EqualityEnvFixture, InitialEqualityConstraintValues)
 {
 	mjModel *m = env_ptr->getModelPtr();
+	mjData *d  = env_ptr->getDataPtr();
 
 	int weld_eq_id    = mj_name2id(m, mjOBJ_EQUALITY, "weld_eq");
 	int joint_eq_id   = mj_name2id(m, mjOBJ_EQUALITY, "joint_eq");
@@ -763,10 +764,10 @@ TEST_F(EqualityEnvFixture, InitialEqualityConstraintValues)
 	EXPECT_EQ(m->eq_type[tendon_eq_id], mjEQ_TENDON) << "weld_eq has incorrect type";
 	EXPECT_EQ(m->eq_type[connect_eq_id], mjEQ_CONNECT) << "connect_eq has incorrect type";
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
-	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
+	EXPECT_NEAR(d->time, 0, 1e-6) << "Simulation time should be 0.0!";
 
 	// test joint constraint data
-	EXPECT_TRUE(m->eq_active[joint_eq_id]) << "Joint constraint mismatch of active state";
+	EXPECT_TRUE(d->eq_active[joint_eq_id]) << "Joint constraint mismatch of active state";
 	EXPECT_DOUBLE_EQ(m->eq_data[joint_eq_id * mjNEQDATA], 0.5) << "Joint constraint polycoef mismatch at index 0";
 	EXPECT_DOUBLE_EQ(m->eq_data[joint_eq_id * mjNEQDATA + 1], 0.25) << "Joint constraint polycoef mismatch at index 1";
 	EXPECT_DOUBLE_EQ(m->eq_data[joint_eq_id * mjNEQDATA + 2], 0.76) << "Joint constraint polycoef mismatch at index 2";
@@ -778,7 +779,7 @@ TEST_F(EqualityEnvFixture, InitialEqualityConstraintValues)
 	    << "Joint constraint joint2 mismatch";
 
 	// test connect
-	EXPECT_TRUE(m->eq_active[connect_eq_id]) << "Joint constraint mismatch of active state";
+	EXPECT_TRUE(d->eq_active[connect_eq_id]) << "Joint constraint mismatch of active state";
 	EXPECT_DOUBLE_EQ(m->eq_data[connect_eq_id * mjNEQDATA + 0], 0) << "Anchor mismatch at index 0";
 	EXPECT_DOUBLE_EQ(m->eq_data[connect_eq_id * mjNEQDATA + 1], 0) << "Anchor mismatch at index 1";
 	EXPECT_DOUBLE_EQ(m->eq_data[connect_eq_id * mjNEQDATA + 2], 0) << "Anchor mismatch at index 2";
@@ -786,7 +787,7 @@ TEST_F(EqualityEnvFixture, InitialEqualityConstraintValues)
 	    << "connect constraint element1 mismatch";
 
 	// test tendon
-	EXPECT_TRUE(m->eq_active[tendon_eq_id]) << "Joint constraint mismatch of active state";
+	EXPECT_TRUE(d->eq_active[tendon_eq_id]) << "Joint constraint mismatch of active state";
 	EXPECT_DOUBLE_EQ(m->eq_data[tendon_eq_id * mjNEQDATA], 0.5) << "Joint constraint polycoef mismatch at index 0";
 	EXPECT_DOUBLE_EQ(m->eq_data[tendon_eq_id * mjNEQDATA + 1], 0.25) << "Joint constraint polycoef mismatch at index 1";
 	EXPECT_DOUBLE_EQ(m->eq_data[tendon_eq_id * mjNEQDATA + 2], 0.76) << "Joint constraint polycoef mismatch at index 2";
@@ -830,10 +831,10 @@ TEST_F(EqualityEnvFixture, InitialEqualityConstraintValues)
 }
 
 // helper function to verify inequality of mujoco equality constraint and message type parameters
-void compare_eqc_values_with_msg_inequal(mjModel *m, int eq_id,
+void compare_eqc_values_with_msg_inequal(mjModel *m, mjData *d, int eq_id,
                                          const mujoco_ros_msgs::EqualityConstraintParameters &eqc)
 {
-	EXPECT_NE(m->eq_active[eq_id], eqc.active) << eqc.name << " constraint active parameter would not change";
+	EXPECT_NE(d->eq_active[eq_id], eqc.active) << eqc.name << " constraint active parameter would not change";
 
 	EXPECT_NE(m->eq_solref[eq_id * mjNREF], eqc.solverParameters.timeconst)
 	    << eqc.name << " solref timeconst would not change";
@@ -887,8 +888,10 @@ void compare_eqc_values_with_msg_inequal(mjModel *m, int eq_id,
 }
 
 // helper function to verify equality of mujoco equality constraint and message type parameters
-void compare_eqc_values_with_msg(mjModel *m, int eq_id, const mujoco_ros_msgs::EqualityConstraintParameters &eqc)
+void compare_eqc_values_with_msg(mjModel *m, mjData *d, int eq_id,
+                                 const mujoco_ros_msgs::EqualityConstraintParameters &eqc)
 {
+	EXPECT_EQ(d->eq_active[eq_id], eqc.active);
 	EXPECT_DOUBLE_EQ(m->eq_solref[eq_id * mjNREF], eqc.solverParameters.timeconst)
 	    << eqc.name << " solref timeconst was not set correctly";
 	EXPECT_DOUBLE_EQ(m->eq_solref[eq_id * mjNREF + 1], eqc.solverParameters.dampratio)
@@ -954,9 +957,10 @@ void compare_eqc_values_with_msg(mjModel *m, int eq_id, const mujoco_ros_msgs::E
 TEST_F(EqualityEnvFixture, SetEqConstraint)
 {
 	mjModel *m = env_ptr->getModelPtr();
+	mjData *d  = env_ptr->getDataPtr();
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
-	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
+	EXPECT_NEAR(d->time, 0, 1e-6) << "Simulation time should be 0.0!";
 	EXPECT_TRUE(ros::service::exists(env_ptr->getHandleNamespace() + "/set_eq_constraint_parameters", true))
 	    << "Set eq constraints service should be available!";
 
@@ -1049,10 +1053,10 @@ TEST_F(EqualityEnvFixture, SetEqConstraint)
 	tendon_eqc.polycoef = std::vector<double>{ 0.1, 1.0, 0.2, 0.3, 0.4 };
 
 	// Verify values differ to confirm values have changed later on
-	compare_eqc_values_with_msg_inequal(m, connect_eq_id, connect_eqc);
-	compare_eqc_values_with_msg_inequal(m, weld_eq_id, weld_eqc);
-	compare_eqc_values_with_msg_inequal(m, joint_eq_id, joint_eqc);
-	compare_eqc_values_with_msg_inequal(m, tendon_eq_id, tendon_eqc);
+	compare_eqc_values_with_msg_inequal(m, d, connect_eq_id, connect_eqc);
+	compare_eqc_values_with_msg_inequal(m, d, weld_eq_id, weld_eqc);
+	compare_eqc_values_with_msg_inequal(m, d, joint_eq_id, joint_eqc);
+	compare_eqc_values_with_msg_inequal(m, d, tendon_eq_id, tendon_eqc);
 
 	srv.request.parameters = { connect_eqc, weld_eqc, joint_eqc, tendon_eqc };
 
@@ -1060,18 +1064,19 @@ TEST_F(EqualityEnvFixture, SetEqConstraint)
 	    << "Set eq constraint service call failed!";
 	EXPECT_TRUE(srv.response.success);
 
-	compare_eqc_values_with_msg(m, connect_eq_id, connect_eqc);
-	compare_eqc_values_with_msg(m, weld_eq_id, weld_eqc);
-	compare_eqc_values_with_msg(m, joint_eq_id, joint_eqc);
-	compare_eqc_values_with_msg(m, tendon_eq_id, tendon_eqc);
+	compare_eqc_values_with_msg(m, d, connect_eq_id, connect_eqc);
+	compare_eqc_values_with_msg(m, d, weld_eq_id, weld_eqc);
+	compare_eqc_values_with_msg(m, d, joint_eq_id, joint_eqc);
+	compare_eqc_values_with_msg(m, d, tendon_eq_id, tendon_eqc);
 }
 
 TEST_F(EqualityEnvFixture, GetEqConstraint)
 {
 	mjModel *m = env_ptr->getModelPtr();
+	mjData *d  = env_ptr->getDataPtr();
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
-	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
+	EXPECT_NEAR(d->time, 0, 1e-6) << "Simulation time should be 0.0!";
 	EXPECT_TRUE(ros::service::exists(env_ptr->getHandleNamespace() + "/set_eq_constraint_parameters", true))
 	    << "Set geom properties service should be available!";
 	EXPECT_TRUE(ros::service::exists(env_ptr->getHandleNamespace() + "/get_eq_constraint_parameters", true))
@@ -1087,7 +1092,7 @@ TEST_F(EqualityEnvFixture, GetEqConstraint)
 		int eq_id = mj_name2id(m, mjOBJ_EQUALITY, eqc.name.c_str());
 		EXPECT_NE(eq_id, -1) << eqc.name << " eq constraint is not defined in loaded model!";
 
-		compare_eqc_values_with_msg(m, eq_id, eqc);
+		compare_eqc_values_with_msg(m, d, eq_id, eqc);
 	}
 
 	EXPECT_EQ(srv.response.parameters.size(), 4)

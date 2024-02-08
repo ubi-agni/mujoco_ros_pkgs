@@ -248,7 +248,7 @@ bool MujocoEnv::setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req,
 		model_->body_mass[body_id] = req.state.mass;
 
 		std::lock_guard<std::mutex> lk_render(offscreen_.render_mutex); // Prevent rendering the reset to q0
-		mjtNum *qpos_tmp = mj_stackAlloc(data_.get(), model_->nq);
+		mjtNum *qpos_tmp = mj_stackAllocNum(data_.get(), model_->nq);
 		mju_copy(qpos_tmp, data_->qpos, model_->nq);
 		ROS_DEBUG("Copied current qpos state");
 		mj_setConst(model_.get(), data_.get());
@@ -576,7 +576,7 @@ bool MujocoEnv::setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request 
 	if (req.set_type || req.set_mass) {
 		std::lock_guard<std::mutex> lk_render(offscreen_.render_mutex); // Prevent rendering the reset to q0
 
-		mjtNum *qpos_tmp = mj_stackAlloc(data_.get(), model_->nq);
+		mjtNum *qpos_tmp = mj_stackAllocNum(data_.get(), model_->nq);
 		mju_copy(qpos_tmp, data_->qpos, model_->nq);
 		ROS_DEBUG("Copied current qpos state");
 		mj_setConst(model_.get(), data_.get());
@@ -723,7 +723,7 @@ bool MujocoEnv::setEqualityConstraintParameters(const mujoco_ros_msgs::EqualityC
 			default:
 				break;
 		}
-		model_->eq_active[eq_id]              = parameters.active;
+		data_->eq_active[eq_id]               = parameters.active;
 		model_->eq_solimp[eq_id * mjNIMP]     = parameters.solverParameters.dmin;
 		model_->eq_solimp[eq_id * mjNIMP + 1] = parameters.solverParameters.dmax;
 		model_->eq_solimp[eq_id * mjNIMP + 2] = parameters.solverParameters.width;
@@ -828,7 +828,7 @@ bool MujocoEnv::getEqualityConstraintParameters(mujoco_ros_msgs::EqualityConstra
 			default:
 				break;
 		}
-		parameters.active                     = model_->eq_active[eq_id];
+		parameters.active                     = data_->eq_active[eq_id];
 		parameters.solverParameters.dmin      = model_->eq_solimp[eq_id * mjNIMP];
 		parameters.solverParameters.dmax      = model_->eq_solimp[eq_id * mjNIMP + 1];
 		parameters.solverParameters.width     = model_->eq_solimp[eq_id * mjNIMP + 2];
