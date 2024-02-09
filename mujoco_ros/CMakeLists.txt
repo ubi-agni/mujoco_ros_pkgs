@@ -58,7 +58,7 @@ configure_project_option(
 )
 
 # Find MuJoCo
-find_package(mujoco 3.1.0 REQUIRED)
+find_package(mujoco 3.1.2 REQUIRED)
 find_library(GLFW libglfw.so.3)
 
 # ###############################################

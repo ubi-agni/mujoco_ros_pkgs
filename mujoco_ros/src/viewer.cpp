@@ -769,14 +769,8 @@ void MakeRenderingSection(mujoco_ros::Viewer *viewer, const mjModel *m, int olds
 	// add flags programmatically
 	mjuiDef defFlag[] = { { mjITEM_CHECKBYTE, "", 2, nullptr, "" }, { mjITEM_END } };
 	for (size_t i = 0; i < mjNVISFLAG; i++) {
-		// set name, remove "&"
+		// set name
 		mju::strcpy_arr(defFlag[0].name, mjVISSTRING[i][0]);
-		for (size_t j = 0; j < strlen(mjVISSTRING[i][0]); j++) {
-			if (mjVISSTRING[i][0][j] == '&') {
-				mju_strncpy(defFlag[0].name + j, mjVISSTRING[i][0] + j + 1, mju::sizeof_arr(defFlag[0].name) - j);
-				break;
-			}
-		}
 
 		// set shortcut and data
 		if (mjVISSTRING[i][2][0]) {
@@ -797,7 +791,10 @@ void MakeRenderingSection(mujoco_ros::Viewer *viewer, const mjModel *m, int olds
 	// add rendering flags
 	mjui_add(&viewer->ui0, defOpenGL);
 	for (int i = 0; i < mjNRNDFLAG; i++) {
+		// set name
 		mju::strcpy_arr(defFlag[0].name, mjRNDSTRING[i][0]);
+
+		// set shortcut and data
 		if (mjRNDSTRING[i][2][0]) {
 			mju::sprintf_arr(defFlag[0].other, " %s", mjRNDSTRING[i][2]);
 		} else {
@@ -829,6 +826,7 @@ void MakeVisualizationSection(mujoco_ros::Viewer *viewer, const mjModel * /*m*/,
 		                            { mjITEM_EDITNUM, "Extent", 2, &(stat->extent), "1" },
 		                            { mjITEM_EDITFLOAT, "Field of view", 2, &(vis->global.fovy), "1" },
 		                            { mjITEM_RADIO, "Inertia", 5, &(vis->global.ellipsoidinertia), "Box\nEllipsoid" },
+		                            { mjITEM_RADIO, "BVH active", 5, &(vis->global.bvactive), "False\nTrue" },
 		                            { mjITEM_SEPARATOR, "Map", 1 },
 		                            { mjITEM_EDITFLOAT, "Stiffness", 2, &(vis->map.stiffness), "1" },
 		                            { mjITEM_EDITFLOAT, "Rot stiffness", 2, &(vis->map.stiffnessrot), "1" },
@@ -1187,7 +1185,7 @@ int ComputeFontScale(const mujoco_ros::PlatformUIAdapter &platform_ui)
 		fs = 150;
 	}
 	fs = mju_round(fs * 0.02) * 50;
-	fs = mjMIN(300, mjMAX(100, fs));
+	fs = mjMIN(250, mjMAX(100, fs));
 
 	return fs;
 }
@@ -1747,6 +1745,10 @@ void Viewer::Sync()
 		return;
 	}
 
+	if (this->exit_request.load()) {
+		return;
+	}
+
 	// Avoid updating during load
 	if (env_->settings_.load_request == 1) {
 		return;
@@ -2047,6 +2049,19 @@ void Viewer::Sync()
 				scnstate_.scratch.ngeom += ngeom;
 			}
 		}
+
+		// pick up rendering flags changed via user_scn
+		if (user_scn) {
+			for (int i = 0; i < mjNRNDFLAG; ++i) {
+				if (user_scn->flags[i] != user_scn_flags_prev_[i]) {
+					scn.flags[i]                 = user_scn->flags[i];
+					pending_.ui_update_rendering = true;
+				}
+			}
+			Copy(user_scn->flags, scn.flags);
+			Copy(user_scn_flags_prev_, user_scn->flags);
+		}
+
 		mjopt_prev_          = scnstate_.model.opt;
 		warn_vgeomfull_prev_ = scnstate_.data.warning[mjWARN_VGEOMFULL].number;
 	}
@@ -2244,6 +2259,11 @@ void Viewer::LoadOnRenderThread()
 		this->scn.flags[mjRND_REFLECTION] = 0;
 	}
 
+	if (this->user_scn) {
+		Copy(this->user_scn->flags, this->scn.flags);
+		Copy(this->user_scn_flags_prev_, this->scn.flags);
+	}
+
 	// clear perturbation state
 	this->pert.active     = 0;
 	this->pert.select     = 0;
@@ -2433,8 +2453,7 @@ void Viewer::Render()
 		char label[30] = { '\0' };
 		if (this->loadrequest) {
 			std::snprintf(label, sizeof(label), "LOADING...");
-		}
-		if (this->scrub_index == 0) {
+		} else if (this->scrub_index == 0) {
 			std::snprintf(label, sizeof(label), "PAUSE");
 		} else {
 			std::snprintf(label, sizeof(label), "PAUSE (%d)", this->scrub_index);
@@ -2665,10 +2684,9 @@ void Viewer::RenderLoop()
 		}
 	}
 
-	if (!is_passive_) {
-		mjv_freeScene(&this->scn);
-	} else {
-		mjv_freeScene(&this->scn);
+	const MutexLock lock(this->mtx);
+	mjv_freeScene(&this->scn);
+	if (is_passive_) {
 		mjv_freeSceneState(&scnstate_);
 	}
 

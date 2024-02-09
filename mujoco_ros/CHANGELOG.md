@@ -15,7 +15,7 @@
 * replaced `boost::shared_ptr` with `std::shared_ptr` or `std::unique_ptr` wherever possible (ROS 1 fast intra-process message-passing requires boost::shared_ptr).
 * replaced `shared_ptr` with `unique_ptr` wherever possible.
 * replaced smart pointer constructor initialization with `make_shared` or `make_unique` wherever possible.
-* Updated to MuJoCo library version 3.1.0.
+* Updated to MuJoCo library version 3.1.2.
 * * Added [jointactuatorfrc](https://mujoco.readthedocs.io/en/2.3.7/XMLreference.html#sensor-jointactuatorfrc) support in `mujoco_ros_sensors`.
 * Updated to clang-tidy-14 (default on jammy).
 * Added catkin_lint to pre-commit (i.e. format workflow).
