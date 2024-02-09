@@ -261,6 +261,8 @@ public:
 	void runRenderCbs(mjvScene *scene);
 	bool step(int num_steps = 1, bool blocking = true);
 
+	void UpdateModelFlags(const mjOption *opt);
+
 protected:
 	std::vector<MujocoPlugin *> cb_ready_plugins_; // objects managed by plugins_
 	XmlRpc::XmlRpcValue rpc_plugin_config_;

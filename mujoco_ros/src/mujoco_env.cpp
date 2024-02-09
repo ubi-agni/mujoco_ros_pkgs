@@ -638,6 +638,13 @@ void MujocoEnv::physicsLoop()
 	ROS_DEBUG("Exiting physics loop");
 }
 
+void MujocoEnv::UpdateModelFlags(const mjOption *opt)
+{
+	std::unique_lock<std::recursive_mutex> lock(physics_thread_mutex_);
+	model_->opt.disableflags = opt->disableflags;
+	model_->opt.enableflags  = opt->enableflags;
+}
+
 void MujocoEnv::startPhysicsLoop()
 {
 	physics_thread_handle_ = boost::thread(&MujocoEnv::physicsLoop, this);

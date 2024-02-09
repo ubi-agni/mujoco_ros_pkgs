@@ -1247,6 +1247,10 @@ void UiEvent(mjuiState *state)
 				if (viewer->enable[i]) {
 					opt->enableflags |= (1 << i);
 				}
+
+			if (!viewer->is_passive_) {
+				viewer->env_->UpdateModelFlags(opt);
+			}
 		}
 
 		// rendering section
