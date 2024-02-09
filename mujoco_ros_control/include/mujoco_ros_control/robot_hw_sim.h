@@ -56,7 +56,8 @@ struct JointData
 
 	JointData(std::string name, std::string hardware_interface)
 	    : name_(std::move(name)), hardware_interface_(std::move(hardware_interface))
-	{}
+	{
+	}
 };
 
 class RobotHWSim : public hardware_interface::RobotHW
