@@ -57,6 +57,8 @@
 #include <mujoco_ros/lodepng.h>
 #include <mujoco_ros/util.h>
 
+#include <climits>
+
 static std::string GetSavePath(const char *filename)
 {
 	return filename;
@@ -695,12 +697,12 @@ void MakePhysicsSection(mujoco_ros::Viewer *viewer, int oldstate)
 		                              { mjITEM_EDITNUM, "Friction", 2, &(opt->o_friction), "5" },
 		                              { mjITEM_END } };
 	mjuiDef defDisableActuator[] = { { mjITEM_SEPARATOR, "Actuator Group Enable", 1 },
-		                              { mjITEM_CHECKBYTE, "Act Group 0", 2, viewer->enableactuator + 0, " 0" },
-		                              { mjITEM_CHECKBYTE, "Act Group 1", 2, viewer->enableactuator + 1, " 1" },
-		                              { mjITEM_CHECKBYTE, "Act Group 2", 2, viewer->enableactuator + 2, " 2" },
-		                              { mjITEM_CHECKBYTE, "Act Group 3", 2, viewer->enableactuator + 3, " 3" },
-		                              { mjITEM_CHECKBYTE, "Act Group 4", 2, viewer->enableactuator + 4, " 4" },
-		                              { mjITEM_CHECKBYTE, "Act Group 5", 2, viewer->enableactuator + 5, " 5" },
+		                              { mjITEM_CHECKBYTE, "Act Group 0", 2, viewer->enableactuator + 0, "" },
+		                              { mjITEM_CHECKBYTE, "Act Group 1", 2, viewer->enableactuator + 1, "" },
+		                              { mjITEM_CHECKBYTE, "Act Group 2", 2, viewer->enableactuator + 2, "" },
+		                              { mjITEM_CHECKBYTE, "Act Group 3", 2, viewer->enableactuator + 3, "" },
+		                              { mjITEM_CHECKBYTE, "Act Group 4", 2, viewer->enableactuator + 4, "" },
+		                              { mjITEM_CHECKBYTE, "Act Group 5", 2, viewer->enableactuator + 5, "" },
 		                              { mjITEM_END } };
 
 	// add physics
@@ -1491,9 +1493,10 @@ void UiEvent(mjuiState *state)
 						mjui0_update_section(viewer, SECT_SIMULATION);
 					}
 
-					// not in scrubber: step
+					// not in scrubber: step, add to history buffer
 					else {
 						viewer->env_->settings_.env_steps_request.fetch_add(1);
+						viewer->AddToHistory();
 					}
 				}
 				break;
@@ -2200,14 +2203,14 @@ void Viewer::LoadOnRenderThread()
 	ctrl_prev_ = ctrl_;
 
 	if (!this->is_passive_) {
-		constexpr int kHistoryLength   = 2000;
 		constexpr int kMaxHistoryBytes = 1e8;
 
 		// get state size, size of history buffer
-		state_size_       = mj_stateSize(this->m_.get(), mjSTATE_INTEGRATION);
-		int state_bytes   = state_size_ * sizeof(mjtNum);
-		int history_bytes = mjMIN(state_bytes * kHistoryLength, kMaxHistoryBytes);
-		nhistory_         = history_bytes / state_bytes;
+		state_size_        = mj_stateSize(this->m_.get(), mjSTATE_INTEGRATION);
+		int state_bytes    = state_size_ * sizeof(mjtNum);
+		int history_length = mjMIN(INT_MAX / state_bytes, 2000);
+		int history_bytes  = mjMIN(state_bytes * history_length, kMaxHistoryBytes);
+		nhistory_          = history_bytes / state_bytes;
 
 		// allocate history buffer, reset cursor and UI slider
 		history_.clear();
@@ -2427,7 +2430,15 @@ void Viewer::Render()
 
 	// show pause/loading label
 	if (!this->run || this->loadrequest) {
-		const char *label = this->loadrequest ? "LOADING..." : "PAUSE";
+		char label[30] = { '\0' };
+		if (this->loadrequest) {
+			std::snprintf(label, sizeof(label), "LOADING...");
+		}
+		if (this->scrub_index == 0) {
+			std::snprintf(label, sizeof(label), "PAUSE");
+		} else {
+			std::snprintf(label, sizeof(label), "PAUSE (%d)", this->scrub_index);
+		}
 		mjr_overlay(mjFONT_BIG, mjGRID_TOP, smallrect, label, nullptr, &this->platform_ui->mjr_context());
 	}
 
