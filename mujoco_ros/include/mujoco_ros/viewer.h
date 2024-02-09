@@ -205,6 +205,7 @@ public:
 		bool ui_update_rendering;
 		bool ui_update_joint;
 		bool ui_update_ctrl;
+		bool ui_remake_ctrl;
 
 		// UBI Extra
 		bool ui_update_run   = false;
@@ -281,8 +282,9 @@ public:
 	int index               = 0;
 
 	// physics: need sync
-	int disable[mjNDISABLE] = { 0 };
-	int enable[mjNENABLE]   = { 0 };
+	int disable[mjNDISABLE]      = { 0 };
+	int enable[mjNENABLE]        = { 0 };
+	int enableactuator[mjNGROUP] = { 0 };
 
 	// rendering: need sync
 	int camera = 0;
@@ -312,13 +314,7 @@ public:
 
 	// Constant arrays needed for the option section of UI and the UI interface
 	// TODO setting the size here is not ideal
-	const mjuiDef def_option[15] = { { mjITEM_SECTION, "Option", 1, nullptr, "AO" },
-		                              { mjITEM_SELECT, "Spacing", 1, &this->spacing, "Tight\nWide" },
-		                              { mjITEM_SELECT, "Color", 1, &this->color, "Default\nOrange\nWhite\nBlack" },
-		                              { mjITEM_SELECT, "Font", 1, &this->font,
-		                                "50 %\n100 %\n150 %\n200 %\n250 %\n300 %" },
-		                              { mjITEM_CHECKINT, "Left UI (Tab)", 1, &this->ui0_enable, " #258" },
-		                              { mjITEM_CHECKINT, "Right UI", 1, &this->ui1_enable, "S#258" },
+	const mjuiDef def_option[13] = { { mjITEM_SECTION, "Option", 1, nullptr, "AO" },
 		                              { mjITEM_CHECKINT, "Help", 2, &this->help, " #290" },
 		                              { mjITEM_CHECKINT, "Info", 2, &this->info, " #291" },
 		                              { mjITEM_CHECKINT, "Profiler", 2, &this->profiler, " #292" },
@@ -327,6 +323,10 @@ public:
 		                              { mjITEM_CHECKINT, "Fullscreen", 1, &this->fullscreen, " #294" },
 		                              { mjITEM_CHECKINT, "Vertical Sync", 1, &this->vsync, "" },
 		                              { mjITEM_CHECKINT, "Busy Wait", 1, &this->busywait, "" },
+		                              { mjITEM_SELECT, "Spacing", 1, &this->spacing, "Tight\nWide" },
+		                              { mjITEM_SELECT, "Color", 1, &this->color, "Default\nOrange\nWhite\nBlack" },
+		                              { mjITEM_SELECT, "Font", 1, &this->font,
+		                                "50 %\n100 %\n150 %\n200 %\n250 %\n300 %" },
 		                              { mjITEM_END } };
 
 	// simulation section of UI

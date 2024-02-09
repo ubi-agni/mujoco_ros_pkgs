@@ -641,8 +641,12 @@ void MujocoEnv::physicsLoop()
 void MujocoEnv::UpdateModelFlags(const mjOption *opt)
 {
 	std::unique_lock<std::recursive_mutex> lock(physics_thread_mutex_);
+	// Physics flags
 	model_->opt.disableflags = opt->disableflags;
 	model_->opt.enableflags  = opt->enableflags;
+
+	// Enabled actuator groups
+	model_->opt.disableactuator = opt->disableactuator;
 }
 
 void MujocoEnv::startPhysicsLoop()

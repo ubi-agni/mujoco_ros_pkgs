@@ -143,8 +143,8 @@ const mjuiDef defFile[] = {
 // help string
 const char help_content[] = "Space\n"
                             "+  -\n"
-                            "Right arrow\n"
-                            "Left arrow\n"
+                            "Left / Right arrow\n"
+                            "Tab / Shift-Tab\n"
                             "[  ]\n"
                             "Esc\n"
                             "Double-click\n"
@@ -161,24 +161,24 @@ const char help_content[] = "Space\n"
                             "F3\n"
                             "F4\n"
                             "F5\n"
-                            "UI right hold\n"
+                            "UI right-button hold\n"
                             "UI title double-click";
 
 const char help_title[] = "Play / Pause\n"
-                          "Speed up / down\n"
-                          "Step forward\n"
-                          "Step back\n"
+                          "Speed Up / Down\n"
+                          "Step Back / Forward\n"
+                          "Toggle Left / Right UI\n"
                           "Cycle cameras\n"
                           "Free camera\n"
                           "Select\n"
                           "Select parent\n"
-                          "Center\n"
+                          "Center camera\n"
                           "Tracking camera\n"
                           "Zoom\n"
-                          "View rotate\n"
-                          "View translate\n"
-                          "Object rotate\n"
-                          "Object translate\n"
+                          "View Orbit\n"
+                          "View Pan\n"
+                          "Object Rotate\n"
+                          "Object Translate\n"
                           "Help\n"
                           "Info\n"
                           "Profiler\n"
@@ -658,42 +658,50 @@ void UpdateWatch(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *d)
 // make physics section of UI
 void MakePhysicsSection(mujoco_ros::Viewer *viewer, int oldstate)
 {
-	mjOption *opt            = viewer->is_passive_ ? &viewer->scnstate_.model.opt : &viewer->m_->opt;
-	mjuiDef defPhysics[]     = { { mjITEM_SECTION, "Physics", oldstate, nullptr, "AP" },
-		                          { mjITEM_SELECT, "Integrator", 2, &(opt->integrator),
-		                            "Euler\nRK4\nimplicit\nimplicitfast" },
-		                          { mjITEM_SELECT, "Cone", 2, &(opt->cone), "Pyramidal\nElliptic" },
-		                          { mjITEM_SELECT, "Jacobian", 2, &(opt->jacobian), "Dense\nSparse\nAuto" },
-		                          { mjITEM_SELECT, "Solver", 2, &(opt->solver), "PGS\nCG\nNewton" },
-		                          { mjITEM_SEPARATOR, "Algorithmic Parameters", 1 },
-		                          { mjITEM_EDITNUM, "Timestep", 2, &(opt->timestep), "1 0 1" },
-		                          { mjITEM_EDITINT, "Iterations", 2, &(opt->iterations), "1 0 1000" },
-		                          { mjITEM_EDITNUM, "Tolerance", 2, &(opt->tolerance), "1 0 1" },
-		                          { mjITEM_EDITINT, "LS Iter", 2, &(opt->ls_iterations), "1 0 100" },
-		                          { mjITEM_EDITNUM, "LS Tol", 2, &(opt->ls_tolerance), "1 0 0.1" },
-		                          { mjITEM_EDITINT, "Noslip Iter", 2, &(opt->noslip_iterations), "1 0 1000" },
-		                          { mjITEM_EDITNUM, "Noslip Tol", 2, &(opt->noslip_tolerance), "1 0 1" },
-		                          { mjITEM_EDITINT, "MPR Iter", 2, &(opt->mpr_iterations), "1 0 1000" },
-		                          { mjITEM_EDITNUM, "MPR Tol", 2, &(opt->mpr_tolerance), "1 0 1" },
-		                          { mjITEM_EDITNUM, "API Rate", 2, &(opt->apirate), "1 0 1000" },
-		                          { mjITEM_EDITINT, "SDF Iter", 2, &(opt->sdf_iterations), "1 1 20" },
-		                          { mjITEM_EDITINT, "SDF Init", 2, &(opt->sdf_initpoints), "1 1 100" },
-		                          { mjITEM_SEPARATOR, "Physical Parameters", 1 },
-		                          { mjITEM_EDITNUM, "Gravity", 2, opt->gravity, "3" },
-		                          { mjITEM_EDITNUM, "Wind", 2, opt->wind, "3" },
-		                          { mjITEM_EDITNUM, "Magnetic", 2, opt->magnetic, "3" },
-		                          { mjITEM_EDITNUM, "Density", 2, &(opt->density), "1" },
-		                          { mjITEM_EDITNUM, "Viscosity", 2, &(opt->viscosity), "1" },
-		                          { mjITEM_EDITNUM, "Imp Ratio", 2, &(opt->impratio), "1" },
-		                          { mjITEM_SEPARATOR, "Disable Flags", 1 },
-		                          { mjITEM_END } };
-	mjuiDef defEnableFlags[] = { { mjITEM_SEPARATOR, "Enable Flags", 1 }, { mjITEM_END } };
-	mjuiDef defOverride[]    = { { mjITEM_SEPARATOR, "Contact Override", 1 },
-		                          { mjITEM_EDITNUM, "Margin", 2, &(opt->o_margin), "1" },
-		                          { mjITEM_EDITNUM, "Sol Imp", 2, &(opt->o_solimp), "5" },
-		                          { mjITEM_EDITNUM, "Sol Ref", 2, &(opt->o_solref), "2" },
-		                          { mjITEM_EDITNUM, "Friction", 2, &(opt->o_friction), "5" },
-		                          { mjITEM_END } };
+	mjOption *opt                = viewer->is_passive_ ? &viewer->scnstate_.model.opt : &viewer->m_->opt;
+	mjuiDef defPhysics[]         = { { mjITEM_SECTION, "Physics", oldstate, nullptr, "AP" },
+		                              { mjITEM_SELECT, "Integrator", 2, &(opt->integrator),
+		                                "Euler\nRK4\nimplicit\nimplicitfast" },
+		                              { mjITEM_SELECT, "Cone", 2, &(opt->cone), "Pyramidal\nElliptic" },
+		                              { mjITEM_SELECT, "Jacobian", 2, &(opt->jacobian), "Dense\nSparse\nAuto" },
+		                              { mjITEM_SELECT, "Solver", 2, &(opt->solver), "PGS\nCG\nNewton" },
+		                              { mjITEM_SEPARATOR, "Algorithmic Parameters", 1 },
+		                              { mjITEM_EDITNUM, "Timestep", 2, &(opt->timestep), "1 0 1" },
+		                              { mjITEM_EDITINT, "Iterations", 2, &(opt->iterations), "1 0 1000" },
+		                              { mjITEM_EDITNUM, "Tolerance", 2, &(opt->tolerance), "1 0 1" },
+		                              { mjITEM_EDITINT, "LS Iter", 2, &(opt->ls_iterations), "1 0 100" },
+		                              { mjITEM_EDITNUM, "LS Tol", 2, &(opt->ls_tolerance), "1 0 0.1" },
+		                              { mjITEM_EDITINT, "Noslip Iter", 2, &(opt->noslip_iterations), "1 0 1000" },
+		                              { mjITEM_EDITNUM, "Noslip Tol", 2, &(opt->noslip_tolerance), "1 0 1" },
+		                              { mjITEM_EDITINT, "MPR Iter", 2, &(opt->mpr_iterations), "1 0 1000" },
+		                              { mjITEM_EDITNUM, "MPR Tol", 2, &(opt->mpr_tolerance), "1 0 1" },
+		                              { mjITEM_EDITNUM, "API Rate", 2, &(opt->apirate), "1 0 1000" },
+		                              { mjITEM_EDITINT, "SDF Iter", 2, &(opt->sdf_iterations), "1 1 20" },
+		                              { mjITEM_EDITINT, "SDF Init", 2, &(opt->sdf_initpoints), "1 1 100" },
+		                              { mjITEM_SEPARATOR, "Physical Parameters", 1 },
+		                              { mjITEM_EDITNUM, "Gravity", 2, opt->gravity, "3" },
+		                              { mjITEM_EDITNUM, "Wind", 2, opt->wind, "3" },
+		                              { mjITEM_EDITNUM, "Magnetic", 2, opt->magnetic, "3" },
+		                              { mjITEM_EDITNUM, "Density", 2, &(opt->density), "1" },
+		                              { mjITEM_EDITNUM, "Viscosity", 2, &(opt->viscosity), "1" },
+		                              { mjITEM_EDITNUM, "Imp Ratio", 2, &(opt->impratio), "1" },
+		                              { mjITEM_SEPARATOR, "Disable Flags", 1 },
+		                              { mjITEM_END } };
+	mjuiDef defEnableFlags[]     = { { mjITEM_SEPARATOR, "Enable Flags", 1 }, { mjITEM_END } };
+	mjuiDef defOverride[]        = { { mjITEM_SEPARATOR, "Contact Override", 1 },
+		                              { mjITEM_EDITNUM, "Margin", 2, &(opt->o_margin), "1" },
+		                              { mjITEM_EDITNUM, "Sol Imp", 2, &(opt->o_solimp), "5" },
+		                              { mjITEM_EDITNUM, "Sol Ref", 2, &(opt->o_solref), "2" },
+		                              { mjITEM_EDITNUM, "Friction", 2, &(opt->o_friction), "5" },
+		                              { mjITEM_END } };
+	mjuiDef defDisableActuator[] = { { mjITEM_SEPARATOR, "Actuator Group Enable", 1 },
+		                              { mjITEM_CHECKBYTE, "Act Group 0", 2, viewer->enableactuator + 0, " 0" },
+		                              { mjITEM_CHECKBYTE, "Act Group 1", 2, viewer->enableactuator + 1, " 1" },
+		                              { mjITEM_CHECKBYTE, "Act Group 2", 2, viewer->enableactuator + 2, " 2" },
+		                              { mjITEM_CHECKBYTE, "Act Group 3", 2, viewer->enableactuator + 3, " 3" },
+		                              { mjITEM_CHECKBYTE, "Act Group 4", 2, viewer->enableactuator + 4, " 4" },
+		                              { mjITEM_CHECKBYTE, "Act Group 5", 2, viewer->enableactuator + 5, " 5" },
+		                              { mjITEM_END } };
 
 	// add physics
 	mjui_add(&viewer->ui0, defPhysics);
@@ -714,6 +722,9 @@ void MakePhysicsSection(mujoco_ros::Viewer *viewer, int oldstate)
 
 	// add contact override
 	mjui_add(&viewer->ui0, defOverride);
+
+	// add actuator enable/disable
+	mjui_add(&viewer->ui0, defDisableActuator);
 }
 
 // make rendering section of UI
@@ -924,7 +935,7 @@ void MakeJointSection(mujoco_ros::Viewer *viewer, int oldstate)
 
 	// add scalar joints, exit if UI limit reached
 	int itemcnt = 0;
-	for (size_t i = 0; i < viewer->jnt_type_.size() && itemcnt < mjMAXUIITEM; i++)
+	for (size_t i = 0; i < viewer->jnt_type_.size() && itemcnt < mjMAXUIITEM; i++) {
 		if ((viewer->jnt_type_[i] == mjJNT_HINGE || viewer->jnt_type_[i] == mjJNT_SLIDE)) {
 			// skip if joint group is disabled
 			if (!viewer->opt.jointgroup[mjMAX(0, mjMIN(mjNGROUP - 1, viewer->jnt_group_[i]))]) {
@@ -957,6 +968,7 @@ void MakeJointSection(mujoco_ros::Viewer *viewer, int oldstate)
 			mjui_add(&viewer->ui1, defSlider);
 			itemcnt++;
 		}
+	}
 }
 
 // make control section of UI
@@ -969,14 +981,20 @@ void MakeControlSection(mujoco_ros::Viewer *viewer, int oldstate)
 
 	// add section
 	mjui_add(&viewer->ui1, defControl);
-	defSlider[0].state = 2;
 
 	// add controls, exit if UI limit reached (Clear button already added)
 	int itemcnt = 1;
 	for (size_t i = 0; i < viewer->actuator_ctrlrange_.size() && itemcnt < mjMAXUIITEM; i++) {
-		// skip if actuator group is disabled
-		if (!viewer->opt.actuatorgroup[mjMAX(0, mjMIN(mjNGROUP - 1, viewer->actuator_group_[i]))]) {
+		// skip if actuator vis group is disabled
+		int group = viewer->actuator_group_[i];
+		if (!viewer->opt.actuatorgroup[mjMAX(0, mjMIN(mjNGROUP - 1, group))]) {
 			continue;
+		}
+		// grey out if actuator group is disabled
+		if (group >= 0 && group <= 30 && viewer->m_->opt.disableactuator & (1 << group)) {
+			defSlider[0].state = 0;
+		} else {
+			defSlider[0].state = 2;
 		}
 
 		// set data and name
@@ -1123,6 +1141,14 @@ void UpdateSettings(mujoco_ros::Viewer *viewer, const mjModel *m)
 			viewer->pending_.ui_update_physics = true;
 		}
 	}
+	for (int i = 0; i < mjNGROUP; i++) {
+		int enabled = ((m->opt.disableactuator & (1 << i)) == 0);
+		if (viewer->enableactuator[i] != enabled) {
+			viewer->enableactuator[i]          = enabled;
+			viewer->pending_.ui_update_physics = true;
+			viewer->pending_.ui_remake_ctrl    = true;
+		}
+	}
 
 	// camera
 	int old_camera = viewer->camera;
@@ -1176,7 +1202,7 @@ int UiPredicate(int category, void *userdata)
 			return viewer->m_ || viewer->is_passive_;
 
 		case 3: // require model and nkey
-			return !viewer->is_passive_ && viewer->nkey_;
+			return (viewer->m_ || viewer->is_passive_) && viewer->nkey_;
 
 		case 4: // require model and paused
 			return viewer->m_ && !viewer->run;
@@ -1267,28 +1293,18 @@ void UiEvent(mjuiState *state)
 
 		// option section
 		else if (it && it->sectionid == SECT_OPTION) {
-			switch (it->itemid) {
-				case 0: // Spacing
-					viewer->ui0.spacing = mjui_themeSpacing(viewer->spacing);
-					viewer->ui1.spacing = mjui_themeSpacing(viewer->spacing);
-					break;
-
-				case 1: // Color
-					viewer->ui0.color = mjui_themeColor(viewer->color);
-					viewer->ui1.color = mjui_themeColor(viewer->color);
-					break;
-
-				case 2: // Font
-					mjr_changeFont(50 * (viewer->font + 1), &viewer->platform_ui->mjr_context());
-					break;
-
-				case 9: // Full screen
-					viewer->platform_ui->ToggleFullscreen();
-					break;
-
-				case 10: // Vertical sync
-					viewer->platform_ui->SetVSync(viewer->vsync);
-					break;
+			if (it->pdata == &viewer->spacing) {
+				viewer->ui0.spacing = mjui_themeSpacing(viewer->spacing);
+				viewer->ui1.spacing = mjui_themeSpacing(viewer->spacing);
+			} else if (it->pdata == &viewer->color) {
+				viewer->ui0.color = mjui_themeColor(viewer->color);
+				viewer->ui1.color = mjui_themeColor(viewer->color);
+			} else if (it->pdata == &viewer->font) {
+				mjr_changeFont(50 * (viewer->font + 1), &viewer->platform_ui->mjr_context());
+			} else if (it->pdata == &viewer->fullscreen) {
+				viewer->platform_ui->ToggleFullscreen();
+			} else if (it->pdata == &viewer->vsync) {
+				viewer->platform_ui->SetVSync(viewer->vsync);
 			}
 
 			// modify UI
@@ -1338,21 +1354,42 @@ void UiEvent(mjuiState *state)
 
 			// update disable flags in mjOption
 			opt->disableflags = 0;
-			for (int i = 0; i < mjNDISABLE; i++)
+			for (int i = 0; i < mjNDISABLE; i++) {
 				if (viewer->disable[i]) {
 					opt->disableflags |= (1 << i);
 				}
+			}
 
 			// update enable flags in mjOption
 			opt->enableflags = 0;
-			for (int i = 0; i < mjNENABLE; i++)
+			for (int i = 0; i < mjNENABLE; i++) {
 				if (viewer->enable[i]) {
 					opt->enableflags |= (1 << i);
 				}
+			}
+			// update disableactuator bitflag in mjOption
+			bool group_changed = false;
+			for (int i = 0; i < mjNGROUP; i++) {
+				if ((!viewer->enableactuator[i]) != (opt->disableactuator & (1 << i))) {
+					group_changed = true;
+					if (!viewer->enableactuator[i]) {
+						// disable actuator group i
+						opt->disableactuator |= (1 << i);
+					} else {
+						opt->disableactuator &= ~(1 << i);
+					}
+				}
+			}
 
+			if (group_changed) {
+				viewer->pending_.ui_remake_ctrl = true;
+			}
+
+			// Update flags in env
 			if (!viewer->is_passive_) {
 				viewer->env_->UpdateModelFlags(opt);
 			}
+
 		}
 
 		// rendering section
@@ -1399,10 +1436,7 @@ void UiEvent(mjuiState *state)
 
 			// remake control section if actuator group changed
 			if (it->name[0] == 'A' && it->name[1] == 'c') {
-				viewer->ui1.nsect = SECT_CONTROL;
-				MakeControlSection(viewer, viewer->ui1.sect[SECT_CONTROL].state);
-				viewer->ui1.nsect = NSECT1;
-				UiModify(&viewer->ui1, state, &viewer->platform_ui->mjr_context());
+				viewer->pending_.ui_remake_ctrl = true;
 			}
 		}
 
@@ -1565,6 +1599,18 @@ void UiEvent(mjuiState *state)
 					viewer->pending_.ui_update_speed = true;
 				}
 				break;
+
+			case mjKEY_TAB: // toggle left/right UI
+				if (!state->shift) {
+					// loggle left UI
+					viewer->ui0_enable = !viewer->ui0_enable;
+					UiModify(&viewer->ui0, state, &viewer->platform_ui->mjr_context());
+				} else {
+					// loggle right UI
+					viewer->ui1_enable = !viewer->ui1_enable;
+					UiModify(&viewer->ui1, state, &viewer->platform_ui->mjr_context());
+				}
+				break;
 		}
 
 		return;
@@ -1723,7 +1769,7 @@ void Viewer::Sync()
 			range.emplace(m_->actuator_ctrlrange[2 * i], m_->actuator_ctrlrange[2 * i + 1]);
 		}
 		if (actuator_ctrlrange_[i] != range) {
-			pending_.ui_update_ctrl = true;
+			pending_.ui_remake_ctrl = true;
 			actuator_ctrlrange_[i].swap(range);
 		}
 	}
@@ -1784,6 +1830,7 @@ void Viewer::Sync()
 		X(mpr_iterations);
 		X(disableflags);
 		X(enableflags);
+		X(disableactuator);
 		X(sdf_initpoints);
 		X(sdf_iterations);
 #undef X
@@ -2351,6 +2398,16 @@ void Viewer::Render()
 			mjui_update(SECT_JOINT, -1, &this->ui1, &this->uistate, &this->platform_ui->mjr_context());
 		}
 		pending_.ui_update_joint = false;
+	}
+
+	if (pending_.ui_remake_ctrl) {
+		if (this->ui1_enable && this->ui1.sect[SECT_CONTROL].state) {
+			this->ui1.nsect = SECT_CONTROL;
+			MakeControlSection(this, this->ui1.sect[SECT_CONTROL].state);
+			this->ui1.nsect = NSECT1;
+			UiModify(&this->ui1, &this->uistate, &this->platform_ui->mjr_context());
+		}
+		pending_.ui_remake_ctrl = false;
 	}
 
 	if (pending_.ui_update_ctrl) {
