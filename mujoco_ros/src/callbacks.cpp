@@ -40,7 +40,6 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Twist.h>
 
-#include <mujoco_ros_msgs/GetStateUint.h>
 #include <mujoco_ros/util.h>
 
 namespace mujoco_ros {
@@ -69,22 +68,8 @@ void MujocoEnv::setupServices()
 		    loadInitialJointStates();
 		    return true;
 	    }));
-	service_servers_.emplace_back(
-	    nh_->advertiseService<mujoco_ros_msgs::GetStateUint::Request, mujoco_ros_msgs::GetStateUint::Response>(
-	        "get_loading_request_state", [&](auto /*&req*/, auto &res) {
-		        int status      = getOperationalStatus();
-		        res.state.value = static_cast<decltype(res.state.value)>(status);
-
-		        std::string description;
-		        if (status == 0)
-			        description = "Sim ready";
-		        else if (status == 1)
-			        description = "Loading in progress";
-		        else if (status >= 2)
-			        description = "Loading issued";
-		        res.state.description = description;
-		        return true;
-	        }));
+	service_servers_.emplace_back(nh_->advertiseService("get_loading_request_state", &MujocoEnv::getStateUintCB, this));
+	service_servers_.emplace_back(nh_->advertiseService("get_sim_info", &MujocoEnv::getSimInfoCB, this));
 
 	action_step_ = std::make_unique<actionlib::SimpleActionServer<mujoco_ros_msgs::StepAction>>(
 	    *nh_, "step", boost::bind(&MujocoEnv::onStepGoal, this, boost::placeholders::_1), false);
@@ -880,6 +865,40 @@ bool MujocoEnv::getEqualityConstraintParametersArrayCB(mujoco_ros_msgs::GetEqual
 		resp.success        = false;
 	}
 
+	return true;
+}
+
+bool MujocoEnv::getStateUintCB(mujoco_ros_msgs::GetStateUint::Request & /*req*/,
+                               mujoco_ros_msgs::GetStateUint::Response &resp)
+{
+	int status       = getOperationalStatus();
+	resp.state.value = static_cast<decltype(resp.state.value)>(status);
+
+	std::string description;
+	if (status == 0)
+		description = "Sim ready";
+	else if (status == 1)
+		description = "Loading in progress";
+	else if (status >= 2)
+		description = "Loading issued";
+	resp.state.description = description;
+	return true;
+}
+
+bool MujocoEnv::getSimInfoCB(mujoco_ros_msgs::GetSimInfo::Request & /*req*/,
+                             mujoco_ros_msgs::GetSimInfo::Response &resp)
+{
+	mujoco_ros_msgs::GetStateUint state_srv;
+	getStateUintCB(state_srv.request, state_srv.response);
+
+	resp.state.model_path        = filename_;
+	resp.state.model_valid       = sim_state_.model_valid;
+	resp.state.load_count        = sim_state_.load_count;
+	resp.state.loading_state     = state_srv.response.state;
+	resp.state.paused            = !settings_.run.load();
+	resp.state.pending_sim_steps = settings_.env_steps_request.load();
+	resp.state.rt_measured       = 1.f / sim_state_.measured_slowdown;
+	resp.state.rt_setting        = percentRealTime[settings_.real_time_index] / 100.f;
 	return true;
 }
 

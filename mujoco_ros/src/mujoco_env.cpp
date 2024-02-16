@@ -213,6 +213,7 @@ void MujocoEnv::eventLoop()
 				mnew = nullptr;
 				dnew = nullptr;
 				settings_.load_request.store(0);
+				sim_state_.load_count += 1;
 			} else if (settings_.load_request.load() >= 2) { // Loading mnew and dnew requested
 				ROS_DEBUG("Initializing queued model and data");
 				if (initModelFromQueue()) {
@@ -225,6 +226,7 @@ void MujocoEnv::eventLoop()
 					mnew = nullptr;
 					dnew = nullptr;
 					settings_.load_request.store(0);
+					sim_state_.load_count += 1;
 				}
 			}
 

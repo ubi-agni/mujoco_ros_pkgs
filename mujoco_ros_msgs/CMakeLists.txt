@@ -21,6 +21,7 @@ add_message_files(
     MocapState.msg
     EqualityConstraintParameters.msg
     EqualityConstraintType.msg
+    SimInfo.msg
 )
 
 add_service_files(
@@ -40,6 +41,7 @@ add_service_files(
     GetGravity.srv
     Reload.srv
     SetMocapState.srv
+    GetSimInfo.srv
 )
 
 add_action_files(

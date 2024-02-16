@@ -75,6 +75,8 @@
 #include <mujoco_ros_msgs/SetEqualityConstraintParameters.h>
 #include <mujoco_ros_msgs/SetGravity.h>
 #include <mujoco_ros_msgs/GetGravity.h>
+#include <mujoco_ros_msgs/GetStateUint.h>
+#include <mujoco_ros_msgs/GetSimInfo.h>
 
 #include <geometry_msgs/TransformStamped.h>
 #include <tf2_ros/static_transform_broadcaster.h>
@@ -197,6 +199,7 @@ public:
 	{
 		float measured_slowdown = 1.0;
 		bool model_valid        = false;
+		uint load_count         = 0;
 	} sim_state_;
 
 	std::vector<MujocoPluginPtr> const &getPlugins() const { return plugins_; }
@@ -331,6 +334,10 @@ protected:
 	bool getEqualityConstraintParametersArrayCB(mujoco_ros_msgs::GetEqualityConstraintParameters::Request &req,
 	                                            mujoco_ros_msgs::GetEqualityConstraintParameters::Response &resp);
 	bool getEqualityConstraintParameters(mujoco_ros_msgs::EqualityConstraintParameters &parameters);
+
+	bool getStateUintCB(mujoco_ros_msgs::GetStateUint::Request &req, mujoco_ros_msgs::GetStateUint::Response &resp);
+	bool getSimInfoCB(mujoco_ros_msgs::GetSimInfo::Request &req, mujoco_ros_msgs::GetSimInfo::Response &resp);
+
 	// Action calls
 	void onStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal);
 

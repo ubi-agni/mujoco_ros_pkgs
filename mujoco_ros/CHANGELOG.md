@@ -5,6 +5,7 @@
 * Mocap plugin to programmatically control mocap bodies.
 * Services to alter equality constraints. Note that by MuJoCo's design no new constraints can be added, though.
 * The Server node now gives a more verbose error message on failure due to mismatched header and library versions.
+* Service to get basic simulation state info (loaded model path, model valid, load counter, loading state, paused, pending manual steps, measured rt factor, and rt factor setting).
 
 ### Fixed
 * Repaired SIGINT handler callback. `C-c` in the roslaunch terminal now shuts down the MuJoCo ROS node instead of escalating to SIGTERM.
