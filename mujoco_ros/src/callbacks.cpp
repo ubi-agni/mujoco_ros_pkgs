@@ -82,6 +82,7 @@ void MujocoEnv::setupServices()
 	    }));
 	service_servers_.emplace_back(nh_->advertiseService("get_loading_request_state", &MujocoEnv::getStateUintCB, this));
 	service_servers_.emplace_back(nh_->advertiseService("get_sim_info", &MujocoEnv::getSimInfoCB, this));
+	service_servers_.emplace_back(nh_->advertiseService("set_rt_factor", &MujocoEnv::setRTFactorCB, this));
 
 	action_step_ = std::make_unique<actionlib::SimpleActionServer<mujoco_ros_msgs::StepAction>>(
 	    *nh_, "step", boost::bind(&MujocoEnv::onStepGoal, this, boost::placeholders::_1), false);
@@ -877,6 +878,59 @@ bool MujocoEnv::getSimInfoCB(mujoco_ros_msgs::GetSimInfo::Request & /*req*/,
 	resp.state.pending_sim_steps = settings_.env_steps_request.load();
 	resp.state.rt_measured       = 1.f / sim_state_.measured_slowdown;
 	resp.state.rt_setting        = percentRealTime[settings_.real_time_index] / 100.f;
+	return true;
+}
+
+// Helper function to retrieve the real-time factor closest to the requested value
+// adapted from https://www.geeksforgeeks.org/find-closest-number-array/
+float findClosestRecursive(const float arr[], uint left, uint right, float target)
+{
+	if (left == right) {
+		return arr[left];
+	}
+
+	uint mid            = (left + right) / 2;
+	float left_closest  = findClosestRecursive(arr, left, mid, target);
+	float right_closest = findClosestRecursive(arr, mid + 1, right, target);
+
+	if (abs(left_closest - target) <= abs(right_closest - target)) {
+		return left_closest;
+	} else {
+		return right_closest;
+	}
+}
+
+bool MujocoEnv::setRTFactorCB(mujoco_ros_msgs::SetFloat::Request &req, mujoco_ros_msgs::SetFloat::Response &resp)
+{
+	if (!verifyAdminHash(req.admin_hash)) {
+		ROS_ERROR("Hash mismatch, no permission to set real-time factor!");
+		resp.success = false;
+		return true;
+	}
+	resp.success = true;
+
+	if (req.value < 0) {
+		settings_.real_time_index = 0;
+		settings_.speed_changed   = true;
+		resp.success              = true;
+		return true;
+	}
+
+	// find value closest to requested
+	size_t num_clicks = sizeof(percentRealTime) / sizeof(percentRealTime[0]);
+	float closest =
+	    findClosestRecursive(percentRealTime, 1, num_clicks - 1,
+	                         100.f * static_cast<float>(req.value)); // start at 1 to not go to unbound mode if the value
+	                                                                 // is too small (already handled above)
+
+	ROS_WARN_STREAM_COND(fabs(closest / 100.f - static_cast<float>(req.value)) > 0.001f,
+	                     "Requested factor '" << req.value
+	                                          << "' not available, setting to closest available: " << closest / 100.f);
+
+	// get index of closest value
+	auto it                   = std::find(std::next(std::begin(percentRealTime)), std::end(percentRealTime), closest);
+	settings_.real_time_index = std::distance(std::begin(percentRealTime), it);
+	settings_.speed_changed   = true;
 	return true;
 }
 
