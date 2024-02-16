@@ -170,7 +170,7 @@ public:
 		bool use_sim_time     = true;
 
 		// Sim speed
-		int real_time_index = 1;
+		int real_time_index = 8;
 		int busywait        = 0;
 
 		// Mode
@@ -237,10 +237,11 @@ public:
 	 */
 	int getOperationalStatus();
 
-	static constexpr float percentRealTime[] = { -1, // unbound
-		                                          100,  80,   66,   50,   40,   33,   25,   20,   16,   13, 10,
-		                                          8,    6.6f, 5.0f, 4,    3.3f, 2.5f, 2,    1.6f, 1.3f, 1,  .8f,
-		                                          .66f, .5f,  .4f,  .33f, .25f, .2f,  .16f, .13f, .1f };
+	static constexpr float percentRealTime[] = {
+		-1, // unbound
+		2000, 1000, 800, 600,  500,  400, 200,  150,  100, 80,  66,   50,  40,  33,   25,   20,  16,   13,   10, 8,
+		6.6f, 5.0f, 4,   3.3f, 2.5f, 2,   1.6f, 1.3f, 1,   .8f, .66f, .5f, .4f, .33f, .25f, .2f, .16f, .13f, .1f
+	};
 
 	static MujocoEnv *instance;
 	static void proxyControlCB(const mjModel * /*m*/, mjData * /*d*/)
