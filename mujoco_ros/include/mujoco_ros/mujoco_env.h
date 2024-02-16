@@ -315,6 +315,8 @@ protected:
 	std::vector<ros::ServiceServer> service_servers_;
 	std::unique_ptr<actionlib::SimpleActionServer<mujoco_ros_msgs::StepAction>> action_step_;
 
+	bool verifyAdminHash(const std::string &hash);
+
 	void setupServices();
 	bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &res);
 	bool shutdownCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);

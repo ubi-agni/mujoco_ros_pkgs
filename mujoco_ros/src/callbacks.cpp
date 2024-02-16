@@ -45,6 +45,18 @@
 namespace mujoco_ros {
 namespace mju = ::mujoco::sample_util;
 
+bool MujocoEnv::verifyAdminHash(const std::string &hash)
+{
+	if (settings_.eval_mode) {
+		ROS_DEBUG_NAMED("mujoco", "Evaluation mode is active. Checking hash validity");
+		if (settings_.admin_hash != hash) {
+			return false;
+		}
+		ROS_DEBUG_NAMED("mujoco", "Hash valid, request authorized.");
+	}
+	return true;
+}
+
 void MujocoEnv::setupServices()
 {
 	service_servers_.emplace_back(nh_->advertiseService("set_pause", &MujocoEnv::setPauseCB, this));
@@ -195,16 +207,12 @@ bool MujocoEnv::resetCB(std_srvs::Empty::Request & /*req*/, std_srvs::Empty::Res
 bool MujocoEnv::setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req,
                                mujoco_ros_msgs::SetBodyState::Response &resp)
 {
-	if (settings_.eval_mode) {
-		ROS_DEBUG_NAMED("mujoco", "Evaluation mode is active. Checking hash validity");
-		if (settings_.admin_hash != req.admin_hash) {
-			ROS_ERROR_NAMED("mujoco", "Hash mismatch, no permission to set body state!");
-			resp.success = false;
-			resp.status_message =
-			    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to set body state!");
-			return true;
-		}
-		ROS_DEBUG_NAMED("mujoco", "Hash valid, request authorized.");
+	if (!verifyAdminHash(req.admin_hash)) {
+		ROS_ERROR_NAMED("mujoco", "Hash mismatch, no permission to set body state!");
+		resp.success = false;
+		resp.status_message =
+		    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to set body state!");
+		return true;
 	}
 
 	std::string full_error_msg("");
@@ -357,16 +365,12 @@ bool MujocoEnv::setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req,
 bool MujocoEnv::getBodyStateCB(mujoco_ros_msgs::GetBodyState::Request &req,
                                mujoco_ros_msgs::GetBodyState::Response &resp)
 {
-	if (settings_.eval_mode) {
-		ROS_DEBUG_NAMED("mujoco", "Evaluation mode is active. Checking hash validity");
-		if (settings_.admin_hash != req.admin_hash) {
-			ROS_ERROR_NAMED("mujoco", "Hash mismatch, no permission to get body state!");
-			resp.status_message =
-			    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to get body state!");
-			resp.success = false;
-			return true;
-		}
-		ROS_DEBUG_NAMED("mujoco", "Hash valid, request authorized.");
+	if (!verifyAdminHash(req.admin_hash)) {
+		ROS_ERROR_NAMED("mujoco", "Hash mismatch, no permission to get body state!");
+		resp.status_message =
+		    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to get body state!");
+		resp.success = false;
+		return true;
 	}
 
 	resp.success = true;
@@ -446,16 +450,11 @@ bool MujocoEnv::getBodyStateCB(mujoco_ros_msgs::GetBodyState::Request &req,
 
 bool MujocoEnv::setGravityCB(mujoco_ros_msgs::SetGravity::Request &req, mujoco_ros_msgs::SetGravity::Response &resp)
 {
-	if (settings_.eval_mode) {
-		ROS_DEBUG("Evaluation mode is active. Checking hash validity");
-		if (settings_.admin_hash != req.admin_hash) {
-			ROS_ERROR("Hash mismatch, no permission to set gravity!");
-			resp.status_message =
-			    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to set gravity!");
-			resp.success = false;
-			return true;
-		}
-		ROS_DEBUG("Hash valid, request authorized.");
+	if (!verifyAdminHash(req.admin_hash)) {
+		ROS_ERROR("Hash mismatch, no permission to set gravity!");
+		resp.status_message = static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to set gravity!");
+		resp.success        = false;
+		return true;
 	}
 
 	// Lock mutex to set data within one step
@@ -469,16 +468,11 @@ bool MujocoEnv::setGravityCB(mujoco_ros_msgs::SetGravity::Request &req, mujoco_r
 
 bool MujocoEnv::getGravityCB(mujoco_ros_msgs::GetGravity::Request &req, mujoco_ros_msgs::GetGravity::Response &resp)
 {
-	if (settings_.eval_mode) {
-		ROS_DEBUG("Evaluation mode is active. Checking hash validity");
-		if (settings_.admin_hash != req.admin_hash) {
-			ROS_ERROR("Hash mismatch, no permission to get gravity!");
-			resp.status_message =
-			    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to get gravity!");
-			resp.success = false;
-			return true;
-		}
-		ROS_DEBUG("Hash valid, request authorized.");
+	if (!verifyAdminHash(req.admin_hash)) {
+		ROS_ERROR("Hash mismatch, no permission to get gravity!");
+		resp.status_message = static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to get gravity!");
+		resp.success        = false;
+		return true;
 	}
 
 	// Lock mutex to get data within one step
@@ -493,16 +487,12 @@ bool MujocoEnv::getGravityCB(mujoco_ros_msgs::GetGravity::Request &req, mujoco_r
 bool MujocoEnv::setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request &req,
                                     mujoco_ros_msgs::SetGeomProperties::Response &resp)
 {
-	if (settings_.eval_mode) {
-		ROS_DEBUG("Evaluation mode is active. Checking hash validity");
-		if (settings_.admin_hash != req.admin_hash) {
-			ROS_ERROR("Hash mismatch, no permission to set geom properties!");
-			resp.status_message =
-			    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to set geom properties!");
-			resp.success = false;
-			return true;
-		}
-		ROS_DEBUG("Hash valid, request authorized.");
+	if (!verifyAdminHash(req.admin_hash)) {
+		ROS_ERROR("Hash mismatch, no permission to set geom properties!");
+		resp.status_message =
+		    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to set geom properties!");
+		resp.success = false;
+		return true;
 	}
 
 	int geom_id = mj_name2id(model_.get(), mjOBJ_GEOM, req.properties.name.c_str());
@@ -579,16 +569,12 @@ bool MujocoEnv::setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request 
 bool MujocoEnv::getGeomPropertiesCB(mujoco_ros_msgs::GetGeomProperties::Request &req,
                                     mujoco_ros_msgs::GetGeomProperties::Response &resp)
 {
-	if (settings_.eval_mode) {
-		ROS_DEBUG("Evaluation mode is active. Checking hash validity");
-		if (settings_.admin_hash != req.admin_hash) {
-			ROS_ERROR("Hash mismatch, no permission to get geom properties!");
-			resp.status_message =
-			    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to get geom properties!");
-			resp.success = false;
-			return true;
-		}
-		ROS_DEBUG("Hash valid, request authorized.");
+	if (!verifyAdminHash(req.admin_hash)) {
+		ROS_ERROR("Hash mismatch, no permission to get geom properties!");
+		resp.status_message =
+		    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to get geom properties!");
+		resp.success = false;
+		return true;
 	}
 
 	int geom_id = mj_name2id(model_.get(), mjOBJ_GEOM, req.geom_name.c_str());
@@ -725,16 +711,12 @@ bool MujocoEnv::setEqualityConstraintParameters(const mujoco_ros_msgs::EqualityC
 bool MujocoEnv::setEqualityConstraintParametersArrayCB(mujoco_ros_msgs::SetEqualityConstraintParameters::Request &req,
                                                        mujoco_ros_msgs::SetEqualityConstraintParameters::Response &resp)
 {
-	if (settings_.eval_mode) {
-		ROS_DEBUG("Evaluation mode is active. Checking hash validity");
-		if (settings_.admin_hash != req.admin_hash) {
-			ROS_ERROR("Hash mismatch, no permission to get geom properties!");
-			resp.status_message =
-			    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to get geom properties!");
-			resp.success = false;
-			return true;
-		}
-		ROS_DEBUG("Hash valid, request authorized.");
+	if (!verifyAdminHash(req.admin_hash)) {
+		ROS_ERROR("Hash mismatch, no permission to set equality constraints!");
+		resp.status_message =
+		    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to set equality constraints!");
+		resp.success = false;
+		return true;
 	}
 	resp.success = true;
 
@@ -830,16 +812,12 @@ bool MujocoEnv::getEqualityConstraintParameters(mujoco_ros_msgs::EqualityConstra
 bool MujocoEnv::getEqualityConstraintParametersArrayCB(mujoco_ros_msgs::GetEqualityConstraintParameters::Request &req,
                                                        mujoco_ros_msgs::GetEqualityConstraintParameters::Response &resp)
 {
-	if (settings_.eval_mode) {
-		ROS_DEBUG("Evaluation mode is active. Checking hash validity");
-		if (settings_.admin_hash != req.admin_hash) {
-			ROS_ERROR("Hash mismatch, no permission to get geom properties!");
-			resp.status_message =
-			    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to get geom properties!");
-			resp.success = false;
-			return true;
-		}
-		ROS_DEBUG("Hash valid, request authorized.");
+	if (!verifyAdminHash(req.admin_hash)) {
+		ROS_ERROR("Hash mismatch, no permission to get equality constraints!");
+		resp.status_message =
+		    static_cast<decltype(resp.status_message)>("Hash mismatch, no permission to get equality constraints!");
+		resp.success = false;
+		return true;
 	}
 	resp.success = true;
 

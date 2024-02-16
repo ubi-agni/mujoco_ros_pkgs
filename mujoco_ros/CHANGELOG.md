@@ -19,6 +19,7 @@
 * * Added [jointactuatorfrc](https://mujoco.readthedocs.io/en/2.3.7/XMLreference.html#sensor-jointactuatorfrc) support in `mujoco_ros_sensors`.
 * Updated to clang-tidy-14 (default on jammy).
 * Added catkin_lint to pre-commit (i.e. format workflow).
+* Introduced helper function to validate service call permissions in evaluation mode.
 
 Contributors: @DavidPL1, @acodeodyssey
 
