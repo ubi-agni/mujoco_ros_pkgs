@@ -76,6 +76,41 @@ public:
 
 using SensorConfigPtr = std::unique_ptr<SensorConfig>;
 
+struct WrenchSensorConfig
+{
+public:
+	WrenchSensorConfig() : force_config(), torque_config(){};
+	WrenchSensorConfig(const int force_sensor_id, const SensorConfigPtr force_config, const int torque_sensor_id,
+	                   const SensorConfigPtr torque_config)
+	    : force_sensor_id(force_sensor_id)
+	    , force_config(force_config)
+	    , torque_sensor_id(torque_sensor_id)
+	    , torque_config(torque_config){};
+
+	void setFrameId(const std::string frame_id)
+	{
+		this->force_config->setFrameId(frame_id);
+		this->torque_config->setFrameId(frame_id);
+	};
+
+	void registerPub(ros::Publisher pub) { value_pub = pub; };
+
+	void registerGTPub(ros::Publisher pub) { gt_pub = pub; };
+
+	ros::Publisher gt_pub;
+	ros::Publisher value_pub;
+
+	SensorConfigPtr force_config;
+	SensorConfigPtr torque_config;
+
+	int force_sensor_id;
+	int torque_sensor_id;
+
+	uint8_t is_set = 0; // 0 for unset, otherwise binary code for combination of dims
+};
+
+typedef std::shared_ptr<WrenchSensorConfig> WrenchSensorConfigPtr;
+
 class MujocoRosSensorsPlugin : public mujoco_ros::MujocoPlugin
 {
 public:
@@ -95,6 +130,9 @@ private:
 	std::normal_distribution<double> noise_dist;
 
 	std::map<std::string, SensorConfigPtr> sensor_map_;
+
+	std::vector<std::string> wrench_sensor_names_;
+	std::map<std::string, WrenchSensorConfigPtr> wrench_sensor_map_;
 
 	ros::ServiceServer register_noise_model_server_;
 
