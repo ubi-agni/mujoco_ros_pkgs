@@ -33,7 +33,7 @@ jobs:
 
     steps:
       - name: Check for apt updates
-        uses: rhaschke/docker-run-action@v4
+        uses: rhaschke/docker-run-action@main
         continue-on-error: true
         id: apt
         with:
