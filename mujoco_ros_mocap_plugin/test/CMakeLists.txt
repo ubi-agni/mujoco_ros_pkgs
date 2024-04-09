@@ -11,6 +11,6 @@ add_dependencies(mocap_test
 )
 
 target_link_libraries(mocap_test
-  ${catkin_LIBRARIES}
   ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
 )
