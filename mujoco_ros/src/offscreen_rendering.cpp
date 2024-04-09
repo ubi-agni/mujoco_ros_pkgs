@@ -101,9 +101,9 @@ void MujocoEnv::initializeRenderResources()
 		max_res_h = std::max(res_h, max_res_h);
 		max_res_w = std::max(res_w, max_res_w);
 
-		offscreen_.cams.emplace_back(
-		    std::make_unique<rendering::OffscreenCamera>(cam_id, cam_name, res_w, res_h, stream_type, use_segid, pub_freq,
-		                                                 &it, *nh_.get(), model_.get(), data_.get(), this));
+		offscreen_.cams.emplace_back(std::make_unique<rendering::OffscreenCamera>(cam_id, cam_name, res_w, res_h,
+		                                                                          stream_type, use_segid, pub_freq, &it,
+		                                                                          *nh_, model_.get(), data_.get(), this));
 	}
 
 	if (model_->vis.global.offheight < max_res_h || model_->vis.global.offwidth < max_res_w) {
