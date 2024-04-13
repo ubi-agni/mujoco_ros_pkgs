@@ -9,6 +9,8 @@
 ### Fixed
 * Repaired SIGINT handler callback. `C-c` in the roslaunch terminal now shuts down the MuJoCo ROS node instead of escalating to SIGTERM.
 * Added actionlib to the list of mujoco_ros' dependencies.
+* Updated CI actions (#33).
+* Fixed linking order for mujoco_ros_mocap tests (#33).
 
 ### Changed
 * replaced `boost::shared_ptr` with `std::shared_ptr` or `std::unique_ptr` wherever possible (ROS 1 fast intra-process message-passing requires boost::shared_ptr).
