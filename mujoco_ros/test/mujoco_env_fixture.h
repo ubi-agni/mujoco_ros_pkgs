@@ -106,7 +106,7 @@ class BaseEnvFixture : public ::testing::Test
 {
 protected:
 	std::unique_ptr<ros::NodeHandle> nh;
-	std::unique_ptr<MujocoEnvTestWrapper> env_ptr;
+	std::unique_ptr<MujocoEnvTestWrapper> env_ptr = nullptr;
 
 	void SetUp() override
 	{

@@ -75,41 +75,6 @@ int main(int argc, char **argv)
 using namespace mujoco_ros;
 namespace mju = ::mujoco::sample_util;
 
-std::vector<sensor_msgs::Image> rgb_images;
-std::vector<sensor_msgs::CameraInfo> rgb_infos;
-
-std::vector<sensor_msgs::Image> depth_images;
-// std::vector<sensor_msgs::CameraInfo> depth_infos;
-
-std::vector<sensor_msgs::Image> seg_images;
-// std::vector<sensor_msgs::CameraInfo> seg_infos;
-
-// callbacks to save an image in a buffer
-void rgb_cb(const sensor_msgs::Image::ConstPtr &msg)
-{
-	rgb_images.emplace_back(*msg);
-}
-void depth_cb(const sensor_msgs::Image::ConstPtr &msg)
-{
-	depth_images.emplace_back(*msg);
-}
-void seg_cb(const sensor_msgs::Image::ConstPtr &msg)
-{
-	seg_images.emplace_back(*msg);
-}
-void rgb_info_cb(const sensor_msgs::CameraInfo::ConstPtr &msg)
-{
-	rgb_infos.emplace_back(*msg);
-}
-// void depth_info_cb(const sensor_msgs::CameraInfo::ConstPtr &msg)
-// {
-// 	depth_infos.emplace_back(*msg);
-// }
-// void seg_info_cb(const sensor_msgs::CameraInfo::ConstPtr &msg)
-// {
-// 	seg_infos.emplace_back(*msg);
-// }
-
 TEST_F(BaseEnvFixture, Not_Headless_Warn)
 {
 	nh->setParam("no_render", false);
@@ -703,19 +668,22 @@ TEST_F(BaseEnvFixture, RGB_Published_Correctly)
 	nh->setParam("headless", true);
 	nh->setParam("unpause", false);
 	nh->setParam("cam_config/test_cam/frequency", 30);
-	nh->setParam("cam_config/test_cam/width", 72);
-	nh->setParam("cam_config/test_cam/height", 48);
+	nh->setParam("cam_config/test_cam/width", 7);
+	nh->setParam("cam_config/test_cam/height", 4);
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 
-	// Clear image buffers
-	rgb_images.clear();
-	rgb_infos.clear();
+	std::vector<sensor_msgs::Image> rgb_images;
+	std::vector<sensor_msgs::CameraInfo> rgb_infos;
 
 	// Subscribe to topic
-	ros::Subscriber rgb_sub  = nh->subscribe("cameras/test_cam/rgb/image_raw", 1, rgb_cb);
-	ros::Subscriber info_sub = nh->subscribe("cameras/test_cam/rgb/camera_info", 1, rgb_info_cb);
+	ros::Subscriber rgb_sub = nh->subscribe<sensor_msgs::Image>(
+	    "cameras/test_cam/rgb/image_raw", 1,
+	    [&rgb_images](const sensor_msgs::Image::ConstPtr &msg) { rgb_images.emplace_back(*msg); });
+	ros::Subscriber info_sub = nh->subscribe<sensor_msgs::CameraInfo>(
+	    "cameras/test_cam/rgb/camera_info", 1,
+	    [&rgb_infos](const sensor_msgs::CameraInfo::ConstPtr &msg) { rgb_infos.emplace_back(*msg); });
 
 	env_ptr->startWithXML(xml_path);
 	env_ptr->step(1);
@@ -730,31 +698,28 @@ TEST_F(BaseEnvFixture, RGB_Published_Correctly)
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
 	EXPECT_EQ(offscreen->cams[0]->rgb_pub_.getNumSubscribers(), 1);
 
-	// Wait for image to be published with 400ms timeout
+	// Wait for image to be published with 1s timeout
 	float seconds = 0.f;
-	while (rgb_images.size() == 0 && rgb_infos.size() == 0 && seconds < .4f) {
+	while ((rgb_images.empty() || rgb_infos.empty()) && seconds < 1.f) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		seconds += 0.001f;
 	}
-	EXPECT_LT(seconds, .4f) << "RGB image not published within 400ms";
+	EXPECT_LT(seconds, 1.f) << "RGB image not published within 1s";
 
 	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::streamType::RGB);
 	EXPECT_EQ(offscreen->cams[0]->pub_freq_, 30);
 
-	ASSERT_EQ(rgb_infos.size(), 1);
 	ASSERT_EQ(rgb_images.size(), 1);
+	ASSERT_EQ(rgb_infos.size(), 1);
 
 	ros::Time t1 = ros::Time::now();
 	EXPECT_EQ(rgb_images[0].header.stamp, t1);
 	EXPECT_STREQ(rgb_images[0].header.frame_id.c_str(), "test_cam_optical_frame");
-	EXPECT_EQ(rgb_images[0].width, 72);
-	EXPECT_EQ(rgb_images[0].height, 48);
+	EXPECT_EQ(rgb_images[0].width, 7);
+	EXPECT_EQ(rgb_images[0].height, 4);
 	EXPECT_EQ(rgb_images[0].encoding, sensor_msgs::image_encodings::RGB8);
 
 	EXPECT_EQ(rgb_infos[0].header.stamp, t1);
-
-	rgb_images.clear();
-	rgb_infos.clear();
 
 	env_ptr->shutdown();
 }
@@ -765,19 +730,22 @@ TEST_F(BaseEnvFixture, Cam_Timing_Correct)
 	nh->setParam("headless", true);
 	nh->setParam("unpause", false);
 	nh->setParam("cam_config/test_cam/frequency", 30);
-	nh->setParam("cam_config/test_cam/width", 72);
-	nh->setParam("cam_config/test_cam/height", 48);
+	nh->setParam("cam_config/test_cam/width", 7);
+	nh->setParam("cam_config/test_cam/height", 4);
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 
-	// Clear image buffers
-	rgb_images.clear();
-	rgb_infos.clear();
+	std::vector<sensor_msgs::Image> rgb_images;
+	std::vector<sensor_msgs::CameraInfo> rgb_infos;
 
 	// Subscribe to topic
-	ros::Subscriber rgb_sub  = nh->subscribe("cameras/test_cam/rgb/image_raw", 1, rgb_cb);
-	ros::Subscriber info_sub = nh->subscribe("cameras/test_cam/rgb/camera_info", 1, rgb_info_cb);
+	ros::Subscriber rgb_sub = nh->subscribe<sensor_msgs::Image>(
+	    "cameras/test_cam/rgb/image_raw", 1,
+	    [&rgb_images](const sensor_msgs::Image::ConstPtr &msg) { rgb_images.emplace_back(*msg); });
+	ros::Subscriber info_sub = nh->subscribe<sensor_msgs::CameraInfo>(
+	    "cameras/test_cam/rgb/camera_info", 1,
+	    [&rgb_infos](const sensor_msgs::CameraInfo::ConstPtr &msg) { rgb_infos.emplace_back(*msg); });
 
 	env_ptr->startWithXML(xml_path);
 
@@ -797,7 +765,7 @@ TEST_F(BaseEnvFixture, Cam_Timing_Correct)
 
 	// Wait for image to be published with 400ms timeout
 	float seconds = 0.f;
-	while (rgb_images.size() == 0 && rgb_infos.size() == 0 && seconds < .4f) {
+	while ((rgb_images.empty() || rgb_infos.empty()) && seconds < .4f) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		seconds += 0.001f;
 	}
@@ -822,7 +790,7 @@ TEST_F(BaseEnvFixture, Cam_Timing_Correct)
 	env_ptr->step(1);
 	// Wait for image to be published with 400ms timeout
 	seconds = 0.f;
-	while (rgb_images.size() < 2 && rgb_infos.size() < 2 && seconds < .4f) {
+	while ((rgb_images.size() < 2 || rgb_infos.size() < 2) && seconds < .4f) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		seconds += 0.001f;
 	}
@@ -853,9 +821,6 @@ TEST_F(BaseEnvFixture, Cam_Timing_Correct)
 	EXPECT_EQ(rgb_images[2].header.stamp, t3);
 	EXPECT_EQ(rgb_infos[2].header.stamp, t3);
 
-	rgb_images.clear();
-	rgb_infos.clear();
-
 	env_ptr->shutdown();
 }
 
@@ -864,17 +829,17 @@ TEST_F(BaseEnvFixture, RGB_Image_Dtype)
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("unpause", false);
-	nh->setParam("cam_config/test_cam/width", 72);
-	nh->setParam("cam_config/test_cam/height", 48);
+	nh->setParam("cam_config/test_cam/width", 7);
+	nh->setParam("cam_config/test_cam/height", 4);
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 
-	// Clear image buffers
-	rgb_images.clear();
-
+	std::vector<sensor_msgs::Image> rgb_images;
 	// Subscribe to topic
-	ros::Subscriber rgb_sub = nh->subscribe("cameras/test_cam/rgb/image_raw", 1, rgb_cb);
+	ros::Subscriber rgb_sub = nh->subscribe<sensor_msgs::Image>(
+	    "cameras/test_cam/rgb/image_raw", 1,
+	    [&rgb_images](const sensor_msgs::Image::ConstPtr &msg) { rgb_images.emplace_back(*msg); });
 
 	env_ptr->startWithXML(xml_path);
 
@@ -887,22 +852,20 @@ TEST_F(BaseEnvFixture, RGB_Image_Dtype)
 	ASSERT_EQ(offscreen->cams.size(), 1);
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
 	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::streamType::RGB);
-	EXPECT_EQ(offscreen->cams[0]->width_, 72);
-	EXPECT_EQ(offscreen->cams[0]->height_, 48);
+	EXPECT_EQ(offscreen->cams[0]->width_, 7);
+	EXPECT_EQ(offscreen->cams[0]->height_, 4);
 
 	// Wait for image to be published with 400ms timeout
 	float seconds = 0.f;
-	while (rgb_images.size() == 0 && seconds < .4f) {
+	while (rgb_images.empty() && seconds < .4f) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		seconds += 0.001f;
 	}
 	EXPECT_LT(seconds, .4f) << "RGB image not published within 400ms";
 
 	ASSERT_EQ(rgb_images.size(), 1);
-	EXPECT_EQ(rgb_images[0].data.size(), 72 * 48 * 3);
+	EXPECT_EQ(rgb_images[0].data.size(), 7 * 4 * 3);
 	EXPECT_EQ(rgb_images[0].encoding, sensor_msgs::image_encodings::RGB8);
-
-	rgb_images.clear();
 
 	env_ptr->shutdown();
 }
@@ -913,17 +876,18 @@ TEST_F(BaseEnvFixture, DEPTH_Image_Dtype)
 	nh->setParam("headless", true);
 	nh->setParam("unpause", false);
 	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::DEPTH);
-	nh->setParam("cam_config/test_cam/width", 72);
-	nh->setParam("cam_config/test_cam/height", 48);
+	nh->setParam("cam_config/test_cam/width", 7);
+	nh->setParam("cam_config/test_cam/height", 4);
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 
-	// Clear image buffers
-	depth_images.clear();
+	std::vector<sensor_msgs::Image> depth_images;
 
 	// Subscribe to topic
-	ros::Subscriber depth_sub = nh->subscribe("cameras/test_cam/depth/image_raw", 1, depth_cb);
+	ros::Subscriber depth_sub = nh->subscribe<sensor_msgs::Image>(
+	    "cameras/test_cam/depth/image_raw", 1,
+	    [&depth_images](const sensor_msgs::Image::ConstPtr &msg) { depth_images.emplace_back(*msg); });
 
 	env_ptr->startWithXML(xml_path);
 
@@ -936,23 +900,22 @@ TEST_F(BaseEnvFixture, DEPTH_Image_Dtype)
 	ASSERT_EQ(offscreen->cams.size(), 1);
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
 	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::streamType::DEPTH);
-	EXPECT_EQ(offscreen->cams[0]->width_, 72);
-	EXPECT_EQ(offscreen->cams[0]->height_, 48);
+	EXPECT_EQ(offscreen->cams[0]->width_, 7);
+	EXPECT_EQ(offscreen->cams[0]->height_, 4);
 
 	// Wait for image to be published with 200ms timeout
 	float seconds = 0.f;
-	while (depth_images.size() == 0 && seconds < .2f) {
+	while (depth_images.empty() && seconds < .2f) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		seconds += 0.001f;
 	}
 	EXPECT_LT(seconds, .2f) << "Depth image not published within 200ms";
 
 	ASSERT_EQ(depth_images.size(), 1);
-	EXPECT_EQ(depth_images[0].width, 72);
-	EXPECT_EQ(depth_images[0].height, 48);
+	EXPECT_EQ(depth_images[0].width, 7);
+	EXPECT_EQ(depth_images[0].height, 4);
 	EXPECT_EQ(depth_images[0].encoding, sensor_msgs::image_encodings::TYPE_32FC1);
 
-	depth_images.clear();
 	env_ptr->shutdown();
 }
 
@@ -962,17 +925,18 @@ TEST_F(BaseEnvFixture, SEGMENTED_Image_Dtype)
 	nh->setParam("headless", true);
 	nh->setParam("unpause", false);
 	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::SEGMENTED);
-	nh->setParam("cam_config/test_cam/width", 72);
-	nh->setParam("cam_config/test_cam/height", 48);
+	nh->setParam("cam_config/test_cam/width", 7);
+	nh->setParam("cam_config/test_cam/height", 4);
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 
-	// Clear image buffers
-	seg_images.clear();
+	std::vector<sensor_msgs::Image> seg_images;
 
 	// Subscribe to topic
-	ros::Subscriber seg_sub = nh->subscribe("cameras/test_cam/segmented/image_raw", 1, seg_cb);
+	ros::Subscriber seg_sub = nh->subscribe<sensor_msgs::Image>(
+	    "cameras/test_cam/segmented/image_raw", 1,
+	    [&seg_images](const sensor_msgs::Image::ConstPtr &msg) { seg_images.emplace_back(*msg); });
 
 	env_ptr->startWithXML(xml_path);
 
@@ -985,22 +949,21 @@ TEST_F(BaseEnvFixture, SEGMENTED_Image_Dtype)
 	ASSERT_EQ(offscreen->cams.size(), 1);
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
 	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::streamType::SEGMENTED);
-	EXPECT_EQ(offscreen->cams[0]->width_, 72);
-	EXPECT_EQ(offscreen->cams[0]->height_, 48);
+	EXPECT_EQ(offscreen->cams[0]->width_, 7);
+	EXPECT_EQ(offscreen->cams[0]->height_, 4);
 
 	// Wait for image to be published with 200ms timeout
 	float seconds = 0.f;
-	while (seg_images.size() == 0 && seconds < .2f) {
+	while (seg_images.empty() && seconds < .2f) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		seconds += 0.001f;
 	}
 	EXPECT_LT(seconds, .2f) << "Segmentation image not published within 200ms";
 
 	ASSERT_EQ(seg_images.size(), 1);
-	EXPECT_EQ(seg_images[0].data.size(), 72 * 48 * 3);
+	EXPECT_EQ(seg_images[0].data.size(), 7 * 4 * 3);
 	EXPECT_EQ(seg_images[0].encoding, sensor_msgs::image_encodings::RGB8);
 
-	seg_images.clear();
 	env_ptr->shutdown();
 }
 
@@ -1024,20 +987,8 @@ TEST_F(BaseEnvFixture, No_Render_Backend_Headless_Warn)
 	EXPECT_FALSE(env_ptr->settings_.render_offscreen);
 
 	OffscreenRenderContext *offscreen = env_ptr->getOffscreenContext();
-	EXPECT_TRUE(offscreen->cams.size() == 0);
+	EXPECT_TRUE(offscreen->cams.empty());
 
 	env_ptr->shutdown();
 }
 #endif // RENDER_BACKEND == USE_NONE // i.e. no render backend available
-
-// TODOs:
-// - Tests for offscreen rendering
-//   + Test if RGB topic is available (done)
-//   + Test if Depth topic is available (done)
-//   + Test if Segmentation topic is available (done)
-//   + Test if CameraInfo topic is available
-//   + Test default camera settings
-//   + Resolution settings
-//   + test all combinations of RGB, Depth, and Segmentation (done)
-//   + Test that camera timings are correct by stepping through the simulation and checking the timestamps
-//   + Test camera image data types

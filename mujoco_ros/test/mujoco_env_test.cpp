@@ -60,7 +60,7 @@ TEST_F(BaseEnvFixture, EvalModeWithoutHashThrow)
 {
 	nh->setParam("eval_mode", true);
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
-	EXPECT_THROW(MujocoEnvTestWrapper env, std::runtime_error);
+	EXPECT_THROW(env_ptr = std::make_unique<MujocoEnvTestWrapper>(""), std::runtime_error);
 }
 
 TEST_F(BaseEnvFixture, RunEvalMode)

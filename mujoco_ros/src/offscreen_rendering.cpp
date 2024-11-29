@@ -243,7 +243,7 @@ bool MujocoEnv::InitGL()
 {
 	ROS_DEBUG("Initializing OSMesa...");
 	// Initialize OSMesa
-	offscreen_.osmesa.ctx = OSMesaCreateContextExt(GL_RGBA, 24, 8, 8, 0);
+	offscreen_.osmesa.ctx = OSMesaCreateContextExt(GL_RGBA, 24, 8, 8, nullptr);
 	if (!offscreen_.osmesa.ctx) {
 		ROS_ERROR("OSMesa context creation failed");
 		return false;

@@ -74,6 +74,7 @@ protected:
 	{
 		nh = std::make_unique<ros::NodeHandle>("~");
 		nh->setParam("unpause", false);
+		nh->setParam("no_render", true);
 		nh->setParam("headless", true);
 		nh->setParam("use_sim_time", true);
 
@@ -99,6 +100,8 @@ protected:
 
 	void TearDown() override
 	{
+		// cleanup all parameters
+		ros::param::del(nh->getNamespace());
 		test_plugin = nullptr;
 		env_ptr->shutdown();
 		delete env_ptr;
@@ -126,18 +129,85 @@ TEST_F(LoadedPluginFixture, PassiveCallback)
 }
 
 #if RENDER_BACKEND == GLFW || RENDER_BACKEND == USE_EGL || RENDER_BACKEND == USE_OSMESA
-TEST_F(LoadedPluginFixture, RenderCallback)
+TEST_F(BaseEnvFixture, RenderCallback)
 {
+	nh->setParam("no_render", false);
+	nh->setParam("unpause", false);
+	nh->setParam("headless", true);
+	nh->setParam("cam_config/test_cam/width", 7);
+	nh->setParam("cam_config/test_cam/height", 4);
+
+	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+
+	// NOP subscriber to trigger render callback
+	ros::Subscriber rgb_sub = nh->subscribe<sensor_msgs::Image>("cameras/test_cam/rgb/image_raw", 1,
+	                                                            [&](const sensor_msgs::Image::ConstPtr & /*msg*/) {});
+
+	env_ptr->startWithXML(xml_path);
+
 	EXPECT_TRUE(env_ptr->step());
-	EXPECT_TRUE(test_plugin->ran_render_cb.load());
+
+	OffscreenRenderContext *offscreen = env_ptr->getOffscreenContext();
+	EXPECT_TRUE(offscreen->cams.size() == 1);
+
+	TestPlugin *test_plugin = nullptr;
+	auto &plugins           = env_ptr->getPlugins();
+	for (const auto &p : plugins) {
+		test_plugin = dynamic_cast<TestPlugin *>(p.get());
+		if (test_plugin != nullptr) {
+			break;
+		}
+	}
+
+	// wait for render callback to be called
+	float seconds = 0;
+	while (!test_plugin->ran_render_cb.load() && seconds < 1.) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		seconds += 0.001;
+	}
+	EXPECT_LT(seconds, 1) << "Render callback was not called within 1 second!";
+
+	env_ptr->shutdown();
 }
 #endif
 
 #if RENDER_BACKEND == NONE
-TEST_F(LoadedPluginFixture, RenderCallback_NoRender)
+TEST_F(BaseEnvFixture, RenderCallback_NoRender)
 {
-	EXPECT_TRUE(env_ptr->step());
-	EXPECT_FALSE(test_plugin->ran_render_cb.load());
+	nh->setParam("no_render", false);
+	nh->setParam("unpause", false);
+	nh->setParam("headless", true);
+
+	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+
+	// NOP subscriber to trigger render callback
+	ros::Subscriber rgb_sub = nh->subscribe<sensor_msgs::Image>(
+	    "cameras/test_cam/rgb/image_raw", 1,
+	    [&](const sensor_msgs::Image::ConstPtr & /*msg*/) { ROS_ERROR("Got image!"); });
+
+	env_ptr->startWithXML(xml_path);
+	EXPECT_TRUE(env_ptr->step(5));
+
+	TestPlugin *test_plugin = nullptr;
+	auto &plugins           = env_ptr->getPlugins();
+	for (const auto &p : plugins) {
+		test_plugin = dynamic_cast<TestPlugin *>(p.get());
+		if (test_plugin != nullptr) {
+			break;
+		}
+	}
+
+	// wait for render callback to be called
+	float seconds = 0;
+	while (!test_plugin->ran_render_cb.load() && seconds < .1) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		seconds += 0.001;
+	}
+	EXPECT_FALSE(test_plugin->ran_render_cb.load()) << "Render callback was called!";
+
+	env_ptr->shutdown();
 }
 #endif
 
@@ -157,6 +227,7 @@ TEST_F(LoadedPluginFixture, OnGeomChangedCallback)
 
 TEST_F(BaseEnvFixture, LoadPlugin)
 {
+	nh->setParam("no_render", true);
 	nh->setParam("unpause", false);
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");

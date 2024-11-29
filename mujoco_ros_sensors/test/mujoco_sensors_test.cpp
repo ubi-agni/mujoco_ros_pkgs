@@ -36,6 +36,7 @@
 
 #include <gtest/gtest.h>
 
+#include <mujoco_ros/render_backend.h>
 #include <mujoco_ros/mujoco_env.h>
 #include <mujoco_ros/common_types.h>
 #include <mujoco_ros_sensors/mujoco_sensor_handler_plugin.h>
