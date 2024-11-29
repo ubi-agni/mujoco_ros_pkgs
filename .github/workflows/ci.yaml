@@ -33,19 +33,11 @@ jobs:
             mujoco: 3.2.0
             env:
               CLANG_TIDY: pedantic
-        exclude:
-          - distro: one
-            render_backend: USE_EGL # requires GPU
-          - distro: one
-            render_backend: USE_GLFW # requires Xvfb
-          - distro: noetic
-            render_backend: USE_GLFW
-          - distro: noetic
-            render_backend: USE_EGL
 
     env:
       BUILDER: colcon
-      DOCKER_RUN_OPTS: -e MUJOCO_DIR=/root/mujoco/${{ matrix.mujoco }}
+      MUJOCO_DIR: /vol/mujoco/mujoco-${{ matrix.mujoco }} # for self-hosted runners
+      DOCKER_RUN_OPTS: -e MUJOCO_DIR=/root/mujoco/${{ matrix.mujoco }} -e DISPLAY=:99.0
       DOCKER_IMAGE: ubiagni/mujoco_ros:${{ matrix.distro }}-ci
 
       # For now we have flags defined in the CMakeLists, using all flags makes the build break
@@ -54,6 +46,8 @@ jobs:
       CXXFLAGS: -Wwrite-strings -Wunreachable-code -Wpointer-arith -Wredundant-decls
       CLANG_TIDY_ARGS: --fix --fix-errors --format-style=file
       UPSTREAM_WORKSPACE: .github/workflows/upstream.rosinstall
+      # Install and start xvfb for GLFW
+      AFTER_INIT: ${{ matrix.render_backend == 'USE_GLFW' && 'apt-get install -qy xvfb; Xvfb :99 &' || '' }}
       # Pull any updates to the upstream workspace
       AFTER_SETUP_UPSTREAM_WORKSPACE: vcs pull $BASEDIR/upstream_ws/src
       AFTER_SETUP_DOWNSTREAM_WORKSPACE: vcs pull $BASEDIR/downstream_ws/src
@@ -81,7 +75,7 @@ jobs:
       CCOV: ${{ matrix.env.CCOV || 'false' }}
 
     name: "${{ matrix.distro }} mj-${{ matrix.mujoco }} ${{ matrix.render_backend }} ${{ matrix.env.CATKIN_LINT && ' + catkin_lint' || ''}}${{ matrix.env.CCOV && ' + ccov' || ''}}${{ matrix.env.CLANG_TIDY && (github.event_name != 'workflow_dispatch' && ' + clang-tidy (delta)' || ' + clang-tidy (all)') || '' }}"
-    runs-on: ubuntu-20.04
+    runs-on: ${{ matrix.render_backend == 'USE_EGL' && matrix.distro || 'ubuntu-20.04' }}
     steps:
       - uses: actions/checkout@v4
       - name: Cache upstream workspace
