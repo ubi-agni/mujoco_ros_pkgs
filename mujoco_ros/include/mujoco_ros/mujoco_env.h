@@ -55,6 +55,7 @@
 
 #include <boost/thread.hpp>
 
+#include <mujoco_ros/render_backend.h>
 #include <mujoco_ros/common_types.h>
 #include <mujoco_ros/viewer.h>
 #include <mujoco_ros/plugin_utils.h>
@@ -90,10 +91,10 @@
 
 #include <rosgraph_msgs/Clock.h>
 
-#if defined(USE_GLFW)
+#if RENDER_BACKEND == USE_GLFW
 #include <mujoco_ros/glfw_adapter.h>
 #include <mujoco_ros/glfw_dispatch.h>
-#elif defined(USE_OSMESA)
+#elif RENDER_BACKEND == USE_OSMESA
 #include <GL/osmesa.h>
 #endif
 
@@ -120,9 +121,9 @@ struct OffscreenRenderContext
 	mjvCamera cam;
 	std::unique_ptr<unsigned char[]> rgb;
 	std::unique_ptr<float[]> depth;
-#ifdef USE_GLFW
+#if RENDER_BACKEND == USE_GLFW
 	std::shared_ptr<GLFWwindow> window;
-#elif defined(USE_OSMESA)
+#elif RENDER_BACKEND == USE_OSMESA
 	struct
 	{
 		OSMesaContext ctx;
@@ -280,11 +281,11 @@ public:
 
 	bool togglePaused(bool paused, const std::string &admin_hash = std::string());
 
-#if defined(USE_GLFW)
+#if RENDER_BACKEND == USE_GLFW
 	GlfwAdapter *gui_adapter_ = nullptr;
 #endif
 
-#if defined(USE_EGL) || defined(USE_OSMESA)
+#if RENDER_BACKEND == USE_EGL || RENDER_BACKEND == USE_OSMESA
 	bool InitGL();
 #endif
 

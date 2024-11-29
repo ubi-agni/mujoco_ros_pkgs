@@ -125,7 +125,8 @@ TEST_F(BaseEnvFixture, Not_Headless_Warn)
 	env_ptr->shutdown();
 }
 
-#if defined(USE_GLFW) || defined(USE_EGL) || defined(USE_OSMESA) // i.e. any render backend available
+#if RENDER_BACKEND == USE_GLFW || RENDER_BACKEND == USE_EGL || \
+    RENDER_BACKEND == USE_OSMESA // i.e. any render backend available
 TEST_F(BaseEnvFixture, NoRender_Params_Correct)
 {
 	nh->setParam("no_render", true);
@@ -1003,9 +1004,10 @@ TEST_F(BaseEnvFixture, SEGMENTED_Image_Dtype)
 	env_ptr->shutdown();
 }
 
-#endif // defined(USE_GLFW) || defined(USE_EGL) || defined(USE_OSMESA) // i.e. any render backend available
+#endif // RENDER_BACKEND == USE_GLFW || RENDER_BACKEND == USE_EGL || RENDER_BACKEND == USE_OSMESA // i.e. any render
+       // backend available
 
-#if !defined(USE_GLFW) && !defined(USE_EGL) && !defined(USE_OSMESA) // i.e. no render backend available
+#if RENDER_BACKEND == USE_NONE // i.e. no render backend available
 TEST_F(BaseEnvFixture, No_Render_Backend_Headless_Warn)
 {
 	nh->setParam("headless", true);
@@ -1026,7 +1028,7 @@ TEST_F(BaseEnvFixture, No_Render_Backend_Headless_Warn)
 
 	env_ptr->shutdown();
 }
-#endif // !defined(USE_GLFW) && !defined(USE_EGL) && !defined(USE_OSMESA) // i.e. no render backend available
+#endif // RENDER_BACKEND == USE_NONE // i.e. no render backend available
 
 // TODOs:
 // - Tests for offscreen rendering

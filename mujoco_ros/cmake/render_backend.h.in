@@ -1,0 +1,8 @@
+#ifndef RENDER_BACKEND
+#define USE_GLFW 3
+#define USE_EGL 2
+#define USE_OSMESA 1
+#define USE_NONE 0
+
+#define RENDER_BACKEND ${RENDER_BACKEND}
+#endif

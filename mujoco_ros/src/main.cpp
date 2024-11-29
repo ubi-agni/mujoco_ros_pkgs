@@ -34,7 +34,8 @@
 
 /* Authors: David P. Leins */
 
-#include <mujoco_ros/viewer.h>
+#include <mujoco_ros/render_backend.h>
+
 #include <mujoco_ros/mujoco_env.h>
 
 #include <mujoco_ros/array_safety.h>
@@ -44,8 +45,9 @@
 #include <csignal>
 #include <thread>
 
-#if defined(USE_GLFW)
+#if RENDER_BACKEND == USE_GLFW
 #include <mujoco_ros/glfw_adapter.h>
+#include <mujoco_ros/viewer.h>
 #endif
 
 namespace {
@@ -150,7 +152,7 @@ int main(int argc, char **argv)
 	env->startPhysicsLoop();
 	env->startEventLoop();
 
-#ifdef USE_GLFW
+#if RENDER_BACKEND == USE_GLFW
 	if (!env->settings_.headless) {
 		ROS_INFO("Launching viewer");
 		auto viewer = std::make_unique<mujoco_ros::Viewer>(

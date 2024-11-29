@@ -43,11 +43,11 @@
 #include <stdexcept>
 #include <sstream>
 
-#if defined(USE_GLFW)
+#if RENDER_BACKEND == USE_GLFW
 static std::string render_backend = "GLFW";
-#elif defined(USE_OSMESA)
+#elif RENDER_BACKEND == USE_OSMESA
 static std::string render_backend = "OSMESA";
-#elif defined(USE_EGL)
+#elif RENDER_BACKEND == USE_EGL
 static std::string render_backend = "EGL";
 #else
 static std::string render_backend = "NONE. No offscreen rendering available.";
@@ -59,7 +59,7 @@ namespace mju = ::mujoco::sample_util;
 using Seconds      = std::chrono::duration<double>;
 using Milliseconds = std::chrono::duration<double, std::milli>;
 
-#ifdef USE_GLFW
+#if RENDER_BACKEND == USE_GLFW
 namespace {
 int MaybeGlfwInit()
 {
@@ -137,7 +137,7 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 
 	nh_->param<bool>("headless", settings_.headless, true);
 	if (!settings_.headless) {
-#if defined(USE_GLFW)
+#if RENDER_BACKEND == USE_GLFW
 		gui_adapter_ = new mujoco_ros::GlfwAdapter();
 #else
 		ROS_ERROR("Compiled without GLFW support. Cannot run in non-headless mode.");
@@ -160,10 +160,10 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 	if (settings_.render_offscreen) {
 		bool can_render = true;
 
-#if defined(USE_GLFW)
+#if RENDER_BACKEND == USE_GLFW
 		can_render = MaybeGlfwInit();
 		ROS_ERROR_COND(!can_render, "Failed to initialize GLFW. Cannot render offscreen!");
-#elif !defined(USE_EGL) && !defined(USE_OSMESA)
+#elif RENDER_BACKEND == NONE
 		ROS_ERROR("No rendering backend available. Cannot render offscreen!");
 		can_render = false;
 #endif

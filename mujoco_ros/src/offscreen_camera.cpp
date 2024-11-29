@@ -196,7 +196,7 @@ bool OffscreenCamera::renderAndPubIfNecessary(mujoco_ros::OffscreenRenderContext
 	} else { // depth only
 		mjr_readPixels(nullptr, offscreen->depth.get(), viewport, &offscreen->con);
 	}
-#ifdef USE_GLFW
+#if RENDER_BACKEND == USE_GLFW
 	glfwSwapBuffers(offscreen->window.get());
 #endif
 

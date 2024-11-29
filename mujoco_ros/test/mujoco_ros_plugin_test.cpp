@@ -41,6 +41,7 @@
 #include "mujoco_env_fixture.h"
 #include "test_plugin/test_plugin.h"
 
+#include <mujoco_ros/render_backend.h>
 #include <mujoco_ros/mujoco_env.h>
 #include <mujoco_ros/plugin_utils.h>
 #include <string>
@@ -73,7 +74,7 @@ protected:
 	{
 		nh = std::make_unique<ros::NodeHandle>("~");
 		nh->setParam("unpause", false);
-		nh->setParam("no_x", true);
+		nh->setParam("headless", true);
 		nh->setParam("use_sim_time", true);
 
 		env_ptr              = new MujocoEnvTestWrapper();
@@ -124,10 +125,21 @@ TEST_F(LoadedPluginFixture, PassiveCallback)
 	EXPECT_TRUE(test_plugin->ran_passive_cb.load());
 }
 
-// TODO: Involves offscreen rendering, can we do this in tests?
-// TEST_F(LoadedPluginFixture, RenderCallback) {
-// 	EXPECT_TRUE(test_plugin->ran_render_cb.load());
-// }
+#if RENDER_BACKEND == GLFW || RENDER_BACKEND == USE_EGL || RENDER_BACKEND == USE_OSMESA
+TEST_F(LoadedPluginFixture, RenderCallback)
+{
+	EXPECT_TRUE(env_ptr->step());
+	EXPECT_TRUE(test_plugin->ran_render_cb.load());
+}
+#endif
+
+#if RENDER_BACKEND == NONE
+TEST_F(LoadedPluginFixture, RenderCallback_NoRender)
+{
+	EXPECT_TRUE(env_ptr->step());
+	EXPECT_FALSE(test_plugin->ran_render_cb.load());
+}
+#endif
 
 TEST_F(LoadedPluginFixture, LastCallback)
 {
