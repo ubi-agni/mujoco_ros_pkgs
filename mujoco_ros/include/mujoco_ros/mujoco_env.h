@@ -128,6 +128,7 @@ struct OffscreenRenderContext
 	{
 		OSMesaContext ctx;
 		unsigned char buffer[10000000]; // TODO: size necessary or resize later?
+		bool initialized = false;
 	} osmesa;
 #endif
 	mjrContext con = {};

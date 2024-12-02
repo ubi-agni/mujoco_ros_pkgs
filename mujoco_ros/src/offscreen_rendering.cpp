@@ -77,6 +77,9 @@ OffscreenRenderContext::~OffscreenRenderContext()
 		eglTerminate(display);
 	}
 #elif RENDER_BACKEND == USE_OSMESA
+	if (!osmesa.initialized) {
+		return;
+	}
 	ROS_DEBUG("Freeing OSMESA offscreen context");
 	mjr_defaultContext(&con);
 	mjr_freeContext(&con);
@@ -256,6 +259,7 @@ bool MujocoEnv::InitGL()
 		return false;
 	}
 	ROS_DEBUG("OSMesa initialized");
+	offscreen_.osmesa.initialized = true;
 	return true;
 } // InitGL
 #endif
