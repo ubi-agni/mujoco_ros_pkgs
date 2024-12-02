@@ -131,7 +131,7 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 	}
 
 	nh_->param<bool>("render_offscreen", settings_.render_offscreen, true);
-	if (!settings_.render_offscreen) {
+	if (settings_.render_offscreen) {
 		mjv_makeScene(nullptr, &offscreen_.scn, Viewer::kMaxGeom);
 	}
 
