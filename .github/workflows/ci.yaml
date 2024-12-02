@@ -21,7 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         distro: [noetic, one]
-        render_backend: [USE_GLFW, USE_OSMESA, USE_EGL]
+        render_backend: [USE_GLFW, USE_OSMESA, USE_EGL, USE_NONE]
         mujoco: [3.2.0]
         include:
           - distro: noetic

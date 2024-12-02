@@ -3,58 +3,69 @@ include_guard()
 find_library(GLFW libglfw.so.3) # Find GLFW3 for GUI
 
 set(RENDER_BACKEND "ANY" CACHE STRING "Choose rendering backend")
-set_property(CACHE RENDER_BACKEND PROPERTY STRINGS "ANY" "USE_GLFW" "USE_EGL" "USE_OSMESA")
-message(STATUS "configured RENDER_BACKEND: ${RENDER_BACKEND}")
+set_property(CACHE RENDER_BACKEND PROPERTY STRINGS "ANY" "USE_GLFW" "USE_EGL" "USE_OSMESA" "USE_NONE")
 
-if (RENDER_BACKEND STREQUAL "ANY")
-  unset(NO_GLFW)
-  unset(NO_EGL)
-  unset(NO_OSMESA)
-endif()
+set(NO_GLFW OFF)
+set(NO_EGL OFF)
+set(NO_OSMESA OFF)
+set(NO_RENDER OFF)
 
 if (RENDER_BACKEND STREQUAL "USE_GLFW")
   set(NO_EGL ON)
   set(NO_OSMESA ON)
-  message(STATUS "EGL and OSMESA disabled!")
-endif()
-
-if (RENDER_BACKEND STREQUAL "USE_EGL")
+  message(WARNING "EGL and OSMESA disabled!")
+elseif (RENDER_BACKEND STREQUAL "USE_EGL")
   set(NO_GLFW ON)
-  message(STATUS "GLFW disabled! Will use OSMesa as fallback if EGL can not be found.")
-endif()
-
-if (RENDER_BACKEND STREQUAL "USE_OSMESA")
+  message(WARNING "GLFW disabled! Will use OSMesa as fallback if EGL can not be found.")
+elseif (RENDER_BACKEND STREQUAL "USE_OSMESA")
   set(NO_GLFW ON)
   set(NO_EGL ON)
-  message(STATUS "GLFW and EGL disabled!")
+  message(WARNING "GLFW and EGL disabled!")
+elseif (RENDER_BACKEND STREQUAL "USE_NONE")
+  set(NO_GLFW ON)
+  set(NO_EGL ON)
+  set(NO_OSMESA ON)
+  set(RENDERING_BACKEND "USE_NONE")
+  set(NO_RENDER ON)
+  message(WARNING "GLFW, EGL and OSMesa disabled! No rendering will be available.")
 endif()
+# ELSE: ANY
 
-if (NO_GLFW OR ${GLFW} STREQUAL "GLFW-NOTFOUND")
-  message(WARNING "GLFW3 not found or disabled. GUI will not be available.")
-
-  find_package(OpenGL COMPONENTS OpenGL EGL) # Find OpenGL (EGL) for offscreen rendering
-  if (NO_EGL OR ${OpenGL_EGL_FOUND} STREQUAL "FALSE")
-    message(WARNING "EGL not found or disabled. Falling back to OSMESA.")
-
-    find_package(OSMesa)
-
-    if (NO_OSMESA OR !OSMesa_FOUND)
-      message(WARNING "EGL disabled or not found and OSMesa could not be found. Offscreen rendering will not be available!")
-      set(RENDERING_BACKEND "USE_NONE")
-    else() # OSMesa found
-      set(RENDERING_BACKEND "USE_OSMESA")
-      message(STATUS "OSMesa found. Offscreen rendering available.")
+if (NOT NO_RENDER)
+  if (NO_GLFW OR ${GLFW} STREQUAL "GLFW-NOTFOUND")
+    if (NOT NO_GLFW)
+      message(WARNING "GLFW3 not found. GUI will not be available.")
     endif()
 
-  else() # EGL found
-    set(RENDERING_BACKEND "USE_EGL")
-    message(STATUS "EGL found. Offscreen rendering available.")
-  endif()
+    find_package(OpenGL COMPONENTS OpenGL EGL) # Find OpenGL (EGL) for offscreen rendering
+    if (NO_EGL OR ${OpenGL_EGL_FOUND} STREQUAL "FALSE")
+      if (NOT NO_EGL)
+        message(WARNING "EGL not found. Falling back to OSMESA.")
+      endif()
 
-else() # GLFW found
-  set(RENDERING_BACKEND "USE_GLFW")
-  message(STATUS "GLFW3 found. GUI and offscreen rendering available.")
+      find_package(OSMesa)
+
+      if (NO_OSMESA OR !OSMesa_FOUND)
+        if(NOT NO_OSMESA)
+          message(WARNING "OSMesa not found.")
+        endif()
+        set(RENDERING_BACKEND "USE_NONE")
+      else() # OSMesa found
+        set(RENDERING_BACKEND "USE_OSMESA")
+        message(STATUS "OSMesa found. Offscreen rendering available.")
+      endif()
+    else() # EGL found
+      set(RENDERING_BACKEND "USE_EGL")
+      message(STATUS "EGL found. Offscreen rendering available.")
+    endif()
+
+  else() # GLFW found
+    set(RENDERING_BACKEND "USE_GLFW")
+    message(STATUS "GLFW3 found. GUI and offscreen rendering available.")
+  endif()
 endif()
+
+message(STATUS "configured RENDERING_BACKEND: ${RENDERING_BACKEND}")
 
 add_custom_command(
   OUTPUT ${CATKIN_DEVEL_PREFIX}/include/${PROJECT_NAME}/render_backend.h always_rebuild
