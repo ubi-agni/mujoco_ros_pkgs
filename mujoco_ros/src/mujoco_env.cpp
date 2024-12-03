@@ -67,6 +67,10 @@ int MaybeGlfwInit()
 		auto success = Glfw().glfwInit();
 		if (success == GLFW_TRUE) {
 			std::atexit(Glfw().glfwTerminate);
+		} else {
+			const char *description;
+			int error = glfwGetError(&description);
+			ROS_ERROR("Failed to initialize GLFW: %d %s", error, description);
 		}
 		return success;
 	}();
