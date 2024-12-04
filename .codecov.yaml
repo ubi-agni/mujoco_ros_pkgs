@@ -12,14 +12,11 @@ coverage:
 # While UI is not being tested, ignore UI/rendering related files
 # lodepng is external and was tested beforehand (might include original unittests here at some point)
 ignore:
-  - mujoco_ros/include/mujoco_ros/offscreen_camera.h
   - mujoco_ros/include/mujoco_ros/platform_ui_adapter.h
   - mujoco_ros/include/mujoco_ros/viewer.h
   - mujoco_ros/src/glfw_adapter.cc
   - mujoco_ros/src/glfw_dispatch.cc
   - mujoco_ros/src/lodepng.cpp
-  - mujoco_ros/src/offscreen_camera.cpp
-  - mujoco_ros/src/offscreen_rendering.cpp
   - mujoco_ros/src/platform_ui_adapter.cc
   - mujoco_ros/src/viewer.cpp
   - mujoco_ros/test
