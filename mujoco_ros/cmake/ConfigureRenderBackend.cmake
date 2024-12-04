@@ -3,7 +3,7 @@ include_guard()
 find_library(GLFW libglfw.so.3) # Find GLFW3 for GUI
 
 set(RENDER_BACKEND "ANY" CACHE STRING "Choose rendering backend")
-set_property(CACHE RENDER_BACKEND PROPERTY STRINGS "ANY" "GLFW" "EGL" "OSMESA" "NONE")
+set_property(CACHE RENDER_BACKEND PROPERTY STRINGS "ANY" "GLFW" "EGL" "OSMESA" "DISABLE")
 
 set(NO_GLFW OFF)
 set(NO_EGL OFF)
@@ -21,7 +21,7 @@ elseif (RENDER_BACKEND STREQUAL "OSMESA")
   set(NO_GLFW ON)
   set(NO_EGL ON)
   message(WARNING "GLFW and EGL disabled!")
-elseif (RENDER_BACKEND STREQUAL "NONE")
+elseif (RENDER_BACKEND STREQUAL "DISABLE")
   set(NO_GLFW ON)
   set(NO_EGL ON)
   set(NO_OSMESA ON)
