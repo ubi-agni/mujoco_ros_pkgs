@@ -277,6 +277,9 @@ void MujocoEnv::offscreenRenderLoop()
 
 	if (!offscreen_.window) {
 		ROS_ERROR_NAMED("offscreen_rendering", "Failed to create offscreen window");
+		settings_.render_offscreen    = false;
+		settings_.visual_init_request = false;
+		offscreen_.request_pending.store(false);
 		return;
 	}
 
@@ -285,15 +288,24 @@ void MujocoEnv::offscreenRenderLoop()
 #elif RENDER_BACKEND == EGL_BACKEND
 	if (!InitGL()) {
 		ROS_ERROR("Failed to initialize EGL. Cannot run offscreen rendering");
+		settings_.render_offscreen = false;
+		settings_.visual_init_request = false;
+		offscreen_.request_pending.store(false);
 		return;
 	}
 #elif RENDER_BACKEND == OSMESA_BACKEND
 	if (!InitGL()) {
 		ROS_ERROR("Failed to initialize OSMesa. Cannot run offscreen rendering");
+		settings_.render_offscreen    = false;
+		settings_.visual_init_request = false;
+		offscreen_.request_pending.store(false);
 		return;
 	}
 #else
 	ROS_ERROR("No offscreen rendering backend available. Cannot run offscreen rendering");
+	settings_.render_offscreen    = false;
+	settings_.visual_init_request = false;
+	offscreen_.request_pending.store(false);
 	return;
 #endif
 
