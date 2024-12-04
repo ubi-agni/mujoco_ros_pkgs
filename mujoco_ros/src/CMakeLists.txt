@@ -9,7 +9,7 @@ target_include_directories(lodepng PRIVATE
 target_link_libraries(lodepng PRIVATE project_option)
 add_library(mujoco_ros::lodepng ALIAS lodepng)
 
-if(RENDERING_BACKEND STREQUAL "USE_GLFW")
+if(RENDERING_BACKEND STREQUAL "GLFW")
   add_library(platform_ui_adapter OBJECT
     $<TARGET_OBJECTS:lodepng>
     glfw_adapter.cc
@@ -44,7 +44,7 @@ add_library(${PROJECT_NAME}
   physics.cpp
 )
 
-if(RENDERING_BACKEND STREQUAL "USE_GLFW")
+if(RENDERING_BACKEND STREQUAL "GLFW")
   target_sources(${PROJECT_NAME} PRIVATE $<TARGET_OBJECTS:platform_ui_adapter>)
 endif()
 
@@ -69,11 +69,11 @@ target_link_libraries(${PROJECT_NAME}
    project_warning
 )
 
-if(RENDERING_BACKEND STREQUAL "USE_GLFW")
+if(RENDERING_BACKEND STREQUAL "GLFW")
   target_link_libraries(${PROJECT_NAME} PUBLIC mujoco_ros::platform_ui_adapter)
-elseif(RENDERING_BACKEND STREQUAL "USE_EGL")
+elseif(RENDERING_BACKEND STREQUAL "EGL")
   target_link_libraries(${PROJECT_NAME} PUBLIC OpenGL::EGL)
-elseif(RENDERING_BACKEND STREQUAL "USE_OSMESA")
+elseif(RENDERING_BACKEND STREQUAL "OSMESA")
   target_link_libraries(${PROJECT_NAME} PUBLIC OSMesa::OSMesa)
 endif()
 

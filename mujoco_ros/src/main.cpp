@@ -45,7 +45,7 @@
 #include <csignal>
 #include <thread>
 
-#if RENDER_BACKEND == USE_GLFW
+#if RENDER_BACKEND == GLFW_BACKEND
 #include <mujoco_ros/glfw_adapter.h>
 #include <mujoco_ros/viewer.h>
 #endif
@@ -152,7 +152,7 @@ int main(int argc, char **argv)
 	env->startPhysicsLoop();
 	env->startEventLoop();
 
-#if RENDER_BACKEND == USE_GLFW
+#if RENDER_BACKEND == GLFW_BACKEND
 	if (!env->settings_.headless) {
 		ROS_INFO("Launching viewer");
 		auto viewer = std::make_unique<mujoco_ros::Viewer>(

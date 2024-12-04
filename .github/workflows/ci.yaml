@@ -21,7 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         distro: [noetic, one]
-        render_backend: [USE_GLFW, USE_OSMESA, USE_EGL, USE_NONE]
+        render_backend: [GLFW, OSMESA, EGL, NONE]
         mujoco: [3.2.0]
         include:
           - distro: noetic
@@ -47,7 +47,7 @@ jobs:
       CLANG_TIDY_ARGS: --fix --fix-errors --format-style=file
       UPSTREAM_WORKSPACE: .github/workflows/upstream.rosinstall
       # Install and start xvfb for GLFW
-      AFTER_INIT: ${{ matrix.render_backend == 'USE_GLFW' && 'apt-get install -qy xvfb; Xvfb :99 &' || '' }}
+      AFTER_INIT: ${{ matrix.render_backend == 'GLFW' && 'apt-get install -qy xvfb; Xvfb :99 &' || '' }}
       # Pull any updates to the upstream workspace
       AFTER_SETUP_UPSTREAM_WORKSPACE: vcs pull $BASEDIR/upstream_ws/src
       AFTER_SETUP_DOWNSTREAM_WORKSPACE: vcs pull $BASEDIR/downstream_ws/src
@@ -75,7 +75,7 @@ jobs:
       CCOV: ${{ matrix.env.CCOV || 'false' }}
 
     name: "${{ matrix.distro }} mj-${{ matrix.mujoco }} ${{ matrix.render_backend }} ${{ matrix.env.CATKIN_LINT && ' + catkin_lint' || ''}}${{ matrix.env.CCOV && ' + ccov' || ''}}${{ matrix.env.CLANG_TIDY && (github.event_name != 'workflow_dispatch' && ' + clang-tidy (delta)' || ' + clang-tidy (all)') || '' }}"
-    runs-on: ${{ matrix.render_backend == 'USE_EGL' && matrix.distro || 'ubuntu-20.04' }}
+    runs-on: ${{ matrix.render_backend == 'EGL' && matrix.distro || 'ubuntu-20.04' }}
     steps:
       - uses: actions/checkout@v4
       - name: Cache upstream workspace

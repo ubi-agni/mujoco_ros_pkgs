@@ -128,7 +128,7 @@ TEST_F(LoadedPluginFixture, PassiveCallback)
 	EXPECT_TRUE(test_plugin->ran_passive_cb.load());
 }
 
-#if RENDER_BACKEND == GLFW || RENDER_BACKEND == USE_EGL || RENDER_BACKEND == USE_OSMESA
+#if RENDER_BACKEND == GLFW_BACKEND || RENDER_BACKEND == EGL_BACKEND || RENDER_BACKEND == OSMESA_BACKEND
 TEST_F(BaseEnvFixture, RenderCallback)
 {
 	nh->setParam("no_render", false);
@@ -172,7 +172,7 @@ TEST_F(BaseEnvFixture, RenderCallback)
 }
 #endif
 
-#if RENDER_BACKEND == NONE
+#if RENDER_BACKEND == NO_BACKEND
 TEST_F(BaseEnvFixture, RenderCallback_NoRender)
 {
 	nh->setParam("no_render", false);
