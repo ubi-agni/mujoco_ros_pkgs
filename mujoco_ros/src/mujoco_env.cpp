@@ -88,6 +88,9 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 
 	if (!admin_hash.empty()) {
 		mju::strcpy_arr(settings_.admin_hash, admin_hash.c_str());
+	} else {
+		// make sure hash is empty and null-terminated
+		settings_.admin_hash[0] = '\0';
 	}
 
 	nh_->param<bool>("eval_mode", settings_.eval_mode, false);

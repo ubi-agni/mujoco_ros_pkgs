@@ -179,7 +179,7 @@ public:
 	void connectViewer(Viewer *viewer);
 	void disconnectViewer(Viewer *viewer);
 
-	char queued_filename_[kMaxFilenameLength];
+	char queued_filename_[kMaxFilenameLength] = "\0";
 
 	struct
 	{
@@ -193,8 +193,8 @@ public:
 		int busywait        = 0;
 
 		// Mode
-		bool eval_mode = false;
-		char admin_hash[64];
+		bool eval_mode      = false;
+		char admin_hash[64] = "\0";
 
 		// Atomics for multithread access
 		std::atomic_int run                 = { 0 };
@@ -308,9 +308,9 @@ protected:
 	mjVFS vfs_;
 
 	// Currently loaded model
-	char filename_[kMaxFilenameLength];
+	char filename_[kMaxFilenameLength] = "\0";
 	// last error message
-	char load_error_[kErrorLength];
+	char load_error_[kErrorLength] = "\0";
 
 	// Store default collision functions to restore on reload
 	std::vector<CollisionFunctionDefault> defaultCollisionFunctions;
