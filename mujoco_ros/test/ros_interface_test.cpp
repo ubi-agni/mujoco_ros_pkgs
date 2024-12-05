@@ -50,6 +50,7 @@
 #include <geometry_msgs/TwistStamped.h>
 
 #include "mujoco_env_fixture.h"
+#include "test_util.h"
 
 #include <mujoco_ros/SimParamsConfig.h>
 

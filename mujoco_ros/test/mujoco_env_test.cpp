@@ -49,7 +49,21 @@ int main(int argc, char **argv)
 {
 	::testing::InitGoogleTest(&argc, argv);
 	ros::init(argc, argv, "mujoco_env_test");
-	return RUN_ALL_TESTS();
+
+	// Uncomment to enable debug output (useful for debugging failing tests)
+	// ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug);
+	// ros::console::notifyLoggerLevelsChanged();
+
+	// Create spinner to communicate with ROS
+	ros::AsyncSpinner spinner(1);
+	spinner.start();
+	ros::NodeHandle nh;
+	int ret = RUN_ALL_TESTS();
+
+	// Stop spinner and shutdown ROS before returning
+	spinner.stop();
+	ros::shutdown();
+	return ret;
 }
 
 using namespace mujoco_ros;
@@ -58,9 +72,11 @@ namespace mju = ::mujoco::sample_util;
 // This needs to be listed first, otherwise the throw is not detected
 TEST_F(BaseEnvFixture, EvalModeWithoutHashThrow)
 {
+	ROS_WARN("###### [START] EvalModeWithoutHashThrow ######");
 	nh->setParam("eval_mode", true);
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
-	EXPECT_THROW(env_ptr = std::make_unique<MujocoEnvTestWrapper>(""), std::runtime_error);
+	EXPECT_THROW(env_ptr = std::make_unique<MujocoEnvTestWrapper>(), std::runtime_error);
+	ROS_WARN("###### [END] EvalModeWithoutHashThrow ######");
 }
 
 TEST_F(BaseEnvFixture, RunEvalMode)
@@ -437,7 +453,7 @@ TEST_F(BaseEnvFixture, Reload)
 	env_ptr->startWithXML(xml_path);
 
 	// Load same model again in unpaused state
-	load_queued_model(env_ptr.get());
+	env_ptr->load_queued_model();
 	EXPECT_FALSE(env_ptr->settings_.run) << "Model should stay paused on init!";
 	EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Wrong content in filename_!";
 	EXPECT_EQ(env_ptr->getDataPtr()->time, 0) << "Time should have been reset to 0!";
@@ -445,9 +461,7 @@ TEST_F(BaseEnvFixture, Reload)
 
 	// Load new model in paused state
 	std::string xml_path2 = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
-	mju::strcpy_arr(env_ptr->queued_filename_, xml_path2.c_str());
-
-	load_queued_model(env_ptr.get());
+	env_ptr->load_filename(xml_path2);
 	EXPECT_EQ(env_ptr->getFilename(), xml_path2) << "Wrong content in filename_!";
 
 	env_ptr->settings_.run.store(1);
@@ -458,7 +472,7 @@ TEST_F(BaseEnvFixture, Reload)
 	}
 
 	// Load same model in unpaused state
-	load_queued_model(env_ptr.get());
+	env_ptr->load_queued_model();
 	EXPECT_EQ(env_ptr->getFilename(), xml_path2) << "Wrong content in filename_!";
 
 	// Let some time pass

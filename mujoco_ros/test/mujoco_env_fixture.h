@@ -40,7 +40,6 @@
 #include <mujoco_ros/mujoco_env.h>
 #include <dynamic_reconfigure/server.h>
 #include <mujoco_ros/SimParamsConfig.h>
-#include "test_util.h"
 
 using namespace mujoco_ros;
 namespace mju = ::mujoco::sample_util;
@@ -68,10 +67,21 @@ public:
 	int getNumCBReadyPlugins() { return cb_ready_plugins_.size(); }
 	void notifyGeomChange() { notifyGeomChanged(0); }
 
+	void load_queued_model()
+	{
+		settings_.load_request = 2;
+		float seconds          = 0;
+		while (getOperationalStatus() != 0 && seconds < 2) { // wait for model to be loaded or timeout
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			seconds += 0.001;
+		}
+		EXPECT_LT(seconds, 2) << "Model could not be loaded in time, ran into 2 second timeout!";
+	}
+
 	void load_filename(const std::string &filename)
 	{
 		mju::strcpy_arr(queued_filename_, filename.c_str());
-		settings_.load_request = 2;
+		load_queued_model();
 	}
 
 	void shutdown()
@@ -150,7 +160,7 @@ protected:
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			seconds += 0.001;
 		}
-		EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
+		ASSERT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
 
 		// Make sure forward has been run at least once
 		{

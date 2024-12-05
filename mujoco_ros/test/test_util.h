@@ -39,17 +39,6 @@
 #include <mujoco_ros/common_types.h>
 using namespace mujoco_ros;
 
-void load_queued_model(MujocoEnv *env)
-{
-	env->settings_.load_request = 2;
-	float seconds               = 0;
-	while (env->getOperationalStatus() != 0 && seconds < 2) { // wait for model to be loaded or timeout
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
-		seconds += 0.001;
-	}
-	EXPECT_LT(seconds, 2) << "Model could not be loaded in time, ran into 2 second timeout!";
-}
-
 void compare_qpos(mjData *d, int qpos_adr_int, const std::string &joint_name, const std::vector<double> &values,
                   const std::vector<double> &tolerances = {})
 {

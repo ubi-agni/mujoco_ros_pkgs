@@ -71,5 +71,6 @@ install(FILES
   empty_world.xml
   equality_world.xml
   camera_world.xml
+  pendulum_world.xml
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/test
 )

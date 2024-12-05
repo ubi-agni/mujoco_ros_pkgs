@@ -67,7 +67,7 @@ class LoadedPluginFixture : public ::testing::Test
 {
 protected:
 	std::unique_ptr<ros::NodeHandle> nh;
-	TestPlugin *test_plugin;
+	TestPlugin *test_plugin = nullptr;
 	MujocoEnvTestWrapper *env_ptr;
 
 	void SetUp() override
@@ -96,6 +96,8 @@ protected:
 				break;
 			}
 		}
+
+		ASSERT_NE(test_plugin, nullptr) << "TestPlugin not found!";
 	}
 
 	void TearDown() override
@@ -159,6 +161,8 @@ TEST_F(BaseEnvFixture, RenderCallback)
 			break;
 		}
 	}
+
+	ASSERT_NE(test_plugin, nullptr) << "TestPlugin not found!";
 
 	// wait for render callback to be called
 	float seconds = 0;
@@ -308,7 +312,7 @@ TEST_F(BaseEnvFixture, FailedLoad)
 			}
 		}
 
-		EXPECT_NE(test_plugin, nullptr) << "Dummy plugin was not loaded!";
+		ASSERT_NE(test_plugin, nullptr) << "Dummy plugin was not loaded!";
 
 		EXPECT_FALSE(test_plugin->ran_control_cb.load());
 		EXPECT_FALSE(test_plugin->ran_passive_cb.load());
@@ -349,6 +353,8 @@ TEST_F(BaseEnvFixture, FailedLoadRecoverReload)
 				break;
 			}
 		}
+
+		ASSERT_NE(test_plugin, nullptr) << "Dummy plugin was not loaded!";
 
 		nh->setParam("should_fail", false);
 
@@ -396,6 +402,8 @@ TEST_F(BaseEnvFixture, FailedLoadReset)
 				break;
 			}
 		}
+
+		ASSERT_NE(test_plugin, nullptr) << "Dummy plugin was not loaded!";
 
 		env_ptr->settings_.reset_request = 1;
 		float seconds                    = 0;

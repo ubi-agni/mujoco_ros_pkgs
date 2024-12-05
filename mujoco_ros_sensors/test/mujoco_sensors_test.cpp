@@ -37,6 +37,7 @@
 #include <gtest/gtest.h>
 
 #include <mujoco_ros/render_backend.h>
+#include "mujoco_env_fixture.h"
 #include <mujoco_ros/mujoco_env.h>
 #include <mujoco_ros/common_types.h>
 #include <mujoco_ros_sensors/mujoco_sensor_handler_plugin.h>
@@ -67,6 +68,10 @@ int main(int argc, char **argv)
 	::testing::InitGoogleTest(&argc, argv);
 	ros::init(argc, argv, "mujoco_ros_sensors_test");
 
+	// Uncomment to enable debug output (useful for debugging failing tests)
+	ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug);
+	ros::console::notifyLoggerLevelsChanged();
+
 	ros::AsyncSpinner spinner(1);
 	spinner.start();
 	int ret = RUN_ALL_TESTS();
@@ -74,37 +79,6 @@ int main(int argc, char **argv)
 	spinner.stop();
 	return ret;
 }
-
-class MujocoEnvTestWrapper : public MujocoEnv
-{
-public:
-	MujocoEnvTestWrapper(const std::string &admin_hash = std::string()) : MujocoEnv(admin_hash) {}
-	mjModel *getModelPtr() { return model_.get(); }
-	mjData *getDataPtr() { return data_.get(); }
-	int getPendingSteps() { return num_steps_until_exit_; }
-
-	std::string getFilename() { return std::string(filename_); }
-	int isPhysicsRunning() { return is_physics_running_; }
-	int isEventRunning() { return is_event_running_; }
-	int isRenderingRunning() { return is_rendering_running_; }
-
-	void shutdown()
-	{
-		settings_.exit_request = 1;
-		waitForPhysicsJoin();
-		waitForEventsJoin();
-	}
-
-	const std::string &getHandleNamespace() { return nh_->getNamespace(); }
-
-	void startWithXML(const std::string &xml_path)
-	{
-		mju::strcpy_arr(queued_filename_, xml_path.c_str());
-		settings_.load_request = 2;
-		startPhysicsLoop();
-		startEventLoop();
-	}
-};
 
 static constexpr int NUM_SAMPLES = 20000;
 
@@ -121,7 +95,7 @@ protected:
 		nh = std::make_unique<ros::NodeHandle>("~");
 		nh->setParam("eval_mode", false);
 		nh->setParam("unpause", true);
-		nh->setParam("no_x", true);
+		nh->setParam("no_render", true);
 		nh->setParam("use_sim_time", true);
 
 		env_ptr = new MujocoEnvTestWrapper();
@@ -134,7 +108,7 @@ protected:
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			seconds += 0.001;
 		}
-		EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
+		ASSERT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
 
 		m = env_ptr->getModelPtr();
 		d = env_ptr->getDataPtr();
@@ -144,6 +118,9 @@ protected:
 	{
 		env_ptr->shutdown();
 		delete env_ptr;
+
+		// clear all parameters
+		ros::param::del(nh->getNamespace());
 	}
 };
 
@@ -160,7 +137,7 @@ protected:
 		nh = std::make_unique<ros::NodeHandle>("~");
 		nh->setParam("eval_mode", true);
 		nh->setParam("unpause", true);
-		nh->setParam("no_x", true);
+		nh->setParam("no_render", true);
 		nh->setParam("use_sim_time", true);
 
 		env_ptr = new MujocoEnvTestWrapper("some_hash");
@@ -173,7 +150,7 @@ protected:
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			seconds += 0.001;
 		}
-		EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
+		ASSERT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
 
 		m = env_ptr->getModelPtr();
 		d = env_ptr->getDataPtr();
@@ -183,6 +160,9 @@ protected:
 	{
 		env_ptr->shutdown();
 		delete env_ptr;
+
+		// clear all parameters
+		ros::param::del(nh->getNamespace());
 	}
 };
 
