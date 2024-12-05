@@ -83,6 +83,26 @@ MujocoEnv *MujocoEnv::instance = nullptr;
 
 MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 {
+	nh_ = std::make_unique<ros::NodeHandle>("~");
+	ROS_DEBUG_STREAM("New MujocoEnv created");
+
+	if (!admin_hash.empty()) {
+		mju::strcpy_arr(settings_.admin_hash, admin_hash.c_str());
+	}
+
+	nh_->param<bool>("eval_mode", settings_.eval_mode, false);
+	if (settings_.eval_mode) {
+		ROS_INFO("Running in evaluation mode. Parsing admin hash...");
+		if (!settings_.admin_hash[0]) {
+			ROS_ERROR_NAMED("mujoco", "Evaluation mode requires a hash to verify critical operations are allowed. No "
+			                          "hash was provided, aborting launch.");
+			settings_.exit_request = 1;
+			throw std::runtime_error(
+			    "Evaluation mode requires a hash to verify critical operations are allowed. No hash was "
+			    "provided, aborting launch.");
+		}
+	}
+
 	if (!ros::param::get("/use_sim_time", settings_.use_sim_time)) {
 		ROS_FATAL_NAMED("mujoco", "/use_sim_time ROS param is unset. This node requires you to explicitly set it to true "
 		                          "or false. Also Make sure it is set before starting any node, "
@@ -92,9 +112,6 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 
 	ROS_DEBUG_COND(!settings_.use_sim_time, "use_sim_time is set to false. Not publishing sim time to /clock!");
 	bool no_render;
-
-	nh_ = std::make_unique<ros::NodeHandle>("~");
-	ROS_DEBUG_STREAM("New MujocoEnv created");
 
 	nh_->param("no_render", no_render, false);
 	if (nh_->hasParam("no_x")) {
@@ -114,25 +131,6 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 		                                                                         << ", library: " << mj_version() << ")");
 	}
 	ROS_INFO_STREAM("Compiled with render backend: " << render_backend);
-
-	if (!admin_hash.empty()) {
-		mju::strcpy_arr(settings_.admin_hash, admin_hash.c_str());
-	}
-
-	nh_->param<bool>("eval_mode", settings_.eval_mode, false);
-	if (settings_.eval_mode) {
-		ROS_INFO("Running in evaluation mode. Parsing admin hash...");
-		if (!settings_.admin_hash[0]) {
-			ROS_ERROR_NAMED("mujoco", "Evaluation mode requires a hash to verify critical operations are allowed. No "
-			                          "hash was provided, aborting launch.");
-			settings_.exit_request = 1;
-			throw std::runtime_error(
-			    "Evaluation mode requires a hash to verify critical operations are allowed. No hash was "
-			    "provided, aborting launch.");
-		}
-	} else {
-		ROS_INFO("Running in normal training mode.");
-	}
 
 	nh_->param<bool>("render_offscreen", settings_.render_offscreen, true);
 	if (settings_.render_offscreen) {
