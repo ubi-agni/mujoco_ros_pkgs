@@ -42,6 +42,7 @@
 
 #if RENDER_BACKEND == EGL_BACKEND
 #include <EGL/egl.h>
+#include <EGL/eglext.h>
 #endif
 
 namespace mujoco_ros {
@@ -183,6 +184,33 @@ void MujocoEnv::initializeRenderResources()
 bool MujocoEnv::InitGL()
 {
 	ROS_DEBUG("Initializing EGL...");
+
+	EGLDeviceEXT egl_devices[4];
+	EGLint num_devices;
+
+	// Get devices
+	PFNEGLQUERYDEVICESEXTPROC eglQueryDevicesEXT =
+	    reinterpret_cast<PFNEGLQUERYDEVICESEXTPROC>(eglGetProcAddress("eglQueryDevicesEXT"));
+	if (eglQueryDevicesEXT(4, egl_devices, &num_devices) != EGL_TRUE) {
+		ROS_ERROR_STREAM("Failed to query EGL devices. Error type: " << eglGetError());
+		return false;
+	}
+	ROS_DEBUG_STREAM("Found " << num_devices << " EGL devices");
+
+	PFNEGLQUERYDEVICESTRINGEXTPROC eglQueryDeviceStringEXT =
+	    reinterpret_cast<PFNEGLQUERYDEVICESTRINGEXTPROC>(eglGetProcAddress("eglQueryDeviceStringEXT"));
+	const char *extensions;
+	int choose_device = 0;
+	for (int i = 0; i < num_devices; i++) {
+		extensions = eglQueryDeviceStringEXT(egl_devices[i], EGL_EXTENSIONS);
+		ROS_DEBUG_STREAM("Device " << i << " has extensions: " << extensions);
+		if (strstr(extensions, "EGL_NV_device_cuda")) {
+			ROS_DEBUG_STREAM("Choosing device " << i << " for CUDA support");
+			choose_device = i;
+			break;
+		}
+	}
+
 	// clang-format off
 	const EGLint config[] = {
 		EGL_RED_SIZE,		   8,
@@ -198,7 +226,7 @@ bool MujocoEnv::InitGL()
 	// clang-format on
 
 	// Get Display
-	EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+	EGLDisplay display = eglGetPlatformDisplay(EGL_PLATFORM_DEVICE_EXT, egl_devices[choose_device], nullptr);
 	if (display == EGL_NO_DISPLAY) {
 		ROS_ERROR_STREAM("Failed to get EGL display. Error type: " << eglGetError());
 		return false;
