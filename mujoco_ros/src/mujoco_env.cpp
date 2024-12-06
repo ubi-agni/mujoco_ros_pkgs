@@ -370,10 +370,11 @@ void MujocoEnv::loadInitialJointStates()
 		int jnt_axis = 0;
 		std::string value;
 		while (std::getline(stream_values, value, ' ')) {
-			if (jnt_axis > num_axes)
+			if (jnt_axis >= num_axes) {
+				jnt_axis++;
 				break;
-			axis_vals[jnt_axis] = std::stod(value);
-			jnt_axis++;
+			}
+			axis_vals[jnt_axis++] = std::stod(value);
 		}
 
 		if (jnt_axis != num_axes) {
@@ -431,10 +432,11 @@ void MujocoEnv::loadInitialJointStates()
 		int jnt_axis = 0;
 		std::string value;
 		while (std::getline(stream_values, value, ' ')) {
-			if (jnt_axis > num_axes)
+			if (jnt_axis >= num_axes) {
+				jnt_axis++;
 				break;
-			axis_vals[jnt_axis] = std::stod(value);
-			jnt_axis++;
+			}
+			axis_vals[jnt_axis++] = std::stod(value);
 		}
 
 		if (jnt_axis != num_axes) {
