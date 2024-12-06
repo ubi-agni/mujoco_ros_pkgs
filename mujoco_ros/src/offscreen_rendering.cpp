@@ -351,14 +351,17 @@ void MujocoEnv::offscreenRenderLoop()
 		offscreen_.request_pending.store(false);
 		return;
 	}
-#else
+#endif
+
+#if RENDER_BACKEND == NO_BACKEND
 	ROS_ERROR("No offscreen rendering backend available. Cannot run offscreen rendering");
 	settings_.render_offscreen    = false;
 	settings_.visual_init_request = false;
 	offscreen_.request_pending.store(false);
+	is_rendering_running_ = 0;
+	ROS_DEBUG("Exiting offscreen render loop");
 	return;
-#endif
-
+#else
 	is_rendering_running_ = 1;
 	ROS_DEBUG_NAMED("offscreen_rendering", "Creating offscreen rendering resources ...");
 	mjv_defaultCamera(&offscreen_.cam);
@@ -414,6 +417,7 @@ void MujocoEnv::offscreenRenderLoop()
 	}
 	is_rendering_running_ = 0;
 	ROS_DEBUG("Exiting offscreen render loop");
+#endif
 }
 
 } // namespace mujoco_ros
