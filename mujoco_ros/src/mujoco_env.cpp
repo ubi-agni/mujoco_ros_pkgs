@@ -136,10 +136,6 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 	ROS_INFO_STREAM("Compiled with render backend: " << render_backend);
 
 	nh_->param<bool>("render_offscreen", settings_.render_offscreen, true);
-	if (settings_.render_offscreen) {
-		mjv_makeScene(nullptr, &offscreen_.scn, Viewer::kMaxGeom);
-	}
-
 	nh_->param<bool>("headless", settings_.headless, true);
 	if (!settings_.headless) {
 #if RENDER_BACKEND == GLFW_BACKEND

@@ -43,6 +43,38 @@
 #if RENDER_BACKEND == EGL_BACKEND
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+
+static constexpr int MAX_EGL_DEVICES = 6;
+
+bool get_egl_device(EGLDeviceEXT *egl_devices, int &choose_device)
+{
+	EGLint num_devices;
+
+	// Get devices
+	PFNEGLQUERYDEVICESEXTPROC eglQueryDevicesEXT =
+	    reinterpret_cast<PFNEGLQUERYDEVICESEXTPROC>(eglGetProcAddress("eglQueryDevicesEXT"));
+	if (eglQueryDevicesEXT(MAX_EGL_DEVICES, egl_devices, &num_devices) != EGL_TRUE) {
+		ROS_ERROR_STREAM("Failed to query EGL devices. Error type: " << eglGetError());
+		return false;
+	}
+	ROS_DEBUG_STREAM("Found " << num_devices << " EGL devices");
+
+	PFNEGLQUERYDEVICESTRINGEXTPROC eglQueryDeviceStringEXT =
+	    reinterpret_cast<PFNEGLQUERYDEVICESTRINGEXTPROC>(eglGetProcAddress("eglQueryDeviceStringEXT"));
+	const char *extensions;
+	choose_device = 0;
+	for (int i = 0; i < num_devices; i++) {
+		extensions = eglQueryDeviceStringEXT(egl_devices[i], EGL_EXTENSIONS);
+		ROS_DEBUG_STREAM("Device " << i << " has extensions: " << extensions);
+		if (strstr(extensions, "EGL_NV_device_cuda")) {
+			ROS_DEBUG_STREAM("Choosing device " << i << " for CUDA support");
+			choose_device = i;
+			break;
+		}
+	}
+	return true;
+}
+
 #endif
 
 namespace mujoco_ros {
@@ -54,14 +86,23 @@ OffscreenRenderContext::~OffscreenRenderContext()
 		ROS_DEBUG("Freeing GLFW offscreen context");
 		std::unique_lock<std::mutex> lock(render_mutex);
 		request_pending.store(false);
+		mjv_freeScene(&scn);
 		mjr_defaultContext(&con);
 		mjr_freeContext(&con);
 	}
 #elif RENDER_BACKEND == EGL_BACKEND
 	ROS_DEBUG("Freeing EGL offscreen context");
+	mjv_freeScene(&scn);
 	mjr_defaultContext(&con);
 	mjr_freeContext(&con);
-	EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+
+	EGLDeviceEXT egl_devices[MAX_EGL_DEVICES];
+	int choosen_device = 0;
+	if (!get_egl_device(egl_devices, choosen_device)) {
+		return;
+	}
+
+	EGLDisplay display = eglGetPlatformDisplay(EGL_PLATFORM_DEVICE_EXT, egl_devices[choosen_device], nullptr);
 	if (display != EGL_NO_DISPLAY) {
 		// Get current context
 		EGLContext current_context = eglGetCurrentContext();
@@ -82,6 +123,7 @@ OffscreenRenderContext::~OffscreenRenderContext()
 		return;
 	}
 	ROS_DEBUG("Freeing OSMesa offscreen context");
+	mjv_freeScene(&scn);
 	mjr_defaultContext(&con);
 	mjr_freeContext(&con);
 	OSMesaDestroyContext(osmesa.ctx);
@@ -185,30 +227,10 @@ bool MujocoEnv::InitGL()
 {
 	ROS_DEBUG("Initializing EGL...");
 
-	EGLDeviceEXT egl_devices[4];
-	EGLint num_devices;
-
-	// Get devices
-	PFNEGLQUERYDEVICESEXTPROC eglQueryDevicesEXT =
-	    reinterpret_cast<PFNEGLQUERYDEVICESEXTPROC>(eglGetProcAddress("eglQueryDevicesEXT"));
-	if (eglQueryDevicesEXT(4, egl_devices, &num_devices) != EGL_TRUE) {
-		ROS_ERROR_STREAM("Failed to query EGL devices. Error type: " << eglGetError());
+	EGLDeviceEXT egl_devices[MAX_EGL_DEVICES];
+	int choosen_device = 0;
+	if (!get_egl_device(egl_devices, choosen_device)) {
 		return false;
-	}
-	ROS_DEBUG_STREAM("Found " << num_devices << " EGL devices");
-
-	PFNEGLQUERYDEVICESTRINGEXTPROC eglQueryDeviceStringEXT =
-	    reinterpret_cast<PFNEGLQUERYDEVICESTRINGEXTPROC>(eglGetProcAddress("eglQueryDeviceStringEXT"));
-	const char *extensions;
-	int choose_device = 0;
-	for (int i = 0; i < num_devices; i++) {
-		extensions = eglQueryDeviceStringEXT(egl_devices[i], EGL_EXTENSIONS);
-		ROS_DEBUG_STREAM("Device " << i << " has extensions: " << extensions);
-		if (strstr(extensions, "EGL_NV_device_cuda")) {
-			ROS_DEBUG_STREAM("Choosing device " << i << " for CUDA support");
-			choose_device = i;
-			break;
-		}
 	}
 
 	// clang-format off
@@ -226,7 +248,7 @@ bool MujocoEnv::InitGL()
 	// clang-format on
 
 	// Get Display
-	EGLDisplay display = eglGetPlatformDisplay(EGL_PLATFORM_DEVICE_EXT, egl_devices[choose_device], nullptr);
+	EGLDisplay display = eglGetPlatformDisplay(EGL_PLATFORM_DEVICE_EXT, egl_devices[choosen_device], nullptr);
 	if (display == EGL_NO_DISPLAY) {
 		ROS_ERROR_STREAM("Failed to get EGL display. Error type: " << eglGetError());
 		return false;
