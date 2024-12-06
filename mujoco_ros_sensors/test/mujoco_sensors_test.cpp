@@ -52,6 +52,8 @@
 #include <mujoco_ros_msgs/RegisterSensorNoiseModels.h>
 #include <mujoco_ros_msgs/ScalarStamped.h>
 
+#include <Eigen/Dense>
+
 #include <ros/ros.h>
 #include <ros/package.h>
 #include <chrono>
@@ -103,6 +105,8 @@ public:
 		startEventLoop();
 	}
 };
+
+static constexpr int NUM_SAMPLES = 20000;
 
 class TrainEnvFixture : public ::testing::Test
 {
@@ -322,76 +326,79 @@ TEST_F(TrainEnvFixture, Sensor3DOF)
 	// Pause sim for synchronous message
 	env_ptr->settings_.run.store(0);
 
-	msgPtr    = ros::topic::waitForMessage<geometry_msgs::Vector3Stamped>("/vel_EE");
-	msgPtr_GT = ros::topic::waitForMessage<geometry_msgs::Vector3Stamped>("/vel_EE_GT");
+	int n                             = 0;
+	double values[3 * NUM_SAMPLES]    = { 0 };
+	int n_gt                          = 0;
+	double values_gt[3 * NUM_SAMPLES] = { 0 };
+
+	ros::Subscriber sub = nh->subscribe<geometry_msgs::Vector3Stamped>(
+	    "/vel_EE", NUM_SAMPLES, [&values, &n](const geometry_msgs::Vector3Stamped::ConstPtr &msg) {
+		    values[n * 3]     = msg->vector.x;
+		    values[n * 3 + 1] = msg->vector.y;
+		    values[n * 3 + 2] = msg->vector.z;
+		    n += 1;
+	    });
+
+	ros::Subscriber sub_gt = nh->subscribe<geometry_msgs::Vector3Stamped>(
+	    "/vel_EE_GT", NUM_SAMPLES, [&values_gt, &n_gt](const geometry_msgs::Vector3Stamped::ConstPtr &msg) {
+		    values_gt[n_gt * 3]     = msg->vector.x;
+		    values_gt[n_gt * 3 + 1] = msg->vector.y;
+		    values_gt[n_gt * 3 + 2] = msg->vector.z;
+		    n_gt += 1;
+	    });
+
+	// Wait for latched messages to be received
+	float secs = 0.f;
+	while ((n < 1 || n_gt < 1) && secs < 1.f) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		secs += 0.001f;
+	}
+	ASSERT_LT(secs, 1.f) << "Messages not received within 1s";
 
 	// GT == Sensor reading
-	compare_vectors({ msgPtr_GT->vector.x, msgPtr_GT->vector.y, msgPtr_GT->vector.z },
+	compare_vectors({ values_gt[0], values_gt[1], values_gt[2] },
 	                { d->sensordata[adr] / cutoff, d->sensordata[adr + 1] / cutoff, d->sensordata[adr + 2] / cutoff },
 	                0.0001, true);
 
-	int n               = 0;
-	double means[6]     = { 0.0 };
-	double deltas[6]    = { 0.0 };
-	double variances[6] = { 0.0 };
+	env_ptr->step(NUM_SAMPLES - 1);
 
-	for (int i = 0; i <= 1000; i++) {
-		env_ptr->settings_.env_steps_request.store(1);
-
-		while (env_ptr->settings_.env_steps_request.load() != 0) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
-		}
-		msgPtr    = ros::topic::waitForMessage<geometry_msgs::Vector3Stamped>("/vel_EE");
-		msgPtr_GT = ros::topic::waitForMessage<geometry_msgs::Vector3Stamped>("/vel_EE_GT");
-
-		n += 1;
-		deltas[0] = (msgPtr->vector.x - msgPtr_GT->vector.x) - means[0];
-		deltas[1] = (msgPtr->vector.y - msgPtr_GT->vector.y) - means[1];
-		deltas[2] = (msgPtr->vector.z - msgPtr_GT->vector.z) - means[2];
-
-		deltas[3] = msgPtr_GT->vector.x - means[3];
-		deltas[4] = msgPtr_GT->vector.y - means[4];
-		deltas[5] = msgPtr_GT->vector.z - means[5];
-
-		means[0] += deltas[0] / n;
-		means[1] += deltas[1] / n;
-		means[2] += deltas[2] / n;
-
-		means[3] += deltas[3] / n;
-		means[4] += deltas[4] / n;
-		means[5] += deltas[5] / n;
-
-		variances[0] += deltas[0] * ((msgPtr->vector.x - msgPtr_GT->vector.x) - means[0]);
-		variances[1] += deltas[1] * ((msgPtr->vector.y - msgPtr_GT->vector.y) - means[1]);
-		variances[2] += deltas[2] * ((msgPtr->vector.z - msgPtr_GT->vector.z) - means[2]);
-
-		variances[3] += deltas[3] * (msgPtr_GT->vector.x - means[3]);
-		variances[4] += deltas[4] * (msgPtr_GT->vector.y - means[4]);
-		variances[5] += deltas[5] * (msgPtr_GT->vector.z - means[5]);
+	secs = 0.f;
+	while ((n < NUM_SAMPLES || n_gt < NUM_SAMPLES) && secs < 15.f) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		secs += 0.001f;
 	}
+	ASSERT_LT(secs, 15.f) << "Messages not received within 15s (got " << n << " and " << n_gt << " of " << NUM_SAMPLES
+	                      << " expected, respectively)";
 
-	variances[0] /= n - 1;
-	variances[1] /= n - 1;
-	variances[2] /= n - 1;
-	variances[3] /= n - 1;
-	variances[4] /= n - 1;
-	variances[5] /= n - 1;
+	// Map values to Eigen matrix for fast metrics computation
+	Eigen::Map<Eigen::Matrix<double, NUM_SAMPLES, 3, Eigen::RowMajor>> values_map(values);
+	Eigen::Map<Eigen::Matrix<double, NUM_SAMPLES, 3, Eigen::RowMajor>> values_gt_map(values_gt);
 
-	EXPECT_NEAR(means[0], 0, 0.02);
-	EXPECT_EQ(means[1], 1);
-	EXPECT_EQ(means[2], 0);
+	// Compute means and variances
+	auto diff                             = values_map - values_gt_map;
+	Eigen::Matrix<double, 1, 3> means     = diff.colwise().mean();
+	Eigen::Matrix<double, 1, 3> variances = (diff.rowwise() - diff.colwise().mean()).array().square().colwise().mean();
 
-	EXPECT_NEAR(means[3], d->sensordata[adr] / cutoff, 0.0001);
-	EXPECT_NEAR(means[4], d->sensordata[adr + 1] / cutoff, 0.0001);
-	EXPECT_NEAR(means[5], d->sensordata[adr + 2] / cutoff, 0.0001);
+	EXPECT_NEAR(means(0), 0, 1e-3);
+	EXPECT_NEAR(means(1), 1, 1e-3);
+	EXPECT_NEAR(means(2), 0, 1e-3);
 
-	EXPECT_NEAR(variances[0], 0.000625, 0.0001);
-	EXPECT_EQ(variances[1], 0);
-	EXPECT_EQ(variances[2], 0);
+	EXPECT_NEAR(variances(0), 0.000625, 2e-5);
+	EXPECT_NEAR(variances(1), 0., 5e-5);
+	EXPECT_NEAR(variances(2), 0., 2e-5);
 
-	EXPECT_EQ(variances[3], 0);
-	EXPECT_EQ(variances[4], 0);
-	EXPECT_EQ(variances[5], 0);
+	// Map values to Eigen matrix for fast metrics computation
+	Eigen::Matrix<double, 1, 3> means_gt = values_gt_map.colwise().mean();
+	Eigen::Matrix<double, 1, 3> variances_gt =
+	    (values_gt_map.rowwise() - values_gt_map.colwise().mean()).array().square().colwise().mean();
+
+	EXPECT_NEAR(means_gt(0), d->sensordata[adr] / cutoff, 1e-3);
+	EXPECT_NEAR(means_gt(1), d->sensordata[adr + 1] / cutoff, 1e-3);
+	EXPECT_NEAR(means_gt(2), d->sensordata[adr + 2] / cutoff, 1e-3);
+
+	EXPECT_EQ(variances_gt(0), 0);
+	EXPECT_EQ(variances_gt(1), 0);
+	EXPECT_EQ(variances_gt(2), 0);
 }
 
 TEST_F(TrainEnvFixture, Framepos)
@@ -433,81 +440,81 @@ TEST_F(TrainEnvFixture, Framepos)
 	ros::ServiceClient client =
 	    nh->serviceClient<mujoco_ros_msgs::RegisterSensorNoiseModels>("/sensors/register_noise_models");
 	EXPECT_TRUE(client.call(srv)) << "Service call failed!";
-	// sensor_plugin->registerNoiseModelsCB(srv.request, srv.response);
 
 	// Pause sim for synchronous message
 	env_ptr->settings_.run.store(0);
 
-	msgPtr    = ros::topic::waitForMessage<geometry_msgs::PointStamped>("/immovable_pos");
-	msgPtr_GT = ros::topic::waitForMessage<geometry_msgs::PointStamped>("/immovable_pos_GT");
+	double values[3 * NUM_SAMPLES]    = { 0 };
+	int n                             = 0;
+	double values_gt[3 * NUM_SAMPLES] = { 0 };
+	int n_gt                          = 0;
 
-	// GT == Sensor reading
-	compare_vectors({ msgPtr_GT->point.x, msgPtr_GT->point.y, msgPtr_GT->point.z },
+	ros::Subscriber sub = nh->subscribe<geometry_msgs::PointStamped>(
+	    "/immovable_pos", NUM_SAMPLES, [&values, &n](const geometry_msgs::PointStamped::ConstPtr &msg) {
+		    values[n * 3]     = msg->point.x;
+		    values[n * 3 + 1] = msg->point.y;
+		    values[n * 3 + 2] = msg->point.z;
+		    n += 1;
+	    });
+
+	ros::Subscriber sub_gt = nh->subscribe<geometry_msgs::PointStamped>(
+	    "/immovable_pos_GT", NUM_SAMPLES, [&values_gt, &n_gt](const geometry_msgs::PointStamped::ConstPtr &msg) {
+		    values_gt[n_gt * 3]     = msg->point.x;
+		    values_gt[n_gt * 3 + 1] = msg->point.y;
+		    values_gt[n_gt * 3 + 2] = msg->point.z;
+		    n_gt += 1;
+	    });
+
+	// Wait for latched messages to be received
+	float secs = 0.f;
+	while ((n < 1 || n_gt < 1) && secs < 1.f) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		secs += 0.001f;
+	}
+	ASSERT_LT(secs, 1.f) << "Messages not received within 1s";
+
+	compare_vectors({ values_gt[0], values_gt[1], values_gt[2] },
 	                { d->sensordata[adr] / cutoff, d->sensordata[adr + 1] / cutoff, d->sensordata[adr + 2] / cutoff },
 	                0.0001, true);
 
-	int n               = 0;
-	double means[6]     = { 0.0 };
-	double deltas[6]    = { 0.0 };
-	double variances[6] = { 0.0 };
+	env_ptr->step(NUM_SAMPLES - 1);
 
-	for (int i = 0; i <= 1000; i++) {
-		env_ptr->settings_.env_steps_request.store(1);
-
-		while (env_ptr->settings_.env_steps_request.load() != 0) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
-		}
-		msgPtr    = ros::topic::waitForMessage<geometry_msgs::PointStamped>("/immovable_pos");
-		msgPtr_GT = ros::topic::waitForMessage<geometry_msgs::PointStamped>("/immovable_pos_GT");
-
-		n += 1;
-		deltas[0] = (msgPtr->point.x - msgPtr_GT->point.x) - means[0];
-		deltas[1] = (msgPtr->point.y - msgPtr_GT->point.y) - means[1];
-		deltas[2] = (msgPtr->point.z - msgPtr_GT->point.z) - means[2];
-
-		deltas[3] = msgPtr_GT->point.x - means[3];
-		deltas[4] = msgPtr_GT->point.y - means[4];
-		deltas[5] = msgPtr_GT->point.z - means[5];
-
-		means[0] += deltas[0] / n;
-		means[1] += deltas[1] / n;
-		means[2] += deltas[2] / n;
-
-		means[3] += deltas[3] / n;
-		means[4] += deltas[4] / n;
-		means[5] += deltas[5] / n;
-
-		variances[0] += deltas[0] * ((msgPtr->point.x - msgPtr_GT->point.x) - means[0]);
-		variances[1] += deltas[1] * ((msgPtr->point.y - msgPtr_GT->point.y) - means[1]);
-		variances[2] += deltas[2] * ((msgPtr->point.z - msgPtr_GT->point.z) - means[2]);
-
-		variances[3] += deltas[3] * (msgPtr_GT->point.x - means[3]);
-		variances[4] += deltas[4] * (msgPtr_GT->point.y - means[4]);
-		variances[5] += deltas[5] * (msgPtr_GT->point.z - means[5]);
+	secs = 0.f;
+	while ((n < NUM_SAMPLES || n_gt < NUM_SAMPLES) && secs < 15.f) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		secs += 0.001f;
 	}
+	ASSERT_LT(secs, 15.f) << "Messages not received within 15s (got " << n << " and " << n_gt << " of " << NUM_SAMPLES
+	                      << " expected, respectively)";
 
-	variances[0] /= n - 1;
-	variances[1] /= n - 1;
-	variances[2] /= n - 1;
-	variances[3] /= n - 1;
-	variances[4] /= n - 1;
-	variances[5] /= n - 1;
+	// Map values to Eigen matrix for fast metrics computation
+	Eigen::Map<Eigen::Matrix<double, NUM_SAMPLES, 3, Eigen::RowMajor>> values_map(values);
+	Eigen::Map<Eigen::Matrix<double, NUM_SAMPLES, 3, Eigen::RowMajor>> values_gt_map(values_gt);
+	// Compute means and variances
+	auto diff                             = values_map - values_gt_map;
+	Eigen::Matrix<double, 1, 3> means     = diff.colwise().mean();
+	Eigen::Matrix<double, 1, 3> variances = (diff.rowwise() - diff.colwise().mean()).array().square().colwise().mean();
 
-	EXPECT_NEAR(means[0], 0, 0.02);
-	EXPECT_NEAR(means[1], 1., 0.0001);
-	EXPECT_EQ(means[2], 0);
+	EXPECT_NEAR(means(0), 0, 1e-3);
+	EXPECT_NEAR(means(1), 1., 1e-3);
+	EXPECT_NEAR(means(2), 0., 1e-3);
 
-	EXPECT_NEAR(means[3], d->sensordata[adr] / cutoff, 0.0001);
-	EXPECT_NEAR(means[4], d->sensordata[adr + 1] / cutoff, 0.0001);
-	EXPECT_NEAR(means[5], d->sensordata[adr + 2] / cutoff, 0.0001);
+	EXPECT_NEAR(variances(0), 0.000625, 2e-5);
+	EXPECT_NEAR(variances(1), 0., 5e-5);
+	EXPECT_NEAR(variances(2), 0., 2e-5);
 
-	EXPECT_NEAR(variances[0], 0.000625, 0.0001);
-	EXPECT_EQ(variances[1], 0);
-	EXPECT_EQ(variances[2], 0);
+	// Compute means and variances
+	Eigen::Matrix<double, 1, 3> means_gt = values_gt_map.colwise().mean();
+	Eigen::Matrix<double, 1, 3> variances_gt =
+	    (values_gt_map.rowwise() - values_gt_map.colwise().mean()).array().square().colwise().mean();
 
-	EXPECT_EQ(variances[3], 0);
-	EXPECT_EQ(variances[4], 0);
-	EXPECT_EQ(variances[5], 0);
+	EXPECT_NEAR(means_gt[0], d->sensordata[adr] / cutoff, 1e-3);
+	EXPECT_NEAR(means_gt[1], d->sensordata[adr + 1] / cutoff, 1e-3);
+	EXPECT_NEAR(means_gt[2], d->sensordata[adr + 2] / cutoff, 1e-3);
+
+	EXPECT_EQ(variances_gt[0], 0);
+	EXPECT_EQ(variances_gt[1], 0);
+	EXPECT_EQ(variances_gt[2], 0);
 }
 
 TEST_F(TrainEnvFixture, scalar_stamped)
@@ -548,45 +555,62 @@ TEST_F(TrainEnvFixture, scalar_stamped)
 	// Pause sim for synchronous message
 	env_ptr->settings_.run.store(0);
 
-	msgPtr_GT = ros::topic::waitForMessage<mujoco_ros_msgs::ScalarStamped>("/vel_joint2_GT");
-	msgPtr    = ros::topic::waitForMessage<mujoco_ros_msgs::ScalarStamped>("/vel_joint2");
+	double values[NUM_SAMPLES]    = { 0 };
+	int n                         = 0;
+	double values_gt[NUM_SAMPLES] = { 0 };
+	int n_gt                      = 0;
+
+	ros::Subscriber sub = nh->subscribe<mujoco_ros_msgs::ScalarStamped>(
+	    "/vel_joint2", NUM_SAMPLES, [&](const mujoco_ros_msgs::ScalarStamped::ConstPtr &msg) {
+		    values[n] = msg->value;
+		    n += 1;
+	    });
+
+	ros::Subscriber sub_gt = nh->subscribe<mujoco_ros_msgs::ScalarStamped>(
+	    "/vel_joint2_GT", NUM_SAMPLES, [&](const mujoco_ros_msgs::ScalarStamped::ConstPtr &msg) {
+		    values_gt[n_gt] = msg->value;
+		    n_gt += 1;
+	    });
+
+	// Wait for latched messages to be received
+	float secs = 0.f;
+	while ((n < 1 || n_gt < 1) && secs < 1.f) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		secs += 0.001f;
+	}
+	ASSERT_LT(secs, 1.f) << "Messages not received within 1s";
 
 	// GT == Sensor reading
-	EXPECT_NEAR(msgPtr_GT->value, d->sensordata[adr] / cutoff, 0.0001) << "GT differs from actual sensor value";
+	EXPECT_NEAR(values_gt[0], d->sensordata[adr] / cutoff, 0.0001) << "GT differs from actual sensor value";
 
-	int n               = 0;
-	double means[2]     = { 0.0 };
-	double deltas[2]    = { 0.0 };
-	double variances[2] = { 0.0 };
+	env_ptr->step(NUM_SAMPLES - 1);
 
-	for (int i = 0; i <= 1000; i++) {
-		env_ptr->settings_.env_steps_request.store(1);
-
-		while (env_ptr->settings_.env_steps_request.load() != 0) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
-		}
-		msgPtr_GT = ros::topic::waitForMessage<mujoco_ros_msgs::ScalarStamped>("/vel_joint2_GT");
-		msgPtr    = ros::topic::waitForMessage<mujoco_ros_msgs::ScalarStamped>("/vel_joint2");
-
-		n += 1;
-		deltas[0] = (msgPtr->value - msgPtr_GT->value) - means[0];
-		deltas[1] = msgPtr_GT->value - means[1];
-
-		means[0] += deltas[0] / n;
-		means[1] += deltas[1] / n;
-
-		variances[0] += deltas[0] * ((msgPtr->value - msgPtr_GT->value) - means[0]);
-		variances[1] += deltas[1] * (msgPtr_GT->value - means[1]);
+	secs = 0.f;
+	while ((n < NUM_SAMPLES || n_gt < NUM_SAMPLES) && secs < 15.f) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		secs += 0.001f;
 	}
+	ASSERT_LT(secs, 15.f) << "Messages not received within 15s (got " << n << " and " << n_gt << " of " << NUM_SAMPLES
+	                      << " expected, respectively)";
 
-	variances[0] /= n - 1;
-	variances[1] /= n - 1;
+	// Map values to Eigen matrix for fast metrics computation
+	Eigen::Map<Eigen::Matrix<double, NUM_SAMPLES, 1>> values_map(values);
+	Eigen::Map<Eigen::Matrix<double, NUM_SAMPLES, 1>> values_gt_map(values_gt);
 
-	EXPECT_NEAR(means[0], 1, 0.01);
-	EXPECT_NEAR(means[1], d->sensordata[adr] / cutoff, 0.0001);
+	// Compute means and variances
+	auto diff       = values_map - values_gt_map;
+	double mean     = diff.colwise().mean()(0);
+	double variance = (diff.rowwise() - diff.colwise().mean()).array().square().colwise().mean()(0);
 
-	EXPECT_NEAR(variances[0], 0.000625, 0.0001);
-	EXPECT_EQ(variances[1], 0);
+	EXPECT_NEAR(mean, 1, 0.01);
+	EXPECT_NEAR(variance, 0.000625, 0.0001);
+
+	// Map values to Eigen matrix for fast metrics computation
+	double mean_gt     = values_gt_map.colwise().mean()(0);
+	double variance_gt = (values_gt_map.rowwise() - values_gt_map.colwise().mean()).array().square().colwise().mean()(0);
+
+	EXPECT_NEAR(mean_gt, d->sensordata[adr] / cutoff, 0.0001);
+	EXPECT_EQ(variance_gt, 0);
 }
 
 TEST_F(TrainEnvFixture, quaternion)
@@ -633,91 +657,93 @@ TEST_F(TrainEnvFixture, quaternion)
 	// Pause sim for synchronous message
 	env_ptr->settings_.run.store(0);
 
-	msgPtr    = ros::topic::waitForMessage<geometry_msgs::QuaternionStamped>("/immovable_quat");
-	msgPtr_GT = ros::topic::waitForMessage<geometry_msgs::QuaternionStamped>("/immovable_quat_GT");
+	double values[3 * NUM_SAMPLES]    = { 0 };
+	int n                             = 0;
+	double values_gt[3 * NUM_SAMPLES] = { 0 };
+	int n_gt                          = 0;
+
+	std::vector<double> gt_quat;
+
+	ros::Subscriber sub = nh->subscribe<geometry_msgs::QuaternionStamped>(
+	    "/immovable_quat", NUM_SAMPLES, [&values, &n](const geometry_msgs::QuaternionStamped::ConstPtr &msg) {
+		    tf2::Quaternion q;
+		    tf2::fromMsg(msg->quaternion, q);
+		    auto m = tf2::Matrix3x3(q);
+		    m.getRPY(values[n * 3], values[n * 3 + 1], values[n * 3 + 2]);
+		    n += 1;
+	    });
+
+	ros::Subscriber sub_gt = nh->subscribe<geometry_msgs::QuaternionStamped>(
+	    "/immovable_quat_GT", NUM_SAMPLES,
+	    [&values_gt, &gt_quat, &n_gt](const geometry_msgs::QuaternionStamped::ConstPtr &msg) {
+		    if (n_gt == 0) {
+			    gt_quat = { msg->quaternion.w, msg->quaternion.x, msg->quaternion.y, msg->quaternion.z };
+		    }
+		    tf2::Quaternion q;
+		    tf2::fromMsg(msg->quaternion, q);
+		    auto m = tf2::Matrix3x3(q);
+		    m.getRPY(values_gt[n_gt * 3], values_gt[n_gt * 3 + 1], values_gt[n_gt * 3 + 2]);
+		    n_gt += 1;
+	    });
+
+	// Wait for latched messages to be received
+	float secs = 0.f;
+	while ((n < 1 || n_gt < 1) && secs < 1.f) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		secs += 0.001f;
+	}
+	ASSERT_LT(secs, 1.f) << "Messages not received within 1s";
 
 	// GT == Sensor reading
-	compare_vectors(
-	    { msgPtr_GT->quaternion.w, msgPtr_GT->quaternion.x, msgPtr_GT->quaternion.y, msgPtr_GT->quaternion.z },
-	    { d->sensordata[adr] / cutoff, d->sensordata[adr + 1] / cutoff, d->sensordata[adr + 2] / cutoff,
-	      d->sensordata[adr + 3] / cutoff },
-	    0.0001, true);
+	compare_vectors(gt_quat,
+	                { d->sensordata[adr] / cutoff, d->sensordata[adr + 1] / cutoff, d->sensordata[adr + 2] / cutoff,
+	                  d->sensordata[adr + 3] / cutoff },
+	                0.0001, true);
 
-	int n               = 0;
-	double means[6]     = { 0.0 };
-	double deltas[6]    = { 0.0 };
-	double variances[6] = { 0.0 };
+	env_ptr->step(NUM_SAMPLES - 1);
 
-	tf2::Quaternion q, q_GT;
-	tf2::Matrix3x3 m;
-	double r, p, y, R, P, Y;
-
-	for (int i = 0; i <= 1000; i++) {
-		env_ptr->settings_.env_steps_request.store(1);
-
-		while (env_ptr->settings_.env_steps_request.load() != 0) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
-		}
-		msgPtr    = ros::topic::waitForMessage<geometry_msgs::QuaternionStamped>("/immovable_quat");
-		msgPtr_GT = ros::topic::waitForMessage<geometry_msgs::QuaternionStamped>("/immovable_quat_GT");
-
-		n += 1;
-
-		tf2::fromMsg(msgPtr->quaternion, q);
-		tf2::fromMsg(msgPtr_GT->quaternion, q_GT);
-
-		m = tf2::Matrix3x3(q);
-		m.getRPY(r, p, y);
-		m = tf2::Matrix3x3(q_GT);
-		m.getRPY(R, P, Y);
-
-		deltas[0] = (r - R) - means[0];
-		deltas[1] = (p - P) - means[1];
-		deltas[2] = (y - Y) - means[2];
-
-		means[0] += deltas[0] / n;
-		means[1] += deltas[1] / n;
-		means[2] += deltas[2] / n;
-
-		variances[0] += deltas[0] * ((r - R) - means[0]);
-		variances[1] += deltas[1] * ((p - P) - means[1]);
-		variances[2] += deltas[2] * ((y - Y) - means[2]);
-
-		deltas[3] = R - means[3];
-		deltas[4] = P - means[4];
-		deltas[5] = Y - means[5];
-
-		means[3] += deltas[3] / n;
-		means[4] += deltas[4] / n;
-		means[5] += deltas[5] / n;
-
-		variances[3] += deltas[3] * (R - means[3]);
-		variances[4] += deltas[4] * (P - means[4]);
-		variances[5] += deltas[5] * (Y - means[5]);
+	secs = 0.f;
+	while ((n < NUM_SAMPLES || n_gt < NUM_SAMPLES) && secs < 15.f) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		secs += 0.001f;
 	}
+	ASSERT_LT(secs, 15.f) << "Messages not received within 15s (got " << n << " and " << n_gt << " of " << NUM_SAMPLES
+	                      << " expected, respectively)";
 
-	variances[0] /= n - 1;
-	variances[1] /= n - 1;
-	variances[2] /= n - 1;
-	variances[3] /= n - 1;
-	variances[4] /= n - 1;
-	variances[5] /= n - 1;
+	// Map values to Eigen matrix for fast metrics computation
+	Eigen::Map<Eigen::Matrix<double, NUM_SAMPLES, 3, Eigen::RowMajor>> values_map(values);
+	Eigen::Map<Eigen::Matrix<double, NUM_SAMPLES, 3, Eigen::RowMajor>> values_gt_map(values_gt);
 
-	EXPECT_EQ(means[0], 0);
-	EXPECT_EQ(means[1], 0);
-	EXPECT_NEAR(means[2], 1, 0.01);
+	// Compute means and variances
+	auto diff                             = values_map - values_gt_map;
+	Eigen::Matrix<double, 1, 3> means     = diff.colwise().mean();
+	Eigen::Matrix<double, 1, 3> variances = (diff.rowwise() - diff.colwise().mean()).array().square().colwise().mean();
 
-	EXPECT_NEAR(means[3], R, 0.0001);
-	EXPECT_NEAR(means[4], P, 0.0001);
-	EXPECT_NEAR(means[5], Y, 0.0001);
+	EXPECT_EQ(means(0), 0);
+	EXPECT_EQ(means(1), 0);
+	EXPECT_NEAR(means(2), 1, 0.01);
 
-	EXPECT_EQ(variances[0], 0);
-	EXPECT_EQ(variances[1], 0);
-	EXPECT_NEAR(variances[2], 0.000625, 0.0001);
+	EXPECT_EQ(variances(0), 0);
+	EXPECT_EQ(variances(1), 0);
+	EXPECT_NEAR(variances(2), 0.000625, 0.0001);
 
-	EXPECT_EQ(variances[3], 0);
-	EXPECT_EQ(variances[4], 0);
-	EXPECT_EQ(variances[5], 0);
+	Eigen::Matrix<double, 1, 3> means_gt = values_gt_map.colwise().mean();
+	Eigen::Matrix<double, 1, 3> variances_gt =
+	    (values_gt_map.rowwise() - values_gt_map.colwise().mean()).array().square().colwise().mean();
+
+	double R, P, Y;
+	tf2::Quaternion q;
+	tf2::fromMsg(msgPtr_GT->quaternion, q);
+	auto m = tf2::Matrix3x3(q);
+	m.getRPY(R, P, Y);
+
+	EXPECT_NEAR(means_gt(0), R, 0.0001);
+	EXPECT_NEAR(means_gt(1), P, 0.0001);
+	EXPECT_NEAR(means_gt(2), Y, 0.0001);
+
+	EXPECT_EQ(variances_gt(0), 0);
+	EXPECT_EQ(variances_gt(1), 0);
+	EXPECT_EQ(variances_gt(2), 0);
 }
 
 TEST_F(EvalEnvFixture, NoAdmEvalNoiseModelChange)

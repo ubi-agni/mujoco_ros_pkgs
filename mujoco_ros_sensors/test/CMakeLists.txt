@@ -1,4 +1,5 @@
 find_package(rostest REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 add_rostest_gtest(mujoco_sensors_test
   launch/mujoco_sensors.test
@@ -12,4 +13,5 @@ add_dependencies(mujoco_sensors_test
 
 target_link_libraries(mujoco_sensors_test
   ${catkin_LIBRARIES}
+  Eigen3::Eigen
 )
