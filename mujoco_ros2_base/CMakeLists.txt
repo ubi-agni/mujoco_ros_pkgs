@@ -10,17 +10,18 @@ find_package(ament_cmake REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(mujoco 3.2.0 REQUIRED)
-find_package(Boost COMPONENTS thread chrono REQUIRED) 
+find_package(yaml-cpp REQUIRED)
 
 add_executable(mujoco_ros2_main src/mujoco_ros2_main.cpp)
 target_include_directories(mujoco_ros2_main PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
+  $<INSTALL_INTERFACE:include>
+  ${YAML_CPP_INCLUDE_DIRS}
+  )
 
 target_link_libraries(mujoco_ros2_main
   mujoco::mujoco
-  Boost::thread
-  Boost::chrono
+  ${YAML_CPP_LIBRARIES}
 )
 
 target_compile_features(mujoco_ros2_main PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
@@ -40,7 +41,7 @@ install(TARGETS mujoco_ros2_main
   DESTINATION lib/${PROJECT_NAME})
 
 install(
-  DIRECTORY launch sample_xml
+  DIRECTORY launch sample_xml config
   DESTINATION share/${PROJECT_NAME}
 )
 

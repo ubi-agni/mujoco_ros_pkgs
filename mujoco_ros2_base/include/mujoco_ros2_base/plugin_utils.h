@@ -36,7 +36,9 @@
 
 #pragma once
 #include <rclcpp/rclcpp.hpp>
-// #include <mujoco_ros/common_types.h>
+
+#include <mujoco_ros2_base/common_types.h>
+#include <yaml-cpp/yaml.h>
 
 #include <pluginlib/class_loader.hpp>
 
@@ -50,8 +52,9 @@ public:
 	// Called directly after plugin creation
 	void init(int env_ptr) //, MujocoEnvPtr env_ptr)
 	{
-		RCLCPP_INFO(rclcpp::get_logger("MujocoPlugin"), "Plugin init");
 		env_ptr_ = env_ptr;
+		// yaml_node_ = yaml_node;
+		RCLCPP_INFO(rclcpp::get_logger("MujocoPlugin"), "Plugin init");
 		// rosparam_config_ = config;
 		// node_handle_     = ros::NodeHandle(nh_namespace);
 		// env_ptr_         = env_ptr;
@@ -81,24 +84,24 @@ public:
 	 * @return true if plugin could be loaded without errors.
 	 * @return false if errors occurred during loading.
 	 */
-	bool safe_load(int m, int d)
+	bool safe_load(const mjModel *m, mjData *d)
 	{
 		// const auto start = rclcpp::Clock::now();
 		// const auto end = rclcpp::Clock::now();
 
-		RCLCPP_INFO_STREAM(rclcpp::get_logger("MujocoPlugin"), "Loaded args: " << m << " " << d);
+		RCLCPP_INFO_STREAM(rclcpp::get_logger("MujocoPlugin"), "safe load");
 		loading_successful_ = true;
 
-		return loading_successful_;
 		// const auto start    = Clock::now();
-		// loading_successful_ = load(m, d);
-		// load_time_          = Seconds(Clock::now() - start).count();
-		// if (!loading_successful_)
-		// 	RCLCPP_WARN_STREAM(rclcpp::get_logger("MujocoPlugin"),
-		// 	                      "Plugin of type '"
-		// 	                          << rosparam_config_["type"] << "' with full config '" << rosparam_config_
-		// 	                          << "' failed to load. It will be ignored until the next load attempt.");
+		loading_successful_ = load(m, d);
 		// return loading_successful_;
+		// load_time_          = Seconds(Clock::now() - start).count();
+		if (!loading_successful_)
+			RCLCPP_WARN_STREAM(rclcpp::get_logger("MujocoPlugin"), "PLugin failed to load");
+		//   "Plugin of type'"
+		//       << rosparam_config_["type"] << "' with full config '" << rosparam_config_
+		//       << "' failed to load. It will be ignored until the next load attempt.");
+		return loading_successful_;
 	}
 
 	/**
@@ -196,8 +199,6 @@ public:
 		// ema_steptime_last_stage_ = 0.002 * elapsed_secs + 0.998 * ema_steptime_last_stage_;
 	}
 
-	virtual void Configure() = 0;
-
 	/**
 	 * @brief Override this function to implement custom control laws.
 	 * To apply control, write into \c mjData.ctrl, \c mjData.qfrc_applied and/or \c mjData.xfrc_applied.
@@ -255,7 +256,7 @@ protected:
 	 * @return true on succesful load.
 	 * @return false if load was not successful.
 	 */
-	virtual bool load(int m, int d) = 0;
+	virtual bool load(const mjModel *m, mjData *d) = 0;
 
 	/**
 	 * @brief Called on reset.
@@ -268,6 +269,7 @@ private:
 protected:
 	MujocoPlugin() = default;
 	// XmlRpc::XmlRpcValue rosparam_config_;
+	// YAML::Node yaml_node_;
 	// ros::NodeHandle node_handle_;
 	// MujocoEnvPtr env_ptr_;
 	int env_ptr_;

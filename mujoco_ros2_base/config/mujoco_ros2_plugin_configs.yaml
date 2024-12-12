@@ -1,0 +1,11 @@
+MujocoRos2Control:
+  controller_manager_name: "mujoco_ros2_controller_manager"
+  namespace: ""
+  test: 1
+  example: 10
+
+SomeOtherPlugin:
+  node_name: "some_other_plugin"
+  namespace: ""
+  test: 1
+  example: 10  
