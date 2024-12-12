@@ -1,24 +1,53 @@
 #ifndef MUJOCO_ROS2_CONTROL__MUJOCO_ROS2_CONTROL_HPP_
 #define MUJOCO_ROS2_CONTROL__MUJOCO_ROS2_CONTROL_HPP_
 
+#include <thread>
 #include <memory>
 #include <rclcpp/rclcpp.hpp>
+#include <controller_manager/controller_manager.hpp>
+#include "mujoco_ros2_base/common_types.h"
 #include "mujoco_ros2_base/plugin_utils.h"
 #include "mujoco_ros2_control/visibility_control.h"
 
-namespace mujoco_ros2 {
+#include "yaml-cpp/yaml.h"
 
+namespace mujoco_ros2 {
+/**
+ * @def MujocoRos2ControlPluginPrivate
+ * @brief Data structure class for storing ros2, ros2_control objects. Taken from ign_ros2_control_plugin
+ */
 class MujocoRos2ControlPluginPrivate
 {
 public:
-	int data1;
-	int data2;
+	/// \brief Get the URDF XML from the parameter server
+	std::string getURDF() const;
 
-	void set_data(int a, int b)
-	{
-		data1 = a;
-		data2 = b;
-	}
+	/// \brief Node Handles
+	std::shared_ptr<rclcpp::Node> node_{ nullptr };
+
+	/// \brief Thread where the executor will spin
+	std::thread thread_executor_spin_;
+
+	/// \brief Executor to spin the controller
+	rclcpp::executors::MultiThreadedExecutor::SharedPtr executor_;
+
+	/// \brief Timing
+	rclcpp::Duration control_period_ = rclcpp::Duration(1, 0);
+
+	/// \brief Controller manager
+	std::shared_ptr<controller_manager::ControllerManager> controller_manager_{ nullptr };
+
+	/// \brief String with the robot description param_name
+	std::string robot_description_ = "robot_description";
+
+	/// \brief String with the name of the node that contains the robot_description
+	std::string robot_description_node_ = "robot_state_publisher";
+
+	/// \brief Last time the update method was called
+	rclcpp::Time last_update_sim_time_ros_ = rclcpp::Time((int64_t)0, RCL_ROS_TIME);
+
+	/// \brief controller update rate
+	int update_rate;
 };
 
 class MujocoRos2ControlPlugin : public MujocoPlugin
@@ -26,8 +55,7 @@ class MujocoRos2ControlPlugin : public MujocoPlugin
 public:
 	// MujocoRos2ControlPlugin();
 
-	// virtual ~MujocoRos2ControlPlugin();
-	void Configure() override;
+	~MujocoRos2ControlPlugin() override;
 	void controlCallback(int model, int data) override;
 	void passiveCallback(int model, int data) override;
 	void renderCallback(int model, int data, int scene) override;
@@ -36,14 +64,14 @@ public:
 
 protected:
 	/**
-	 * @brief Called once the world is loaded.
+	 * @brief Called once the world is loaded. Similar to Configure() in ign_ros2_control_plugin.
 	 *
 	 * @param[in] m shared pointer to mujoco model.
 	 * @param[in] d shared pointer to mujoco data.
 	 * @return true on succesful load.
 	 * @return false if load was not successful.
 	 */
-	bool load(int m, int d) override;
+	bool load(const mjModel *m, mjData *d) override;
 
 	/**
 	 * @brief Called on reset.
