@@ -5,7 +5,7 @@ import os
 
 def generate_launch_description():
     xml_path = os.path.join(get_package_share_directory('mujoco_ros2_base'), 'sample_xml','pendulum.xml')
-    print(xml_path)
+    mr2c_yaml_path = os.path.join(get_package_share_directory('mujoco_ros2_base'), 'config','mujoco_ros2_plugin_configs.yaml')
     return LaunchDescription([
         Node(
             package="mujoco_ros2_base",
@@ -14,8 +14,9 @@ def generate_launch_description():
             output="screen",
             emulate_tty=True,
             parameters=[
-                {"MujocoPlugins": ["earth","wind","fire", "MujocoRos2Control"],
-                 "MujocoXml": xml_path}
+                {"MujocoPlugins": ['MujocoRos2Control'],
+                "MujocoXml": xml_path,
+                'MujocoPluginConfigs': mr2c_yaml_path}
             ]
         )
     ])
