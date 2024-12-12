@@ -1,6 +1,7 @@
 #include <mujoco_ros2_base/plugin_utils.h>
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include "mujoco/mujoco.h"
 #include <algorithm>
 
 // Main mujoco ros2 node
@@ -14,21 +15,37 @@ public:
 	{
 		// Declare parameters like so,
 		this->declare_parameter("MujocoPlugins", rclcpp::PARAMETER_STRING_ARRAY);
-
+    this->declare_parameter("MujocoXml", rclcpp::PARAMETER_STRING);
 		// timer_ = this->create_wall_timer(
 		//   5000ms, std::bind(&MujocoRos2Node::timer_callback, this));
 
 		// And read parameters like so, for parameters that were declared only by this node
 		this->get_parameter("MujocoPlugins", mj_ros2_plugins_);
+    this->get_parameter("MujocoXml", mj_xml_file_);
 
-		for (uint i = 0; i < mj_ros2_plugins_.size(); i++) {
-			RCLCPP_INFO(get_logger(), "Constructor - Plugin %d: %s", i + 1, mj_ros2_plugins_[i].c_str());
-		}
+    if(mj_xml_file_ != ""){
+      m_.reset(mj_loadXML(mj_xml_file_.c_str(), 0, mj_error_, 1000));
+      if(!m_.get()){
+        RCLCPP_ERROR_STREAM(get_logger(),"Failed to load xml: " << mj_error_);
+        throw std::exception();
+      }
+    }
+    d_.reset(mj_makeData(m_.get()));
+
+    // check if applying a force to the pendulum then reading actually steps the simulation properly
+    d_->ctrl[0] = 0.1;
+    mj_step(m_.get(), d_.get());
+    for(auto i = 0; i < 3000; i++){
+      mj_step(m_.get(), d_.get());
+      RCLCPP_INFO(get_logger(), "Pendulum jnt: %f", d_->qpos[0]);
+    }
+    // seems to be working!
+
 		// And from here, check for the presence of "mujoco_ros2_control", and load the plugin
 		if (std::find(mj_ros2_plugins_.begin(), mj_ros2_plugins_.end(), std::string("MujocoRos2Control")) !=
 		    mj_ros2_plugins_.end()) {
 			RCLCPP_INFO(get_logger(), "Found MujocoRos2Control Plugin!");
-
+      RCLCPP_INFO(get_logger(), "Loaded xml: %s", mj_xml_file_.c_str());
 			plugin_loader_.reset(
 			    new pluginlib::ClassLoader<mujoco_ros2::MujocoPlugin>("mujoco_ros2_base", "mujoco_ros2::MujocoPlugin"));
 			std::shared_ptr<mujoco_ros2::MujocoPlugin> mjros2control =
@@ -61,7 +78,12 @@ public:
 private:
 	rclcpp::TimerBase::SharedPtr timer_;
 	std::vector<std::string> mj_ros2_plugins_;
+  std::string mj_xml_file_;
 	std::unique_ptr<pluginlib::ClassLoader<mujoco_ros2::MujocoPlugin>> plugin_loader_;
+  std::shared_ptr<mjModel> m_;
+  std::shared_ptr<mjData> d_;
+  char mj_error_[1000] = {""};  
+  
 };
 } // namespace mujoco_ros2
 
