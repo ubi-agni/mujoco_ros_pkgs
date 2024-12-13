@@ -50,10 +50,10 @@ public:
 	virtual ~MujocoPlugin() { RCLCPP_INFO_STREAM(rclcpp::get_logger("MujocoPlugin"), "Deleted plugin of type "); }
 
 	// Called directly after plugin creation
-	void init(int env_ptr) //, MujocoEnvPtr env_ptr)
+	void init(int env_ptr, YAML::Node yaml_node) //, MujocoEnvPtr env_ptr)
 	{
 		env_ptr_ = env_ptr;
-		// yaml_node_ = yaml_node;
+		yaml_node_ = yaml_node;
 		RCLCPP_INFO(rclcpp::get_logger("MujocoPlugin"), "Plugin init");
 		// rosparam_config_ = config;
 		// node_handle_     = ros::NodeHandle(nh_namespace);
@@ -269,7 +269,7 @@ private:
 protected:
 	MujocoPlugin() = default;
 	// XmlRpc::XmlRpcValue rosparam_config_;
-	// YAML::Node yaml_node_;
+	YAML::Node yaml_node_;
 	// ros::NodeHandle node_handle_;
 	// MujocoEnvPtr env_ptr_;
 	int env_ptr_;

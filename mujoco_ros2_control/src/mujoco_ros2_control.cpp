@@ -90,20 +90,25 @@ bool MujocoRos2ControlPlugin::load(const mjModel *model, mjData *data)
 	dataPtr_ = std::make_unique<MujocoRos2ControlPluginPrivate>();
 
 	RCLCPP_INFO_STREAM(get_my_logger(), "loading with given model and data");
-	// for (auto it = yaml_node_.begin(); it != yaml_node_.end(); ++it) {
-	// 	YAML::Node key = it->first;
-	// 	YAML::Node value = it->second;
-	// 	if (key.Type() == YAML::NodeType::Scalar) {
-	// 		// This should be true; do something here with the scalar key.
-	// 		RCLCPP_INFO(get_my_logger(), "Scalar");
-	// 	}
-	// 	if (value.Type() == YAML::NodeType::Map) {
-	// 		RCLCPP_INFO(get_my_logger(), "Map");
-	// 		// This should be true; do something here with the map.
-	// 	}
-	// }
+	for (auto it = yaml_node_.begin(); it != yaml_node_.end(); ++it) {
+		YAML::Node key   = it->first;
+		YAML::Node value = it->second;
 
-	// RCLCPP_INFO_STREAM(get_my_logger(), "controller_manager_name: " << yaml_node_["controller_manager_name"]);
+		if (key.Type() == YAML::NodeType::Scalar) {
+			// This should be true; do something here with the scalar key.
+			RCLCPP_INFO(get_my_logger(), "Scalar key %s", key.as<std::string>().c_str());
+		}
+		if (value.Type() == YAML::NodeType::Map) {
+			RCLCPP_INFO(get_my_logger(), "Value's Map");
+			// This should be true; do something here with the map.
+		} else if (value.Type() == YAML::NodeType::Scalar) {
+			RCLCPP_INFO(get_my_logger(), "Value's scalar");
+		} else {
+			RCLCPP_INFO(get_my_logger(), "Value's something else");
+		}
+	}
+
+	RCLCPP_INFO_STREAM(get_my_logger(), "controller_manager_name: " << yaml_node_["controller_manager_name"].as<std::string>().c_str());
 	return true;
 }
 

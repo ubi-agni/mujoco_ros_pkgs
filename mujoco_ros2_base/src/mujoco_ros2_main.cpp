@@ -64,23 +64,7 @@ public:
 				RCLCPP_WARN(get_logger(), "The plugin seems to have no corresponding configuration.");
 			}
 			// mj_yaml_node = mj_yaml_node["MujocoRos2Control"];
-			for (auto it = mj_yaml_node.begin(); it != mj_yaml_node.end(); ++it) {
-				YAML::Node key   = it->first;
-				YAML::Node value = it->second;
-
-				if (key.Type() == YAML::NodeType::Scalar) {
-					// This should be true; do something here with the scalar key.
-					RCLCPP_INFO(get_logger(), "Scalar key %s", key.as<std::string>().c_str());
-				}
-				if (value.Type() == YAML::NodeType::Map) {
-					RCLCPP_INFO(get_logger(), "Value's Map");
-					// This should be true; do something here with the map.
-				} else if (value.Type() == YAML::NodeType::Scalar) {
-					RCLCPP_INFO(get_logger(), "Value's scalar");
-				} else {
-					RCLCPP_INFO(get_logger(), "Value's something else");
-				}
-			}
+			
 			// auto configs = mj_yaml_node["MujocoRos2Control"].as<std::map<std::string,std::string>>();
 			// RCLCPP_INFO(get_logger(), "Yaml: %s", configs["controller_manager_name"].c_str());
 			plugin_loader_.reset(
@@ -91,7 +75,7 @@ public:
 			int model   = 1;
 			int data    = 2;
 			int scene   = 3;
-			mjros2control->init(env_ptr); // todo: extend init with yamlcpp, and modify mj_ros2_control with yaml
+			mjros2control->init(env_ptr, mj_yaml_node);
 			mjros2control->safe_load(m_.get(), d_.get());
 			mjros2control->wrappedControlCallback(model, data);
 			mjros2control->wrappedPassiveCallback(model, data);
