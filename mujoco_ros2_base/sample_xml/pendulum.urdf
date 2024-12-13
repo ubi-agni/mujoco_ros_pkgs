@@ -1,12 +1,6 @@
 <?xml version="1.0" ?>
 <robot name="pendulum">
-   <link name="world">
-      <inertial>
-         <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
-         <mass value="0.0"/>
-         <inertia ixx="0.0" iyy="0.0" izz="0.0" ixy="0" ixz="0" iyz="0"/>
-      </inertial>
-   </link>
+   <link name="world"/>
    <link name="pole">
       <inertial>
          <origin xyz="0.0 0.0 0.5" rpy="0.0 0.0 0.0"/>
@@ -37,7 +31,7 @@
       <color rgba="1 1 1 1"/>
    </material>
 
-   <ros2_control name="MujocoRos2System" type="system">
+   <!-- <ros2_control name="MujocoRos2System" type="system">
     <hardware>
       <plugin>mujoco_ros2_control/MujocoRos2System</plugin>
     </hardware>
@@ -50,5 +44,5 @@
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
-  </ros2_control>
+  </ros2_control> -->
 </robot>
