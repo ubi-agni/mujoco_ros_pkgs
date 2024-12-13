@@ -5,6 +5,11 @@
 #include <memory>
 #include <rclcpp/rclcpp.hpp>
 #include <controller_manager/controller_manager.hpp>
+
+#include <hardware_interface/resource_manager.hpp>
+#include <hardware_interface/component_parser.hpp>
+#include <hardware_interface/types/hardware_interface_type_values.hpp>
+
 #include "mujoco_ros2_base/common_types.h"
 #include "mujoco_ros2_base/plugin_utils.h"
 #include "mujoco_ros2_control/visibility_control.h"
