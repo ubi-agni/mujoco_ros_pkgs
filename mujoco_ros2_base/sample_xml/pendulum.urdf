@@ -31,7 +31,7 @@
       <color rgba="1 1 1 1"/>
    </material>
 
-   <!-- <ros2_control name="MujocoRos2System" type="system">
+   <ros2_control name="MujocoRos2System" type="system">
     <hardware>
       <plugin>mujoco_ros2_control/MujocoRos2System</plugin>
     </hardware>
@@ -44,5 +44,5 @@
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
-  </ros2_control> -->
+  </ros2_control>
 </robot>

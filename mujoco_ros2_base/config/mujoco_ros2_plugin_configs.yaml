@@ -1,8 +1,9 @@
 MujocoRos2Control:
-  controller_manager_name: "mujoco_ros2_controller_manager"
+  controller_manager_name: "mujoco_ros2_control"
   namespace: ""
-  test: 1
-  example: 10
+  robot_description_node: "robot_state_publisher"
+  robot_description: "robot_description"
+  ros_args: []
 
 SomeOtherPlugin:
   node_name: "some_other_plugin"

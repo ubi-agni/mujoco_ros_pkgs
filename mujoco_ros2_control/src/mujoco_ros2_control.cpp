@@ -1,4 +1,5 @@
 #include "mujoco_ros2_control/mujoco_ros2_control.hpp"
+#include <set>
 
 namespace mujoco_ros2 {
 
@@ -17,7 +18,7 @@ std::string MujocoRos2ControlPluginPrivate::getURDF() const
 		RCLCPP_ERROR(node_->get_logger(), "%s service not available, waiting again...", robot_description_node_.c_str());
 	}
 
-	RCLCPP_INFO(node_->get_logger(), "connected to service!! %s asking for %s", robot_description_node_.c_str(),
+	RCLCPP_INFO(node_->get_logger(), "connected to service. %s asking for %s", robot_description_node_.c_str(),
 	            this->robot_description_.c_str());
 
 	// search and wait for robot_description on param server
@@ -37,7 +38,7 @@ std::string MujocoRos2ControlPluginPrivate::getURDF() const
 			break;
 		} else {
 			RCLCPP_ERROR(node_->get_logger(),
-			             "ign_ros2_control plugin is waiting for model"
+			             "mujoco_ros2_control plugin is waiting for model"
 			             " URDF in parameter [%s] on the ROS param server.",
 			             this->robot_description_.c_str());
 		}
@@ -88,27 +89,90 @@ void MujocoRos2ControlPlugin::onGeomChanged(int model, int data, const int geom_
 bool MujocoRos2ControlPlugin::load(const mjModel *model, mjData *data)
 {
 	dataPtr_ = std::make_unique<MujocoRos2ControlPluginPrivate>();
-
+	
+	std::set<std::string> yaml_keys{};
+  	std::set<std::string>::iterator it;
 	RCLCPP_INFO_STREAM(get_my_logger(), "loading with given model and data");
+	// construct a set of yaml node's keys to make param processing more concise
 	for (auto it = yaml_node_.begin(); it != yaml_node_.end(); ++it) {
 		YAML::Node key   = it->first;
-		YAML::Node value = it->second;
-
-		if (key.Type() == YAML::NodeType::Scalar) {
-			// This should be true; do something here with the scalar key.
-			RCLCPP_INFO(get_my_logger(), "Scalar key %s", key.as<std::string>().c_str());
-		}
-		if (value.Type() == YAML::NodeType::Map) {
-			RCLCPP_INFO(get_my_logger(), "Value's Map");
-			// This should be true; do something here with the map.
-		} else if (value.Type() == YAML::NodeType::Scalar) {
-			RCLCPP_INFO(get_my_logger(), "Value's scalar");
-		} else {
-			RCLCPP_INFO(get_my_logger(), "Value's something else");
+		yaml_keys.insert(key.as<std::string>());
+	}
+	
+	// get the name of the robot_state_publisher node
+	if(yaml_keys.find(std::string("robot_description_node")) != yaml_keys.end()){
+		std::string robot_description_node = yaml_node_["robot_description_node"].as<std::string>();
+		if (!robot_description_node.empty()) {
+			this->dataPtr_->robot_description_node_ = robot_description_node;
 		}
 	}
+	RCLCPP_INFO(
+		get_my_logger(),
+		"robot_description_node is %s", this->dataPtr_->robot_description_node_.c_str()
+	);
+	// get the name of the srv from the node above that holds the URDF string
+	if(yaml_keys.find(std::string("robot_description_node")) != yaml_keys.end()){
+		std::string robot_description = yaml_node_["robot_description"].as<std::string>();
+		if (!robot_description.empty()) {
+			this->dataPtr_->robot_description_ = robot_description;
+		}
+	}
+	RCLCPP_INFO(
+		get_my_logger(),
+		"robot_description srv is %s", this->dataPtr_->robot_description_.c_str()
+	);
+	// todo: Make the logic for passing additional ros-args when initializing, like L292~ in ign_ros2_control_plugin.cpp
 
-	RCLCPP_INFO_STREAM(get_my_logger(), "controller_manager_name: " << yaml_node_["controller_manager_name"].as<std::string>().c_str());
+	// Construct the fully qualified robot_description_node's name.
+	// The namespace will also be used for the nodes of this.
+	std::string ns = "/";
+	// Set namespace if tag is present
+    if (yaml_keys.find(std::string("namespace")) != yaml_keys.end()) {
+      	ns = yaml_node_["namespace"].as<std::string>();
+		RCLCPP_INFO(get_my_logger(), "Namespace: %s", ns.c_str());
+		// prevent exception: namespace must be absolute, it must lead with a '/'
+		if (ns.empty() || ns[0] != '/') {
+			ns = '/' + ns;
+		}
+		if (ns.length() > 1) {
+			this->dataPtr_->robot_description_node_ = ns + "/" + this->dataPtr_->robot_description_node_;
+		}
+    }
+	RCLCPP_INFO(get_my_logger(), "robot_description_node fully qualified name: %s", this->dataPtr_->robot_description_node_.c_str());
+
+
+	// Create a default context, if not already
+	if (!rclcpp::ok()) {
+  		std::vector<const char *> _argv;
+		rclcpp::init(static_cast<int>(_argv.size()), _argv.data()); // todo: make the logic for passing additional ros-args
+	}
+	std::string node_name = "mujoco_ros2_control";
+
+	this->dataPtr_->node_ = rclcpp::Node::make_shared(node_name, ns);
+	this->dataPtr_->executor_ = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
+	this->dataPtr_->executor_->add_node(this->dataPtr_->node_);
+	auto spin = [this]()
+		{
+		this->dataPtr_->executor_->spin();
+		};
+	this->dataPtr_->thread_executor_spin_ = std::thread(spin);
+	RCLCPP_INFO_STREAM(get_my_logger(), "Making node with : " << node_name.c_str());
+
+	// Read urdf from ros parameter server then
+	// setup actuators and mechanism control node.
+	// This call will block if ROS is not properly initialized.
+	std::string urdf_string;
+	std::vector<hardware_interface::HardwareInfo> control_hardware_info;
+	try {
+		urdf_string = this->dataPtr_->getURDF();
+		control_hardware_info = hardware_interface::parse_control_resources_from_urdf(urdf_string);
+	} catch (const std::runtime_error & ex) {
+		RCLCPP_ERROR_STREAM(
+		this->dataPtr_->node_->get_logger(),
+		"Error parsing URDF in mujoco_ros2_control plugin, plugin not active : " << ex.what());
+		return false;
+	}
+	// RCLCPP_INFO(get_my_logger(), "URDF: %s", urdf_string.c_str());
 	return true;
 }
 
