@@ -26,7 +26,7 @@ def generate_launch_description():
         Node(
             package="mujoco_ros2_base",
             executable="mujoco_ros2_main",
-            name="mujoco_ros2_main_node",
+            # name="mujoco_ros2_main_node", // setting name here causes plugin's nodes to also be created with this name?
             output="screen",
             emulate_tty=True,
             parameters=[
