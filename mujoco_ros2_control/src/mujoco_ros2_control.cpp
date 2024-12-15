@@ -173,7 +173,64 @@ bool MujocoRos2ControlPlugin::load(const mjModel *model, mjData *data)
 		return false;
 	}
 
-	
+	std::unique_ptr<hardware_interface::ResourceManager> resource_manager_ =
+    	std::make_unique<hardware_interface::ResourceManager>();
+
+	try {
+		resource_manager_->load_urdf(urdf_string, false, false);
+	} catch (...) {
+		RCLCPP_ERROR(
+		this->dataPtr_->node_->get_logger(), "Error initializing URDF to resource manager!");
+	}
+	try {
+		this->dataPtr_->robot_hw_sim_loader_.reset(
+		new pluginlib::ClassLoader<mujoco_ros2_control::MujocoRos2SystemInterface>(
+			"mujoco_ros2_control",
+			"mujoco_ros2_control::MujocoRos2SystemInterface"));
+	} catch (pluginlib::LibraryLoadException & ex) {
+		RCLCPP_ERROR(
+		this->dataPtr_->node_->get_logger(), "Failed to create robot simulation interface loader: %s ",
+		ex.what());
+		return false;
+	}
+	for (unsigned int i = 0; i < control_hardware_info.size(); ++i) {
+		std::string robot_hw_sim_type_str_ = control_hardware_info[i].hardware_class_type;
+		std::unique_ptr<mujoco_ros2_control::MujocoRos2SystemInterface> mujocoRos2System;
+		RCLCPP_DEBUG(
+		this->dataPtr_->node_->get_logger(), "Load hardware interface %s ...",
+		robot_hw_sim_type_str_.c_str());
+		try {
+			mujocoRos2System = std::unique_ptr<mujoco_ros2_control::MujocoRos2SystemInterface>(
+				this->dataPtr_->robot_hw_sim_loader_->createUnmanagedInstance(robot_hw_sim_type_str_));
+			RCLCPP_INFO(this->dataPtr_->node_->get_logger(), "createUnmanagedInstance");
+		} catch (pluginlib::PluginlibException & ex) {
+			RCLCPP_ERROR(
+				this->dataPtr_->node_->get_logger(),
+				"The plugin failed to load for some reason. Error: %s\n",
+				ex.what());
+			continue;
+		}
+		if (!mujocoRos2System->initSim(
+			this->dataPtr_->node_,
+			control_hardware_info[i],
+			this->dataPtr_->update_rate))
+		{
+			RCLCPP_FATAL(
+				this->dataPtr_->node_->get_logger(), "Could not initialize robot simulation interface");
+				return false;	
+		}
+		RCLCPP_DEBUG(
+			this->dataPtr_->node_->get_logger(), "Initialized robot simulation interface %s!",
+			robot_hw_sim_type_str_.c_str());
+		
+
+		resource_manager_->import_component(std::move(mujocoRos2System), control_hardware_info[i]);
+		RCLCPP_DEBUG(this->dataPtr_->node_->get_logger(), "Setting state to active");
+		rclcpp_lifecycle::State state(
+			lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE,
+			hardware_interface::lifecycle_state_names::ACTIVE);
+		resource_manager_->set_component_state(control_hardware_info[i].name, state);
+	}
 	
 	return true;
 }
