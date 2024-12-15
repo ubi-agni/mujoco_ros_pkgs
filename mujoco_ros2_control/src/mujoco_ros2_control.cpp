@@ -1,7 +1,7 @@
 #include "mujoco_ros2_control/mujoco_ros2_control.hpp"
 #include <set>
 
-namespace mujoco_ros2 {
+namespace mujoco_ros2_control {
 
 std::string MujocoRos2ControlPluginPrivate::getURDF() const
 {
@@ -172,7 +172,9 @@ bool MujocoRos2ControlPlugin::load(const mjModel *model, mjData *data)
 		"Error parsing URDF in mujoco_ros2_control plugin, plugin not active : " << ex.what());
 		return false;
 	}
-	// RCLCPP_INFO(get_my_logger(), "URDF: %s", urdf_string.c_str());
+
+	
+	
 	return true;
 }
 
@@ -184,4 +186,4 @@ void MujocoRos2ControlPlugin::reset()
 } // namespace mujoco_ros2
 
 #include <pluginlib/class_list_macros.hpp>
-PLUGINLIB_EXPORT_CLASS(mujoco_ros2::MujocoRos2ControlPlugin, mujoco_ros2::MujocoPlugin)
+PLUGINLIB_EXPORT_CLASS(mujoco_ros2_control::MujocoRos2ControlPlugin, mujoco_ros2::MujocoPlugin)
