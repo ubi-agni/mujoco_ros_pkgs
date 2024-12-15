@@ -33,7 +33,8 @@ def generate_launch_description():
                 {"MujocoPlugins": ['MujocoRos2Control'],
                 "MujocoXml": xml_path,
                 'MujocoPluginConfigs': mr2c_yaml_path}
-            ]
+            ],
+            arguments=['--ros-args', '--log-level', 'DEBUG'],
         ),
         node_robot_state_publisher
     ])
