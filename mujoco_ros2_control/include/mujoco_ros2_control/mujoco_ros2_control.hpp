@@ -13,10 +13,11 @@
 #include "mujoco_ros2_base/common_types.h"
 #include "mujoco_ros2_base/plugin_utils.h"
 #include "mujoco_ros2_control/visibility_control.h"
+#include "mujoco_ros2_control/mujoco_ros2_control_system_interface.hpp"
 
 #include "yaml-cpp/yaml.h"
 
-namespace mujoco_ros2 {
+namespace mujoco_ros2_control {
 /**
  * @def MujocoRos2ControlPluginPrivate
  * @brief Data structure class for storing ros2, ros2_control objects. Taken from ign_ros2_control_plugin
@@ -53,9 +54,13 @@ public:
 
 	/// \brief controller update rate
 	int update_rate;
+
+	/// \brief Interface loader
+	std::shared_ptr<pluginlib::ClassLoader<mujoco_ros2_control::MujocoRos2SystemInterface>>
+		robot_hw_sim_loader_{nullptr};
 };
 
-class MujocoRos2ControlPlugin : public MujocoPlugin
+class MujocoRos2ControlPlugin : public mujoco_ros2::MujocoPlugin
 {
 public:
 	// MujocoRos2ControlPlugin();
