@@ -70,7 +70,7 @@ public:
 			plugin_loader_.reset(
 			    new pluginlib::ClassLoader<mujoco_ros2::MujocoPlugin>("mujoco_ros2_base", "mujoco_ros2::MujocoPlugin"));
 			std::shared_ptr<mujoco_ros2::MujocoPlugin> mjros2control =
-			    plugin_loader_->createSharedInstance("mujoco_ros2::MujocoRos2ControlPlugin");
+			    plugin_loader_->createSharedInstance("mujoco_ros2_control::MujocoRos2ControlPlugin");
 			int env_ptr = 99;
 			int model   = 1;
 			int data    = 2;
