@@ -19,7 +19,7 @@ find_package(pluginlib REQUIRED)
 
 pluginlib_export_plugin_description_file(mujoco_ros2_base plugins.xml)
 
-add_library(mujoco_ros2_control src/mujoco_ros2_control.cpp)
+add_library(mujoco_ros2_control SHARED src/mujoco_ros2_control.cpp)
 target_compile_features(mujoco_ros2_control PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 target_include_directories(mujoco_ros2_control PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -41,21 +41,30 @@ ament_target_dependencies(
   "pluginlib"
 )
 
-# Causes the visibility macros to use dllexport rather than dllimport,
-# which is appropriate when building the dll but not consuming it.
-target_compile_definitions(mujoco_ros2_control PRIVATE "MUJOCO_ROS2_CONTROL_BUILDING_LIBRARY")
-
 install(
   DIRECTORY include/
   DESTINATION include
 )
 install(
   TARGETS mujoco_ros2_control
-  EXPORT export_${PROJECT_NAME}
+  # EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
+
+
+# install(
+#   TARGETS mujoco_ros2_control_system
+#   # EXPORT export_${PROJECT_NAME}
+#   ARCHIVE DESTINATION lib
+#   LIBRARY DESTINATION lib
+#   RUNTIME DESTINATION bin
+# )
+# install(
+#   TARGETS mujoco_ros2_control_system
+#   DESTINATION lib
+# )
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -74,9 +83,18 @@ ament_export_include_directories(
 )
 ament_export_libraries(
   mujoco_ros2_control
+  # mujoco_ros2_control_system
 )
-ament_export_targets(
-  export_${PROJECT_NAME}
+
+ament_export_dependencies(
+  controller_manager
+  hardware_interface
+  mujoco_ros2_base
+  pluginlib
+  rclcpp
 )
+# ament_export_targets(
+#   export_${PROJECT_NAME}
+# )
 
 ament_package()
