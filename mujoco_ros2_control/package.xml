@@ -12,6 +12,9 @@
   <depend>rclcpp</depend>
   <depend>mujoco_ros2_base</depend>
   <depend>pluginlib</depend>
+  <depend>controller_manager</depend>
+  <depend>hardware_interface</depend>
+
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
