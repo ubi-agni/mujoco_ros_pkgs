@@ -123,7 +123,11 @@ bool MujocoRos2System::initSim(
 
 
 CallbackReturn MujocoRos2System::on_init(const hardware_interface::HardwareInfo & system_info){
-  RCLCPP_DEBUG(this->nh_->get_logger(), "on_init");
+  RCLCPP_WARN(this->nh_->get_logger(), "On init...");
+  // This needs to be called for ResourceManager to be able to find it.
+  if (hardware_interface::SystemInterface::on_init(system_info) != CallbackReturn::SUCCESS) {
+    return CallbackReturn::ERROR;
+  }
   return CallbackReturn::SUCCESS;
 };
 CallbackReturn MujocoRos2System::on_configure(const rclcpp_lifecycle::State & previous_state){
