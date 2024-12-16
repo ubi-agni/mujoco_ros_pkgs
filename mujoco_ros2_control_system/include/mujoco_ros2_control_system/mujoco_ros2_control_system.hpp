@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <mujoco/mujoco.h>
 
 #include "mujoco_ros2_control/mujoco_ros2_control_system_interface.hpp"
 #include "rclcpp_lifecycle/state.hpp"
@@ -63,8 +64,8 @@ public:
   bool initSim(
     rclcpp::Node::SharedPtr & model_nh,
     const hardware_interface::HardwareInfo & hardware_info,
-    // const mjModel* m,
-    // mjData* d,
+    const mjModel* m,
+    mjData* d,
     int & update_rate) override;
 
 private:
@@ -75,7 +76,53 @@ private:
   //   const hardware_interface::HardwareInfo & hardware_info);
 
   /// \brief Private data class
-  // std::unique_ptr<MujocoRos2SystemPrivate> dataPtr_;
+  std::unique_ptr<MujocoRos2SystemPrivate> dataPtr_;
+};
+
+struct jointData
+{
+  /// \brief Joint's names.
+  std::string name;
+
+  /// \brief Joint's mujoco qpos id
+  int joint_qposadr;
+
+  /// \brief Joint's mujoco qvel id, also used for qfrc_applied
+  int joint_dofadr;
+
+  /// @brief Corresponding joint's effort (torque) actuator index
+  int act_effidx;
+  /// @brief Corresponding joint's position actuator index
+  int act_posidx;
+  /// @brief Corresponding joint's velocity actuator index
+  int act_velidx;
+
+  /// \brief Current joint position
+  double joint_position;
+
+  /// \brief Current joint velocity
+  double joint_velocity;
+
+  /// \brief Current joint effort
+  double joint_effort;
+
+  /// \brief Current cmd joint position
+  double joint_position_cmd;
+
+  /// \brief Current cmd joint velocity
+  double joint_velocity_cmd;
+
+  /// \brief Current cmd joint effort
+  double joint_effort_cmd;
+
+  /// \brief flag if joint is actuated (has command interfaces) or passive
+  bool is_actuated;
+
+  /// \brief handles to the joints from within Gazebo
+  // ignition::gazebo::Entity sim_joint;
+
+  /// \brief Control method defined in the URDF for each joint.
+  mujoco_ros2_control::MujocoRos2SystemInterface::ControlMethod joint_control_method;
 };
 
 class MujocoRos2SystemPrivate
@@ -90,8 +137,8 @@ public:
   /// \brief last time the write method was called.
   rclcpp::Time last_update_sim_time_ros_;
 
-  // /// \brief vector with the joint's names.
-  // std::vector<struct jointData> joints_;
+  /// \brief vector with the joint's names.
+  std::vector<struct jointData> joints_;
 
   // /// \brief vector with the imus .
   // std::vector<std::shared_ptr<ImuData>> imus_;
@@ -102,9 +149,8 @@ public:
   /// \brief command interfaces that will be exported to the Resource Manager
   std::vector<hardware_interface::CommandInterface> command_interfaces_;
 
-  /// \brief Mujoco model and data pointers
-  // const mjModel* m_;
-  // mjData* d_;
+  /// \brief Mujoco data pointer
+  mjData* d_; // model doesn't need to be stored, since we should only need it at init.
 
   /// \brief controller update rate
   int * update_rate;
