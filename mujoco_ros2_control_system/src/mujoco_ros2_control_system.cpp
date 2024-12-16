@@ -21,7 +21,7 @@ bool MujocoRos2System::initSim(
     this->dataPtr_->n_dof_ = hardware_info.joints.size();
     this->dataPtr_->joints_.resize(this->dataPtr_->n_dof_);
 
-    RCLCPP_DEBUG(this->nh_->get_logger(), "initSim assignments done");
+    RCLCPP_DEBUG(this->nh_->get_logger(), "initSim assignments done, update rate: %d", *this->dataPtr_->update_rate);
     RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "Joint size: " << this->dataPtr_->n_dof_);
     for (uint i = 0; i<this->dataPtr_->n_dof_; i++){
       auto & joint_info = hardware_info.joints[i];
@@ -166,15 +166,20 @@ hardware_interface::return_type MujocoRos2System::perform_command_mode_switch(
 // Documentation Inherited
 hardware_interface::return_type MujocoRos2System::read(
   const rclcpp::Time & time,
-  const rclcpp::Duration & period){
+  const rclcpp::Duration & /* period */){
 
-    RCLCPP_DEBUG(this->nh_->get_logger(), "read");
-    for(uint i = 0; i < this->dataPtr_->joints_.size(); i++){
-      // qposadr and dofadr are always populated, if the system was initialized successfully.
-      this->dataPtr_->joints_[i].joint_position = this->dataPtr_->d_->qpos[this->dataPtr_->joints_[i].joint_qposadr];
-      this->dataPtr_->joints_[i].joint_velocity = this->dataPtr_->d_->qvel[this->dataPtr_->joints_[i].joint_dofadr];
-      this->dataPtr_->joints_[i].joint_effort   = this->dataPtr_->d_->qfrc_applied[this->dataPtr_->joints_[i].joint_dofadr] +
-                                                  this->dataPtr_->d_->qfrc_actuator[this->dataPtr_->joints_[i].joint_dofadr];
+    // double control_period = 1.0 / static_cast<double>(*this->dataPtr_->update_rate);
+    // double dt = time.seconds() - this->dataPtr_->last_update_sim_time_mj_.seconds();
+    if(time.seconds() - this->dataPtr_->last_update_sim_time_mj_.seconds() >= 1.0 / static_cast<double>(*this->dataPtr_->update_rate)){
+      RCLCPP_DEBUG(this->nh_->get_logger(), "read, curr time: %f, last update: %f", time.seconds(), this->dataPtr_->last_update_sim_time_mj_.seconds());
+      for(uint i = 0; i < this->dataPtr_->joints_.size(); i++){
+        // qposadr and dofadr are always populated, if the system was initialized successfully.
+        this->dataPtr_->joints_[i].joint_position = this->dataPtr_->d_->qpos[this->dataPtr_->joints_[i].joint_qposadr];
+        this->dataPtr_->joints_[i].joint_velocity = this->dataPtr_->d_->qvel[this->dataPtr_->joints_[i].joint_dofadr];
+        this->dataPtr_->joints_[i].joint_effort   = this->dataPtr_->d_->qfrc_applied[this->dataPtr_->joints_[i].joint_dofadr] +
+                                                    this->dataPtr_->d_->qfrc_actuator[this->dataPtr_->joints_[i].joint_dofadr];
+      }
+      this->dataPtr_->last_update_sim_time_mj_ = time;
     }
     return hardware_interface::return_type::OK;
   };
@@ -183,21 +188,23 @@ hardware_interface::return_type MujocoRos2System::read(
 hardware_interface::return_type MujocoRos2System::write(
   const rclcpp::Time & time,
   const rclcpp::Duration & period){
-
-    RCLCPP_DEBUG(this->nh_->get_logger(), "write");
-    for(uint i = 0; i < this->dataPtr_->joints_.size(); i++){
-      // Simply check the joint's control method, and whether the corresponding mj actuator index is populated or not
-      if(this->dataPtr_->joints_[i].joint_control_method & ControlMethod_::POSITION &&
-         this->dataPtr_->joints_[i].act_posidx != -1){
-        this->dataPtr_->d_->ctrl[this->dataPtr_->joints_[i].act_posidx]= this->dataPtr_->joints_[i].joint_position_cmd;
-      }
-      if(this->dataPtr_->joints_[i].joint_control_method & ControlMethod_::VELOCITY &&
-         this->dataPtr_->joints_[i].act_velidx != -1){
-      this->dataPtr_->d_->ctrl[this->dataPtr_->joints_[i].act_velidx]= this->dataPtr_->joints_[i].joint_velocity_cmd;
-      }
-      if(this->dataPtr_->joints_[i].joint_control_method & ControlMethod_::EFFORT &&
-         this->dataPtr_->joints_[i].act_effidx != -1){
-      this->dataPtr_->d_->ctrl[this->dataPtr_->joints_[i].act_effidx]= this->dataPtr_->joints_[i].joint_effort_cmd;
+    
+    if(time.seconds() - this->dataPtr_->last_update_sim_time_mj_.seconds() >= 1.0 / static_cast<double>(*this->dataPtr_->update_rate)){
+      RCLCPP_DEBUG(this->nh_->get_logger(), "write");
+      for(uint i = 0; i < this->dataPtr_->joints_.size(); i++){
+        // Simply check the joint's control method, and whether the corresponding mj actuator index is populated or not
+        if(this->dataPtr_->joints_[i].joint_control_method & ControlMethod_::POSITION &&
+          this->dataPtr_->joints_[i].act_posidx != -1){
+          this->dataPtr_->d_->ctrl[this->dataPtr_->joints_[i].act_posidx]= this->dataPtr_->joints_[i].joint_position_cmd;
+        }
+        if(this->dataPtr_->joints_[i].joint_control_method & ControlMethod_::VELOCITY &&
+          this->dataPtr_->joints_[i].act_velidx != -1){
+        this->dataPtr_->d_->ctrl[this->dataPtr_->joints_[i].act_velidx]= this->dataPtr_->joints_[i].joint_velocity_cmd;
+        }
+        if(this->dataPtr_->joints_[i].joint_control_method & ControlMethod_::EFFORT &&
+          this->dataPtr_->joints_[i].act_effidx != -1){
+        this->dataPtr_->d_->ctrl[this->dataPtr_->joints_[i].act_effidx]= this->dataPtr_->joints_[i].joint_effort_cmd;
+        }
       }
     }
     return hardware_interface::return_type::OK;
