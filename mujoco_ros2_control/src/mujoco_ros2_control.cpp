@@ -67,31 +67,27 @@ MujocoRos2ControlPlugin::~MujocoRos2ControlPlugin()
 
 void MujocoRos2ControlPlugin::controlCallback(const mjModel* /* model */, mjData* data)
 {
-	RCLCPP_INFO_STREAM(get_my_logger(), "controlCallback");
+	
 	rclcpp::Time sim_time_mj = rclcpp::Time(static_cast<int64_t>(data->time*1e9), RCL_STEADY_TIME);
 	rclcpp::Duration sim_period = sim_time_mj - this->dataPtr_->last_update_sim_time_mj_;
 	this->dataPtr_->controller_manager_->write(sim_time_mj, sim_period);
 };
 void MujocoRos2ControlPlugin::passiveCallback(const mjModel* /* model */, mjData* data)
 {
-	RCLCPP_INFO_STREAM(get_my_logger(), "passiveCallback");
 	rclcpp::Time sim_time_mj = rclcpp::Time(static_cast<int64_t>(data->time*1e9), RCL_STEADY_TIME);
 	rclcpp::Duration sim_period = sim_time_mj - this->dataPtr_->last_update_sim_time_mj_;
-    this->dataPtr_->last_update_sim_time_mj_ = sim_time_mj;
+	this->dataPtr_->last_update_sim_time_mj_ = sim_time_mj;
 	this->dataPtr_->controller_manager_->read(sim_time_mj, sim_period);
-    this->dataPtr_->controller_manager_->update(sim_time_mj, sim_period);
+	this->dataPtr_->controller_manager_->update(sim_time_mj, sim_period);
 };
 void MujocoRos2ControlPlugin::renderCallback(const mjModel* /* model */, mjData* /* data */, mjvScene* /* scene */)
 {
-	RCLCPP_INFO_STREAM(get_my_logger(), "renderCallback");
 };
 void MujocoRos2ControlPlugin::lastStageCallback(const mjModel* /* model */, mjData* /* data */)
 {
-	RCLCPP_INFO_STREAM(get_my_logger(), "lastStageCallback");
 };
 void MujocoRos2ControlPlugin::onGeomChanged(const mjModel* /* model */, mjData* /* data */, const int /* geom_id */)
 {
-	RCLCPP_INFO_STREAM(get_my_logger(), "onGeomChanged");
 };
 
 bool MujocoRos2ControlPlugin::load(const mjModel *model, mjData *data)
@@ -274,7 +270,7 @@ bool MujocoRos2ControlPlugin::load(const mjModel *model, mjData *data)
 	// Force setting of use_sim_time parameter
 	this->dataPtr_->controller_manager_->set_parameter(
 		rclcpp::Parameter("use_sim_time", rclcpp::ParameterValue(true)));
-	
+
 	return true;
 }
 
