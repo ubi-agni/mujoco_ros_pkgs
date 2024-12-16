@@ -68,10 +68,18 @@ MujocoRos2ControlPlugin::~MujocoRos2ControlPlugin()
 void MujocoRos2ControlPlugin::controlCallback(int model, int data)
 {
 	RCLCPP_INFO_STREAM(get_my_logger(), "controlCallback w/ " << model << " " << data);
+	rclcpp::Time sim_time_ros = this->dataPtr_->node_->get_clock()->now();
+	rclcpp::Duration sim_period = sim_time_ros - this->dataPtr_->last_update_sim_time_ros_;
+	this->dataPtr_->controller_manager_->write(sim_time_ros, sim_period);
 };
 void MujocoRos2ControlPlugin::passiveCallback(int model, int data)
 {
 	RCLCPP_INFO_STREAM(get_my_logger(), "passiveCallback w/ " << model << " " << data);
+	rclcpp::Time sim_time_ros = this->dataPtr_->node_->get_clock()->now();
+	rclcpp::Duration sim_period = sim_time_ros - this->dataPtr_->last_update_sim_time_ros_;
+    this->dataPtr_->last_update_sim_time_ros_ = sim_time_ros;
+	this->dataPtr_->controller_manager_->read(sim_time_ros, sim_period);
+    this->dataPtr_->controller_manager_->update(sim_time_ros, sim_period);
 };
 void MujocoRos2ControlPlugin::renderCallback(int model, int data, int scene)
 {
