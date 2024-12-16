@@ -65,33 +65,33 @@ MujocoRos2ControlPlugin::~MujocoRos2ControlPlugin()
 	this->dataPtr_->thread_executor_spin_.join();
 }
 
-void MujocoRos2ControlPlugin::controlCallback(int model, int data)
+void MujocoRos2ControlPlugin::controlCallback(const mjModel* /* model */, mjData* /* data */)
 {
-	RCLCPP_INFO_STREAM(get_my_logger(), "controlCallback w/ " << model << " " << data);
+	RCLCPP_INFO_STREAM(get_my_logger(), "controlCallback");
 	rclcpp::Time sim_time_ros = this->dataPtr_->node_->get_clock()->now();
 	rclcpp::Duration sim_period = sim_time_ros - this->dataPtr_->last_update_sim_time_ros_;
 	this->dataPtr_->controller_manager_->write(sim_time_ros, sim_period);
 };
-void MujocoRos2ControlPlugin::passiveCallback(int model, int data)
+void MujocoRos2ControlPlugin::passiveCallback(const mjModel* /* model */, mjData* /* data */)
 {
-	RCLCPP_INFO_STREAM(get_my_logger(), "passiveCallback w/ " << model << " " << data);
+	RCLCPP_INFO_STREAM(get_my_logger(), "passiveCallback");
 	rclcpp::Time sim_time_ros = this->dataPtr_->node_->get_clock()->now();
 	rclcpp::Duration sim_period = sim_time_ros - this->dataPtr_->last_update_sim_time_ros_;
     this->dataPtr_->last_update_sim_time_ros_ = sim_time_ros;
 	this->dataPtr_->controller_manager_->read(sim_time_ros, sim_period);
     this->dataPtr_->controller_manager_->update(sim_time_ros, sim_period);
 };
-void MujocoRos2ControlPlugin::renderCallback(int model, int data, int scene)
+void MujocoRos2ControlPlugin::renderCallback(const mjModel* /* model */, mjData* /* data */, mjvScene* /* scene */)
 {
-	RCLCPP_INFO_STREAM(get_my_logger(), "renderCallback w/ " << model << " " << data << " " << scene);
+	RCLCPP_INFO_STREAM(get_my_logger(), "renderCallback");
 };
-void MujocoRos2ControlPlugin::lastStageCallback(int model, int data)
+void MujocoRos2ControlPlugin::lastStageCallback(const mjModel* /* model */, mjData* /* data */)
 {
-	RCLCPP_INFO_STREAM(get_my_logger(), "lastStageCallback w/ " << model << " " << data);
+	RCLCPP_INFO_STREAM(get_my_logger(), "lastStageCallback");
 };
-void MujocoRos2ControlPlugin::onGeomChanged(int model, int data, const int geom_id)
+void MujocoRos2ControlPlugin::onGeomChanged(const mjModel* /* model */, mjData* /* data */, const int /* geom_id */)
 {
-	RCLCPP_INFO_STREAM(get_my_logger(), "onGeomChanged w/ " << model << " " << data << " " << geom_id);
+	RCLCPP_INFO_STREAM(get_my_logger(), "onGeomChanged");
 };
 
 bool MujocoRos2ControlPlugin::load(const mjModel *model, mjData *data)

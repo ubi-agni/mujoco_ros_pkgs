@@ -72,15 +72,17 @@ public:
 			std::shared_ptr<mujoco_ros2::MujocoPlugin> mjros2control =
 			    plugin_loader_->createSharedInstance("mujoco_ros2_control::MujocoRos2ControlPlugin");
 			int env_ptr = 99;
-			int model   = 1;
-			int data    = 2;
-			int scene   = 3;
 			mjros2control->init(env_ptr, mj_yaml_node);
 			mjros2control->safe_load(m_.get(), d_.get());
-			mjros2control->wrappedControlCallback(model, data);
-			mjros2control->wrappedPassiveCallback(model, data);
-			mjros2control->wrappedRenderCallback(model, data, scene);
-			mjros2control->wrappedLastStageCallback(model, data);
+			for(auto i = 0; i < 10; i++){
+				mj_step(m_.get(), d_.get());
+				d_->ctrl[0] = 0.1;
+				mjros2control->wrappedControlCallback(m_.get(), d_.get());
+				mjros2control->wrappedPassiveCallback(m_.get(), d_.get());
+				// mjros2control->wrappedRenderCallback(m_.get(), d_.get(), scene);
+				// mjros2control->wrappedLastStageCallback(m_.get(), d_.get());
+				RCLCPP_INFO(get_logger(), "Pendulum jnt: %f", d_->qpos[0]);
+			}
 		}
 	}
 
