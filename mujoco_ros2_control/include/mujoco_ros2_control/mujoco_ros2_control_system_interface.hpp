@@ -85,6 +85,8 @@ public:
   virtual bool initSim(
     rclcpp::Node::SharedPtr & model_nh,
     const hardware_interface::HardwareInfo & hardware_info,
+    const mjModel* m,
+    mjData* d,
     int & update_rate) = 0;
 
   // Methods used to control a joint.
