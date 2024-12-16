@@ -16,7 +16,7 @@ bool MujocoRos2System::initSim(
     this->dataPtr_ = std::make_unique<MujocoRos2SystemPrivate>();
     this->dataPtr_->last_update_sim_time_ros_ = rclcpp::Time();
     // this->dataPtr_->m_ = m;
-    // this->dataPtr_->d_ = d;
+    this->dataPtr_->d_ = d;
     this->dataPtr_->update_rate = &update_rate;
     this->dataPtr_->n_dof_ = hardware_info.joints.size();
     this->dataPtr_->joints_.resize(this->dataPtr_->n_dof_);
@@ -65,7 +65,7 @@ bool MujocoRos2System::initSim(
                                                           hardware_interface::HW_IF_EFFORT, 
                                                           &this->dataPtr_->joints_[i].joint_effort);
           // initialize the data with the current value in the sim
-          this->dataPtr_->joints_[j].joint_effort = d->qfrc_applied[this->dataPtr_->joints_[i].joint_dofadr];
+          this->dataPtr_->joints_[j].joint_effort = d->qfrc_applied[this->dataPtr_->joints_[i].joint_dofadr] + d->qfrc_actuator[this->dataPtr_->joints_[i].joint_dofadr];
           // this would work, if every joint has an associated torque controller... but since that's not always true,
           // just using applied force might be better in the end
           // d->actuator_force[act_trq_indices_[i]] + d->qfrc_gravcomp[act_trq_indices_[i]]; 
@@ -173,7 +173,8 @@ hardware_interface::return_type MujocoRos2System::read(
       // qposadr and dofadr are always populated, if the system was initialized successfully.
       this->dataPtr_->joints_[i].joint_position = this->dataPtr_->d_->qpos[this->dataPtr_->joints_[i].joint_qposadr];
       this->dataPtr_->joints_[i].joint_velocity = this->dataPtr_->d_->qvel[this->dataPtr_->joints_[i].joint_dofadr];
-      this->dataPtr_->joints_[i].joint_effort   = this->dataPtr_->d_->qfrc_applied[this->dataPtr_->joints_[i].joint_dofadr];
+      this->dataPtr_->joints_[i].joint_effort   = this->dataPtr_->d_->qfrc_applied[this->dataPtr_->joints_[i].joint_dofadr] +
+                                                  this->dataPtr_->d_->qfrc_actuator[this->dataPtr_->joints_[i].joint_dofadr];
     }
     return hardware_interface::return_type::OK;
   };
