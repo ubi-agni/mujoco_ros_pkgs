@@ -124,7 +124,7 @@ public:
 	 * @param[in] model pointer to const mjModel.
 	 * @param[in] data pointer to mjData.
 	 */
-	void wrappedControlCallback(int model, int data)
+	void wrappedControlCallback(const mjModel* model, mjData* data)
 	{
 		RCLCPP_INFO_STREAM(rclcpp::get_logger("MujocoPlugin"), "wrappedControlCallback");
 		// const auto start = Clock::now();
@@ -144,7 +144,7 @@ public:
 	 * @param[in] model pointer to const mjModel.
 	 * @param[in] data pointer to mjData.
 	 */
-	void wrappedPassiveCallback(int model, int data)
+	void wrappedPassiveCallback(const mjModel* model, mjData* data)
 	{
 		RCLCPP_INFO_STREAM(rclcpp::get_logger("MujocoPlugin"), "wrappedPassiveCallback");
 		// const auto start = Clock::now();
@@ -165,7 +165,7 @@ public:
 	 * @param[in] data pointer to mjData.
 	 * @param[in] scene pointer to mjvScene.
 	 */
-	void wrappedRenderCallback(int model, int data, int scene)
+	void wrappedRenderCallback(const mjModel* model, mjData* data, mjvScene* scene)
 	{
 		RCLCPP_INFO_STREAM(rclcpp::get_logger("MujocoPlugin"), "wrappedRenderCallback");
 		// const auto start = Clock::now();
@@ -185,7 +185,7 @@ public:
 	 * @param[in] model pointer to const mjModel.
 	 * @param[in] data pointer to mjData.
 	 */
-	void wrappedLastStageCallback(int model, int data)
+	void wrappedLastStageCallback(const mjModel* model, mjData* data)
 	{
 		RCLCPP_INFO_STREAM(rclcpp::get_logger("MujocoPlugin"), "wrappedLastStageCallback");
 		// const auto start = Clock::now();
@@ -207,7 +207,7 @@ public:
 	 * @param[in] model pointer to const mjModel.
 	 * @param[in] data pointer to mjData.
 	 */
-	virtual void controlCallback(int /*model*/, int /*data*/) { skip_ema_ = true; };
+	virtual void controlCallback(const mjModel* /*model*/, mjData* /*data*/) { skip_ema_ = true; };
 
 	/**
 	 * @brief Override this function to compute and apply custom passive (i.e. non-controlled) forces.
@@ -217,7 +217,7 @@ public:
 	 * @param[in] model pointer to const mjModel.
 	 * @param[in] data pointer to mjData.
 	 */
-	virtual void passiveCallback(int /*model*/, int /*data*/) { skip_ema_ = true; };
+	virtual void passiveCallback(const mjModel* /*model*/, mjData* /*data*/) { skip_ema_ = true; };
 
 	/**
 	 * @brief Override this callback to add custom visualisations to the scene.
@@ -226,7 +226,7 @@ public:
 	 * @param[in] data pointer to mjData.
 	 * @param[in] scene pointer to mjvScene.
 	 */
-	virtual void renderCallback(int /*model*/, int /*data*/, int /*scene*/) { skip_ema_ = true; };
+	virtual void renderCallback(const mjModel* /*model*/, mjData* /*data*/, mjvScene* /*scene*/) { skip_ema_ = true; };
 
 	/**
 	 * @brief Override this callback to add custom behavior at the end of a mujoco_ros simulation step.
@@ -236,7 +236,7 @@ public:
 	 * @param[in] model pointer to const mjModel.
 	 * @param[in] data pointer to mjData.
 	 */
-	virtual void lastStageCallback(int /*model*/, int /*data*/) { skip_ema_ = true; };
+	virtual void lastStageCallback(const mjModel* /*model*/, mjData* /*data*/) { skip_ema_ = true; };
 
 	/**
 	 * @brief Override this callback to add custom behavior when a geom has been changed in the model.
@@ -245,7 +245,7 @@ public:
 	 * @param[in] data pointer to mjData.
 	 * @param[in] geom_id id of the geom thas has been changed.
 	 */
-	virtual void onGeomChanged(int /*model*/, int /*data*/, const int /*geom_id*/){};
+	virtual void onGeomChanged(const mjModel* /*model*/, mjData* /*data*/, const int /*geom_id*/){};
 
 protected:
 	/**

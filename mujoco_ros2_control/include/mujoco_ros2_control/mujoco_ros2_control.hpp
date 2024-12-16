@@ -66,11 +66,11 @@ public:
 	// MujocoRos2ControlPlugin();
 
 	~MujocoRos2ControlPlugin() override;
-	void controlCallback(int model, int data) override;
-	void passiveCallback(int model, int data) override;
-	void renderCallback(int model, int data, int scene) override;
-	void lastStageCallback(int model, int data) override;
-	void onGeomChanged(int model, int data, const int geom_id) override;
+	void controlCallback(const mjModel* model, mjData* data) override;
+	void passiveCallback(const mjModel* model, mjData* data) override;
+	void renderCallback(const mjModel* model, mjData* data, mjvScene* scene) override;
+	void lastStageCallback(const mjModel* model, mjData* data) override;
+	void onGeomChanged(const mjModel* model, mjData* data, const int geom_id) override;
 
 protected:
 	/**
