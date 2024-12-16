@@ -213,6 +213,8 @@ bool MujocoRos2ControlPlugin::load(const mjModel *model, mjData *data)
 		if (!mujocoRos2System->initSim(
 			this->dataPtr_->node_,
 			control_hardware_info[i],
+			model,
+			data,
 			this->dataPtr_->update_rate))
 		{
 			RCLCPP_FATAL(
