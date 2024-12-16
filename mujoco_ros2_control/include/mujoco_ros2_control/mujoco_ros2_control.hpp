@@ -50,7 +50,7 @@ public:
 	std::string robot_description_node_ = "robot_state_publisher";
 
 	/// \brief Last time the update method was called
-	rclcpp::Time last_update_sim_time_ros_ = rclcpp::Time((int64_t)0, RCL_ROS_TIME);
+	rclcpp::Time last_update_sim_time_mj_ = rclcpp::Time((int64_t)0, RCL_STEADY_TIME);
 
 	/// \brief controller update rate
 	int update_rate;

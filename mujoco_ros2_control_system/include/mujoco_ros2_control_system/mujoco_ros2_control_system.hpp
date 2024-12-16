@@ -135,7 +135,7 @@ public:
   size_t n_dof_;
 
   /// \brief last time the write method was called.
-  rclcpp::Time last_update_sim_time_ros_;
+  rclcpp::Time last_update_sim_time_mj_;
 
   /// \brief vector with the joint's names.
   std::vector<struct jointData> joints_;

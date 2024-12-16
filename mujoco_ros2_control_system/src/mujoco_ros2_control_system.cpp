@@ -14,7 +14,7 @@ bool MujocoRos2System::initSim(
     // this was the main reason for the crashing, ironically the logging itself was set up wrongly.
     this->nh_ = model_nh;
     this->dataPtr_ = std::make_unique<MujocoRos2SystemPrivate>();
-    this->dataPtr_->last_update_sim_time_ros_ = rclcpp::Time();
+    this->dataPtr_->last_update_sim_time_mj_ = rclcpp::Time(0L, RCL_STEADY_TIME);
     // this->dataPtr_->m_ = m;
     this->dataPtr_->d_ = d;
     this->dataPtr_->update_rate = &update_rate;
