@@ -225,14 +225,47 @@ bool MujocoRos2ControlPlugin::load(const mjModel *model, mjData *data)
 			this->dataPtr_->node_->get_logger(), "Initialized robot simulation interface %s!",
 			robot_hw_sim_type_str_.c_str());
 		
-
+		
+		RCLCPP_DEBUG_STREAM(this->dataPtr_->node_->get_logger(), "resource-manager system comp size: " << resource_manager_->system_components_size());
 		resource_manager_->import_component(std::move(mujocoRos2System), control_hardware_info[i]);
-		RCLCPP_DEBUG(this->dataPtr_->node_->get_logger(), "Setting state to active");
+		
+		RCLCPP_DEBUG_STREAM(this->dataPtr_->node_->get_logger(), "resource-manager system comp size: " << resource_manager_->system_components_size());
+		RCLCPP_DEBUG(this->dataPtr_->node_->get_logger(), "Setting state of %s to active", control_hardware_info[i].name.c_str());
 		rclcpp_lifecycle::State state(
 			lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE,
 			hardware_interface::lifecycle_state_names::ACTIVE);
 		resource_manager_->set_component_state(control_hardware_info[i].name, state);
 	}
+
+	// Get controller manager node name
+	std::string controllerManagerNodeName{"controller_manager"};
+
+	// Create the controller manager
+	RCLCPP_INFO(this->dataPtr_->node_->get_logger(), "Loading controller_manager");
+	this->dataPtr_->controller_manager_.reset(
+		new controller_manager::ControllerManager(
+		std::move(resource_manager_),
+		this->dataPtr_->executor_,
+		controllerManagerNodeName,
+		this->dataPtr_->node_->get_namespace()));
+	this->dataPtr_->executor_->add_node(this->dataPtr_->controller_manager_);
+
+	if (!this->dataPtr_->controller_manager_->has_parameter("update_rate")) {
+		RCLCPP_ERROR_STREAM(
+		this->dataPtr_->node_->get_logger(),
+		"controller manager doesn't have an update_rate parameter");
+		return false;
+	}
+
+	this->dataPtr_->update_rate =
+		this->dataPtr_->controller_manager_->get_parameter("update_rate").as_int();
+	this->dataPtr_->control_period_ = rclcpp::Duration(
+		std::chrono::duration_cast<std::chrono::nanoseconds>(
+		std::chrono::duration<double>(1.0 / static_cast<double>(this->dataPtr_->update_rate))));
+
+	// Force setting of use_sim_time parameter
+	this->dataPtr_->controller_manager_->set_parameter(
+		rclcpp::Parameter("use_sim_time", rclcpp::ParameterValue(true)));
 	
 	return true;
 }
