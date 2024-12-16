@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2023, Bielefeld University
+ *  Copyright (c) 2022-2024, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -34,25 +34,42 @@
 
 /* Authors: David P. Leins */
 
+#include <filesystem>
+#include <stdexcept>
+#include <sstream>
+
+#include <mujoco/mujoco.h>
+
+#include <mujoco_ros/ros_version.hpp>
+#include <mujoco_ros/render_backend.hpp>
+#include <mujoco_ros/logging.hpp>
+
+#if MJR_ROS_VERSION == ROS_1
 #include <ros/ros.h>
+namespace roscpp = ros;
+#else // MJR_ROS_VERSION == ROS_2
+#include <rclcpp/rclcpp.hpp>
+namespace roscpp = rclcpp;
+#endif
 
-#include <mujoco_ros/mujoco_env.h>
-
-#include <mujoco_ros/offscreen_camera.h>
+#include <mujoco_ros/array_safety.h>
+#include <mujoco_ros/mujoco_env.hpp>
+#include <mujoco_ros/offscreen_camera.hpp>
+#include <mujoco_ros/viewer.hpp>
 
 namespace mujoco_ros {
 namespace mju = ::mujoco::sample_util;
 
-void MujocoEnv::physicsLoop()
+void MujocoEnv::PhysicsLoop()
 {
-	ROS_DEBUG("Physics loop started");
+	MJR_DEBUG("Physics loop started");
 	is_physics_running_ = 1;
 	// CPU-sim syncronization point
 	std::chrono::time_point<Clock> syncCPU;
 	mjtNum syncSim = 0;
 
 	// run until asked to exit
-	while (ros::ok() && !settings_.exit_request.load() && num_steps_until_exit_ != 0) {
+	while (roscpp::ok() && !settings_.exit_request.load() && num_steps_until_exit_ != 0) {
 		// Sleep for 1 ms or yield, to let the main thread run
 		// yield results in busy wait - which has better timing but kills battery life
 		if (settings_.run.load() && settings_.busywait) {
@@ -60,8 +77,9 @@ void MujocoEnv::physicsLoop()
 		} else {
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
+
 		// Run only if model is present
-		if (!model_)
+		if (!std::atomic_load(&model_))
 			continue;
 
 		// Try acquiring the sim mutex
@@ -72,37 +90,37 @@ void MujocoEnv::physicsLoop()
 
 		// if simulation is paused
 		if (!settings_.run.load()) {
-			simPausedPhysics(syncSim);
+			SimPausedPhysics(syncSim);
 		} else {
-			simUnpausedPhysics(syncSim, syncCPU);
+			SimUnpausedPhysics(syncSim, syncCPU);
 		}
 		// unlock physics mutex
 		physics_thread_mutex_.unlock();
 	}
 	is_physics_running_ = 0;
-	ROS_INFO_COND(num_steps_until_exit_ == 0, "Reached requested number of steps. Exiting simulation");
+	MJR_INFO_COND(num_steps_until_exit_ == 0, "Reached requested number of steps. Exiting simulation");
 	// settings_.exit_request.store(1);
 	if (offscreen_.render_thread_handle.joinable()) {
 		offscreen_.cond_render_request.notify_one();
-		ROS_DEBUG("Joining offscreen render thread");
+		MJR_DEBUG("Joining offscreen render thread");
 		offscreen_.render_thread_handle.join();
 	}
-	ROS_DEBUG("Exiting physics loop");
+	MJR_DEBUG("Exiting physics loop");
 }
 
-void MujocoEnv::simPausedPhysics(mjtNum &syncSim)
+void MujocoEnv::SimPausedPhysics(mjtNum &syncSim)
 {
 	const auto startCPU = Clock::now();
 	if (settings_.env_steps_request.load() > 0) { // Action call or arrow keys used for stepping
 		syncSim = data_->time;
 
 		while (settings_.env_steps_request.load() > 0 &&
-		       (connected_viewers_.empty() ||
-		        Clock::now() - startCPU < Seconds(mujoco_ros::Viewer::render_ui_rate_lower_bound_))) {
+		       ( // connected_viewers_.empty() ||
+		           Clock::now() - startCPU < Seconds(mujoco_ros::Viewer::render_ui_rate_lower_bound_))) {
 			// Run single step
 			mj_step(model_.get(), data_.get());
-			publishSimTime(data_->time);
-			runLastStageCbs();
+			ros_api_->PublishSimTime(data_->time);
+			RunLastStageCbs();
 			if (settings_.render_offscreen) {
 				// Wait until no render request is pending
 				while (offscreen_.request_pending.load()) {
@@ -111,9 +129,13 @@ void MujocoEnv::simPausedPhysics(mjtNum &syncSim)
 				std::unique_lock<std::mutex> lock(offscreen_.render_mutex);
 
 				for (const auto &cam_ptr : offscreen_.cams) {
-					if (cam_ptr->shouldRender(ros::Time(data_->time))) {
+#if MJR_ROS_VERSION == ROS_1
+					if (cam_ptr->ShouldRender(ros::Time(data_->time))) {
+#else
+					if (cam_ptr->ShouldRender(rclcpp::Time(data_->time * 1e9))) {
+#endif
 						mjv_updateSceneState(model_.get(), data_.get(), &cam_ptr->vopt_, &cam_ptr->scn_state_);
-						runRenderCbs(&cam_ptr->scn_state_.scratch);
+						RunRenderCbs(&cam_ptr->scn_state_.scratch);
 						offscreen_.request_pending.store(true);
 					}
 				}
@@ -129,14 +151,14 @@ void MujocoEnv::simPausedPhysics(mjtNum &syncSim)
 	} else {
 		// Run mj_forward, to update rendering and joint sliders
 		mj_forward(model_.get(), data_.get());
-		publishSimTime(data_->time);
+		ros_api_->PublishSimTime(data_->time);
 		// Sleep for the difference between the lower bound render rate (30Hz) and the time it took to run the forward
 		// step to reduce cpu load
 		std::this_thread::sleep_for(Seconds(mujoco_ros::Viewer::render_ui_rate_lower_bound_) - (Clock::now() - startCPU));
 	}
 }
 
-void MujocoEnv::simUnpausedPhysics(mjtNum &syncSim, std::chrono::time_point<Clock> &syncCPU)
+void MujocoEnv::SimUnpausedPhysics(mjtNum &syncSim, std::chrono::time_point<Clock> &syncCPU)
 {
 	// record CPU time at start of iteration
 	const auto startCPU = Clock::now();
@@ -161,8 +183,8 @@ void MujocoEnv::simUnpausedPhysics(mjtNum &syncSim, std::chrono::time_point<Cloc
 
 		// run single step, let next iteration deal with timing
 		mj_step(model_.get(), data_.get());
-		publishSimTime(data_->time);
-		runLastStageCbs();
+		ros_api_->PublishSimTime(data_->time);
+		RunLastStageCbs();
 		if (settings_.render_offscreen) {
 			// Wait until no render request is pending
 			while (offscreen_.request_pending.load()) {
@@ -171,9 +193,13 @@ void MujocoEnv::simUnpausedPhysics(mjtNum &syncSim, std::chrono::time_point<Cloc
 			std::unique_lock<std::mutex> lock(offscreen_.render_mutex);
 
 			for (const auto &cam_ptr : offscreen_.cams) {
-				if (cam_ptr->shouldRender(ros::Time(data_->time))) {
+#if MJR_ROS_VERSION == ROS_1
+				if (cam_ptr->ShouldRender(ros::Time(data_->time))) {
+#else
+				if (cam_ptr->ShouldRender(rclcpp::Time(data_->time * 1e9))) {
+#endif
 					mjv_updateSceneState(model_.get(), data_.get(), &cam_ptr->vopt_, &cam_ptr->scn_state_);
-					runRenderCbs(&cam_ptr->scn_state_.scratch);
+					RunRenderCbs(&cam_ptr->scn_state_.scratch);
 					offscreen_.request_pending.store(true);
 				}
 			}
@@ -193,8 +219,8 @@ void MujocoEnv::simUnpausedPhysics(mjtNum &syncSim, std::chrono::time_point<Cloc
 		// If real-time is bound, run until sim steps are in sync with CPU steps, otherwise run as fast as
 		// possible
 		while ((settings_.real_time_index == 0 || Seconds((data_->time - syncSim) * slowdown) < Clock::now() - syncCPU) &&
-		       (Clock::now() - startCPU < Seconds(mujoco_ros::Viewer::render_ui_rate_lower_bound_) ||
-		        connected_viewers_.empty()) && // only break if rendering UI is actually necessary
+		       (Clock::now() - startCPU < Seconds(mujoco_ros::Viewer::render_ui_rate_lower_bound_) /*||
+		        connected_viewers_.empty()*/) && // only break if rendering UI is actually necessary
 		       !settings_.exit_request.load() &&
 		       num_steps_until_exit_ != 0 && settings_.run.load()) {
 			// measure slowdown before first step
@@ -211,8 +237,8 @@ void MujocoEnv::simUnpausedPhysics(mjtNum &syncSim, std::chrono::time_point<Cloc
 
 			// Call mj_step
 			mj_step(model_.get(), data_.get());
-			publishSimTime(data_->time);
-			runLastStageCbs();
+			ros_api_->PublishSimTime(data_->time);
+			RunLastStageCbs();
 			if (settings_.render_offscreen) {
 				// Wait until no render request is pending
 				while (offscreen_.request_pending.load()) {
@@ -221,9 +247,13 @@ void MujocoEnv::simUnpausedPhysics(mjtNum &syncSim, std::chrono::time_point<Cloc
 				std::unique_lock<std::mutex> lock(offscreen_.render_mutex);
 
 				for (const auto &cam_ptr : offscreen_.cams) {
-					if (cam_ptr->shouldRender(ros::Time(data_->time))) {
+#if MJR_ROS_VERSION == ROS_1
+					if (cam_ptr->ShouldRender(ros::Time(data_->time))) {
+#else
+					if (cam_ptr->ShouldRender(rclcpp::Time(data_->time * 1e9))) {
+#endif
 						mjv_updateSceneState(model_.get(), data_.get(), &cam_ptr->vopt_, &cam_ptr->scn_state_);
-						runRenderCbs(&cam_ptr->scn_state_.scratch);
+						RunRenderCbs(&cam_ptr->scn_state_.scratch);
 						offscreen_.request_pending.store(true);
 					}
 				}
@@ -239,13 +269,6 @@ void MujocoEnv::simUnpausedPhysics(mjtNum &syncSim, std::chrono::time_point<Cloc
 				break;
 			}
 		}
-	}
-}
-
-void MujocoEnv::waitForPhysicsJoin()
-{
-	if (physics_thread_handle_.joinable()) {
-		physics_thread_handle_.join();
 	}
 }
 

@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2023, Bielefeld University
+ *  Copyright (c) 2022-2024, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -34,11 +34,11 @@
 
 /* Authors: David P. Leins*/
 
-#include <mujoco_ros/plugin_utils.h>
+#include <mujoco_ros/ros_one/plugin_utils.hpp>
 
 namespace mujoco_ros::plugin_utils {
 
-bool parsePlugins(const ros::NodeHandle *nh, XmlRpc::XmlRpcValue &plugin_config_rpc)
+bool ParsePlugins(const ros::NodeHandle *nh, XmlRpc::XmlRpcValue &plugin_config_rpc)
 {
 	std::string param_path;
 	if (nh->searchParam(MUJOCO_PLUGIN_PARAM_NAME, param_path) ||
@@ -63,7 +63,7 @@ bool parsePlugins(const ros::NodeHandle *nh, XmlRpc::XmlRpcValue &plugin_config_
 	return true;
 }
 
-void registerPlugins(const std::string &nh_namespace, const XmlRpc::XmlRpcValue &config_rpc,
+void RegisterPlugins(const std::string &nh_namespace, const XmlRpc::XmlRpcValue &config_rpc,
                      std::vector<MujocoPluginPtr> &plugins, MujocoEnv *env)
 {
 	for (int8_t i = 0; i < config_rpc.size(); i++) {
@@ -76,11 +76,11 @@ void registerPlugins(const std::string &nh_namespace, const XmlRpc::XmlRpcValue 
 			continue;
 		}
 		// TODO: handle failed registration somehow?
-		registerPlugin(nh_namespace, config_rpc[i], plugins, env);
+		RegisterPlugin(nh_namespace, config_rpc[i], plugins, env);
 	}
 }
 
-bool registerPlugin(const std::string &nh_namespace, const XmlRpc::XmlRpcValue &config,
+bool RegisterPlugin(const std::string &nh_namespace, const XmlRpc::XmlRpcValue &config,
                     std::vector<MujocoPluginPtr> &plugins, MujocoEnv *env)
 {
 	ROS_ASSERT(config.getType() == XmlRpc::XmlRpcValue::TypeStruct);
@@ -97,7 +97,7 @@ bool registerPlugin(const std::string &nh_namespace, const XmlRpc::XmlRpcValue &
 
 	try {
 		MujocoPlugin *mjplugin_ptr = plugin_loader_ptr_->createUnmanagedInstance(type);
-		mjplugin_ptr->init(config, nh_namespace, env);
+		mjplugin_ptr->Init(config, nh_namespace, env);
 		plugins.emplace_back(std::unique_ptr<MujocoPlugin>(mjplugin_ptr));
 		ROS_DEBUG_STREAM_NAMED("mujoco_ros_plugin_loader",
 		                       "Added " << type << " to the list of loaded plugins in namespace '" << nh_namespace
@@ -111,7 +111,7 @@ bool registerPlugin(const std::string &nh_namespace, const XmlRpc::XmlRpcValue &
 	return true;
 }
 
-void initPluginLoader()
+void InitPluginLoader()
 {
 	// NOLINTBEGIN(clang-analyzer-optin.cplusplus.VirtualCall)
 	plugin_loader_ptr_ =
@@ -119,7 +119,7 @@ void initPluginLoader()
 	// NOLINTEND(clang-analyzer-optin.cplusplus.VirtualCall)
 }
 
-void unloadPluginloader()
+void UnloadPluginloader()
 {
 	plugin_loader_ptr_.reset();
 }

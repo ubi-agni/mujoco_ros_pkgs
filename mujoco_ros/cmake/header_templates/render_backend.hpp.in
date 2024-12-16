@@ -1,0 +1,8 @@
+#ifndef RENDER_BACKEND
+#define GLFW_BACKEND 3
+#define EGL_BACKEND 2
+#define OSMESA_BACKEND 1
+#define NO_BACKEND 0
+
+#define RENDER_BACKEND ${RENDER_BACKEND}_BACKEND
+#endif

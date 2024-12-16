@@ -17,7 +17,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2023, Bielefeld University
+ *  Copyright (c) 2022-2024, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -69,8 +69,8 @@
 #include <mujoco_ros/array_safety.h>
 
 #include <mujoco_ros/platform_ui_adapter.h>
-#include <mujoco_ros/common_types.h>
-#include <mujoco_ros/mujoco_env.h>
+#include <mujoco_ros/common_types.hpp>
+#include <mujoco_ros/mujoco_env.hpp>
 
 namespace mujoco_ros {
 
@@ -81,7 +81,6 @@ namespace mujoco_ros {
 // same thread.
 class ViewerMutex : public std::recursive_mutex
 {};
-using MutexLock = std::unique_lock<std::recursive_mutex>;
 
 class Viewer
 {

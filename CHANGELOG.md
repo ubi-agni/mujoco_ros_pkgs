@@ -9,6 +9,8 @@ The default is `min(#available_threads - 1, 4)`.
 Loading and reset times are reported in the server debug log. All plugin stats can be retrieved by the `get_plugin_stats` service call.
 * Added ros laser plugin.
 * Added dynamic reconfigure for all MuJoCo settings for fast model testing.
+* Unnamed cameras don't cause crashes anymore, instead they are named `unnamed_cam_X` where is is a counting variable.
+* ROS 2 (target release Humble) support!
 
 ### Fixed
 * Added missing call to render callbacks in viewer. While the callbacks were still being run for offscreen rendering, the viewer did not render additional geoms added by plugins.
@@ -23,6 +25,8 @@ Loading and reset times are reported in the server debug log. All plugin stats c
 * Fixed occasional segfault when offscreen context was freed on shutdown.
 * Fixed segmented image never being rendered/published.
 * Fixed thread synchronization between MujocoEnv and Viewer.
+* Occasional startup hiccups with GUI mode where the rendered environment would remain empty have been fixed (race condition with loading on separate threads).
+* Fixed copyright notice dates.
 
 ### Changed
 * Moved `mujoco_ros::Viewer::Clock` definition to `mujoco_ros::Clock` (into common_types.h).
@@ -31,6 +35,7 @@ Loading and reset times are reported in the server debug log. All plugin stats c
 * Added sleeping at least until the next lowerbound GUI refresh when paused to reduce cpu load.
 * deprecated `no_x` launchparameter in favor of using `no_render`, as offscreen rendering now is also available without X.
 * Optimized camera render configurations where RGB, Segmented and Depth streams are active, but only Segmented and Depth are subscribed. Previously, this would result in two separate low-level render calls, now it's done in one.
+* Enforced codestyle naming convention for functions (CamelCase) with exception of accessors.
 
 Contributors: @DavidPL1
 

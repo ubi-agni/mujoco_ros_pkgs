@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2023, Bielefeld University
+ *  Copyright (c) 2022-2024, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -34,26 +34,40 @@
 
 /* Authors: David P. Leins */
 
-#include <mujoco_ros/common_types.h>
-#include <mujoco/mujoco.h>
+#include <mujoco_ros/ros_version.hpp>
+#include <mujoco_ros/logging.hpp>
+#include <mujoco_ros/mujoco_env.hpp>
 
-namespace mujoco_ros::util {
+namespace mujoco_ros {
 
-template <class T>
-inline typename std::make_unsigned<T>::type as_unsigned(T x)
+void MujocoEnv::StartPhysicsLoop()
 {
-	return static_cast<typename std::make_unsigned<T>::type>(x);
+	MJR_DEBUG("Starting physics loop");
+	physics_thread_handle_ = std::thread(std::bind(&MujocoEnv::PhysicsLoop, this));
 }
 
-static inline int jointName2id(mjModel *m, const std::string &joint_name,
-                               const std::string &robot_namespace = std::string())
+void MujocoEnv::WaitForPhysicsJoin()
 {
-	int result = mj_name2id(m, mjOBJ_JOINT, joint_name.c_str());
-	if (result == -1 && !robot_namespace.empty()) {
-		ROS_DEBUG_STREAM("Trying to find without namespace (" << joint_name.substr(robot_namespace.size()) << ")");
-		result = mj_name2id(m, mjOBJ_JOINT, joint_name.substr(robot_namespace.size()).c_str());
+	MJR_DEBUG("Waiting for physics join");
+	if (physics_thread_handle_.joinable()) {
+		physics_thread_handle_.join();
 	}
-	return result;
+	MJR_DEBUG("Physics joined");
 }
 
-} // namespace mujoco_ros::util
+void MujocoEnv::StartEventLoop()
+{
+	MJR_DEBUG("Starting event loop");
+	event_thread_handle_ = std::thread(std::bind(&MujocoEnv::EventLoop, this));
+}
+
+void MujocoEnv::WaitForEventsJoin()
+{
+	MJR_DEBUG("Waiting for event join");
+	if (event_thread_handle_.joinable()) {
+		event_thread_handle_.join();
+	}
+	MJR_DEBUG("Event joined");
+}
+
+} // namespace mujoco_ros

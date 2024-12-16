@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2023, Bielefeld University
+ *  Copyright (c) 2022-2024, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -34,30 +34,36 @@
 
 /* Authors: David P. Leins */
 
-#include <mujoco_ros/render_backend.h>
+#include <csignal>
+#include <thread>
 
-#include <mujoco_ros/mujoco_env.h>
+#include <mujoco_ros/render_backend.hpp>
+#include <mujoco_ros/ros_version.hpp>
+#include <mujoco_ros/logging.hpp>
+
+#include <mujoco_ros/mujoco_env.hpp>
 
 #include <mujoco_ros/array_safety.h>
 #include <mujoco/mujoco.h>
 
 #include <boost/program_options.hpp>
-#include <csignal>
-#include <thread>
 
 #if RENDER_BACKEND == GLFW_BACKEND
 #include <mujoco_ros/glfw_adapter.h>
-#include <mujoco_ros/viewer.h>
+#include <mujoco_ros/viewer.hpp>
 #endif
 
 namespace {
 
-std::unique_ptr<mujoco_ros::MujocoEnv> env;
+std::shared_ptr<mujoco_ros::MujocoEnv> env;
 
 void sigint_handler(int /*sig*/)
 {
 	std::printf("Registered C-c. Shutting down MuJoCo ROS Server ...\n");
 	env->settings_.exit_request.store(1);
+#if MJR_ROS_VERSION == ROS_2
+	rclcpp::shutdown();
+#endif
 }
 
 namespace po  = boost::program_options;
@@ -67,15 +73,28 @@ using Seconds = std::chrono::duration<double>;
 
 } // anonymous namespace
 
+#if MJR_ROS_VERSION == ROS_2
+static bool should_exit = false;
+void async_spin(rclcpp::executors::MultiThreadedExecutor &executor)
+{
+	while (!should_exit) {
+		executor.spin_some();
+		std::this_thread::sleep_for(Seconds(0.01));
+	}
+}
+#endif
+
 int main(int argc, char **argv)
 {
+#if MJR_ROS_VERSION == ROS_1
 	ros::init(argc, argv, "Mujoco");
 	ros::start();
 
 	ros::AsyncSpinner spinner(4);
 	spinner.start();
-
-	ros::NodeHandle nh = ros::NodeHandle("~");
+#else // MJR_ROS_VERSION == ROS_2
+	rclcpp::init(argc, argv);
+#endif
 
 	signal(SIGINT, sigint_handler);
 
@@ -89,7 +108,7 @@ int main(int argc, char **argv)
 	po::variables_map vm;
 
 	try {
-		po::store(po::parse_command_line(argc, argv, options), vm);
+		po::store(po::command_line_parser(argc, argv).options(options).allow_unregistered().run(), vm);
 		po::notify(vm);
 
 		if (vm.count("help")) {
@@ -97,84 +116,69 @@ int main(int argc, char **argv)
 			exit(0);
 		}
 	} catch (std::exception &e) {
-		ROS_ERROR("Error parsing command line: %s", e.what());
+		MJR_ERROR("Error parsing command line: %s", e.what());
 		exit(-1);
-	}
-
-	/*
-	 * Model (file) passing: the model can be provided as file to parse or directly as string stored in the rosparam
-	 * server. If both string and file are provided, the string takes precedence.
-	 */
-	std::string filename;
-	nh.getParam("modelfile", filename);
-
-	std::string xml_content_path;
-	std::string xml_content;
-	bool wait_for_xml = nh.param<bool>("wait_for_xml", false);
-
-	ROS_INFO_COND(wait_for_xml, "Waiting for xml content to be available on rosparam server");
-
-	while (wait_for_xml) {
-		if (nh.searchParam("mujoco_xml", xml_content_path) || ros::param::search("mujoco_xml", xml_content_path)) {
-			ROS_DEBUG_STREAM("Found mujoco_xml_content param under " << xml_content_path);
-
-			nh.getParam(xml_content_path, xml_content);
-			if (!xml_content.empty()) {
-				ROS_INFO("Got xml content from ros param server");
-				filename = "rosparam_content";
-			}
-			wait_for_xml = false;
-		}
-	}
-
-	if (!filename.empty()) {
-		ROS_INFO_STREAM("Using modelfile " << filename);
-	} else {
-		ROS_WARN("No modelfile was provided, launching empty simulation!");
 	}
 
 	std::printf("MuJoCo version %s\n", mj_versionString());
 	if (mjVERSION_HEADER != mj_version()) {
-		ROS_ERROR_STREAM("Headers (" << mjVERSION_HEADER << ") and library (" << mj_versionString()
+		MJR_ERROR_STREAM("Headers (" << mjVERSION_HEADER << ") and library (" << mj_versionString()
 		                             << ") have different versions");
 		mju_error("Headers and library have different versions");
 	}
 
 	// TODO(dleins): Should MuJoCo Plugins be loaded?
-	env = std::make_unique<mujoco_ros::MujocoEnv>(admin_hash);
+	env = std::make_shared<mujoco_ros::MujocoEnv>(admin_hash);
 
-	// const char *filename = nullptr;
-	if (!filename.empty()) {
-		mju::strcpy_arr(env->queued_filename_, filename.c_str());
-		env->settings_.load_request = 2;
-	}
+#if MJR_ROS_VERSION == ROS_2
+	// prepare for spinning later
+	rclcpp::executors::MultiThreadedExecutor executor;
+	executor.add_node(env);
+#endif
 
-	env->startPhysicsLoop();
-	env->startEventLoop();
+	env->StartPhysicsLoop();
+	env->StartEventLoop();
 
 #if RENDER_BACKEND == GLFW_BACKEND
 	if (!env->settings_.headless) {
-		ROS_INFO("Launching viewer");
+		MJR_INFO("Launching viewer");
 		auto viewer = std::make_unique<mujoco_ros::Viewer>(
 		    std::unique_ptr<mujoco_ros::PlatformUIAdapter>(env->gui_adapter_), env.get(), /* is_passive = */ false);
+#if MJR_ROS_VERSION == ROS_1
 		viewer->RenderLoop();
+#else // MJR_ROS_VERSION == ROS_2
+      // TODO: This is a workaround for running a blocking viewer and a blocking executor in ROS 2.
+      // Running the render loop in a separate thread does not work. The otherway around does, but
+      // I'm not sure this is ideal.
+		std::thread executor_thread = std::thread(std::bind(&async_spin, std::ref(executor)));
+		viewer->RenderLoop();
+		MJR_INFO("Viewer terminated");
+		MJR_DEBUG("Joining executor thread");
+		should_exit = true;
+		executor_thread.join();
+		MJR_DEBUG("Joined executor thread");
+#endif
 	}
 #else
-	if (!env->settings_.headless) {
-		ROS_ERROR("GLFW backend not available. Cannot launch viewer");
-	}
+	MJR_ERROR_COND(!env->settings_.headless, "GLFW backend not available. Cannot launch viewer");
 #endif
-	else {
-		ROS_INFO("Running headless");
-	}
+	MJR_INFO_COND(env->settings_.headless, "Running headless");
 
-	env->waitForPhysicsJoin();
-	env->waitForEventsJoin();
+#if MJR_ROS_VERSION == ROS_2 && RENDER_BACKEND != GLFW_BACKEND
+	executor.spin();
+#endif
+
+	env->WaitForPhysicsJoin();
+	env->WaitForEventsJoin();
 	env.reset();
 
-	ROS_INFO("MuJoCo ROS Simulation Server node is terminating");
+	MJR_INFO("MuJoCo ROS Simulation Server node is terminating");
 
+#if MJR_ROS_VERSION == ROS_1
 	spinner.stop();
 	ros::shutdown();
+#else // MJR_ROS_VERSION == ROS_2
+	rclcpp::shutdown();
+#endif
 	exit(0);
 }

@@ -33,15 +33,41 @@ if(RENDERING_BACKEND STREQUAL "GLFW")
   add_library(mujoco_ros::platform_ui_adapter ALIAS platform_ui_adapter)
 endif()
 
+if(ROS_VERSION EQUAL "1")
+  set(MJR_SOURCE_FILES
+    main.cpp
+    mujoco_env.cpp
+    ros_one/ros_api.cpp
+    ros_one/parameter_interface.cpp
+    ros_one/plugin_utils.cpp
+    physics.cpp
+    interface.cpp
+    loading.cpp
+    threading.cpp
+    offscreen_camera.cpp
+    offscreen_rendering.cpp
+    viewer.cpp
+  )
+else()
+  set(MJR_SOURCE_FILES
+    main.cpp
+    mujoco_env.cpp
+    ros_two/ros_api.cpp
+    ros_two/parameter_interface.cpp
+    ros_two/plugin_utils.cpp
+    physics.cpp
+    interface.cpp
+    loading.cpp
+    threading.cpp
+    offscreen_camera.cpp
+    offscreen_rendering.cpp
+    viewer.cpp
+  )
+endif()
+
 add_library(${PROJECT_NAME}
   $<TARGET_OBJECTS:lodepng>
-  mujoco_env.cpp
-  viewer.cpp
-  plugin_utils.cpp
-  offscreen_camera.cpp
-  offscreen_rendering.cpp
-  callbacks.cpp
-  physics.cpp
+  ${MJR_SOURCE_FILES}
 )
 
 if(RENDERING_BACKEND STREQUAL "GLFW")
@@ -53,21 +79,46 @@ if (RENDERING_BACKEND)
 endif()
 
 target_include_directories(${PROJECT_NAME}
-  PUBLIC ${PROJECT_SOURCE_DIR}/include
-  ${mujoco_include_DIRS}
-  ${GLFW_INCLUDE_DIRS}
+  PUBLIC
+    ${GENERATED_HEADERS_DIR}
+    ${PROJECT_SOURCE_DIR}/include
+    ${mujoco_include_DIRS}
+    ${GLFW_INCLUDE_DIRS}
   PRIVATE
-  ${catkin_INCLUDE_DIRS}
+    ${catkin_INCLUDE_DIRS}
 )
 
 target_link_libraries(${PROJECT_NAME}
   PUBLIC
    mujoco::mujoco
-   catkin_pkg
   PRIVATE
    project_option
    project_warning
 )
+
+if (ROS_VERSION EQUAL "1")
+  target_link_libraries(${PROJECT_NAME}
+    PUBLIC
+      catkin_pkg
+  )
+
+else()
+  ament_target_dependencies(${PROJECT_NAME}
+    PUBLIC
+      rclcpp
+      pluginlib
+      tf2
+      tf2_ros
+      image_transport
+      camera_info_manager
+      mujoco_ros_msgs
+      rosgraph_msgs
+      geometry_msgs
+      tf2_geometry_msgs
+      sensor_msgs
+      std_srvs
+  )
+endif()
 
 if(RENDERING_BACKEND STREQUAL "GLFW")
   target_link_libraries(${PROJECT_NAME} PUBLIC mujoco_ros::platform_ui_adapter)
@@ -77,11 +128,9 @@ elseif(RENDERING_BACKEND STREQUAL "OSMESA")
   target_link_libraries(${PROJECT_NAME} PUBLIC OSMesa::OSMesa)
 endif()
 
-# Node Executable
 add_executable(mujoco_node
   main.cpp
 )
-
 target_link_libraries(mujoco_node
   PUBLIC
     ${PROJECT_NAME}
@@ -90,4 +139,9 @@ target_link_libraries(mujoco_node
     project_warning
 )
 
-# configure_coverage(TARGET ${PROJECT_NAME})
+if (ROS_VERSION EQUAL "2")
+  target_link_libraries(mujoco_node
+    PUBLIC
+      Boost::program_options
+  )
+endif()

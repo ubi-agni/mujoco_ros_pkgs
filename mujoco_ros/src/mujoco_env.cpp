@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2023, Bielefeld University
+ *  Copyright (c) 2022-2024, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -34,14 +34,39 @@
 
 /* Authors: David P. Leins */
 
-#include <ros/ros.h>
-
-#include <mujoco_ros/mujoco_env.h>
-
-#include <mujoco_ros/offscreen_camera.h>
-
 #include <stdexcept>
 #include <sstream>
+
+#include <mujoco/mujoco.h>
+
+#include <mujoco_ros/ros_version.hpp>
+#include <mujoco_ros/render_backend.hpp>
+#include <mujoco_ros/logging.hpp>
+
+#include <mujoco_ros/array_safety.h>
+#include <mujoco_ros/mujoco_env.hpp>
+#include <mujoco_ros/offscreen_camera.hpp>
+#include <mujoco_ros/viewer.hpp>
+
+#if MJR_ROS_VERSION == ROS_1
+#include <ros/ros.h>
+
+#include <mujoco_ros/ros_one/plugin_utils.hpp>
+
+#include <geometry_msgs/TransformStamped.h>
+using TransformStamped = geometry_msgs::TransformStamped;
+
+namespace roscpp = ros;
+#else // MJR_ROS_VERSION == ROS_2
+#include <rclcpp/rclcpp.hpp>
+
+#include <mujoco_ros/ros_two/plugin_utils.hpp>
+
+#include <geometry_msgs/msg/transform_stamped.hpp>
+using TransformStamped = geometry_msgs::msg::TransformStamped;
+
+namespace roscpp                  = rclcpp;
+#endif
 
 #if RENDER_BACKEND == GLFW_BACKEND
 static std::string render_backend = "GLFW";
@@ -70,7 +95,7 @@ int MaybeGlfwInit()
 		} else {
 			const char *description;
 			int error = glfwGetError(&description);
-			ROS_ERROR("Failed to initialize GLFW: %d %s", error, description);
+			MJR_ERROR("Failed to initialize GLFW: %d %s", error, description);
 		}
 		return success;
 	}();
@@ -81,10 +106,29 @@ int MaybeGlfwInit()
 
 MujocoEnv *MujocoEnv::instance = nullptr;
 
+void MujocoEnv::RunRenderCbs(mjvScene * /*scene*/) {}
+void UpdateModelFlags(const mjOption *) {}
+void MujocoEnv::RunLastStageCbs() {}
+
+#if MJR_ROS_VERSION == ROS_1
 MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 {
-	nh_ = std::make_unique<ros::NodeHandle>("~");
-	ROS_DEBUG_STREAM("New MujocoEnv created");
+	nh_ = std::make_shared<ros::NodeHandle>("~");
+#else // MJR_ROS_VERSION == ROS_2
+MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
+    : Node(
+          "mujoco_server",
+          rclcpp::NodeOptions().allow_undeclared_parameters(true).automatically_declare_parameters_from_overrides(true))
+{
+#endif
+	FetchConfiguration();
+#if MJR_ROS_VERSION == ROS_1
+	ros_api_ = std::make_unique<RosAPI>(nh_, this);
+#else // MJR_ROS_VERSION == ROS_2
+	ros_api_ = std::make_unique<RosAPI>(this);
+#endif
+
+	MJR_DEBUG("Starting simulation server");
 
 	if (!admin_hash.empty()) {
 		mju::strcpy_arr(settings_.admin_hash, admin_hash.c_str());
@@ -93,12 +137,11 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 		settings_.admin_hash[0] = '\0';
 	}
 
-	nh_->param<bool>("eval_mode", settings_.eval_mode, false);
 	if (settings_.eval_mode) {
-		ROS_INFO("Running in evaluation mode. Parsing admin hash...");
+		MJR_INFO("Running in evaluation mode. Parsing admin hash...");
 		if (!settings_.admin_hash[0]) {
-			ROS_ERROR_NAMED("mujoco", "Evaluation mode requires a hash to verify critical operations are allowed. No "
-			                          "hash was provided, aborting launch.");
+			MJR_ERROR("Evaluation mode requires a hash to verify critical operations are allowed. No hash was provided, "
+			          "aborting launch.");
 			settings_.exit_request = 1;
 			throw std::runtime_error(
 			    "Evaluation mode requires a hash to verify critical operations are allowed. No hash was "
@@ -106,54 +149,25 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 		}
 	}
 
-	if (!ros::param::get("/use_sim_time", settings_.use_sim_time)) {
-		ROS_FATAL_NAMED("mujoco", "/use_sim_time ROS param is unset. This node requires you to explicitly set it to true "
-		                          "or false. Also Make sure it is set before starting any node, "
-		                          "otherwise nodes might behave unexpectedly.");
-		return;
-	}
+	MJR_DEBUG_COND(!settings_.use_sim_time, "use_sim_time is set to false. Not publishing sim time to /clock!");
 
-	ROS_DEBUG_COND(!settings_.use_sim_time, "use_sim_time is set to false. Not publishing sim time to /clock!");
-	bool no_render;
-
-	nh_->param("no_render", no_render, false);
-	if (nh_->hasParam("no_x")) {
-		ROS_WARN("The 'no_x' parameter is deprecated. Use 'no_render' instead.");
-		nh_->param("no_x", no_render, no_render);
-	}
-
-	if (no_render) {
-		ROS_INFO("no_render is set. Disabling rendering and setting headless to true");
-		nh_->setParam("headless", true);
-		nh_->setParam("render_offscreen", false);
-	}
-
-	ROS_INFO("Using MuJoCo library version %s", mj_versionString());
+	MJR_INFO_STREAM("Using MuJoCo library version " << mj_versionString());
 	if (mjVERSION_HEADER != mj_version()) {
-		ROS_WARN_STREAM("Headers and library have different versions (headers: " << mjVERSION_HEADER
+		MJR_WARN_STREAM("Headers and library have different versions (headers: " << mjVERSION_HEADER
 		                                                                         << ", library: " << mj_version() << ")");
 	}
-	ROS_INFO_STREAM("Compiled with render backend: " << render_backend);
+	MJR_INFO_STREAM("Compiled with render backend: " << render_backend);
 
-	nh_->param<bool>("render_offscreen", settings_.render_offscreen, true);
-	nh_->param<bool>("headless", settings_.headless, true);
 	if (!settings_.headless) {
 #if RENDER_BACKEND == GLFW_BACKEND
 		gui_adapter_ = new mujoco_ros::GlfwAdapter();
 #else
-		ROS_ERROR("Compiled without GLFW support. Cannot run in non-headless mode.");
+		MJR_ERROR("Compiled without GLFW support. Cannot run in non-headless mode.");
 #endif
 	}
+	ros_api_->SetupClockPublisher();
 
-	if (settings_.use_sim_time) {
-		clock_pub_ = nh_->advertise<rosgraph_msgs::Clock>("/clock", 1);
-		publishSimTime(mjtNum(0));
-	}
-
-	bool run;
-	nh_->param<bool>("unpause", run, true);
-	settings_.run = run;
-	ROS_INFO_COND(!run, "Starting Simulation in paused mode");
+	MJR_INFO_COND(!settings_.run, "Starting Simulation in paused mode");
 
 	mjv_defaultScene(&scn_);
 	mjv_defaultPerturb(&pert_);
@@ -163,61 +177,56 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 
 #if RENDER_BACKEND == GLFW_BACKEND
 		can_render = MaybeGlfwInit();
-		ROS_ERROR_COND(!can_render, "Failed to initialize GLFW. Cannot render offscreen!");
+		MJR_ERROR_COND(!can_render, "Failed to initialize GLFW. Cannot render offscreen!");
 #elif RENDER_BACKEND == NO_BACKEND
-		ROS_ERROR("No rendering backend available. Cannot render offscreen!");
+		MJR_ERROR("No rendering backend available. Cannot render offscreen!");
 		can_render = false;
 #endif
 
 		if (!can_render) {
 			settings_.render_offscreen = false;
-			ROS_ERROR("Disabling offscreen rendering");
+			MJR_ERROR("Disabling offscreen rendering");
 		} else {
-			ROS_DEBUG("Starting offscreen render thread");
-			offscreen_.render_thread_handle = boost::thread(&MujocoEnv::offscreenRenderLoop, this);
+			MJR_DEBUG("Starting offscreen render thread");
+			offscreen_.render_thread_handle = std::thread(std::bind(&MujocoEnv::OffscreenRenderLoop, this));
 		}
 	}
 
-	nh_->param<int>("num_steps", num_steps_until_exit_, -1);
-	ROS_INFO_STREAM_COND(num_steps_until_exit_ > 0, "Sim will terminate after " << num_steps_until_exit_ << " steps");
+	MJR_INFO_STREAM_COND(num_steps_until_exit_ > 0, "Sim will terminate after " << num_steps_until_exit_ << " steps");
 
-	int num_threads;
-	nh_->param<int>("num_mj_threads", num_threads, 4);
 	int available_threads = std::thread::hardware_concurrency() - 1;
+	int num_threads       = 1;
 	num_threads           = std::min(num_threads, available_threads);
 	if (num_threads > 1) {
 		threadpool_ = mju_threadPoolCreate(num_threads);
-		ROS_INFO_STREAM("Using MuJoCo threadpool size of " << num_threads << " (max available: " << available_threads
+		MJR_INFO_STREAM("Using MuJoCo threadpool size of " << num_threads << " (max available: " << available_threads
 		                                                   << ")");
 	} else {
-		ROS_INFO_STREAM("Running MuJoCo in single-threaded mode (" << available_threads << " threads available)");
+		MJR_INFO_STREAM("Running MuJoCo in single-threaded mode (" << available_threads << " threads available)");
 	}
 
 	// init VFS
 	mj_defaultVFS(&vfs_);
 
-	setupServices();
+	// setupServices();
 
 	MujocoEnv::instance = this;
 
-	mjcb_control = proxyControlCB;
-	mjcb_passive = proxyPassiveCB;
+	mjcb_control = ProxyControlCB;
+	mjcb_passive = ProxyPassiveCB;
 
-	plugin_utils::initPluginLoader();
+	plugin_utils::InitPluginLoader();
 
-	static_broadcaster_ = tf2_ros::StaticTransformBroadcaster();
-	tf_bufferPtr_       = std::make_unique<tf2_ros::Buffer>();
-	tf_bufferPtr_->setUsingDedicatedThread(true);
-	tf_listenerPtr_ = std::make_unique<tf2_ros::TransformListener>(*tf_bufferPtr_);
+	InitTFBroadcasting();
 }
 
-void MujocoEnv::registerCollisionFunction(int geom_type1, int geom_type2, mjfCollision collision_cb)
+void MujocoEnv::RegisterCollisionFunction(int geom_type1, int geom_type2, mjfCollision collision_cb)
 {
 	if (custom_collisions_.find(std::pair(geom_type1, geom_type2)) != custom_collisions_.end() &&
 	    custom_collisions_.find(std::pair(geom_type2, geom_type2)) != custom_collisions_.end()) {
-		ROS_WARN_STREAM_NAMED("mujoco", "A user defined collision callback for collisions between geoms of type "
-		                                    << geom_type1 << " and " << geom_type2
-		                                    << " have already been registered. This might lead to unexpected behavior!");
+		MJR_WARN_STREAM("A user defined collision callback for collisions between geoms of type "
+		                << geom_type1 << " and " << geom_type2
+		                << " have already been registered. This might lead to unexpected behavior!");
 	} else {
 		custom_collisions_.insert(std::pair(geom_type1, geom_type2));
 		defaultCollisionFunctions.emplace_back(
@@ -226,14 +235,13 @@ void MujocoEnv::registerCollisionFunction(int geom_type1, int geom_type2, mjfCol
 	mjCOLLISIONFUNC[geom_type1][geom_type2] = collision_cb;
 }
 
-void MujocoEnv::registerStaticTransform(geometry_msgs::TransformStamped &transform)
+void MujocoEnv::RegisterStaticTransform(TransformStamped &transform)
 {
-	ROS_DEBUG_STREAM_NAMED("mujoco", "Registering static transform for frame " << transform.child_frame_id);
+	MJR_DEBUG_STREAM("Registering static transform for frame " << transform.child_frame_id);
 	for (auto it = static_transforms_.begin(); it != static_transforms_.end();) {
 		if (it->child_frame_id == transform.child_frame_id) {
-			ROS_WARN_STREAM_NAMED("mujoco", "Static transform for child '"
-			                                    << transform.child_frame_id
-			                                    << "' already registered. Will overwrite old transform!");
+			MJR_WARN_STREAM("Static transform for child '" << transform.child_frame_id
+			                                               << "' already registered. Will overwrite old transform!");
 			static_transforms_.erase(it);
 			break;
 		}
@@ -242,41 +250,41 @@ void MujocoEnv::registerStaticTransform(geometry_msgs::TransformStamped &transfo
 
 	static_transforms_.emplace_back(transform);
 
-	static_broadcaster_.sendTransform(static_transforms_);
+	static_broadcaster_->sendTransform(static_transforms_);
 }
 
-void MujocoEnv::eventLoop()
+void MujocoEnv::EventLoop()
 {
-	ROS_DEBUG("Starting event loop");
+	MJR_DEBUG("Starting event loop");
 	is_event_running_ = 1;
 	auto now          = Clock::now();
 	auto fps_cap      = Seconds(mujoco_ros::Viewer::render_ui_rate_upper_bound_); // Cap at 60 fps
-	while (ros::ok() && !settings_.exit_request.load()) {
+	while (roscpp::ok() && !settings_.exit_request.load()) {
 		{
-			std::unique_lock<std::recursive_mutex> lock(physics_thread_mutex_);
+			RecursiveLock lock(physics_thread_mutex_);
 			now = Clock::now();
 
-			if (settings_.settings_changed.load()) {
-				settings_.settings_changed.store(0);
-				updateDynamicParams();
-			}
+			// if (settings_.settings_changed.load()) {
+			// 	settings_.settings_changed.store(0);
+			// 	updateDynamicParams();
+			// }
 
 			if (settings_.load_request.load() == 1) {
-				ROS_DEBUG("Load request received");
-				loadWithModelAndData();
-				ROS_DEBUG("Done loading");
+				MJR_DEBUG("Load request received");
+				LoadWithModelAndData();
+				MJR_DEBUG("Done loading");
 
 				mnew = nullptr;
 				dnew = nullptr;
 				settings_.load_request.store(0);
 				sim_state_.load_count += 1;
 			} else if (settings_.load_request.load() >= 2) { // Loading mnew and dnew requested
-				ROS_DEBUG("Initializing queued model and data");
-				if (initModelFromQueue()) {
-					ROS_DEBUG("Init for load done. Requesting next load step");
+				MJR_DEBUG("Initializing queued model and data");
+				if (InitModelFromQueue()) {
+					MJR_DEBUG("Init for load done. Requesting next load step");
 					settings_.load_request.store(1);
 				} else {
-					ROS_ERROR("Init for load failed. Aborting load request");
+					MJR_ERROR("Init for load failed. Aborting load request");
 					mj_deleteData(dnew);
 					mj_deleteModel(mnew);
 					mnew = nullptr;
@@ -287,33 +295,33 @@ void MujocoEnv::eventLoop()
 			}
 
 			if (settings_.reset_request.load()) {
-				resetSim();
+				ResetSim();
 			}
 		}
 
 		std::this_thread::sleep_for(fps_cap - now.time_since_epoch());
 	}
-	ROS_DEBUG("Closing all connected viewers");
+	MJR_DEBUG("Closing all connected viewers");
 	for (const auto viewer : connected_viewers_) {
 		viewer->exit_request.store(1);
 	}
-	ROS_DEBUG("Exiting event loop");
+	MJR_DEBUG("Exiting event loop");
 	is_event_running_ = 0;
 }
 
-void MujocoEnv::resetSim()
+void MujocoEnv::ResetSim()
 {
-	ROS_DEBUG("Sleeping to ensure all (old) ROS messages are sent");
+	MJR_DEBUG("Sleeping to ensure all (old) ROS messages are sent");
 	std::this_thread::sleep_for(std::chrono::milliseconds(100));
-	ROS_DEBUG("Resetting simulation environment");
+	MJR_DEBUG("Resetting simulation environment");
 
 	mj_resetData(this->model_.get(), this->data_.get());
-	loadInitialJointStates();
-	publishSimTime(this->data_->time);
+	LoadInitialJointStates();
+	ros_api_->PublishSimTime(this->data_->time);
 
 	for (auto &plugin : plugins_) {
-		plugin->safe_reset();
-		ROS_DEBUG_STREAM("Resetting plugin " << plugin->type_ << " took " << plugin->reset_time_ << " seconds");
+		plugin->SafeReset();
+		MJR_DEBUG_STREAM("Resetting plugin " << plugin->get_type() << " took " << plugin->get_reset_time() << "seconds");
 	}
 
 	for (const auto viewer : connected_viewers_) {
@@ -322,25 +330,23 @@ void MujocoEnv::resetSim()
 	settings_.reset_request.store(0);
 }
 
-void MujocoEnv::loadInitialJointStates()
+void MujocoEnv::LoadInitialJointStates()
 {
-	ROS_DEBUG("Fetching and applying initial joint positions ...");
+	std::map<std::string, std::vector<double>> pos_map;
+	std::map<std::string, std::vector<double>> vel_map;
+
+	GetInitialJointPositions(pos_map);
+	GetInitialJointVelocities(vel_map);
+
+	// Change joint positions and velocities in between physics steps
+	RecursiveLock lock(physics_thread_mutex_);
 
 	// Joint positions
-	std::map<std::string, std::string> joint_map;
-	nh_->getParam("initial_joint_positions/joint_map", joint_map);
-
-	// This check only assures that there aren't single axis joint values that are non-strings.
-	// One ill-defined value among correct parameters can't be detected.
-	if (nh_->hasParam("initial_joint_positions/joint_map") && joint_map.empty()) {
-		ROS_WARN("Initial joint positions not recognized by rosparam server. Check your config, "
-		         "especially values for single axis joints should explicitly provided as string!");
-	}
-	for (auto const &[name, str_values] : joint_map) {
-		ROS_DEBUG_STREAM("Trying to set jointpos of joint " << name << " to values: " << str_values);
+	for (auto const &[name, axis_vals] : pos_map) {
+		MJR_DEBUG_STREAM("Trying to set jointpos of joint " << name);
 		int id = mj_name2id(model_.get(), mjOBJ_JOINT, name.c_str());
 		if (id == -1) {
-			ROS_WARN_STREAM("Joint with name '" << name << "' could not be found. Initial joint position cannot be set!");
+			MJR_WARN_STREAM("Joint with name '" << name << "' could not be found. Initial joint position cannot be set!");
 			continue;
 		}
 
@@ -361,51 +367,26 @@ void MujocoEnv::loadInitialJointStates()
 				continue;
 		}
 
-		auto *axis_vals = new double[num_axes];
-		std::stringstream stream_values(str_values);
-		int jnt_axis = 0;
-		std::string value;
-		while (std::getline(stream_values, value, ' ')) {
-			if (jnt_axis >= num_axes) {
-				jnt_axis++;
-				break;
-			}
-			axis_vals[jnt_axis++] = std::stod(value);
-		}
-
-		if (jnt_axis != num_axes) {
-			ROS_ERROR_STREAM("Provided initial position values for joint "
+		if (axis_vals.size() != num_axes) {
+			MJR_ERROR_STREAM("Provided initial position values for joint "
 			                 << name << " don't match the degrees of freedom of the joint (exactly " << num_axes
 			                 << " values are needed)!");
-			delete[] axis_vals;
 			continue;
 		}
-		for (jnt_axis = 0; jnt_axis < num_axes; jnt_axis++) {
-			setJointPosition(axis_vals[jnt_axis], id, jnt_axis);
+		for (int jnt_axis = 0; jnt_axis < num_axes; jnt_axis++) {
+			SetJointPosition(axis_vals[jnt_axis], id, jnt_axis);
 		}
-		delete[] axis_vals;
-
-		// Apply changes in forward dynamics
-		mj_forward(model_.get(), data_.get());
 	}
 
 	// Joint velocities
-	joint_map.clear();
-	nh_->getParam("initial_joint_velocities/joint_map", joint_map);
-	// This check only assures that there aren't single axis joint values that are non-strings.
-	// One ill-defined value among correct parameters can't be detected.
-	if (nh_->hasParam("initial_joint_velocities/joint_map") && joint_map.empty()) {
-		ROS_WARN_NAMED("mujoco", "Initial joint positions not recognized by rosparam server. Check your config, "
-		                         "especially values for single axis joints should explicitly provided as string!");
-	}
-	for (auto const &[name, str_values] : joint_map) {
-		ROS_DEBUG_STREAM_NAMED("mujoco", "Trying to set jointvels of joint " << name << " to values: " << str_values);
+	for (auto const &[name, axis_vals] : vel_map) {
+		MJR_DEBUG_STREAM("Trying to set jointvels of joint " << name);
 		int id = mj_name2id(model_.get(), mjOBJ_JOINT, name.c_str());
 		if (id == -1) {
-			ROS_WARN_STREAM_NAMED("mujoco", "Joint with name '"
-			                                    << name << "' could not be found. Initial joint velocity cannot be set!");
+			MJR_WARN_STREAM("Joint with name '" << name << "' could not be found. Initial joint velocity cannot be set!");
 			continue;
 		}
+
 		int num_axes = 0;
 		int jnt_type = model_->jnt_type[id];
 		switch (jnt_type) {
@@ -423,113 +404,30 @@ void MujocoEnv::loadInitialJointStates()
 				continue;
 		}
 
-		auto *axis_vals = new double[num_axes];
-		std::stringstream stream_values(str_values);
-		int jnt_axis = 0;
-		std::string value;
-		while (std::getline(stream_values, value, ' ')) {
-			if (jnt_axis >= num_axes) {
-				jnt_axis++;
-				break;
-			}
-			axis_vals[jnt_axis++] = std::stod(value);
-		}
-
-		if (jnt_axis != num_axes) {
-			ROS_ERROR_STREAM_NAMED("mujoco", "Provided initial velocity values for joint "
-			                                     << name << " don't match the degrees of freedom of the joint (exactly "
-			                                     << num_axes << " values are needed)!");
-			delete[] axis_vals;
+		if (axis_vals.size() != num_axes) {
+			MJR_ERROR_STREAM("Provided initial velocity values for joint "
+			                 << name << " don't match the degrees of freedom of the joint (exactly " << num_axes
+			                 << " values are needed)!");
 			continue;
 		}
-		for (jnt_axis = 0; jnt_axis < num_axes; jnt_axis++) {
-			setJointVelocity(axis_vals[jnt_axis], id, jnt_axis);
+		for (int jnt_axis = 0; jnt_axis < num_axes; jnt_axis++) {
+			SetJointVelocity(axis_vals[jnt_axis], id, jnt_axis);
 		}
-		delete[] axis_vals;
 	}
+	// Apply changes in forward dynamics
+	mj_forward(model_.get(), data_.get());
 }
 
-void MujocoEnv::setJointPosition(const double &pos, const int &joint_id, const int &jnt_axis /*= 0*/)
+void MujocoEnv::ConnectViewer(Viewer *viewer)
 {
-	data_->qpos[model_->jnt_qposadr[joint_id] + jnt_axis]        = pos;
-	data_->qvel[model_->jnt_dofadr[joint_id] + jnt_axis]         = 0;
-	data_->qfrc_applied[model_->jnt_dofadr[joint_id] + jnt_axis] = 0;
-}
-
-void MujocoEnv::setJointVelocity(const double &vel, const int &joint_id, const int &jnt_axis /*= 0*/)
-{
-	data_->qvel[model_->jnt_dofadr[joint_id] + jnt_axis]         = vel;
-	data_->qfrc_applied[model_->jnt_dofadr[joint_id] + jnt_axis] = 0;
-}
-
-void MujocoEnv::completeEnvSetup()
-{
-	loadInitialJointStates();
-
-	ROS_DEBUG("Resetting noise ...");
-	free(ctrlnoise_);
-	ctrlnoise_ = static_cast<mjtNum *>(mju_malloc(sizeof(mjtNum) * static_cast<size_t>(model_->nu)));
-	mju_zero(ctrlnoise_, model_->nu);
-
-	loadPlugins();
-	updateDynamicParams();
-	ROS_DEBUG("Env setup complete");
-}
-
-void MujocoEnv::loadPlugins()
-{
-	ROS_DEBUG("Loading MujocoRosPlugins ...");
-	cb_ready_plugins_.clear();
-	cb_ready_plugins_.shrink_to_fit();
-
-	XmlRpc::XmlRpcValue plugin_config;
-	if (plugin_utils::parsePlugins(nh_.get(), plugin_config)) {
-		plugin_utils::registerPlugins(nh_->getNamespace(), plugin_config, plugins_, this);
-	}
-
-	for (const auto &plugin : plugins_) {
-		if (plugin->safe_load(model_.get(), data_.get())) {
-			cb_ready_plugins_.emplace_back(plugin.get());
-		}
-		ROS_DEBUG_STREAM("Loading plugin " << plugin->type_ << " took " << plugin->load_time_ << " seconds");
-	}
-	ROS_DEBUG("Done loading MujocoRosPlugins");
-}
-
-void MujocoEnv::UpdateModelFlags(const mjOption *opt)
-{
-	std::unique_lock<std::recursive_mutex> lock(physics_thread_mutex_);
-	// Physics flags
-	model_->opt.disableflags = opt->disableflags;
-	model_->opt.enableflags  = opt->enableflags;
-
-	// Enabled actuator groups
-	model_->opt.disableactuator = opt->disableactuator;
-}
-
-void MujocoEnv::startPhysicsLoop()
-{
-	physics_thread_handle_ = boost::thread(&MujocoEnv::physicsLoop, this);
-}
-
-void MujocoEnv::startEventLoop()
-{
-	event_thread_handle_ = boost::thread(&MujocoEnv::eventLoop, this);
-}
-
-void MujocoEnv::waitForEventsJoin()
-{
-	if (event_thread_handle_.joinable()) {
-		event_thread_handle_.join();
-	}
-}
-
-void MujocoEnv::connectViewer(Viewer *viewer)
-{
-	if (!connected_viewers_.empty()) {
-		ROS_INFO("Connected first viewer, disabling headless mode");
+	if (connected_viewers_.empty()) {
+		MJR_INFO("Connected first viewer, disabling headless mode");
 		settings_.headless = false;
 	}
+	while (GetOperationalStatus() != 0) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+	MJR_DEBUG("Adding viewer to connected viewers and issuing viewer load request");
 	if (std::find(connected_viewers_.begin(), connected_viewers_.end(), viewer) == connected_viewers_.end()) {
 		connected_viewers_.emplace_back(viewer);
 		if (sim_state_.model_valid) {
@@ -540,302 +438,63 @@ void MujocoEnv::connectViewer(Viewer *viewer)
 		}
 		return;
 	}
-	ROS_WARN("Viewer already connected!");
+	MJR_WARN("Viewer already connected!");
 }
 
-void MujocoEnv::disconnectViewer(Viewer *viewer)
+void MujocoEnv::DisconnectViewer(Viewer *viewer)
 {
 	auto it = std::find(connected_viewers_.begin(), connected_viewers_.end(), viewer);
 	if (it != connected_viewers_.end()) {
+		MJR_DEBUG("Removing viewer from connected viewers");
 		connected_viewers_.erase(it);
 	} else {
-		ROS_WARN("Viewer not connected!");
+		MJR_WARN("Viewer not connected!");
 	}
 
 	if (connected_viewers_.empty()) {
-		ROS_INFO_COND(settings_.exit_request == 0, "Disconnected last viewer, enabling headless mode");
+		MJR_INFO_COND(settings_.exit_request == 0, "Disconnected last viewer, enabling headless mode");
 		settings_.headless = true;
 	}
 }
 
-void MujocoEnv::publishSimTime(mjtNum time)
-{
-	if (!settings_.use_sim_time) {
-		return;
-	}
-	// This is the fastes option for intra-node time updates
-	// however, together with non-blocking publish it breaks stuff
-	// ros::Time::setNow(ros::Time(time));
-	rosgraph_msgs::ClockPtr ros_time(new rosgraph_msgs::Clock);
-	ros_time->clock.fromSec(time);
-	clock_pub_.publish(ros_time);
-	// Current workaround to simulate a blocking time update
-	while (ros::Time::now() < ros::Time(time)) {
-		std::this_thread::yield();
-	}
-}
-
-bool MujocoEnv::togglePaused(bool paused, const std::string &admin_hash /*= std::string*/)
-{
-	ROS_DEBUG("Trying to toggle pause");
-	if (settings_.eval_mode && paused) {
-		ROS_DEBUG("Evaluation mode is active. Checking request validity");
-		if (settings_.admin_hash != admin_hash) {
-			ROS_ERROR("Unauthorized pause request detected. Ignoring request");
-			return false;
-		}
-		ROS_DEBUG("Request valid. Handling request");
-	}
-	settings_.settings_changed.store(1);
-	settings_.run.store(!paused);
-	if (settings_.run.load())
-		settings_.env_steps_request.store(0);
-	return true;
-}
-
-void MujocoEnv::notifyGeomChanged(const int geom_id)
+void MujocoEnv::NotifyGeomChanged(const int geom_id)
 {
 	for (const auto &plugin : this->cb_ready_plugins_) {
-		plugin->onGeomChanged(this->model_.get(), this->data_.get(), geom_id);
+		plugin->OnGeomChanged(this->model_.get(), this->data_.get(), geom_id);
 	}
 }
 
-int MujocoEnv::getOperationalStatus()
+bool MujocoEnv::VerifyAdminHash(const std::string &hash)
 {
-	return mju_max(settings_.load_request.load(), mju_max(settings_.visual_init_request, settings_.reset_request));
-}
-
-void MujocoEnv::loadWithModelAndData()
-{
-	model_.reset(mnew, mj_deleteModel);
-	data_.reset(dnew, mj_deleteData);
-
-	// perform a forward pass to initialize all fields if not done yet (very important for offscreen rendering)
-	mj_forward(model_.get(), data_.get());
-
-	if (model_->opt.integrator == mjINT_EULER) {
-		ROS_WARN("Euler integrator detected. Euler is default for legacy reasons, consider using implicitfast, which is "
-		         "recommended for most applications.");
-	}
-
-	if (threadpool_ != nullptr) {
-		mju_bindThreadPool(data_.get(), threadpool_);
-	}
-
-	prepareReload();
-	completeEnvSetup();
-
-	ROS_DEBUG("Delegating model loading to viewers");
-	for (const auto viewer : connected_viewers_) {
-		viewer->Load(model_, data_, filename_);
-	}
-
-	if (settings_.render_offscreen) {
-		ROS_DEBUG("Issuing (re)initialization of offscreen rendering resources");
-		settings_.visual_init_request.store(1);
-		while (settings_.visual_init_request.load() != 0) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(10));
-			offscreen_.cond_render_request.notify_one();
+	if (settings_.eval_mode) {
+		MJR_DEBUG("Evaluation mode is active. Checking hash validity");
+		if (settings_.admin_hash != hash) {
+			return false;
 		}
+		MJR_DEBUG("Hash valid, request authorized.");
 	}
-
-	load_error_[0]         = '\0';
-	sim_state_.model_valid = true;
-}
-
-bool MujocoEnv::initModelFromQueue()
-{
-	// clear previous error message
-	load_error_[0] = '\0';
-
-	bool is_new = false;
-	if (queued_filename_[0]) {
-		is_new = mju::strcmp_arr(filename_, queued_filename_);
-	}
-
-	if (!is_new) {
-		mju::strcpy_arr(queued_filename_, filename_);
-	}
-
-	bool is_mjb = false;
-	if (mju::strlen_arr(queued_filename_) > 4 &&
-	    !std::strncmp(queued_filename_ + mju::strlen_arr(queued_filename_) - 4, ".mjb",
-	                  mju::sizeof_arr(queued_filename_) - mju::strlen_arr(queued_filename_) + 4)) {
-		is_mjb = true;
-	}
-
-	bool is_file = false;
-	if (mju::strlen_arr(queued_filename_) > 4 &&
-	    !std::strncmp(queued_filename_ + mju::strlen_arr(queued_filename_) - 4, ".xml",
-	                  mju::sizeof_arr(queued_filename_) - mju::strlen_arr(queued_filename_) + 4)) {
-		is_file = true;
-	} else {
-		try {
-			is_file = boost::filesystem::is_regular_file(queued_filename_);
-		} catch (const boost::filesystem::filesystem_error &ex) {
-			ROS_DEBUG_STREAM("\tFilesystem error while checking for regular file: " << ex.what());
-		}
-	}
-
-	if (is_file) {
-		ROS_DEBUG("\tModel is a regular file. Loading from filesystem");
-	} else if (queued_filename_[0] != '\0') { // new model string
-		ROS_DEBUG("\tModel is not a regular file. Loading from string");
-
-		ROS_WARN("Loading nested resources (textures, meshes, ...) from string is broken since 2.3.4. A fix is on the "
-		         "way (see https://github.com/deepmind/mujoco/discussions/957#discussion-5348269)");
-
-		mj_addBufferVFS(&vfs_, "model_testing", queued_filename_, mju::strlen_arr(queued_filename_));
-		ROS_DEBUG("\tSaved string content to VFS");
-	}
-
-	auto load_start = Clock::now();
-	if (is_mjb) {
-		ROS_DEBUG("\tLoading mjb file");
-		mnew = mj_loadModel(queued_filename_, nullptr);
-	} else {
-		if (is_file) {
-			ROS_DEBUG("\tLoading xml file");
-			mnew = mj_loadXML(queued_filename_, nullptr, load_error_, kErrorLength);
-		} else {
-			ROS_DEBUG("\tLoading virtual file from VFS");
-			mnew = mj_loadXML("model_testing", &vfs_, load_error_, kErrorLength);
-		}
-	}
-
-	auto load_interval  = Clock::now() - load_start;
-	double load_seconds = Seconds(load_interval).count();
-
-	if (!mnew) {
-		for (const auto viewer : connected_viewers_) {
-			mju::strcpy_arr(viewer->load_error, load_error_);
-		}
-
-		ROS_ERROR_STREAM("Loading new model failed: " << load_error_);
-		ROS_DEBUG("\tRolling back old model");
-
-		if (!is_file) {
-			mj_deleteFileVFS(&vfs_, "model_testing");
-		}
-
-		// 'clear' new filename
-		queued_filename_[0] = '\0';
-
-		sim_state_.model_valid = false;
-		return false;
-	}
-
-	ROS_INFO_STREAM("Model loaded in " << load_seconds << " seconds");
-	ROS_DEBUG("Model compiled successfully");
-	dnew = mj_makeData(mnew);
-
-	if (!is_file) {
-		ROS_DEBUG("\tAdding new model permanently to VFS");
-		std::size_t length = mju::strlen_arr(queued_filename_);
-		mj_addBufferVFS(&vfs_, "model_string", queued_filename_, length);
-		mj_deleteFileVFS(&vfs_, "model_testing");
-	}
-
-	// 'clear' filename in queue
-	mju::strcpy_arr(filename_, queued_filename_);
-	queued_filename_[0] = '\0';
-	// delete allocated memory for VFS backup
-
-	// Compiler warning: print and pause
-	if (load_error_[0]) {
-		// next mj_forward will print the message
-		ROS_WARN_STREAM("Model compiled, but got simulation warning: " << load_error_);
-		if (!settings_.headless)
-			settings_.run = 0;
-	} else {
-		if (load_seconds > 0.25) {
-			mju::sprintf_arr(load_error_, "Model loaded in %.2g seconds", load_seconds);
-		}
-	}
-
-	for (const auto viewer : connected_viewers_) {
-		mju::strcpy_arr(viewer->load_error, load_error_);
-	}
-
-	// Update real-time settings
-	int num_clicks  = sizeof(percentRealTime) / sizeof(percentRealTime[0]);
-	float min_error = 1e6f;
-	float desired;
-	nh_->param<float>("realtime", desired, mnew->vis.global.realtime);
-
-	if (desired == -1.f) {
-		settings_.real_time_index = 0;
-	} else if (desired <= 0.f or desired > 1.f) {
-		ROS_WARN("Desired realtime should be in range (0, 1]. Falling back to default (1)");
-		settings_.real_time_index = 1;
-	} else {
-		desired = mju_log(100 * desired);
-		for (int click = 0; click < num_clicks; click++) {
-			float error = mju_abs(mju_log(percentRealTime[click]) - desired);
-			if (error < min_error) {
-				min_error                 = error;
-				settings_.real_time_index = click;
-			}
-		}
-	}
-
 	return true;
 }
 
-bool MujocoEnv::step(int num_steps /* = 1*/, bool blocking /* = true*/)
+void MujocoEnv::RunControlCbs()
 {
-	if (!model_) {
-		ROS_ERROR("No model loaded. Cannot step");
-		return false;
+	for (const auto &plugin : this->cb_ready_plugins_) {
+		plugin->WrappedControlCallback(this->model_.get(), this->data_.get());
 	}
-
-	if (settings_.run) {
-		ROS_WARN("Simulation is already running. Ignoring request");
-		return false;
-	}
-
-	if (num_steps <= 0) {
-		ROS_WARN("Number of steps must be positive. Ignoring request");
-		return false;
-	}
-
-	if (blocking && boost::this_thread::get_id() == physics_thread_handle_.get_id()) {
-		ROS_WARN("Simulation is running in the same thread. Cannot block! Ignoring request");
-		return false;
-	}
-
-	ROS_DEBUG("Handling request of stepping %d steps", num_steps);
-	settings_.env_steps_request.store(num_steps);
-	if (blocking) {
-		ROS_DEBUG("\t blocking until steps are done");
-		while (settings_.env_steps_request.load() > 0) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
-		}
-	}
-
-	return true;
 }
 
-void MujocoEnv::prepareReload()
+void MujocoEnv::RunPassiveCbs()
 {
-	ROS_DEBUG("\tResetting collision cbs to default");
-	for (const auto func : defaultCollisionFunctions) {
-		mjCOLLISIONFUNC[func.geom_type1_][func.geom_type2_] = func.collision_cb_;
+	for (const auto &plugin : this->cb_ready_plugins_) {
+		plugin->WrappedPassiveCallback(this->model_.get(), this->data_.get());
 	}
-	defaultCollisionFunctions.clear();
-	custom_collisions_.clear();
-
-	offscreen_.rgb.reset();
-	offscreen_.depth.reset();
-	cb_ready_plugins_.clear();
-	plugins_.clear();
-	offscreen_.cams.clear();
 }
 
 MujocoEnv::~MujocoEnv()
 {
-	ROS_DEBUG("Destructor called");
-	delete param_server_;
+	MJR_DEBUG("Destructor called");
+	model_.reset();
+	data_.reset();
 	connected_viewers_.clear();
 	free(this->ctrlnoise_);
 	this->cb_ready_plugins_.clear();
@@ -846,7 +505,7 @@ MujocoEnv::~MujocoEnv()
 		mju_threadPoolDestroy(threadpool_);
 	}
 
-	plugin_utils::unloadPluginloader();
+	plugin_utils::UnloadPluginloader();
 }
 
 } // namespace mujoco_ros

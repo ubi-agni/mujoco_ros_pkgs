@@ -1,26 +1,29 @@
 <?xml version="1.0"?>
-<package format="2">
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
     <name>mujoco_ros_pkgs</name> <!-- This is a meta package! -->
     <version>0.9.0</version>
     <description>Interface for using ROS with the <a href="https://mujoco.org/">MuJoCo</a> simulator.</description>
 
+    <maintainer email="dleins@techfak.uni-bielefeld.de">David P. Leins</maintainer>
     <license>BSD</license>
+    <author>David P. Leins</author>
 
     <url type="bugtracker">https://github.com/DavidPL1/mujoco_ros_pkgs/issues</url>
     <url type="repository">https://github.com/DavidPL1/mujoco_ros_pkgs</url>
 
-    <maintainer email="dleins@techfak.uni-bielefeld.de">David P. Leins</maintainer>
-    <author>David P. Leins</author>
-
-    <buildtool_depend>catkin</buildtool_depend>
+    <buildtool_depend condition="$ROS_VERSION == 1">catkin</buildtool_depend>
+    <buildtool_depend condition="$ROS_VERSION == 2">ament_cmake</buildtool_depend>
 
     <exec_depend>mujoco_ros_msgs</exec_depend>
     <exec_depend>mujoco_ros</exec_depend>
-    <exec_depend>mujoco_ros_control</exec_depend>
-    <exec_depend>mujoco_ros_sensors</exec_depend>
-    <exec_depend>mujoco_ros_mocap</exec_depend>
+    <exec_depend condition="$ROS_VERSION == 1">mujoco_ros_control</exec_depend>
+    <exec_depend condition="$ROS_VERSION == 1">mujoco_ros_sensors</exec_depend>
+    <exec_depend condition="$ROS_VERSION == 1">mujoco_ros_mocap</exec_depend>
 
     <export>
-        <metapackage/>
+        <metapackage condition="$ROS_VERSION == 1" />
+        <build_type condition="$ROS_VERSION == 1">catkin</build_type>
+        <build_type condition="$ROS_VERSION == 2">ament_cmake</build_type>
     </export>
 </package>

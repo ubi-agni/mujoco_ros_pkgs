@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2023, Bielefeld University
+ *  Copyright (c) 2022-2024, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -1343,19 +1343,19 @@ void compare_eqc_values_with_msg_inequal(mjModel *m, mjData *d, int eq_id,
 {
 	EXPECT_NE(d->eq_active[eq_id], eqc.active) << eqc.name << " constraint active parameter would not change";
 
-	EXPECT_NE(m->eq_solref[eq_id * mjNREF], eqc.solverParameters.timeconst)
+	EXPECT_NE(m->eq_solref[eq_id * mjNREF], eqc.solver_parameters.timeconst)
 	    << eqc.name << " solref timeconst would not change";
-	EXPECT_NE(m->eq_solref[eq_id * mjNREF + 1], eqc.solverParameters.dampratio)
+	EXPECT_NE(m->eq_solref[eq_id * mjNREF + 1], eqc.solver_parameters.dampratio)
 	    << eqc.name << " solref dampratio would not change";
 
-	EXPECT_NE(m->eq_solimp[eq_id * mjNIMP], eqc.solverParameters.dmin) << eqc.name << " solimp dmin would not change";
-	EXPECT_NE(m->eq_solimp[eq_id * mjNIMP + 1], eqc.solverParameters.dmax)
+	EXPECT_NE(m->eq_solimp[eq_id * mjNIMP], eqc.solver_parameters.dmin) << eqc.name << " solimp dmin would not change";
+	EXPECT_NE(m->eq_solimp[eq_id * mjNIMP + 1], eqc.solver_parameters.dmax)
 	    << eqc.name << " solimp dmax would not change";
-	EXPECT_NE(m->eq_solimp[eq_id * mjNIMP + 2], eqc.solverParameters.width)
+	EXPECT_NE(m->eq_solimp[eq_id * mjNIMP + 2], eqc.solver_parameters.width)
 	    << eqc.name << " solimp width would not change";
-	EXPECT_NE(m->eq_solimp[eq_id * mjNIMP + 3], eqc.solverParameters.midpoint)
+	EXPECT_NE(m->eq_solimp[eq_id * mjNIMP + 3], eqc.solver_parameters.midpoint)
 	    << eqc.name << " solimp midpoint would not change";
-	EXPECT_NE(m->eq_solimp[eq_id * mjNIMP + 4], eqc.solverParameters.power)
+	EXPECT_NE(m->eq_solimp[eq_id * mjNIMP + 4], eqc.solver_parameters.power)
 	    << eqc.name << " solimp power would not change";
 
 	// TODO: replace NE with something reproducing not EXPECT_DOUBLE_EQ (EXPECT_DOUBLE_NE does not exist!)
@@ -1399,20 +1399,20 @@ void compare_eqc_values_with_msg(mjModel *m, mjData *d, int eq_id,
                                  const mujoco_ros_msgs::EqualityConstraintParameters &eqc)
 {
 	EXPECT_EQ(d->eq_active[eq_id], eqc.active);
-	EXPECT_DOUBLE_EQ(m->eq_solref[eq_id * mjNREF], eqc.solverParameters.timeconst)
+	EXPECT_DOUBLE_EQ(m->eq_solref[eq_id * mjNREF], eqc.solver_parameters.timeconst)
 	    << eqc.name << " solref timeconst was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_solref[eq_id * mjNREF + 1], eqc.solverParameters.dampratio)
+	EXPECT_DOUBLE_EQ(m->eq_solref[eq_id * mjNREF + 1], eqc.solver_parameters.dampratio)
 	    << eqc.name << " solref dampratio was not set correctly";
 
-	EXPECT_DOUBLE_EQ(m->eq_solimp[eq_id * mjNIMP], eqc.solverParameters.dmin)
+	EXPECT_DOUBLE_EQ(m->eq_solimp[eq_id * mjNIMP], eqc.solver_parameters.dmin)
 	    << eqc.name << " solimp dmin was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_solimp[eq_id * mjNIMP + 1], eqc.solverParameters.dmax)
+	EXPECT_DOUBLE_EQ(m->eq_solimp[eq_id * mjNIMP + 1], eqc.solver_parameters.dmax)
 	    << eqc.name << " solimp dmax was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_solimp[eq_id * mjNIMP + 2], eqc.solverParameters.width)
+	EXPECT_DOUBLE_EQ(m->eq_solimp[eq_id * mjNIMP + 2], eqc.solver_parameters.width)
 	    << eqc.name << " solimp width was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_solimp[eq_id * mjNIMP + 3], eqc.solverParameters.midpoint)
+	EXPECT_DOUBLE_EQ(m->eq_solimp[eq_id * mjNIMP + 3], eqc.solver_parameters.midpoint)
 	    << eqc.name << " solimp midpoint was not set correctly";
-	EXPECT_DOUBLE_EQ(m->eq_solimp[eq_id * mjNIMP + 4], eqc.solverParameters.power)
+	EXPECT_DOUBLE_EQ(m->eq_solimp[eq_id * mjNIMP + 4], eqc.solver_parameters.power)
 	    << eqc.name << " solimp power was not set correctly";
 	if (eqc.type.value == mujoco_ros_msgs::EqualityConstraintType::WELD) {
 		EXPECT_DOUBLE_EQ(m->eq_data[eq_id * mjNEQDATA], eqc.anchor.x) << eqc.name << " anchor[0] was not set correctly";
@@ -1499,15 +1499,15 @@ TEST_F(EqualityEnvFixture, SetEqConstraintConnect)
 
 	mujoco_ros_msgs::SetEqualityConstraintParameters srv;
 
-	connect_eqc.active                     = false;
-	connect_eqc.type.value                 = mujoco_ros_msgs::EqualityConstraintType::CONNECT;
-	connect_eqc.solverParameters.dampratio = 0.8;
-	connect_eqc.solverParameters.timeconst = 0.2;
-	connect_eqc.solverParameters.dmin      = 0.7;
-	connect_eqc.solverParameters.dmax      = 0.9;
-	connect_eqc.solverParameters.width     = 0.001;
-	connect_eqc.solverParameters.midpoint  = 0.5;
-	connect_eqc.solverParameters.power     = 3.0;
+	connect_eqc.active                      = false;
+	connect_eqc.type.value                  = mujoco_ros_msgs::EqualityConstraintType::CONNECT;
+	connect_eqc.solver_parameters.dampratio = 0.8;
+	connect_eqc.solver_parameters.timeconst = 0.2;
+	connect_eqc.solver_parameters.dmin      = 0.7;
+	connect_eqc.solver_parameters.dmax      = 0.9;
+	connect_eqc.solver_parameters.width     = 0.001;
+	connect_eqc.solver_parameters.midpoint  = 0.5;
+	connect_eqc.solver_parameters.power     = 3.0;
 	// constraint specific parameters
 	connect_eqc.element1 = "immovable";
 	connect_eqc.element2 = "";
@@ -1538,15 +1538,15 @@ TEST_F(EqualityEnvFixture, SetEqConstraintWeld)
 	mju_normalize4(quat);
 
 	mujoco_ros_msgs::SetEqualityConstraintParameters srv;
-	weld_eqc.active                     = false;
-	weld_eqc.type.value                 = mujoco_ros_msgs::EqualityConstraintType::WELD;
-	weld_eqc.solverParameters.dampratio = 0.8;
-	weld_eqc.solverParameters.timeconst = 0.2;
-	weld_eqc.solverParameters.dmin      = 0.7;
-	weld_eqc.solverParameters.dmax      = 0.9;
-	weld_eqc.solverParameters.width     = 0.001;
-	weld_eqc.solverParameters.midpoint  = 0.5;
-	weld_eqc.solverParameters.power     = 3.0;
+	weld_eqc.active                      = false;
+	weld_eqc.type.value                  = mujoco_ros_msgs::EqualityConstraintType::WELD;
+	weld_eqc.solver_parameters.dampratio = 0.8;
+	weld_eqc.solver_parameters.timeconst = 0.2;
+	weld_eqc.solver_parameters.dmin      = 0.7;
+	weld_eqc.solver_parameters.dmax      = 0.9;
+	weld_eqc.solver_parameters.width     = 0.001;
+	weld_eqc.solver_parameters.midpoint  = 0.5;
+	weld_eqc.solver_parameters.power     = 3.0;
 	// constraint specific parameters
 	weld_eqc.element1              = "immovable";
 	weld_eqc.element1              = "";
@@ -1581,15 +1581,15 @@ TEST_F(EqualityEnvFixture, SetEqConstraintJoint)
 	EXPECT_NE(joint_eq_id, -1) << "joint eq constraint is not defined in loaded model!";
 
 	mujoco_ros_msgs::SetEqualityConstraintParameters srv;
-	joint_eqc.active                     = false;
-	joint_eqc.type.value                 = mujoco_ros_msgs::EqualityConstraintType::JOINT;
-	joint_eqc.solverParameters.dampratio = 0.8;
-	joint_eqc.solverParameters.timeconst = 0.2;
-	joint_eqc.solverParameters.dmin      = 0.7;
-	joint_eqc.solverParameters.dmax      = 0.9;
-	joint_eqc.solverParameters.width     = 0.001;
-	joint_eqc.solverParameters.midpoint  = 0.5;
-	joint_eqc.solverParameters.power     = 3.0;
+	joint_eqc.active                      = false;
+	joint_eqc.type.value                  = mujoco_ros_msgs::EqualityConstraintType::JOINT;
+	joint_eqc.solver_parameters.dampratio = 0.8;
+	joint_eqc.solver_parameters.timeconst = 0.2;
+	joint_eqc.solver_parameters.dmin      = 0.7;
+	joint_eqc.solver_parameters.dmax      = 0.9;
+	joint_eqc.solver_parameters.width     = 0.001;
+	joint_eqc.solver_parameters.midpoint  = 0.5;
+	joint_eqc.solver_parameters.power     = 3.0;
 	// constraint specific parameters
 	joint_eqc.element1 = "joint_eq_element1";
 	joint_eqc.element2 = "";
@@ -1615,15 +1615,15 @@ TEST_F(EqualityEnvFixture, SetEqConstraintTendon)
 	EXPECT_NE(tendon_eq_id, -1) << "tendon eq constraint is not defined in loaded model!";
 
 	mujoco_ros_msgs::SetEqualityConstraintParameters srv;
-	tendon_eqc.active                     = false;
-	tendon_eqc.type.value                 = mujoco_ros_msgs::EqualityConstraintType::TENDON;
-	tendon_eqc.solverParameters.dampratio = 0.8;
-	tendon_eqc.solverParameters.timeconst = 0.2;
-	tendon_eqc.solverParameters.dmin      = 0.7;
-	tendon_eqc.solverParameters.dmax      = 0.9;
-	tendon_eqc.solverParameters.width     = 0.001;
-	tendon_eqc.solverParameters.midpoint  = 0.5;
-	tendon_eqc.solverParameters.power     = 3.0;
+	tendon_eqc.active                      = false;
+	tendon_eqc.type.value                  = mujoco_ros_msgs::EqualityConstraintType::TENDON;
+	tendon_eqc.solver_parameters.dampratio = 0.8;
+	tendon_eqc.solver_parameters.timeconst = 0.2;
+	tendon_eqc.solver_parameters.dmin      = 0.7;
+	tendon_eqc.solver_parameters.dmax      = 0.9;
+	tendon_eqc.solver_parameters.width     = 0.001;
+	tendon_eqc.solver_parameters.midpoint  = 0.5;
+	tendon_eqc.solver_parameters.power     = 3.0;
 	// constraint specific parameters
 	tendon_eqc.element1 = "tendon_eq_element1";
 	tendon_eqc.element2 = "";
@@ -1649,15 +1649,15 @@ TEST_F(EqualityEnvFixture, SetEqConstraintPartialSuccess)
 	EXPECT_NE(joint_eq_id, -1) << "joint eq constraint is not defined in loaded model!";
 
 	mujoco_ros_msgs::SetEqualityConstraintParameters srv;
-	joint_eqc.active                     = false;
-	joint_eqc.type.value                 = mujoco_ros_msgs::EqualityConstraintType::JOINT;
-	joint_eqc.solverParameters.dampratio = 0.8;
-	joint_eqc.solverParameters.timeconst = 0.2;
-	joint_eqc.solverParameters.dmin      = 0.7;
-	joint_eqc.solverParameters.dmax      = 0.9;
-	joint_eqc.solverParameters.width     = 0.001;
-	joint_eqc.solverParameters.midpoint  = 0.5;
-	joint_eqc.solverParameters.power     = 3.0;
+	joint_eqc.active                      = false;
+	joint_eqc.type.value                  = mujoco_ros_msgs::EqualityConstraintType::JOINT;
+	joint_eqc.solver_parameters.dampratio = 0.8;
+	joint_eqc.solver_parameters.timeconst = 0.2;
+	joint_eqc.solver_parameters.dmin      = 0.7;
+	joint_eqc.solver_parameters.dmax      = 0.9;
+	joint_eqc.solver_parameters.width     = 0.001;
+	joint_eqc.solver_parameters.midpoint  = 0.5;
+	joint_eqc.solver_parameters.power     = 3.0;
 	// constraint specific parameters
 	joint_eqc.element1 = "joint_eq_element1";
 	joint_eqc.element2 = "";

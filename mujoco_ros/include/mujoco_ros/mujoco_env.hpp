@@ -15,7 +15,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2023, Bielefeld University
+ *  Copyright (c) 2022-2024, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -50,46 +50,48 @@
 
 #pragma once
 
+#include <mujoco_ros/ros_version.hpp>
+
+#include <atomic>
 #include <thread>
+#include <condition_variable>
+
+#if MJR_ROS_VERSION == ROS_1
+
 #include <ros/ros.h>
 
-#include <boost/thread.hpp>
-
-#include <mujoco_ros/render_backend.h>
-#include <mujoco_ros/common_types.h>
-#include <mujoco_ros/viewer.h>
-#include <mujoco_ros/plugin_utils.h>
-
-#include <mujoco_ros_msgs/StepAction.h>
-#include <mujoco_ros_msgs/StepGoal.h>
-#include <actionlib/server/simple_action_server.h>
-
-#include <mujoco_ros_msgs/SetPause.h>
-#include <mujoco_ros_msgs/Reload.h>
-#include <std_srvs/Empty.h>
-#include <mujoco_ros_msgs/SetBodyState.h>
-#include <mujoco_ros_msgs/GetBodyState.h>
-#include <mujoco_ros_msgs/SetGeomProperties.h>
-#include <mujoco_ros_msgs/GetGeomProperties.h>
-#include <mujoco_ros_msgs/EqualityConstraintParameters.h>
-#include <mujoco_ros_msgs/GetEqualityConstraintParameters.h>
-#include <mujoco_ros_msgs/SetEqualityConstraintParameters.h>
-#include <mujoco_ros_msgs/SetGravity.h>
-#include <mujoco_ros_msgs/GetGravity.h>
-#include <mujoco_ros_msgs/GetStateUint.h>
-#include <mujoco_ros_msgs/GetSimInfo.h>
-#include <mujoco_ros_msgs/SetFloat.h>
-#include <mujoco_ros_msgs/PluginStats.h>
-#include <mujoco_ros_msgs/GetPluginStats.h>
-
+#include <rosgraph_msgs/Clock.h>
 #include <geometry_msgs/TransformStamped.h>
+
+#include <mujoco_ros/ros_one/ros_api.hpp>
+
+using TransformStamped = geometry_msgs::TransformStamped;
+
+#else // MJR_ROS_VERSION == ROS_2
+
+#include <rclcpp/rclcpp.hpp>
+
+#include <rosgraph_msgs/msg/clock.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
+
+#include <mujoco_ros/ros_two/ros_api.hpp>
+
+using TransformStamped = geometry_msgs::msg::TransformStamped;
+
+#endif
+
+#include <mujoco/mujoco.h>
+
+#include <mujoco_ros/render_backend.hpp>
+#include <mujoco_ros/common_types.hpp>
+#include <mujoco_ros/viewer.hpp>
+
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
+#include <tf2_ros/buffer.h>
 
-#include <dynamic_reconfigure/server.h>
-#include <mujoco_ros/SimParamsConfig.h>
-
-#include <rosgraph_msgs/Clock.h>
+// #include <dynamic_reconfigure/server.h>
+// #include <mujoco_ros/SimParamsConfig.h>
 
 #if RENDER_BACKEND == GLFW_BACKEND
 #include <mujoco_ros/glfw_adapter.h>
@@ -102,7 +104,8 @@ namespace mujoco_ros {
 
 class MujocoEnvMutex : public std::recursive_mutex
 {};
-using MutexLock = std::unique_lock<std::recursive_mutex>;
+using RecursiveLock = std::unique_lock<std::recursive_mutex>;
+using MutexLock     = std::unique_lock<std::mutex>;
 
 struct CollisionFunctionDefault
 {
@@ -134,7 +137,7 @@ struct OffscreenRenderContext
 	mjrContext con = {};
 	mjvScene scn   = {};
 
-	boost::thread render_thread_handle;
+	std::thread render_thread_handle;
 
 	// Condition variable to signal that the offscreen render thread should render a new frame
 	std::atomic_bool request_pending = { false };
@@ -147,8 +150,16 @@ struct OffscreenRenderContext
 	~OffscreenRenderContext();
 };
 
+#if MJR_ROS_VERSION == ROS_1
 class MujocoEnv
 {
+#else // MJR_ROS_VERSION == ROS_2
+class MujocoEnv : public rclcpp::Node
+{
+#endif
+	// Friend declaration of RosAPI for access to private members
+	friend class RosAPI;
+
 public:
 	/**
 	 * @brief Construct a new Mujoco Env object.
@@ -176,8 +187,8 @@ public:
 
 	MujocoEnvMutex physics_thread_mutex_;
 
-	void connectViewer(Viewer *viewer);
-	void disconnectViewer(Viewer *viewer);
+	void ConnectViewer(Viewer *viewer);
+	void DisconnectViewer(Viewer *viewer);
 
 	char queued_filename_[kMaxFilenameLength] = "\0";
 
@@ -224,7 +235,10 @@ public:
 		uint load_count         = 0;
 	} sim_state_;
 
-	std::vector<MujocoPluginPtr> const &getPlugins() const { return plugins_; }
+	std::vector<MujocoPluginPtr> const &GetPlugins() const
+	{
+		return plugins_;
+	}
 
 	/**
 	 * @brief Register a custom collision function for collisions between two geom types.
@@ -233,20 +247,64 @@ public:
 	 * @param [in] geom_type2 second type of the colliding geoms.
 	 * @param [in] collision_cb collision function to call.
 	 */
-	void registerCollisionFunction(int geom_type1, int geom_type2, mjfCollision collision_cb);
+	void RegisterCollisionFunction(int geom_type1, int geom_type2, mjfCollision collision_cb);
 
 	/**
 	 * @brief Register a static transform to be published by the simulation.
 	 *
 	 * @param [in] transform const pointer to transform that will be published.
 	 */
-	void registerStaticTransform(geometry_msgs::TransformStamped &transform);
+	void RegisterStaticTransform(TransformStamped &transform);
 
-	void waitForPhysicsJoin();
-	void waitForEventsJoin();
+	/////// Public API
+	void StartPhysicsLoop();
+	void StartEventLoop();
 
-	void startPhysicsLoop();
-	void startEventLoop();
+	void WaitForPhysicsJoin();
+	void WaitForEventsJoin();
+
+	void Shutdown();
+	void Reset();
+	bool LoadModelFromString(const std::string &model_xml, char *load_error = nullptr, const int error_sz = 0);
+	bool SetBodyState(const std::string &body_name, mjtNum *pose, mjtNum *twist, mjtNum &mass, bool set_pose,
+	                  bool set_twist, bool set_mass, bool reset_qpos, const std::string &admin_hash = std::string(),
+	                  char *status_message = nullptr, const int status_sz = 0);
+	bool GetBodyState(std::string &body_name, mjtNum *pose, mjtNum *twist, mjtNum *mass,
+	                  const std::string &admin_hash = std::string(), char *status_message = nullptr,
+	                  const int status_sz = 0);
+	bool SetGravity(const mjtNum *gravity, const std::string &admin_hash = std::string(), char *status_message = nullptr,
+	                const int status_sz = 0);
+	bool GetGravity(mjtNum *gravity, const std::string &admin_hash = std::string(), char *status_message = nullptr,
+	                const int status_sz = 0);
+	bool SetGeomProperties(const std::string &geom_name, const mjtNum body_mass, const mjtNum friction_slide,
+	                       const mjtNum friction_spin, const mjtNum friction_roll, const mjtNum size_x,
+	                       const mjtNum size_y, const mjtNum size_z, const mjtNum type, bool set_mass, bool set_friction,
+	                       bool set_type, bool set_size, const std::string &admin_hash = std::string(),
+	                       char *status_message = nullptr, const int status_sz = 0);
+	bool GetGeomProperties(const std::string &geom_name, mjtNum &body_mass, mjtNum &friction_slide,
+	                       mjtNum &friction_spin, mjtNum &friction_roll, mjtNum &size_x, mjtNum &size_y, mjtNum &size_z,
+	                       mjtNum &type, const std::string &admin_hash = std::string(), char *status_message = nullptr,
+	                       const int status_sz = 0);
+	bool SetEqualityConstraintParameters(const std::string &eq_name, const int &type, const mjtNum *solver_params,
+	                                     const bool &active, const std::string &element1, const std::string &element2,
+	                                     const mjtNum &torquescale, const mjtNum *anchor, const mjtNum *relpose,
+	                                     const mjtNum *polycoef, const std::string &admin_hash = std::string(),
+	                                     char *status_message = nullptr, const int status_sz = 0);
+	bool GetEqualityConstraintParameters(const std::string &eq_name, int &type, mjtNum *solver_params, bool &active,
+	                                     std::string &element1, std::string &element2, mjtNum &torquescale,
+	                                     mjtNum *anchor, mjtNum *relpose, mjtNum *polycoef,
+	                                     const std::string &admin_hash = std::string(), char *status_message = nullptr,
+	                                     const int status_sz = 0);
+	void GetSimulationStatus(int &status, std::string &description);
+	void GetSimInfo(std::string &model_path, bool &model_valid, int &load_count, int &loading_state,
+	                std::string &loading_description, bool &paused, int &pending_sim_steps, float &rt_measured,
+	                float &rt_setting);
+	bool SetRealTimeFactor(const float &rt_factor, const std::string &admin_hash = std::string(),
+	                       char *status_message = nullptr, const int status_sz = 0);
+	int GetPluginStats(std::vector<std::string> &plugin_names, std::vector<std::string> &types,
+	                   std::vector<double> &load_times, std::vector<double> &reset_times,
+	                   std::vector<double> &ema_steptimes_control, std::vector<double> &ema_steptimes_passive,
+	                   std::vector<double> &ema_steptimes_render, std::vector<double> &ema_steptimes_last_stage);
 
 	/**
 	 * @brief Get information about the current simulation state.
@@ -256,7 +314,7 @@ public:
 	 *
 	 * @return 0 if done loading, 1 if loading is in progress, 2 if loading has been requested.
 	 */
-	int getOperationalStatus();
+	int GetOperationalStatus();
 
 	static constexpr float percentRealTime[] = {
 		-1, // unbound
@@ -265,22 +323,22 @@ public:
 	};
 
 	static MujocoEnv *instance;
-	static void proxyControlCB(const mjModel * /*m*/, mjData * /*d*/)
+	static void ProxyControlCB(const mjModel * /*m*/, mjData * /*d*/)
 	{
 		if (MujocoEnv::instance != nullptr)
-			MujocoEnv::instance->runControlCbs();
+			MujocoEnv::instance->RunControlCbs();
 	}
-	static void proxyPassiveCB(const mjModel * /*m*/, mjData * /*d*/)
+	static void ProxyPassiveCB(const mjModel * /*m*/, mjData * /*d*/)
 	{
 		if (MujocoEnv::instance != nullptr)
-			MujocoEnv::instance->runPassiveCbs();
+			MujocoEnv::instance->RunPassiveCbs();
 	}
 
 	// Proxies to MuJoCo callbacks
-	void runControlCbs();
-	void runPassiveCbs();
+	void RunControlCbs();
+	void RunPassiveCbs();
 
-	bool togglePaused(bool paused, const std::string &admin_hash = std::string());
+	bool TogglePaused(bool paused, const std::string &admin_hash = std::string());
 
 #if RENDER_BACKEND == GLFW_BACKEND
 	GlfwAdapter *gui_adapter_ = nullptr;
@@ -290,15 +348,24 @@ public:
 	bool InitGL();
 #endif
 
-	void runRenderCbs(mjvScene *scene);
-	bool step(int num_steps = 1, bool blocking = true);
+	void RunRenderCbs(mjvScene *scene);
+	bool Step(int num_steps = 1, bool blocking = true);
 
 	void UpdateModelFlags(const mjOption *opt);
 
+	void FetchConfiguration();
+	void GetCameraConfiguration(const std::string &cam_name, rendering::StreamType &stream_type, float &pub_frequency,
+	                            bool &use_segid, int &width, int &height, std::string &base_topic,
+	                            std::string &rgb_topic, std::string &depth_topic, std::string &segment_topic);
+	void GetInitialJointPositions(std::map<std::string, std::vector<double>> &joint_pos_map);
+	void GetInitialJointVelocities(std::map<std::string, std::vector<double>> &joint_vel_map);
+
 protected:
 	std::vector<MujocoPlugin *> cb_ready_plugins_; // objects managed by plugins_
-	XmlRpc::XmlRpcValue rpc_plugin_config_;
 	std::vector<MujocoPluginPtr> plugins_;
+#if MJR_ROS_VERSION == ROS_1
+	XmlRpc::XmlRpcValue rpc_plugin_config_;
+#endif
 
 	// This variable keeps track of remaining steps if the environment was configured to terminate after a fixed number
 	// of steps (-1 means no limit).
@@ -319,14 +386,15 @@ protected:
 	std::set<std::pair<int, int>> custom_collisions_;
 
 	// Keep track of static transforms to publish.
-	std::vector<geometry_msgs::TransformStamped> static_transforms_;
+	std::vector<TransformStamped> static_transforms_;
 
+	void InitTFBroadcasting();
 	// Central broadcaster for all static transforms
-	tf2_ros::StaticTransformBroadcaster static_broadcaster_;
+	std::unique_ptr<tf2_ros::StaticTransformBroadcaster> static_broadcaster_;
 
 	// ROS TF2
-	std::unique_ptr<tf2_ros::Buffer> tf_bufferPtr_;
-	std::unique_ptr<tf2_ros::TransformListener> tf_listenerPtr_;
+	std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+	std::unique_ptr<tf2_ros::TransformListener> tf_listener_;
 
 	/// Pointer to mjModel
 	mjModelPtr model_; // technically could be a unique_ptr, but setting the deleter correctly is not trivial
@@ -335,73 +403,36 @@ protected:
 
 	std::vector<Viewer *> connected_viewers_;
 
-	void publishSimTime(mjtNum time);
-	ros::Publisher clock_pub_;
-	std::unique_ptr<ros::NodeHandle> nh_;
+	void PublishSimTime(mjtNum time);
+#if MJR_ROS_VERSION == ROS_1
+	std::shared_ptr<ros::NodeHandle> nh_;
+#endif
+	// ros api implementation
+	std::unique_ptr<RosAPI> ros_api_;
 
-	void runLastStageCbs();
+	void RunLastStageCbs();
 
-	void notifyGeomChanged(const int geom_id);
-
-	boost::recursive_mutex sim_params_mutex_;
-	dynamic_reconfigure::Server<mujoco_ros::SimParamsConfig> *param_server_;
-	mujoco_ros::SimParamsConfig sim_params_;
-	void dynparamCallback(mujoco_ros::SimParamsConfig &config, uint32_t level);
-	void updateDynamicParams();
-
-	std::vector<ros::ServiceServer> service_servers_;
-	std::unique_ptr<actionlib::SimpleActionServer<mujoco_ros_msgs::StepAction>> action_step_;
-
-	bool verifyAdminHash(const std::string &hash);
-
-	void setupServices();
-	bool setPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &res);
-	bool shutdownCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
-	bool reloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Response &res);
-	bool resetCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
-	bool setBodyStateCB(mujoco_ros_msgs::SetBodyState::Request &req, mujoco_ros_msgs::SetBodyState::Response &resp);
-	bool getBodyStateCB(mujoco_ros_msgs::GetBodyState::Request &req, mujoco_ros_msgs::GetBodyState::Response &resp);
-	bool setGravityCB(mujoco_ros_msgs::SetGravity::Request &req, mujoco_ros_msgs::SetGravity::Response &resp);
-	bool getGravityCB(mujoco_ros_msgs::GetGravity::Request &req, mujoco_ros_msgs::GetGravity::Response &resp);
-	bool setGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request &req,
-	                         mujoco_ros_msgs::SetGeomProperties::Response &resp);
-	bool getGeomPropertiesCB(mujoco_ros_msgs::GetGeomProperties::Request &req,
-	                         mujoco_ros_msgs::GetGeomProperties::Response &resp);
-	bool setEqualityConstraintParametersArrayCB(mujoco_ros_msgs::SetEqualityConstraintParameters::Request &req,
-	                                            mujoco_ros_msgs::SetEqualityConstraintParameters::Response &resp);
-	bool setEqualityConstraintParameters(const mujoco_ros_msgs::EqualityConstraintParameters &parameters);
-	bool getEqualityConstraintParametersArrayCB(mujoco_ros_msgs::GetEqualityConstraintParameters::Request &req,
-	                                            mujoco_ros_msgs::GetEqualityConstraintParameters::Response &resp);
-	bool getEqualityConstraintParameters(mujoco_ros_msgs::EqualityConstraintParameters &parameters);
-
-	bool getStateUintCB(mujoco_ros_msgs::GetStateUint::Request &req, mujoco_ros_msgs::GetStateUint::Response &resp);
-	bool getSimInfoCB(mujoco_ros_msgs::GetSimInfo::Request &req, mujoco_ros_msgs::GetSimInfo::Response &resp);
-	bool setRTFactorCB(mujoco_ros_msgs::SetFloat::Request &req, mujoco_ros_msgs::SetFloat::Response &resp);
-	bool getPluginStatsCB(mujoco_ros_msgs::GetPluginStats::Request &req,
-	                      mujoco_ros_msgs::GetPluginStats::Response &resp);
-
-	// Action calls
-	void onStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal);
-
-	void resetSim();
+	void NotifyGeomChanged(const int geom_id);
+	bool VerifyAdminHash(const std::string &hash);
+	void ResetSim();
 
 	/**
 	 * @brief Loads and sets the initial joint states from the parameter server.
 	 */
-	void loadInitialJointStates();
+	void LoadInitialJointStates();
 
-	void setJointPosition(const double &pos, const int &joint_id, const int &jnt_axis /*= 0*/);
-	void setJointVelocity(const double &vel, const int &joint_id, const int &jnt_axis /*= 0*/);
+	void SetJointPosition(const double &pos, const int &joint_id, const int &jnt_axis /*= 0*/);
+	void SetJointVelocity(const double &vel, const int &joint_id, const int &jnt_axis /*= 0*/);
 
 	/**
 	 * @brief Makes sure that all data that will be replaced in a reload is freed.
 	 */
-	void prepareReload();
+	void PrepareReload();
 
 	// Threading
 
-	boost::thread physics_thread_handle_;
-	boost::thread event_thread_handle_;
+	std::thread physics_thread_handle_;
+	std::thread event_thread_handle_;
 
 	// Helper variables to get the state of threads
 	std::atomic_int is_physics_running_   = { 0 };
@@ -411,36 +442,36 @@ protected:
 	/**
 	 * @brief Runs physics steps.
 	 */
-	void physicsLoop();
+	void PhysicsLoop();
 
 	/**
 	 * @brief physics step when sim is running.
 	 */
-	void simUnpausedPhysics(mjtNum &syncSim, std::chrono::time_point<Clock> &syncCPU);
+	void SimUnpausedPhysics(mjtNum &syncSim, std::chrono::time_point<Clock> &syncCPU);
 
 	/**
 	 * @brief physics step when sim is paused.
 	 */
-	void simPausedPhysics(mjtNum &syncSim);
+	void SimPausedPhysics(mjtNum &syncSim);
 
 	/**
 	 * @brief Handles requests from other threads (viewers).
 	 */
-	void eventLoop();
+	void EventLoop();
 
-	void completeEnvSetup();
+	void CompleteEnvSetup();
 
 	/**
 	 * @brief Tries to load all configured plugins.
 	 * This function is called when a new mjData object is assigned to the environment.
 	 */
-	void loadPlugins();
+	void LoadPlugins();
 
-	void initializeRenderResources();
+	void InitializeRenderResources();
 
 	OffscreenRenderContext offscreen_;
 
-	void offscreenRenderLoop();
+	void OffscreenRenderLoop();
 
 	// Model loading
 	mjModel *mnew = nullptr;
@@ -449,12 +480,12 @@ protected:
 	/**
 	 * @brief Load a queued model from either a path or XML-string.
 	 */
-	bool initModelFromQueue();
+	bool InitModelFromQueue();
 
 	/**
 	 * @brief Replace the current model and data with new ones and complete the loading process.
 	 */
-	void loadWithModelAndData();
+	void LoadWithModelAndData();
 
 	mjThreadPool *threadpool_ = nullptr;
 };

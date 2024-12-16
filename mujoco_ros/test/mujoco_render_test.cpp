@@ -40,7 +40,7 @@
 
 #include <mujoco_ros/mujoco_env.h>
 #include <mujoco_ros/common_types.h>
-#include <mujoco_ros/offscreen_camera.h>
+#include <mujoco_ros/offscreen_camera.hpp>
 #include <mujoco_ros/util.h>
 
 #include <ros/ros.h>
@@ -130,7 +130,7 @@ TEST_F(BaseEnvFixture, RGB_Topics_Available)
 {
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
-	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::RGB);
+	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::RGB);
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
@@ -143,7 +143,7 @@ TEST_F(BaseEnvFixture, RGB_Topics_Available)
 	OffscreenRenderContext *offscreen = env_ptr->getOffscreenContext();
 	ASSERT_EQ(offscreen->cams.size(), 1);
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
-	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::streamType::RGB);
+	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::StreamType::RGB);
 
 	ros::master::V_TopicInfo master_topics;
 	ros::master::getTopics(master_topics);
@@ -167,7 +167,7 @@ TEST_F(BaseEnvFixture, DEPTH_Topics_Available)
 {
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
-	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::DEPTH);
+	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::DEPTH);
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
@@ -180,7 +180,7 @@ TEST_F(BaseEnvFixture, DEPTH_Topics_Available)
 	OffscreenRenderContext *offscreen = env_ptr->getOffscreenContext();
 	ASSERT_EQ(offscreen->cams.size(), 1);
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
-	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::streamType::DEPTH);
+	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::StreamType::DEPTH);
 
 	ros::master::V_TopicInfo master_topics;
 	ros::master::getTopics(master_topics);
@@ -204,7 +204,7 @@ TEST_F(BaseEnvFixture, SEGMENTATION_Topics_Available)
 {
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
-	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::SEGMENTED);
+	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::SEGMENTED);
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
@@ -217,7 +217,7 @@ TEST_F(BaseEnvFixture, SEGMENTATION_Topics_Available)
 	OffscreenRenderContext *offscreen = env_ptr->getOffscreenContext();
 	ASSERT_EQ(offscreen->cams.size(), 1);
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
-	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::streamType::SEGMENTED);
+	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::StreamType::SEGMENTED);
 
 	ros::master::V_TopicInfo master_topics;
 	ros::master::getTopics(master_topics);
@@ -240,7 +240,7 @@ TEST_F(BaseEnvFixture, RGB_DEPTH_Topics_Available)
 {
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
-	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::RGB_D);
+	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::RGB_D);
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
@@ -253,7 +253,7 @@ TEST_F(BaseEnvFixture, RGB_DEPTH_Topics_Available)
 	OffscreenRenderContext *offscreen = env_ptr->getOffscreenContext();
 	ASSERT_EQ(offscreen->cams.size(), 1);
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
-	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::streamType::RGB_D);
+	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::StreamType::RGB_D);
 
 	ros::master::V_TopicInfo master_topics;
 	ros::master::getTopics(master_topics);
@@ -282,7 +282,7 @@ TEST_F(BaseEnvFixture, RGB_SEGMENTATION_Topics_Available)
 {
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
-	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::RGB_S);
+	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::RGB_S);
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
@@ -295,7 +295,7 @@ TEST_F(BaseEnvFixture, RGB_SEGMENTATION_Topics_Available)
 	OffscreenRenderContext *offscreen = env_ptr->getOffscreenContext();
 	ASSERT_EQ(offscreen->cams.size(), 1);
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
-	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::streamType::RGB_S);
+	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::StreamType::RGB_S);
 
 	ros::master::V_TopicInfo master_topics;
 	ros::master::getTopics(master_topics);
@@ -324,7 +324,7 @@ TEST_F(BaseEnvFixture, DEPTH_SEGMENTATION_Topics_Available)
 {
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
-	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::DEPTH_S);
+	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::DEPTH_S);
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
@@ -337,7 +337,7 @@ TEST_F(BaseEnvFixture, DEPTH_SEGMENTATION_Topics_Available)
 	OffscreenRenderContext *offscreen = env_ptr->getOffscreenContext();
 	ASSERT_EQ(offscreen->cams.size(), 1);
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
-	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::streamType::DEPTH_S);
+	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::StreamType::DEPTH_S);
 
 	ros::master::V_TopicInfo master_topics;
 	ros::master::getTopics(master_topics);
@@ -365,7 +365,7 @@ TEST_F(BaseEnvFixture, RGB_DEPTH_SEGMENTATION_Topics_Available)
 {
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
-	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::RGB_D_S);
+	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::RGB_D_S);
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
@@ -378,7 +378,7 @@ TEST_F(BaseEnvFixture, RGB_DEPTH_SEGMENTATION_Topics_Available)
 	OffscreenRenderContext *offscreen = env_ptr->getOffscreenContext();
 	ASSERT_EQ(offscreen->cams.size(), 1);
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
-	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::streamType::RGB_D_S);
+	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::StreamType::RGB_D_S);
 
 	ros::master::V_TopicInfo master_topics;
 	ros::master::getTopics(master_topics);
@@ -425,7 +425,7 @@ TEST_F(BaseEnvFixture, Default_Cam_Settings)
 	// Check default camera settings
 	EXPECT_EQ(offscreen->cams[0]->cam_id_, 0);
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
-	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::streamType::RGB);
+	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::StreamType::RGB);
 	EXPECT_EQ(offscreen->cams[0]->pub_freq_, 15);
 	EXPECT_EQ(offscreen->cams[0]->width_, 720);
 	EXPECT_EQ(offscreen->cams[0]->height_, 480);
@@ -454,7 +454,7 @@ TEST_F(BaseEnvFixture, Resolution_Settings)
 	// Check camera settings
 	EXPECT_EQ(offscreen->cams[0]->cam_id_, 0);
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
-	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::streamType::RGB);
+	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::StreamType::RGB);
 	EXPECT_EQ(offscreen->cams[0]->pub_freq_, 15);
 	EXPECT_EQ(offscreen->cams[0]->width_, 640);
 	EXPECT_EQ(offscreen->cams[0]->height_, 480);
@@ -466,7 +466,7 @@ TEST_F(BaseEnvFixture, Stream_BaseTopic_Relative)
 {
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
-	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::RGB_D_S);
+	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::RGB_D_S);
 	nh->setParam("cam_config/test_cam/topic", "alt_topic");
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
@@ -512,7 +512,7 @@ TEST_F(BaseEnvFixture, Stream_BaseTopic_Absolute)
 {
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
-	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::RGB_D_S);
+	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::RGB_D_S);
 	nh->setParam("cam_config/test_cam/topic", "/alt_topic");
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
@@ -558,7 +558,7 @@ TEST_F(BaseEnvFixture, RGB_Alternative_StreamName)
 {
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
-	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::RGB);
+	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::RGB);
 	nh->setParam("cam_config/test_cam/name_rgb", "alt_rgb");
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
@@ -594,7 +594,7 @@ TEST_F(BaseEnvFixture, DEPTH_Alternative_StreamName)
 {
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
-	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::DEPTH);
+	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::DEPTH);
 	nh->setParam("cam_config/test_cam/name_depth", "alt_depth");
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
@@ -630,7 +630,7 @@ TEST_F(BaseEnvFixture, SEGMENT_Alternative_StreamName)
 {
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
-	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::SEGMENTED);
+	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::SEGMENTED);
 	nh->setParam("cam_config/test_cam/name_segment", "alt_seg");
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
@@ -706,7 +706,7 @@ TEST_F(BaseEnvFixture, RGB_Published_Correctly)
 	}
 	EXPECT_LT(seconds, 1.f) << "RGB image not published within 1s";
 
-	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::streamType::RGB);
+	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::StreamType::RGB);
 	EXPECT_EQ(offscreen->cams[0]->pub_freq_, 30);
 
 	ASSERT_EQ(rgb_images.size(), 1);
@@ -760,7 +760,7 @@ TEST_F(BaseEnvFixture, Cam_Timing_Correct)
 	// Check default camera settings
 	EXPECT_EQ(offscreen->cams[0]->cam_id_, 0);
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
-	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::streamType::RGB);
+	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::StreamType::RGB);
 	EXPECT_EQ(offscreen->cams[0]->pub_freq_, 30);
 
 	// Wait for image to be published with 400ms timeout
@@ -851,7 +851,7 @@ TEST_F(BaseEnvFixture, RGB_Image_Dtype)
 	OffscreenRenderContext *offscreen = env_ptr->getOffscreenContext();
 	ASSERT_EQ(offscreen->cams.size(), 1);
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
-	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::streamType::RGB);
+	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::StreamType::RGB);
 	EXPECT_EQ(offscreen->cams[0]->width_, 7);
 	EXPECT_EQ(offscreen->cams[0]->height_, 4);
 
@@ -875,7 +875,7 @@ TEST_F(BaseEnvFixture, DEPTH_Image_Dtype)
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("unpause", false);
-	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::DEPTH);
+	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::DEPTH);
 	nh->setParam("cam_config/test_cam/width", 7);
 	nh->setParam("cam_config/test_cam/height", 4);
 
@@ -899,7 +899,7 @@ TEST_F(BaseEnvFixture, DEPTH_Image_Dtype)
 	OffscreenRenderContext *offscreen = env_ptr->getOffscreenContext();
 	ASSERT_EQ(offscreen->cams.size(), 1);
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
-	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::streamType::DEPTH);
+	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::StreamType::DEPTH);
 	EXPECT_EQ(offscreen->cams[0]->width_, 7);
 	EXPECT_EQ(offscreen->cams[0]->height_, 4);
 
@@ -924,7 +924,7 @@ TEST_F(BaseEnvFixture, SEGMENTED_Image_Dtype)
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("unpause", false);
-	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::SEGMENTED);
+	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::SEGMENTED);
 	nh->setParam("cam_config/test_cam/width", 7);
 	nh->setParam("cam_config/test_cam/height", 4);
 
@@ -948,7 +948,7 @@ TEST_F(BaseEnvFixture, SEGMENTED_Image_Dtype)
 	OffscreenRenderContext *offscreen = env_ptr->getOffscreenContext();
 	ASSERT_EQ(offscreen->cams.size(), 1);
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
-	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::streamType::SEGMENTED);
+	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::StreamType::SEGMENTED);
 	EXPECT_EQ(offscreen->cams[0]->width_, 7);
 	EXPECT_EQ(offscreen->cams[0]->height_, 4);
 

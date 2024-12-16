@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2023, Bielefeld University
+ *  Copyright (c) 2022-2024, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -36,10 +36,20 @@
 
 #pragma once
 
+#include <mujoco_ros/ros_version.hpp>
+
 #include <mujoco/mujoco.h>
+
+#if MJR_ROS_VERSION == ROS_1
 
 #include <ros/ros.h>
 #include <image_transport/image_transport.h>
+
+#else // MJR_ROS_VERSION == ROS_2
+
+#include <rclcpp/rclcpp.hpp>
+
+#endif
 
 namespace mujoco_ros {
 
@@ -51,7 +61,7 @@ using Milliseconds = std::chrono::duration<double, std::milli>;
 
 namespace rendering {
 
-using streamType = enum streamType_ : uint8_t {
+using StreamType = enum StreamType_ : uint8_t {
 	RGB       = 1,
 	DEPTH     = 1 << 1,
 	SEGMENTED = 1 << 1 << 1,
@@ -62,6 +72,15 @@ using streamType = enum streamType_ : uint8_t {
 	DEPTH_S = 6,
 	RGB_D_S = 7
 };
+
+static constexpr StreamType kDEFAULT_CAM_STREAM_TYPE = StreamType::RGB;
+static constexpr float kDEFAULT_CAM_PUB_FREQ         = 15.f;
+static constexpr bool kDEFAULT_CAM_USE_SEGID         = false;
+static constexpr int kDEFAULT_CAM_WIDTH              = 720;
+static constexpr int kDEFAULT_CAM_HEIGHT             = 480;
+static constexpr char kDEFAULT_CAM_RGB_TOPIC[]       = "rgb";
+static constexpr char kDEFAULT_CAM_DEPTH_TOPIC[]     = "depth";
+static constexpr char kDEFAULT_CAM_SEGMENT_TOPIC[]   = "segmented";
 
 class OffscreenCamera;
 using OffscreenCameraPtr = std::unique_ptr<OffscreenCamera>;
