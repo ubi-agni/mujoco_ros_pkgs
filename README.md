@@ -9,6 +9,20 @@ It is an extension of the MuJoCo [simulate](https://github.com/deepmind/mujoco/b
 
 This project is mainly built for Ubuntu Focal with ROS Noetic. But we are working on adaptations for more recent Ubuntu systems with ROS One and Humble (ROS 2).
 
+#### ROS2 Humble Development
+This branch is for porting the project into ROS2 Humble.
+
+In the current state, there is a headless MuJoCo simulation integrated with a working, but pretty basic, `ros2_control` plugin.
+You can clone this branch and build it normally, as all the ROS1 packages have `COLCON_IGNORE` in them, which prevents them from being built by `colcon`.
+It's currently comprised of 3 packages:
+- `mujoco_ros2_base` with the parent `MujocoPlugin` class in `plugin_utils.h`, and a main node (`mujoco_ros2_main.cpp`) that loads the `ros2_control` plugin using a matching `pendulum.xml/urdf` file found in `sample_xml`.
+- `mujoco_ros2_control` plugin package that implements a `ros2_control` plugin using `MujocoPlugin` class, mainly taken from gazebo's ros2_control, and provides an interface class for the SystemInterfaces.
+- `mujoco_ros2_control_system` package that implements a very basic SystemInterface using the interface class from above, and is loaded in by `mujoco_ros2_control`. It has a working initialization, `read` and `write` functions. An example controller much in the style of Gazebo's demos is in the works.
+
+Basically, in the current structure, `mujoco_ros2_base` loads `mujoco_ros2_control` loads `mujoco_ros2_control_system`.
+
+To try out, install ROS2 and MuJoCo 3.2.0, build the package and then run `ros2 launch mujoco_ros2_base mujoco_ros2_main_launch.py`.
+
 ### Continuous Integration
 
 service    | Noetic / One | Humble (coming soon)
