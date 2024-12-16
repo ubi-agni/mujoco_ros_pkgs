@@ -23,7 +23,14 @@ def generate_launch_description():
         output='screen',
         parameters=[params]
     )
-
+    node_joint_state_publisher = Node(
+            package='joint_state_publisher',
+            executable='joint_state_publisher',
+            name='joint_state_publisher',
+            parameters=[
+                {'source_list': ['franka/joint_states', '/panda_gripper_sim_node/joint_states'],
+                 'rate': 30}],
+        ),
     return LaunchDescription([
         Node(
             package="mujoco_ros2_base",

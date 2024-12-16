@@ -69,18 +69,19 @@ public:
 			// RCLCPP_INFO(get_logger(), "Yaml: %s", configs["controller_manager_name"].c_str());
 			plugin_loader_.reset(
 			    new pluginlib::ClassLoader<mujoco_ros2::MujocoPlugin>("mujoco_ros2_base", "mujoco_ros2::MujocoPlugin"));
-			std::shared_ptr<mujoco_ros2::MujocoPlugin> mjros2control =
-			    plugin_loader_->createSharedInstance("mujoco_ros2_control::MujocoRos2ControlPlugin");
+			plugin_ptr_ = plugin_loader_->createSharedInstance("mujoco_ros2_control::MujocoRos2ControlPlugin");
+			// std::shared_ptr<mujoco_ros2::MujocoPlugin> mjros2control =
+			//     plugin_loader_->createSharedInstance("mujoco_ros2_control::MujocoRos2ControlPlugin");
 			int env_ptr = 99;
-			mjros2control->init(env_ptr, mj_yaml_node);
-			mjros2control->safe_load(m_.get(), d_.get());
+			plugin_ptr_->init(env_ptr, mj_yaml_node);
+			plugin_ptr_->safe_load(m_.get(), d_.get());
 			for(auto i = 0; i < 10; i++){
 				mj_step(m_.get(), d_.get());
 				d_->ctrl[0] = 0.1;
-				mjros2control->wrappedControlCallback(m_.get(), d_.get());
-				mjros2control->wrappedPassiveCallback(m_.get(), d_.get());
-				// mjros2control->wrappedRenderCallback(m_.get(), d_.get(), scene);
-				// mjros2control->wrappedLastStageCallback(m_.get(), d_.get());
+				plugin_ptr_->wrappedControlCallback(m_.get(), d_.get());
+				plugin_ptr_->wrappedPassiveCallback(m_.get(), d_.get());
+				// plugin_ptr_->wrappedRenderCallback(m_.get(), d_.get(), scene);
+				// plugin_ptr_->wrappedLastStageCallback(m_.get(), d_.get());
 				RCLCPP_INFO(get_logger(), "Pendulum jnt: %f", d_->qpos[0]);
 			}
 		}
@@ -92,6 +93,7 @@ private:
 	std::string plugin_yaml_path_;
 	std::string mj_xml_file_;
 	std::unique_ptr<pluginlib::ClassLoader<mujoco_ros2::MujocoPlugin>> plugin_loader_;
+	std::shared_ptr<mujoco_ros2::MujocoPlugin> plugin_ptr_ = nullptr;
 	std::shared_ptr<mjModel> m_;
 	std::shared_ptr<mjData> d_;
 	char mj_error_[1000] = { "" };
@@ -107,29 +109,5 @@ int main(int argc, char **argv)
 	rclcpp::init(argc, argv);
 	rclcpp::spin(std::make_shared<mujoco_ros2::MujocoRos2Node>());
 	rclcpp::shutdown();
-	return 0;
-	//   pluginlib::ClassLoader<mujoco_ros2::MujocoPlugin> mj_loader("mujoco_plugin_base", "mujoco_ros2::MujocoPlugin");
-
-	//   try
-	//   {
-	//     // Read a parameter called MujocoPlugins, which needs to be defined in the launch file
-
-	//     // If defined, load up the mujoco_ros2_plugin
-
-	//     // else, just exit
-	//     std::shared_ptr<polygon_base::RegularPolygon> triangle =
-	//     poly_loader.createSharedInstance("polygon_plugins::Triangle"); triangle->initialize(10.0);
-
-	//     std::shared_ptr<polygon_base::RegularPolygon> square =
-	//     poly_loader.createSharedInstance("polygon_plugins::Square"); square->initialize(10.0);
-
-	//     printf("Triangle area: %.2f\n", triangle->area());
-	//     printf("Square area: %.2f\n", square->area());
-	//   }
-	//   catch(pluginlib::PluginlibException& ex)
-	//   {
-	//     printf("The plugin failed to load for some reason. Error: %s\n", ex.what());
-	//   }
-
 	return 0;
 }
