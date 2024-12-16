@@ -1,67 +1,16 @@
-cmake_minimum_required(VERSION 3.4)
+cmake_minimum_required(VERSION 3.14)
 project(mujoco_ros_msgs)
 
-find_package(catkin REQUIRED
-  COMPONENTS
-    message_generation
-    std_msgs
-    geometry_msgs
-    actionlib_msgs
-)
+if (DEFINED ENV{ROS_VERSION})
+    set(ROS_VERSION $ENV{ROS_VERSION})
+else()
+    message(FATAL_ERROR "ROS_VERSION is not defined")
+endif()
 
-add_message_files(
-  FILES
-    StateUint.msg
-    ScalarStamped.msg
-    BodyState.msg
-    GeomProperties.msg
-    GeomType.msg
-    SensorNoiseModel.msg
-    SolverParameters.msg
-    MocapState.msg
-    EqualityConstraintParameters.msg
-    EqualityConstraintType.msg
-    SimInfo.msg
-    PluginStats.msg
-)
+list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
-add_service_files(
-  FILES
-    GetStateUint.srv
-    SetFloat.srv
-    SetPause.srv
-    SetBodyState.srv
-    GetBodyState.srv
-    SetGeomProperties.srv
-    GetGeomProperties.srv
-    SetEqualityConstraintParameters.srv
-    GetEqualityConstraintParameters.srv
-    ResetBodyQPos.srv
-    RegisterSensorNoiseModels.srv
-    SetGravity.srv
-    GetGravity.srv
-    Reload.srv
-    SetMocapState.srv
-    GetSimInfo.srv
-    GetPluginStats.srv
-)
-
-add_action_files(
-  FILES
-    Step.action
-)
-
-generate_messages(
-  DEPENDENCIES
-    std_msgs
-    geometry_msgs
-    actionlib_msgs
-)
-
-catkin_package(
-  CATKIN_DEPENDS
-    message_runtime
-    std_msgs
-    geometry_msgs
-    actionlib_msgs
-)
+if (ROS_VERSION EQUAL 1)
+  include(Ros1)
+else()
+  include(Ros2)
+endif()

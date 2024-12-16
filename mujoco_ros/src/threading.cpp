@@ -32,75 +32,42 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  *********************************************************************/
 
-/* Authors: David P. Leins*/
+/* Authors: David P. Leins */
 
-#pragma once
-
-#include <mujoco/mujoco.h>
-
-#include <ros/ros.h>
-#include <image_transport/image_transport.h>
+#include <mujoco_ros/ros_version.hpp>
+#include <mujoco_ros/logging.hpp>
+#include <mujoco_ros/mujoco_env.hpp>
 
 namespace mujoco_ros {
 
-using Clock = std::chrono::steady_clock;
-static_assert(std::ratio_less_equal_v<Clock::period, std::milli>, "Clock must have millisecond precision or better");
+void MujocoEnv::StartPhysicsLoop()
+{
+	MJR_DEBUG("Starting physics loop");
+	physics_thread_handle_ = std::thread(std::bind(&MujocoEnv::PhysicsLoop, this));
+}
 
-using Seconds      = std::chrono::duration<double>;
-using Milliseconds = std::chrono::duration<double, std::milli>;
+void MujocoEnv::WaitForPhysicsJoin()
+{
+	MJR_DEBUG("Waiting for physics join");
+	if (physics_thread_handle_.joinable()) {
+		physics_thread_handle_.join();
+	}
+	MJR_DEBUG("Physics joined");
+}
 
-namespace rendering {
+void MujocoEnv::StartEventLoop()
+{
+	MJR_DEBUG("Starting event loop");
+	event_thread_handle_ = std::thread(std::bind(&MujocoEnv::EventLoop, this));
+}
 
-using streamType = enum streamType_ : uint8_t {
-	RGB       = 1,
-	DEPTH     = 1 << 1,
-	SEGMENTED = 1 << 1 << 1,
-
-	// Combined types to be cast safe
-	RGB_D   = 3,
-	RGB_S   = 5,
-	DEPTH_S = 6,
-	RGB_D_S = 7
-};
-
-class OffscreenCamera;
-using OffscreenCameraPtr = std::unique_ptr<OffscreenCamera>;
-
-} // namespace rendering
-
-// Struct holding all the data needed for offscreen rendering
-struct OffscreenRenderContext;
-
-/**
- * @def mjModelPtr
- * @brief std::shared_ptr to mjModel
- */
-using mjModelPtr = std::shared_ptr<mjModel>;
-/**
- * @def mjDataPtr
- * @brief std::shared_ptr to mjData
- */
-using mjDataPtr = std::shared_ptr<mjData>;
-
-// MujocoPlugin
-class MujocoPlugin;
-
-/**
- * @def MujocoPluginPtr
- * @brief std::unique_ptr to MujocoPlugin
- */
-using MujocoPluginPtr = std::unique_ptr<MujocoPlugin>;
-
-// MujocoEnvironment
-class MujocoEnv;
-
-/**
- * @def MujocoEnvPtr
- * @brief ptr to MujocoEnv
- */
-using MujocoEnvPtr = MujocoEnv *;
-
-// Viewer
-class Viewer;
+void MujocoEnv::WaitForEventsJoin()
+{
+	MJR_DEBUG("Waiting for event join");
+	if (event_thread_handle_.joinable()) {
+		event_thread_handle_.join();
+	}
+	MJR_DEBUG("Event joined");
+}
 
 } // namespace mujoco_ros

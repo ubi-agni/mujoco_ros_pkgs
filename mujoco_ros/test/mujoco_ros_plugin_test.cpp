@@ -41,9 +41,9 @@
 #include "mujoco_env_fixture.h"
 #include "test_plugin/test_plugin.h"
 
-#include <mujoco_ros/render_backend.h>
-#include <mujoco_ros/mujoco_env.h>
-#include <mujoco_ros/plugin_utils.h>
+#include <mujoco_ros/render_backend.hpp>
+#include <mujoco_ros/mujoco_env.hpp>
+#include <mujoco_ros/plugin_utils.hpp>
 #include <string>
 
 int main(int argc, char **argv)

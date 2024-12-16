@@ -1,0 +1,15 @@
+mujoco_server:
+  ros__parameters:
+    MujocoPlugins:
+      names:
+        - ros2_sensors
+        - ros2_control
+      ros2_sensors:
+        type: mujoco_ros_sensors/Sensors
+        radius: 0.1
+        color: [0.0, 1.0, 0.0, 1.0]
+      ros2_control:
+        type: mujoco_ros_control/Control
+        hardware:
+          type: mujoco_ros_control/RobotHW
+          control_period: 0.001

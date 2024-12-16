@@ -1,8 +1,8 @@
 string name
 mujoco_ros_msgs/EqualityConstraintType type
-mujoco_ros_msgs/SolverParameters solverParameters
+mujoco_ros_msgs/SolverParameters solver_parameters
 bool active
-string classParam
+string class_param
 string element1
 string element2
 float64 torquescale

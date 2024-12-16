@@ -1,7 +1,7 @@
 /*********************************************************************
- * Software License Agreement (BSD 3-Clause License)
+ * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2022-2025, Bielefeld University
+ *  Copyright (c) 2022-2024, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -34,10 +34,25 @@
 
 /* Authors: David P. Leins */
 
-#include <mujoco_ros/common_types.h>
+#include <mujoco_ros/ros_version.hpp>
+#include <mujoco_ros/logging.hpp>
+#include <mujoco_ros/common_types.hpp>
 #include <mujoco/mujoco.h>
 
 namespace mujoco_ros::util {
+
+
+#if MJR_ROS_VERSION == ROS_1
+static inline ros::Time toRosTime(mjtNum &time) {
+		ros::Time t = ros::Time(time);
+		return t;
+}
+#else // MJR_ROS_VERSION == ROS_2
+static inline rclcpp::Time toRosTime(mjtNum &time) {
+		rclcpp::Time t = rclcpp::Time(static_cast<uint64_t>(time * 1e9)); // convert to nanoseconds
+		return t;
+}
+#endif
 
 template <class T>
 inline typename std::make_unsigned<T>::type as_unsigned(T x)
@@ -50,10 +65,53 @@ static inline int jointName2id(mjModel *m, const std::string &joint_name,
 {
 	int result = mj_name2id(m, mjOBJ_JOINT, joint_name.c_str());
 	if (result == -1 && !robot_namespace.empty()) {
-		ROS_DEBUG_STREAM("Trying to find without namespace (" << joint_name.substr(robot_namespace.size()) << ")");
+		MJR_DEBUG_STREAM("Trying to find without namespace (" << joint_name.substr(robot_namespace.size()) << ")");
 		result = mj_name2id(m, mjOBJ_JOINT, joint_name.substr(robot_namespace.size()).c_str());
 	}
 	return result;
+}
+
+// Helper function to convert a double array to a space-delimited string
+static inline void arr_to_string(const mjtNum *arr, int size, std::string &str)
+{
+	str.clear();
+	for (int i = 0; i < size; ++i) {
+		str += std::to_string(arr[i]);
+		if (i < size - 1) {
+			str += " ";
+		}
+	}
+}
+// Helper function to set a bit in a flags int
+static inline void bit_set_to(int &flags, int bit, bool value)
+{
+	if (value) {
+		flags |= (1 << bit);
+	} else {
+		flags &= ~(1 << bit);
+	}
+}
+
+// Helper function to read size values from a space-delimited string
+static inline void set_from_string(mjtNum *vec, std::string str, uint8_t size)
+{
+	uint8_t count = 0;
+	char *pch     = strtok(&str[0], " ");
+	while (pch != nullptr) {
+		if (count < size) {
+			vec[count] = std::stod(pch);
+			count++;
+		} else {
+			MJR_WARN_STREAM("Too many values in string '" << str << "' expected " << size << ". Ignoring the rest.");
+		}
+		pch = strtok(nullptr, " ");
+	}
+	if (count < size - 1) {
+		MJR_WARN_STREAM("Too few values in string '" << str << "' expected " << size << ". Filling with zeros.");
+		for (uint8_t i = count; i < size; i++) {
+			vec[i] = 0;
+		}
+	}
 }
 
 } // namespace mujoco_ros::util

@@ -1,10 +1,18 @@
 <a name="unreleased"></a>
 ## Unreleased
 
+### Added
+* Unnamed cameras don't cause crashes anymore, instead they are named `unnamed_cam_X` where is is a counting variable.
+* ROS 2 (target release Humble) support!
+
 ### Fixed
 * Fixed segfault when changing settings in the option panel of the GUI (caused by a wrong conditional assignment).
 * Fixed deadlock when reloading viewers from outside the viewer (not clicking Ctrl-L but using the ROS service).
 * Fixed offcam rendering after reset.
+* Occasional startup hiccups with GUI mode where the rendered environment would remain empty have been fixed (race condition with loading on separate threads).
+
+### Changed
+* Enforced codestyle naming convention for functions (CamelCase) with exception of accessors.
 
 <a name="0.10.0"></a>
 ## [0.10.0] - 2025-07-13
@@ -31,6 +39,7 @@ Loading and reset times are reported in the server debug log. All plugin stats c
 * Fixed occasional segfault when offscreen context was freed on shutdown.
 * Fixed segmented image never being rendered/published.
 * Fixed thread synchronization between MujocoEnv and Viewer.
+* Fixed copyright notice dates.
 
 ### Changed
 * Moved `mujoco_ros::Viewer::Clock` definition to `mujoco_ros::Clock` (into common_types.h).

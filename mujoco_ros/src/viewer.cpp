@@ -17,7 +17,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2023, Bielefeld University
+ *  Copyright (c) 2022-2025, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -50,14 +50,25 @@
 
 /* Authors: David P. Leins */
 
-#include <mujoco_ros/viewer.h>
+#include <climits>
+
+#include <mujoco_ros/ros_version.hpp>
+#include <mujoco_ros/logging.hpp>
+
+#include <mujoco_ros/viewer.hpp>
 
 #include <mujoco/mujoco.h>
 #include <mujoco/mjxmacro.h>
 #include <mujoco_ros/lodepng.h>
-#include <mujoco_ros/util.h>
+#include <mujoco_ros/util.hpp>
 
-#include <climits>
+#if MJR_ROS_VERSION == ROS_1
+#include <ros/ros.h>
+namespace roscpp = ros;
+#else // MJR_ROS_VERSION == ROS_2
+#include <rclcpp/rclcpp.hpp>
+namespace roscpp = rclcpp;
+#endif
 
 static std::string GetSavePath(const char *filename)
 {
@@ -554,7 +565,7 @@ void ShowImage(mujoco_ros::Viewer *viewer, mjrRect viewport, const unsigned char
 // load state from history buffer
 static void LoadScrubState(mujoco_ros::Viewer * /*viewer*/)
 {
-	ROS_WARN("Stepping backwards currently not supported!");
+	MJR_WARN("Stepping backwards currently not supported!");
 	// // get index into circular buffer
 	// int i = (viewer->scrub_index + viewer->history_cursor_) % viewer->nhistory_;
 	// i     = (i + viewer->nhistory_) % viewer->nhistory_;
@@ -1879,7 +1890,7 @@ Viewer::Viewer(std::unique_ptr<PlatformUIAdapter> platform_ui_adapter, MujocoEnv
     , is_passive_(is_passive)
 {
 	mjv_defaultScene(&scn);
-	env_->connectViewer(this);
+	env_->ConnectViewer(this);
 }
 
 //------------------------- Synchronize render and physics threads ---------------------------------
@@ -1887,8 +1898,8 @@ Viewer::Viewer(std::unique_ptr<PlatformUIAdapter> platform_ui_adapter, MujocoEnv
 // operations which require holding the mutex, prevents racing with physics thread
 void Viewer::Sync(bool state_only)
 {
-	MutexLock lock_env(env_->physics_thread_mutex_, std::defer_lock);
-	MutexLock lock(this->mtx, std::defer_lock);
+	RecursiveLock lock_env(env_->physics_thread_mutex_, std::defer_lock);
+	RecursiveLock lock(this->mtx, std::defer_lock);
 	std::lock(lock_env, lock); // avoid deadlock
 	if (!m_ || !d_) {
 		return;
@@ -2219,7 +2230,7 @@ void Viewer::Sync(bool state_only)
 	}
 
 	// Run render cbs from plugins
-	this->env_->runRenderCbs(&this->scn);
+	this->env_->RunRenderCbs(&this->scn);
 
 	// update settings
 	UpdateSettings(this, m_.get());
@@ -2263,7 +2274,7 @@ void Viewer::LoadMessage(const char *displayed_filename)
 	mju::strcpy_arr(this->filename, displayed_filename);
 
 	{
-		MutexLock lock(mtx);
+		RecursiveLock lock(mtx);
 		this->loadrequest.store(3);
 	}
 }
@@ -2271,22 +2282,21 @@ void Viewer::LoadMessage(const char *displayed_filename)
 void Viewer::LoadMessageClear()
 {
 	{
-		MutexLock lock(mtx);
+		RecursiveLock lock(mtx);
 		this->loadrequest.store(0);
 	}
 }
 
 void Viewer::Load(mjModelPtr m, mjDataPtr d, const char *displayed_filename)
 {
-	ROS_DEBUG("Model load requested from physics thread");
+	MJR_DEBUG_NAMED("Viewer", "Model load requested from physics thread");
 	this->mnew_ = std::move(m);
 	this->dnew_ = std::move(d);
 	mju::strcpy_arr(this->filename, displayed_filename);
 
 	std::future<void> reload_future;
 	{
-		// Lock mutex to create promise
-		MutexLock lock(mtx);
+		RecursiveLock lock(mtx);
 		reload_promise_.emplace();
 		reload_future = reload_promise_->get_future();
 	}
@@ -2297,12 +2307,12 @@ void Viewer::Load(mjModelPtr m, mjDataPtr d, const char *displayed_filename)
 	// be freed by the other thread (sometimes python)
 	reload_future.wait();
 	reload_promise_.reset();
-	ROS_DEBUG("Model load completed in physics thread");
+	MJR_DEBUG_NAMED("Viewer", "Model load completed in physics thread");
 }
 
 void Viewer::LoadOnRenderThread()
 {
-	ROS_DEBUG("Loading model in render thread");
+	MJR_WARN_NAMED("Viewer", "Loading model in render thread");
 	this->m_ = this->mnew_;
 	this->d_ = this->dnew_;
 
@@ -2482,7 +2492,7 @@ void Viewer::LoadOnRenderThread()
 	UpdateSettings(this, this->m_.get());
 
 	// clear request
-	ROS_DEBUG("Notifying load request complete");
+	MJR_WARN_NAMED("Viewer", "Notifying load request complete");
 	this->loadrequest.store(0);
 	if (reload_promise_) {
 		reload_promise_->set_value();
@@ -2858,16 +2868,16 @@ void Viewer::RenderLoop()
 	last_fps_update_ = Clock::now();
 
 	// Run event loop
-	while (!this->platform_ui->ShouldCloseWindow() && !this->exit_request.load()) {
+	while (roscpp::ok() && !this->platform_ui->ShouldCloseWindow() && !this->exit_request.load()) {
 		{
-			const MutexLock lock(this->mtx);
+			const RecursiveLock lock(this->mtx);
 
 			// Load model (not on first pass, to show "loading" label)
 			if (this->loadrequest.load() == 1) {
-				ROS_DEBUG("Model load triggered in render thread");
+				MJR_DEBUG_NAMED("Viewer", "Model load triggered in render thread");
 				this->LoadOnRenderThread();
 			} else if (this->loadrequest.load() == 2) {
-				ROS_DEBUG("Model load announced in render thread");
+				MJR_DEBUG_NAMED("Viewer", "Model load announced in render thread");
 				this->loadrequest.store(1);
 			}
 
@@ -2896,7 +2906,7 @@ void Viewer::RenderLoop()
 			}
 
 			// Update scene, doing a full sync if the environment is not busy loading
-			if (!is_passive_ && this->env_->getOperationalStatus() == 0) {
+			if (!is_passive_ && this->env_->GetOperationalStatus() == 0) {
 				Sync();
 			} else if (m_passive_ && d_passive_) {
 				// the user has called Sync() in their code
@@ -2911,7 +2921,7 @@ void Viewer::RenderLoop()
 				std::memcpy(this->scn.geoms + this->scn.ngeom, user_scn_geoms_.data(), ngeom * sizeof(mjvGeom));
 				this->scn.ngeom += ngeom;
 			}
-		} // MutexLock (unblocks simulation thread)
+		} // RecursiveLock (unblocks simulation thread)
 
 		// Render while simulation is running
 		this->Render();
@@ -2926,8 +2936,10 @@ void Viewer::RenderLoop()
 			frames_          = 0;
 		}
 	}
+	MJR_WARN_NAMED("Viewer", "Exiting viewer loop");
 
-	const MutexLock lock(this->mtx);
+	const RecursiveLock lock(this->mtx);
+	MJR_WARN_NAMED("Viewer", "Freeing scene");
 	mjv_freeScene(&this->scn);
 	if (is_passive_) {
 		mj_deleteData(d_passive_);
@@ -2935,7 +2947,7 @@ void Viewer::RenderLoop()
 	}
 
 	this->exit_request.store(2);
-	env_->disconnectViewer(this);
+	env_->DisconnectViewer(this);
 }
 
 void Viewer::AddToHistory()
@@ -2954,7 +2966,7 @@ void Viewer::AddToHistory()
 
 void Viewer::UpdateHField(int hfieldid)
 {
-	MutexLock lock(this->mtx);
+	RecursiveLock lock(this->mtx);
 	if (!m_ || hfieldid < 0 || hfieldid >= m_->nhfield) {
 		return;
 	}
@@ -2964,7 +2976,7 @@ void Viewer::UpdateHField(int hfieldid)
 
 void Viewer::UpdateMesh(int meshid)
 {
-	MutexLock lock(this->mtx);
+	RecursiveLock lock(this->mtx);
 	if (!m_ || meshid < 0 || meshid >= m_->nmesh) {
 		return;
 	}
@@ -2974,7 +2986,7 @@ void Viewer::UpdateMesh(int meshid)
 
 void Viewer::UpdateTexture(int texid)
 {
-	MutexLock lock(this->mtx);
+	RecursiveLock lock(this->mtx);
 	if (!m_ || texid < 0 || texid >= m_->ntex) {
 		return;
 	}
