@@ -15,6 +15,8 @@ def generate_launch_description():
     xacro.process_doc(doc)
     params = {'robot_description': doc.toxml()}
 
+    pendulum_config = os.path.join(get_package_share_directory('mujoco_ros2_base'), 'config','pendulum.yaml')
+
     node_robot_state_publisher = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
@@ -32,7 +34,8 @@ def generate_launch_description():
             parameters=[
                 {"MujocoPlugins": ['MujocoRos2Control'],
                 "MujocoXml": xml_path,
-                'MujocoPluginConfigs': mr2c_yaml_path}
+                'MujocoPluginConfigs': mr2c_yaml_path},
+                pendulum_config
             ],
             arguments=['--ros-args', '--log-level', 'DEBUG'],
         ),
