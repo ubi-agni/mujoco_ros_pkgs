@@ -85,6 +85,7 @@ bool MujocoRos2System::initSim(
           std::string act_name = joint_name + "act_pos";
           int act_idx = mj_name2id(m, mjOBJ_ACTUATOR, act_name.c_str());
           if(act_idx == -1)
+            this->dataPtr_->joints_[i].act_posidx = -1;  
             continue;
           this->dataPtr_->joints_[i].act_posidx = act_idx;
           this->dataPtr_->state_interfaces_.emplace_back(joint_name, 
@@ -96,6 +97,7 @@ bool MujocoRos2System::initSim(
           std::string act_name = joint_name + "act_vel";
           int act_idx = mj_name2id(m, mjOBJ_ACTUATOR, act_name.c_str());
           if(act_idx == -1)
+            this->dataPtr_->joints_[i].act_velidx = -1;
             continue;
           this->dataPtr_->joints_[i].act_velidx = act_idx;
           this->dataPtr_->state_interfaces_.emplace_back(joint_name, 
@@ -107,6 +109,7 @@ bool MujocoRos2System::initSim(
           std::string act_name = joint_name + "act_eff";
           int act_idx = mj_name2id(m, mjOBJ_ACTUATOR, act_name.c_str());
           if(act_idx == -1)
+            this->dataPtr_->joints_[i].act_effidx = -1;
             continue;
           this->dataPtr_->joints_[i].act_effidx = act_idx;
           this->dataPtr_->state_interfaces_.emplace_back(joint_name, 
@@ -166,6 +169,12 @@ hardware_interface::return_type MujocoRos2System::read(
   const rclcpp::Duration & period){
 
     RCLCPP_DEBUG(this->nh_->get_logger(), "read");
+    for(uint i = 0; i < this->dataPtr_->joints_.size(); i++){
+      // qposadr and dofadr are always populated, if the system was initialized successfully.
+      this->dataPtr_->joints_[i].joint_position = this->dataPtr_->d_->qpos[this->dataPtr_->joints_[i].joint_qposadr];
+      this->dataPtr_->joints_[i].joint_velocity = this->dataPtr_->d_->qvel[this->dataPtr_->joints_[i].joint_dofadr];
+      this->dataPtr_->joints_[i].joint_effort   = this->dataPtr_->d_->qfrc_applied[this->dataPtr_->joints_[i].joint_dofadr];
+    }
     return hardware_interface::return_type::OK;
   };
 
@@ -175,6 +184,21 @@ hardware_interface::return_type MujocoRos2System::write(
   const rclcpp::Duration & period){
 
     RCLCPP_DEBUG(this->nh_->get_logger(), "write");
+    for(uint i = 0; i < this->dataPtr_->joints_.size(); i++){
+      // Simply check the joint's control method, and whether the corresponding mj actuator index is populated or not
+      if(this->dataPtr_->joints_[i].joint_control_method & ControlMethod_::POSITION &&
+         this->dataPtr_->joints_[i].act_posidx != -1){
+        this->dataPtr_->d_->ctrl[this->dataPtr_->joints_[i].act_posidx]= this->dataPtr_->joints_[i].joint_position_cmd;
+      }
+      if(this->dataPtr_->joints_[i].joint_control_method & ControlMethod_::VELOCITY &&
+         this->dataPtr_->joints_[i].act_velidx != -1){
+      this->dataPtr_->d_->ctrl[this->dataPtr_->joints_[i].act_velidx]= this->dataPtr_->joints_[i].joint_velocity_cmd;
+      }
+      if(this->dataPtr_->joints_[i].joint_control_method & ControlMethod_::EFFORT &&
+         this->dataPtr_->joints_[i].act_effidx != -1){
+      this->dataPtr_->d_->ctrl[this->dataPtr_->joints_[i].act_effidx]= this->dataPtr_->joints_[i].joint_effort_cmd;
+      }
+    }
     return hardware_interface::return_type::OK;
   };
 
