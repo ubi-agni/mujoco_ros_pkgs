@@ -54,7 +54,6 @@ public:
 	{
 		env_ptr_ = env_ptr;
 		yaml_node_ = yaml_node;
-		RCLCPP_INFO(rclcpp::get_logger("MujocoPlugin"), "Plugin init");
 		// rosparam_config_ = config;
 		// node_handle_     = ros::NodeHandle(nh_namespace);
 		// env_ptr_         = env_ptr;
@@ -89,7 +88,6 @@ public:
 		// const auto start = rclcpp::Clock::now();
 		// const auto end = rclcpp::Clock::now();
 
-		RCLCPP_INFO_STREAM(rclcpp::get_logger("MujocoPlugin"), "safe load");
 		loading_successful_ = true;
 
 		// const auto start    = Clock::now();
@@ -114,7 +112,6 @@ public:
 			// reset();
 			// reset_time_ = Seconds(Clock::now() - start).count();
 
-			RCLCPP_INFO_STREAM(rclcpp::get_logger("MujocoPlugin"), "safe_reset");
 		}
 	}
 
@@ -126,7 +123,6 @@ public:
 	 */
 	void wrappedControlCallback(const mjModel* model, mjData* data)
 	{
-		RCLCPP_INFO_STREAM(rclcpp::get_logger("MujocoPlugin"), "wrappedControlCallback");
 		// const auto start = Clock::now();
 		// skip_ema_        = false;
 		controlCallback(model, data);
@@ -146,7 +142,6 @@ public:
 	 */
 	void wrappedPassiveCallback(const mjModel* model, mjData* data)
 	{
-		RCLCPP_INFO_STREAM(rclcpp::get_logger("MujocoPlugin"), "wrappedPassiveCallback");
 		// const auto start = Clock::now();
 		// skip_ema_        = false;
 		passiveCallback(model, data);
@@ -167,7 +162,6 @@ public:
 	 */
 	void wrappedRenderCallback(const mjModel* model, mjData* data, mjvScene* scene)
 	{
-		RCLCPP_INFO_STREAM(rclcpp::get_logger("MujocoPlugin"), "wrappedRenderCallback");
 		// const auto start = Clock::now();
 		// skip_ema_        = false;
 		renderCallback(model, data, scene);
@@ -187,7 +181,6 @@ public:
 	 */
 	void wrappedLastStageCallback(const mjModel* model, mjData* data)
 	{
-		RCLCPP_INFO_STREAM(rclcpp::get_logger("MujocoPlugin"), "wrappedLastStageCallback");
 		// const auto start = Clock::now();
 		// skip_ema_        = false;
 		lastStageCallback(model, data);
