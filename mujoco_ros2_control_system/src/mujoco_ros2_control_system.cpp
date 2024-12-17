@@ -168,9 +168,7 @@ hardware_interface::return_type MujocoRos2System::read(
   const rclcpp::Time & time,
   const rclcpp::Duration & /* period */){
 
-    // double control_period = 1.0 / static_cast<double>(*this->dataPtr_->update_rate);
-    // double dt = time.seconds() - this->dataPtr_->last_update_sim_time_mj_.seconds();
-    if(time.seconds() - this->dataPtr_->last_update_sim_time_mj_.seconds() >= 1.0 / static_cast<double>(*this->dataPtr_->update_rate)){
+    if(epsilonComp(time, this->dataPtr_->last_update_sim_time_mj_, static_cast<double>(*this->dataPtr_->update_rate))){
       RCLCPP_DEBUG(this->nh_->get_logger(), "read, curr time: %f, last update: %f", time.seconds(), this->dataPtr_->last_update_sim_time_mj_.seconds());
       for(uint i = 0; i < this->dataPtr_->joints_.size(); i++){
         // qposadr and dofadr are always populated, if the system was initialized successfully.
@@ -189,7 +187,7 @@ hardware_interface::return_type MujocoRos2System::write(
   const rclcpp::Time & time,
   const rclcpp::Duration & period){
     
-    if(time.seconds() - this->dataPtr_->last_update_sim_time_mj_.seconds() >= 1.0 / static_cast<double>(*this->dataPtr_->update_rate)){
+    if(epsilonComp(time, this->dataPtr_->last_update_sim_time_mj_, static_cast<double>(*this->dataPtr_->update_rate))){
       RCLCPP_DEBUG(this->nh_->get_logger(), "write");
       for(uint i = 0; i < this->dataPtr_->joints_.size(); i++){
         // Simply check the joint's control method, and whether the corresponding mj actuator index is populated or not
