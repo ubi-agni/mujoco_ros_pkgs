@@ -1,4 +1,5 @@
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 import os
@@ -23,14 +24,14 @@ def generate_launch_description():
         output='screen',
         parameters=[params]
     )
-    node_joint_state_publisher = Node(
+    node_joint_state_broadcaster = Node( # RVIZ dependency
             package='joint_state_publisher',
             executable='joint_state_publisher',
             name='joint_state_publisher',
             parameters=[
-                {'source_list': ['franka/joint_states', '/panda_gripper_sim_node/joint_states'],
-                 'rate': 30}],
-        ),
+                {'source_list': ['pendulum/joint_states'],
+                 'rate': 10}],
+    )
     return LaunchDescription([
         Node(
             package="mujoco_ros2_base",
@@ -44,7 +45,15 @@ def generate_launch_description():
                 'MujocoPluginConfigs': mr2c_yaml_path},
                 pendulum_config
             ],
+            remappings=[('joint_states', 'pendulum/joint_states')],
             arguments=['--ros-args', '--log-level', 'DEBUG'],
         ),
-        node_robot_state_publisher
+        node_robot_state_publisher,
+        Node( # RVIZ dependency
+            package='controller_manager',
+            executable='spawner',
+            arguments=['joint_state_broadcaster'],
+            output='screen',
+        ),
+        node_joint_state_broadcaster
     ])
