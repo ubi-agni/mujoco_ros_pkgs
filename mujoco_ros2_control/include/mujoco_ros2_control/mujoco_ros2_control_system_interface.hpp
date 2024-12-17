@@ -89,6 +89,16 @@ public:
     mjData* d,
     int & update_rate) = 0;
 
+  /// @brief Performs an epsilon (1e-5) comparison to deal with floating point precision bugs.
+  /// @param time1 The "current" time.
+  /// @param time2 The "last" time to substract time1 by.
+  /// @param update_rate Update rate of the SystemInterface, which will be compared with time1-time2.
+  /// @return 
+  bool epsilonComp(const rclcpp::Time & time1, const rclcpp::Time & time2, const double update_rate){
+    const double eps = 1e-5;
+    return abs(time1.seconds() - time2.seconds() - (1.0 / update_rate)) < eps;
+  }
+
   // Methods used to control a joint.
   enum ControlMethod_
   {
