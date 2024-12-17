@@ -51,7 +51,7 @@ bool MujocoRos2System::initSim(
           this->dataPtr_->joints_[j].joint_position = d->qpos[this->dataPtr_->joints_[i].joint_qposadr];
         }
         // velocity = qvel
-        if(joint_info.state_interfaces[j].name == "velocity"){
+        else if(joint_info.state_interfaces[j].name == "velocity"){
           this->dataPtr_->state_interfaces_.emplace_back(joint_name, 
                                                           hardware_interface::HW_IF_VELOCITY, 
                                                           &this->dataPtr_->joints_[i].joint_velocity);
@@ -60,7 +60,7 @@ bool MujocoRos2System::initSim(
         }
 
         // effort = qfrc, but multipanda has actuator_force + qfrc_gravcomp... need to check
-        if(joint_info.state_interfaces[j].name == "effort"){
+        else if(joint_info.state_interfaces[j].name == "effort"){
           this->dataPtr_->state_interfaces_.emplace_back(joint_name, 
                                                           hardware_interface::HW_IF_EFFORT, 
                                                           &this->dataPtr_->joints_[i].joint_effort);
@@ -81,6 +81,7 @@ bool MujocoRos2System::initSim(
       */
       for (uint j = 0; j < joint_info.command_interfaces.size(); ++j) {
         RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "\tCommand name: " << joint_info.command_interfaces[j].name);
+        // for some reason, this part crashes with realloc(): invalid pointer, but only sometimes?
         if(joint_info.command_interfaces[j].name == "position"){
           std::string act_name = joint_name + "_act_pos";
           int act_idx = mj_name2id(m, mjOBJ_ACTUATOR, act_name.c_str());
@@ -95,7 +96,7 @@ bool MujocoRos2System::initSim(
                                                           &this->dataPtr_->joints_[i].joint_position_cmd);
           this->dataPtr_->joints_[i].joint_position_cmd = d->qvel[this->dataPtr_->joints_[i].act_posidx];
         }
-        if(joint_info.command_interfaces[j].name == "velocity"){
+        else if(joint_info.command_interfaces[j].name == "velocity"){
           std::string act_name = joint_name + "_act_vel";
           int act_idx = mj_name2id(m, mjOBJ_ACTUATOR, act_name.c_str());
           if(act_idx == -1){
@@ -109,7 +110,7 @@ bool MujocoRos2System::initSim(
                                                           &this->dataPtr_->joints_[i].joint_velocity_cmd);
           this->dataPtr_->joints_[i].joint_velocity_cmd = d->qvel[this->dataPtr_->joints_[i].act_velidx];
         }
-        if(joint_info.command_interfaces[j].name == "effort"){
+        else if(joint_info.command_interfaces[j].name == "effort"){
           std::string act_name = joint_name + "_act_eff";
           int act_idx = mj_name2id(m, mjOBJ_ACTUATOR, act_name.c_str());
           if(act_idx == -1){
@@ -123,9 +124,10 @@ bool MujocoRos2System::initSim(
                                                           &this->dataPtr_->joints_[i].joint_effort_cmd);
           this->dataPtr_->joints_[i].joint_effort_cmd = d->qvel[this->dataPtr_->joints_[i].act_effidx];                                                          
         }
+        RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "\tFinished processing: " << joint_info.command_interfaces[j].name);
       }
       this->dataPtr_->joints_[i].is_actuated = (joint_info.command_interfaces.size() > 0);
-
+      RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "\tJoint processing done: " << joint_name);
     }
     return true;
   }
