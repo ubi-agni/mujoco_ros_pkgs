@@ -39,13 +39,7 @@ public:
 		d_.reset(mj_makeData(m_.get()));
 
 		// check if applying a force to the pendulum then reading actually steps the simulation properly
-		d_->ctrl[0] = 0.1;
 		mj_step(m_.get(), d_.get());
-		// for(auto i = 0; i < 3000; i++){
-		//     mj_step(m_.get(), d_.get());
-		//     RCLCPP_INFO(get_logger(), "Pendulum jnt: %f", d_->qpos[0]);
-		// }
-		// seems to be working!
 
 		// And from here, check for the presence of "mujoco_ros2_control", and load the plugin
 		if (std::find(mj_ros2_plugins_.begin(), mj_ros2_plugins_.end(), std::string("MujocoRos2Control")) !=
@@ -75,7 +69,7 @@ public:
 			int env_ptr = 99;
 			plugin_ptr_->init(env_ptr, mj_yaml_node);
 			plugin_ptr_->safe_load(m_.get(), d_.get());
-			for(auto i = 0; i < 10; i++){
+			while(rclcpp::ok()){
 				mj_step(m_.get(), d_.get());
 				d_->ctrl[0] = 0.1;
 				plugin_ptr_->wrappedControlCallback(m_.get(), d_.get());
@@ -83,6 +77,7 @@ public:
 				// plugin_ptr_->wrappedRenderCallback(m_.get(), d_.get(), scene);
 				// plugin_ptr_->wrappedLastStageCallback(m_.get(), d_.get());
 				RCLCPP_INFO(get_logger(), "Pendulum jnt: %f", d_->qpos[0]);
+				rclcpp::sleep_for(std::chrono::milliseconds(500));
 			}
 		}
 	}
