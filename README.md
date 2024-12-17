@@ -23,6 +23,12 @@ Basically, in the current structure, `mujoco_ros2_base` loads `mujoco_ros2_contr
 
 To try out, install ROS2 and MuJoCo 3.2.0, build the package and then run `ros2 launch mujoco_ros2_base mujoco_ros2_main_launch.py`.
 
+The pendulum can be visualized in RVIZ. You can open up the `pendulum.rviz` file under `mujoco_ros2_base/config/rviz` to see it.
+
+Currently, we use MuJoCo's simulation time (`mjData* d_->time`) to synchronize the controller's read/write loops. This means the main loop's `sleep` function needs to be adjusted, if you want the simulation to run faster.
+This is mainly to give users more control over how the simulation and control are executed, and to not be bound by the computer's resources should super short timesteps be required.
+This will, of course, cause some issues when using it with other nodes that run dependent on ROS' own time. A feature for changing the source of the clock is planned.
+
 ### Continuous Integration
 
 service    | Noetic / One | Humble (coming soon)
