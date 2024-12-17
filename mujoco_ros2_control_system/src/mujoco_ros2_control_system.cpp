@@ -82,39 +82,45 @@ bool MujocoRos2System::initSim(
       for (uint j = 0; j < joint_info.command_interfaces.size(); ++j) {
         RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "\tCommand name: " << joint_info.command_interfaces[j].name);
         if(joint_info.command_interfaces[j].name == "position"){
-          std::string act_name = joint_name + "act_pos";
+          std::string act_name = joint_name + "_act_pos";
           int act_idx = mj_name2id(m, mjOBJ_ACTUATOR, act_name.c_str());
-          if(act_idx == -1)
+          if(act_idx == -1){
+            RCLCPP_WARN(this->nh_->get_logger(), "Could not find a position actuator with name %s in the mujoco xml file.", act_name.c_str());
             this->dataPtr_->joints_[i].act_posidx = -1;  
             continue;
+          }
           this->dataPtr_->joints_[i].act_posidx = act_idx;
-          this->dataPtr_->state_interfaces_.emplace_back(joint_name, 
+          this->dataPtr_->command_interfaces_.emplace_back(joint_name, 
                                                           hardware_interface::HW_IF_POSITION, 
                                                           &this->dataPtr_->joints_[i].joint_position_cmd);
           this->dataPtr_->joints_[i].joint_position_cmd = d->qvel[this->dataPtr_->joints_[i].act_posidx];
         }
         if(joint_info.command_interfaces[j].name == "velocity"){
-          std::string act_name = joint_name + "act_vel";
+          std::string act_name = joint_name + "_act_vel";
           int act_idx = mj_name2id(m, mjOBJ_ACTUATOR, act_name.c_str());
-          if(act_idx == -1)
+          if(act_idx == -1){
+            RCLCPP_WARN(this->nh_->get_logger(), "Could not find a position actuator with name %s in the mujoco xml file.", act_name.c_str());
             this->dataPtr_->joints_[i].act_velidx = -1;
             continue;
+          }
           this->dataPtr_->joints_[i].act_velidx = act_idx;
-          this->dataPtr_->state_interfaces_.emplace_back(joint_name, 
+          this->dataPtr_->command_interfaces_.emplace_back(joint_name, 
                                                           hardware_interface::HW_IF_VELOCITY, 
                                                           &this->dataPtr_->joints_[i].joint_velocity_cmd);
           this->dataPtr_->joints_[i].joint_velocity_cmd = d->qvel[this->dataPtr_->joints_[i].act_velidx];
         }
         if(joint_info.command_interfaces[j].name == "effort"){
-          std::string act_name = joint_name + "act_eff";
+          std::string act_name = joint_name + "_act_eff";
           int act_idx = mj_name2id(m, mjOBJ_ACTUATOR, act_name.c_str());
-          if(act_idx == -1)
+          if(act_idx == -1){
+            RCLCPP_WARN(this->nh_->get_logger(), "Could not find a position actuator with name %s in the mujoco xml file.", act_name.c_str());
             this->dataPtr_->joints_[i].act_effidx = -1;
             continue;
+          }
           this->dataPtr_->joints_[i].act_effidx = act_idx;
-          this->dataPtr_->state_interfaces_.emplace_back(joint_name, 
+          this->dataPtr_->command_interfaces_.emplace_back(joint_name, 
                                                           hardware_interface::HW_IF_POSITION, 
-                                                          &this->dataPtr_->joints_[i].joint_position_cmd);
+                                                          &this->dataPtr_->joints_[i].joint_effort_cmd);
           this->dataPtr_->joints_[i].joint_effort_cmd = d->qvel[this->dataPtr_->joints_[i].act_effidx];                                                          
         }
       }
