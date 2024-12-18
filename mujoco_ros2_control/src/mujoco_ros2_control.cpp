@@ -246,6 +246,7 @@ bool MujocoRos2ControlPlugin::load(const mjModel *model, mjData *data)
 
 	// Create the controller manager
 	RCLCPP_INFO(this->dataPtr_->node_->get_logger(), "Loading controller_manager");
+		// This part sometimes breaks with error munmap_chunk(): invalid pointer
 	this->dataPtr_->controller_manager_.reset(
 		new controller_manager::ControllerManager(
 		std::move(resource_manager_),
@@ -270,7 +271,7 @@ bool MujocoRos2ControlPlugin::load(const mjModel *model, mjData *data)
 	// Force setting of use_sim_time parameter
 	this->dataPtr_->controller_manager_->set_parameter(
 		rclcpp::Parameter("use_sim_time", rclcpp::ParameterValue(true)));
-
+		
 	return true;
 }
 
