@@ -234,6 +234,26 @@ else()
     RUNTIME DESTINATION lib/${PROJECT_NAME}
     ARCHIVE DESTINATION lib/${PROJECT_NAME}
   )
+  
+  ament_export_include_directories(
+    include
+  )
+  ament_export_dependencies(
+    ament_cmake
+    rclcpp
+    pluginlib
+    tf2
+    tf2_ros
+    image_transport
+    camera_info_manager
+    geometry_msgs
+    tf2_geometry_msgs
+    mujoco_ros_msgs
+    rosgraph_msgs
+    sensor_msgs
+    std_srvs
+  )
+
 
   ament_export_include_directories(
     include
