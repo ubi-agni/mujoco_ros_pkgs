@@ -9,8 +9,9 @@ import xacro
 
 def generate_launch_description():
     mujoco_ros_path = get_package_share_directory('mujoco_ros')
-    xml_path = os.path.join(mujoco_ros_path, 'assets', 'pendulum.xml')
-    xacro_file = os.path.join(mujoco_ros_path, 'assets', 'pendulum.urdf')
+    mjr2_control_path = get_package_share_directory('mujoco_ros2_control')
+    xml_path = os.path.join(mjr2_control_path, 'example', 'pendulum.xml')
+    xacro_file = os.path.join(mjr2_control_path, 'example', 'pendulum.urdf')
     doc = xacro.parse(open(xacro_file))
     xacro.process_doc(doc)
     params = {'robot_description': doc.toxml()}
@@ -21,14 +22,16 @@ def generate_launch_description():
         package='robot_state_publisher',
         executable='robot_state_publisher',
         output='screen',
+        namespace="mujoco_ros2_control",
         parameters=[params]
     )
     node_joint_state_broadcaster = Node( # RVIZ dependency
             package='joint_state_publisher',
             executable='joint_state_publisher',
             name='joint_state_publisher',
+            namespace="mujoco_ros2_control",
             parameters=[
-                {'source_list': ['pendulum/joint_states'],
+                {'source_list': ['/controller_manager/joint_states'],
                  'rate': 10}],
     )
     return LaunchDescription([
@@ -38,14 +41,15 @@ def generate_launch_description():
                 'use_sim_time': "true",
                 'modelfile': xml_path,
                 'verbose': "true",
+                'mujoco_plugin_config': os.path.join(mjr2_control_path, 'example', 'ros2_control_plugins_example.yaml')
             }.items()
         ),
         node_robot_state_publisher,
-        # Node( # RVIZ dependency
+        # Node( # RVIZ dependency; broken right now
         #     package='controller_manager',
         #     executable='spawner',
         #     arguments=['joint_state_broadcaster'],
         #     output='screen',
         # ),
-        # node_joint_state_broadcaster
+        node_joint_state_broadcaster
     ])

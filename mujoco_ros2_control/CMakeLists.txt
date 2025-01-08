@@ -52,7 +52,7 @@ install(
 )
 
 install(
-  DIRECTORY launch
+  DIRECTORY launch example
   DESTINATION share/${PROJECT_NAME}
 )
 
