@@ -65,14 +65,14 @@ MujocoRos2ControlPlugin::~MujocoRos2ControlPlugin()
 	this->dataPtr_->thread_executor_spin_.join();
 }
 
-void MujocoRos2ControlPlugin::controlCallback(const mjModel* /* model */, mjData* data)
+void MujocoRos2ControlPlugin::ControlCallback(const mjModel* /* model */, mjData* data)
 {
 	
 	rclcpp::Time sim_time_mj = rclcpp::Time(static_cast<int64_t>(data->time*1e9), RCL_STEADY_TIME);
 	rclcpp::Duration sim_period = sim_time_mj - this->dataPtr_->last_update_sim_time_mj_;
 	this->dataPtr_->controller_manager_->write(sim_time_mj, sim_period);
 };
-void MujocoRos2ControlPlugin::passiveCallback(const mjModel* /* model */, mjData* data)
+void MujocoRos2ControlPlugin::PassiveCallback(const mjModel* /* model */, mjData* data)
 {
 	rclcpp::Time sim_time_mj = rclcpp::Time(static_cast<int64_t>(data->time*1e9), RCL_STEADY_TIME);
 	rclcpp::Duration sim_period = sim_time_mj - this->dataPtr_->last_update_sim_time_mj_;
@@ -80,17 +80,17 @@ void MujocoRos2ControlPlugin::passiveCallback(const mjModel* /* model */, mjData
 	this->dataPtr_->controller_manager_->read(sim_time_mj, sim_period);
 	this->dataPtr_->controller_manager_->update(sim_time_mj, sim_period);
 };
-void MujocoRos2ControlPlugin::renderCallback(const mjModel* /* model */, mjData* /* data */, mjvScene* /* scene */)
+void MujocoRos2ControlPlugin::RenderCallback(const mjModel* /* model */, mjData* /* data */, mjvScene* /* scene */)
 {
 };
-void MujocoRos2ControlPlugin::lastStageCallback(const mjModel* /* model */, mjData* /* data */)
+void MujocoRos2ControlPlugin::LastStageCallback(const mjModel* /* model */, mjData* /* data */)
 {
 };
-void MujocoRos2ControlPlugin::onGeomChanged(const mjModel* /* model */, mjData* /* data */, const int /* geom_id */)
+void MujocoRos2ControlPlugin::OnGeomChanged(const mjModel* /* model */, mjData* /* data */, const int /* geom_id */)
 {
 };
 
-bool MujocoRos2ControlPlugin::load(const mjModel *model, mjData *data)
+bool MujocoRos2ControlPlugin::Load(const mjModel *model, mjData *data)
 {
 	dataPtr_ = std::make_unique<MujocoRos2ControlPluginPrivate>();
 	
@@ -98,29 +98,29 @@ bool MujocoRos2ControlPlugin::load(const mjModel *model, mjData *data)
   	std::set<std::string>::iterator it;
 	RCLCPP_INFO_STREAM(get_my_logger(), "loading with given model and data");
 	// construct a set of yaml node's keys to make param processing more concise
-	for (auto it = yaml_node_.begin(); it != yaml_node_.end(); ++it) {
-		YAML::Node key   = it->first;
-		yaml_keys.insert(key.as<std::string>());
-	}
+	// for (auto it = yaml_node_.begin(); it != yaml_node_.end(); ++it) {
+	// 	YAML::Node key   = it->first;
+	// 	yaml_keys.insert(key.as<std::string>());
+	// }
 	
 	// get the name of the robot_state_publisher node
-	if(yaml_keys.find(std::string("robot_description_node")) != yaml_keys.end()){
-		std::string robot_description_node = yaml_node_["robot_description_node"].as<std::string>();
-		if (!robot_description_node.empty()) {
-			this->dataPtr_->robot_description_node_ = robot_description_node;
-		}
-	}
+	// if(yaml_keys.find(std::string("robot_description_node")) != yaml_keys.end()){
+	// 	std::string robot_description_node = yaml_node_["robot_description_node"].as<std::string>();
+	// 	if (!robot_description_node.empty()) {
+	// 		this->dataPtr_->robot_description_node_ = robot_description_node;
+	// 	}
+	// }
 	RCLCPP_INFO(
 		get_my_logger(),
 		"robot_description_node is %s", this->dataPtr_->robot_description_node_.c_str()
 	);
 	// get the name of the srv from the node above that holds the URDF string
-	if(yaml_keys.find(std::string("robot_description_node")) != yaml_keys.end()){
-		std::string robot_description = yaml_node_["robot_description"].as<std::string>();
-		if (!robot_description.empty()) {
-			this->dataPtr_->robot_description_ = robot_description;
-		}
-	}
+	// if(yaml_keys.find(std::string("robot_description_node")) != yaml_keys.end()){
+	// 	std::string robot_description = yaml_node_["robot_description"].as<std::string>();
+	// 	if (!robot_description.empty()) {
+	// 		this->dataPtr_->robot_description_ = robot_description;
+	// 	}
+	// }
 	RCLCPP_INFO(
 		get_my_logger(),
 		"robot_description srv is %s", this->dataPtr_->robot_description_.c_str()
@@ -131,17 +131,17 @@ bool MujocoRos2ControlPlugin::load(const mjModel *model, mjData *data)
 	// The namespace will also be used for the nodes of this.
 	std::string ns = "/";
 	// Set namespace if tag is present
-    if (yaml_keys.find(std::string("namespace")) != yaml_keys.end()) {
-      	ns = yaml_node_["namespace"].as<std::string>();
-		RCLCPP_INFO(get_my_logger(), "Namespace: %s", ns.c_str());
-		// prevent exception: namespace must be absolute, it must lead with a '/'
-		if (ns.empty() || ns[0] != '/') {
-			ns = '/' + ns;
-		}
-		if (ns.length() > 1) {
-			this->dataPtr_->robot_description_node_ = ns + "/" + this->dataPtr_->robot_description_node_;
-		}
-    }
+    // if (yaml_keys.find(std::string("namespace")) != yaml_keys.end()) {
+    //   	ns = yaml_node_["namespace"].as<std::string>();
+	// 	RCLCPP_INFO(get_my_logger(), "Namespace: %s", ns.c_str());
+	// 	// prevent exception: namespace must be absolute, it must lead with a '/'
+    // }
+	if (ns.empty() || ns[0] != '/') {
+		ns = '/' + ns;
+	}
+	if (ns.length() > 1) {
+		this->dataPtr_->robot_description_node_ = ns + "/" + this->dataPtr_->robot_description_node_;
+	}
 	RCLCPP_INFO(get_my_logger(), "robot_description_node fully qualified name: %s", this->dataPtr_->robot_description_node_.c_str());
 
 
@@ -275,7 +275,7 @@ bool MujocoRos2ControlPlugin::load(const mjModel *model, mjData *data)
 	return true;
 }
 
-void MujocoRos2ControlPlugin::reset()
+void MujocoRos2ControlPlugin::Reset()
 {
 	RCLCPP_INFO_STREAM(get_my_logger(), "reset");
 }
@@ -283,4 +283,4 @@ void MujocoRos2ControlPlugin::reset()
 } // namespace mujoco_ros2
 
 #include <pluginlib/class_list_macros.hpp>
-PLUGINLIB_EXPORT_CLASS(mujoco_ros2_control::MujocoRos2ControlPlugin, mujoco_ros2::MujocoPlugin)
+PLUGINLIB_EXPORT_CLASS(mujoco_ros2_control::MujocoRos2ControlPlugin, mujoco_ros::MujocoPlugin)

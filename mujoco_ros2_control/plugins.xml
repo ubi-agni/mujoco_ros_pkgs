@@ -1,5 +1,5 @@
 <library path="mujoco_ros2_control">
-  <class type="mujoco_ros2_control::MujocoRos2ControlPlugin" base_class_type="mujoco_ros2::MujocoPlugin">
+  <class type="mujoco_ros2_control::MujocoRos2ControlPlugin" base_class_type="mujoco_ros::MujocoPlugin">
     <description>This is a ros2_control plugin.</description>
   </class>
 </library>

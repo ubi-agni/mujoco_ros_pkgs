@@ -10,8 +10,8 @@
 #include <hardware_interface/component_parser.hpp>
 #include <hardware_interface/types/hardware_interface_type_values.hpp>
 
-#include "mujoco_ros2_base/common_types.h"
-#include "mujoco_ros2_base/plugin_utils.h"
+#include "mujoco_ros/ros_two/plugin_utils.hpp"
+#include "mujoco_ros/common_types.hpp"
 #include "mujoco_ros2_control/visibility_control.h"
 #include "mujoco_ros2_control/mujoco_ros2_control_system_interface.hpp"
 
@@ -60,17 +60,17 @@ public:
 		robot_hw_sim_loader_{nullptr};
 };
 
-class MujocoRos2ControlPlugin : public mujoco_ros2::MujocoPlugin
+class MujocoRos2ControlPlugin : public mujoco_ros::MujocoPlugin
 {
 public:
 	// MujocoRos2ControlPlugin();
 
 	~MujocoRos2ControlPlugin() override;
-	void controlCallback(const mjModel* model, mjData* data) override;
-	void passiveCallback(const mjModel* model, mjData* data) override;
-	void renderCallback(const mjModel* model, mjData* data, mjvScene* scene) override;
-	void lastStageCallback(const mjModel* model, mjData* data) override;
-	void onGeomChanged(const mjModel* model, mjData* data, const int geom_id) override;
+	void ControlCallback(const mjModel* model, mjData* data) override;
+	void PassiveCallback(const mjModel* model, mjData* data) override;
+	void RenderCallback(const mjModel* model, mjData* data, mjvScene* scene) override;
+	void LastStageCallback(const mjModel* model, mjData* data) override;
+	void OnGeomChanged(const mjModel* model, mjData* data, const int geom_id) override;
 
 protected:
 	/**
@@ -81,12 +81,12 @@ protected:
 	 * @return true on succesful load.
 	 * @return false if load was not successful.
 	 */
-	bool load(const mjModel *m, mjData *d) override;
+	bool Load(const mjModel *m, mjData *d) override;
 
 	/**
 	 * @brief Called on reset.
 	 */
-	void reset() override;
+	void Reset() override;
 
 private:
 	std::unique_ptr<MujocoRos2ControlPluginPrivate> dataPtr_;

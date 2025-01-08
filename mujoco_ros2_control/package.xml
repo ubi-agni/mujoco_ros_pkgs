@@ -10,7 +10,7 @@
   <buildtool_depend>ament_cmake_ros</buildtool_depend>
 
   <depend>rclcpp</depend>
-  <depend>mujoco_ros2_base</depend>
+  <depend>mujoco_ros</depend>
   <depend>pluginlib</depend>
   <depend>controller_manager</depend>
   <depend>hardware_interface</depend>
