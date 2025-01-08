@@ -1,0 +1,32 @@
+mujoco_server:
+  ros__parameters:
+    MujocoPlugins:
+      names:
+      # - ros2_sensors
+        - mujoco_ros2_control
+      # ros2_sensors:
+      #   type: mujoco_ros_sensors/Sensors
+      #   radius: 0.1
+      #   color: [0.0, 1.0, 0.0, 1.0]
+      mujoco_ros2_control:
+        type: mujoco_ros2_control::MujocoRos2ControlPlugin
+        hardware:
+          type: mujoco_ros_control/RobotHW
+          control_period: 0.001
+        params:
+          namespace: ""
+          robot_description_node: "robot_state_publisher"
+          robot_description: "robot_description"
+    
+    # controller manager parameters
+    update_rate: 10
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+      
+  
+controller_manager:
+  mujoco_server:
+    ros__parameters:
+      update_rate: 10
+      joint_state_broadcaster:
+        type: joint_state_broadcaster/JointStateBroadcaster
