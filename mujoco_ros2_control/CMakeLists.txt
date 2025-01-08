@@ -8,7 +8,7 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_ros REQUIRED)
-find_package(mujoco_ros2_base REQUIRED)
+find_package(mujoco_ros REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(controller_manager REQUIRED)
 find_package(mujoco 3.2.0 REQUIRED) # TODO: How to get away without explicitly linking mujoco here?
@@ -17,7 +17,7 @@ find_package(yaml-cpp REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(pluginlib REQUIRED)
 
-pluginlib_export_plugin_description_file(mujoco_ros2_base plugins.xml)
+pluginlib_export_plugin_description_file(mujoco_ros plugins.xml)
 
 add_library(mujoco_ros2_control SHARED src/mujoco_ros2_control.cpp)
 target_compile_features(mujoco_ros2_control PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
@@ -25,6 +25,7 @@ target_include_directories(mujoco_ros2_control PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
   ${YAML_CPP_INCLUDE_DIRS}
+  /home/bimanual/leins_ws/build/mujoco_ros/include # so this solves not found error wrt mujoco_ros/ros_version.hpp
 )
 
 target_link_libraries(mujoco_ros2_control
@@ -37,7 +38,7 @@ ament_target_dependencies(
   rclcpp
   hardware_interface
   controller_manager
-  "mujoco_ros2_base"
+  "mujoco_ros"
   "pluginlib"
 )
 
@@ -89,7 +90,7 @@ ament_export_libraries(
 ament_export_dependencies(
   controller_manager
   hardware_interface
-  mujoco_ros2_base
+  mujoco_ros
   pluginlib
   rclcpp
 )
