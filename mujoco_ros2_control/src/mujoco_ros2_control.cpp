@@ -94,56 +94,56 @@ bool MujocoRos2ControlPlugin::Load(const mjModel *model, mjData *data)
 {
 	dataPtr_ = std::make_unique<MujocoRos2ControlPluginPrivate>();
 	
-	std::set<std::string> yaml_keys{};
-  	std::set<std::string>::iterator it;
 	RCLCPP_INFO_STREAM(get_my_logger(), "loading with given model and data");
-	// construct a set of yaml node's keys to make param processing more concise
-	// for (auto it = yaml_node_.begin(); it != yaml_node_.end(); ++it) {
-	// 	YAML::Node key   = it->first;
-	// 	yaml_keys.insert(key.as<std::string>());
-	// }
-	
+
 	// get the name of the robot_state_publisher node
-	// if(yaml_keys.find(std::string("robot_description_node")) != yaml_keys.end()){
-	// 	std::string robot_description_node = yaml_node_["robot_description_node"].as<std::string>();
-	// 	if (!robot_description_node.empty()) {
-	// 		this->dataPtr_->robot_description_node_ = robot_description_node;
-	// 	}
-	// }
-	RCLCPP_INFO(
-		get_my_logger(),
-		"robot_description_node is %s", this->dataPtr_->robot_description_node_.c_str()
-	);
+	std::string robot_description_node;
+	if (env_ptr_->has_parameter(MUJOCO_PLUGIN_PARAM_NAME + "." + plugin_name + ".params.robot_description_node")) {
+		robot_description_node = env_ptr_->get_parameter(MUJOCO_PLUGIN_PARAM_NAME + "." + plugin_name + ".params.robot_description_node").as_string();
+	}
+
+	if (robot_description_node.empty()) {
+		RCLCPP_INFO_STREAM(get_my_logger(), "No string provided for robot_description_node." 
+											"Proceeding with default value " << this->dataPtr_->robot_description_node_);
+	}
+	else{
+		this->dataPtr_->robot_description_node_ = robot_description_node;
+		RCLCPP_INFO_STREAM(get_my_logger(), "robot_description_node name is " << this->dataPtr_->robot_description_node_);
+	}
+
+
 	// get the name of the srv from the node above that holds the URDF string
-	// if(yaml_keys.find(std::string("robot_description_node")) != yaml_keys.end()){
-	// 	std::string robot_description = yaml_node_["robot_description"].as<std::string>();
-	// 	if (!robot_description.empty()) {
-	// 		this->dataPtr_->robot_description_ = robot_description;
-	// 	}
-	// }
-	RCLCPP_INFO(
-		get_my_logger(),
-		"robot_description srv is %s", this->dataPtr_->robot_description_.c_str()
-	);
+	// get the name of the robot_state_publisher node
+	std::string robot_description;
+	if (env_ptr_->has_parameter(MUJOCO_PLUGIN_PARAM_NAME + "." + plugin_name + ".params.robot_description")) {
+		robot_description = env_ptr_->get_parameter(MUJOCO_PLUGIN_PARAM_NAME + "." + plugin_name + ".params.robot_description").as_string();
+	}
+
+	if (robot_description.empty()) {
+		RCLCPP_INFO_STREAM(get_my_logger(), "No string provided for robot_description service." 
+											"Proceeding with default value " << this->dataPtr_->robot_description_);
+	}
+	else{
+		this->dataPtr_->robot_description_ = robot_description;
+		RCLCPP_INFO_STREAM(get_my_logger(), "robot_description service name is " << this->dataPtr_->robot_description_);
+	}
 	// todo: Make the logic for passing additional ros-args when initializing, like L292~ in ign_ros2_control_plugin.cpp
 
 	// Construct the fully qualified robot_description_node's name.
 	// The namespace will also be used for the nodes of this.
 	std::string ns = "/";
-	// Set namespace if tag is present
-    // if (yaml_keys.find(std::string("namespace")) != yaml_keys.end()) {
-    //   	ns = yaml_node_["namespace"].as<std::string>();
-	// 	RCLCPP_INFO(get_my_logger(), "Namespace: %s", ns.c_str());
-	// 	// prevent exception: namespace must be absolute, it must lead with a '/'
-    // }
-	if (ns.empty() || ns[0] != '/') {
-		ns = '/' + ns;
-	}
-	if (ns.length() > 1) {
-		this->dataPtr_->robot_description_node_ = ns + "/" + this->dataPtr_->robot_description_node_;
+	if (env_ptr_->has_parameter(MUJOCO_PLUGIN_PARAM_NAME + "." + plugin_name + ".params.namespace")) {
+		ns = env_ptr_->get_parameter(MUJOCO_PLUGIN_PARAM_NAME + "." + plugin_name + ".params.namespace").as_string();
+
+		// prevent exception: namespace must be absolute, it must lead with a '/'
+		if (ns.empty() || ns[0] != '/') {
+			ns = '/' + ns;
+		}
+		if (ns.length() > 1) {
+			this->dataPtr_->robot_description_node_ = ns + "/" + this->dataPtr_->robot_description_node_;
+		}
 	}
 	RCLCPP_INFO(get_my_logger(), "robot_description_node fully qualified name: %s", this->dataPtr_->robot_description_node_.c_str());
-
 
 	// Create a default context, if not already
 	if (!rclcpp::ok()) {

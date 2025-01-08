@@ -15,8 +15,6 @@
 #include "mujoco_ros2_control/visibility_control.h"
 #include "mujoco_ros2_control/mujoco_ros2_control_system_interface.hpp"
 
-#include "yaml-cpp/yaml.h"
-
 namespace mujoco_ros2_control {
 /**
  * @def MujocoRos2ControlPluginPrivate
@@ -91,6 +89,8 @@ protected:
 private:
 	std::unique_ptr<MujocoRos2ControlPluginPrivate> dataPtr_;
 	rclcpp::Logger get_my_logger() { return rclcpp::get_logger("MujocoRos2ControlPlugin"); };
+	std::string MUJOCO_PLUGIN_PARAM_NAME = "MujocoPlugins";
+	std::string plugin_name = "mujoco_ros2_control";
 };
 
 } // namespace mujoco_ros2

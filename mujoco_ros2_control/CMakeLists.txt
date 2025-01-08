@@ -12,7 +12,6 @@ find_package(mujoco_ros REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(controller_manager REQUIRED)
 find_package(mujoco 3.2.0 REQUIRED) # TODO: How to get away without explicitly linking mujoco here?
-find_package(yaml-cpp REQUIRED)
 
 find_package(rclcpp REQUIRED)
 find_package(pluginlib REQUIRED)
@@ -24,13 +23,11 @@ target_compile_features(mujoco_ros2_control PUBLIC c_std_99 cxx_std_17)  # Requi
 target_include_directories(mujoco_ros2_control PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
-  ${YAML_CPP_INCLUDE_DIRS}
   /home/bimanual/leins_ws/build/mujoco_ros/include # so this solves not found error wrt mujoco_ros/ros_version.hpp
 )
 
 target_link_libraries(mujoco_ros2_control
   mujoco::mujoco
-  ${YAML_CPP_LIBRARIES}
 )
 
 ament_target_dependencies(
