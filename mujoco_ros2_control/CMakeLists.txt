@@ -51,6 +51,10 @@ install(
   RUNTIME DESTINATION bin
 )
 
+install(
+  DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
 
 # install(
 #   TARGETS mujoco_ros2_control_system
