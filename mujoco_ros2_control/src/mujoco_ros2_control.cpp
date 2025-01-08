@@ -150,17 +150,25 @@ bool MujocoRos2ControlPlugin::Load(const mjModel *model, mjData *data)
   		std::vector<const char *> _argv;
 		rclcpp::init(static_cast<int>(_argv.size()), _argv.data()); // todo: make the logic for passing additional ros-args
 	}
+	// ### TODO: Namespace cleanup! ### //
 	std::string node_name = "mujoco_ros2_control";
-
-	this->dataPtr_->node_ = rclcpp::Node::make_shared(node_name, ns);
+	RCLCPP_INFO_STREAM(get_my_logger(), "Pre-making node with : " << node_name.c_str());
+	this->dataPtr_->node_ = std::make_shared<rclcpp::Node>("node","mujoco_ros2_control"); // this for some reason doesn't allow the node name to be changed??
+	// this->dataPtr_->node_.reset(env_ptr_); // This approach doesn't work, as the getURDF requires a valid executor-spinning node to get the data from robot_state_publisher
+	RCLCPP_INFO_STREAM(get_my_logger(), "Fully qualified node name: " << this->dataPtr_->node_->get_fully_qualified_name());
+	
+	// executor creation
 	this->dataPtr_->executor_ = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
 	this->dataPtr_->executor_->add_node(this->dataPtr_->node_);
+	RCLCPP_INFO_STREAM(get_my_logger(), "Adding executor : " << node_name.c_str());
 	auto spin = [this]()
 		{
 		this->dataPtr_->executor_->spin();
 		};
 	this->dataPtr_->thread_executor_spin_ = std::thread(spin);
-	RCLCPP_INFO_STREAM(get_my_logger(), "Making node with : " << node_name.c_str());
+	RCLCPP_INFO_STREAM(get_my_logger(), "Executor spin : " << node_name.c_str());
+
+	// ### TODO: Namespace cleanup! ### //
 
 	// Read urdf from ros parameter server then
 	// setup actuators and mechanism control node.
@@ -244,6 +252,7 @@ bool MujocoRos2ControlPlugin::Load(const mjModel *model, mjData *data)
 	// Get controller manager node name
 	std::string controllerManagerNodeName{"controller_manager"};
 
+	// ### TODO: Namespace cleanup! ### //
 	// Create the controller manager
 	RCLCPP_INFO(this->dataPtr_->node_->get_logger(), "Loading controller_manager");
 		// This part sometimes breaks with error munmap_chunk(): invalid pointer
@@ -252,7 +261,8 @@ bool MujocoRos2ControlPlugin::Load(const mjModel *model, mjData *data)
 		std::move(resource_manager_),
 		this->dataPtr_->executor_,
 		controllerManagerNodeName,
-		this->dataPtr_->node_->get_namespace()));
+		// this->dataPtr_->node_->get_namespace()));
+		"controller_manager"));
 	this->dataPtr_->executor_->add_node(this->dataPtr_->controller_manager_);
 
 	if (!this->dataPtr_->controller_manager_->has_parameter("update_rate")) {
@@ -261,6 +271,7 @@ bool MujocoRos2ControlPlugin::Load(const mjModel *model, mjData *data)
 		"controller manager doesn't have an update_rate parameter");
 		return false;
 	}
+	// ### TODO: Namespace cleanup! ### //
 
 	this->dataPtr_->update_rate =
 		this->dataPtr_->controller_manager_->get_parameter("update_rate").as_int();
