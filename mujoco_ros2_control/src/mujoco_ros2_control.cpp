@@ -3,6 +3,15 @@
 
 namespace mujoco_ros2_control {
 
+std::string concatenateNamespace(const std::string ns1, const std::string ns2){
+	if(ns1.back() == '/'){
+		return ns1 + ns2;
+	}
+	else{
+		return ns1 + '/' + ns2;
+	}
+
+}
 std::string MujocoRos2ControlPluginPrivate::getURDF() const
 {
 	std::string urdf_string;
@@ -142,6 +151,9 @@ bool MujocoRos2ControlPlugin::Load(const mjModel *model, mjData *data)
 		if (ns.length() > 1) {
 			this->dataPtr_->robot_description_node_ = ns + "/" + this->dataPtr_->robot_description_node_;
 		}
+		else{
+			this->dataPtr_->robot_description_node_ = ns + this->dataPtr_->robot_description_node_;
+		}
 	}
 	RCLCPP_INFO(get_my_logger(), "robot_description_node fully qualified name: %s", this->dataPtr_->robot_description_node_.c_str());
 
@@ -152,22 +164,22 @@ bool MujocoRos2ControlPlugin::Load(const mjModel *model, mjData *data)
 	}
 	// ### TODO: Namespace cleanup! ### //
 	std::string node_name = "mujoco_ros2_control";
-	RCLCPP_INFO_STREAM(get_my_logger(), "Pre-making node with : " << node_name.c_str());
-	this->dataPtr_->node_ = std::make_shared<rclcpp::Node>("node","mujoco_ros2_control"); // this for some reason doesn't allow the node name to be changed??
-	// this->dataPtr_->node_.reset(env_ptr_); // This approach doesn't work, as the getURDF requires a valid executor-spinning node to get the data from robot_state_publisher
-	RCLCPP_INFO_STREAM(get_my_logger(), "Fully qualified node name: " << this->dataPtr_->node_->get_fully_qualified_name());
-	
+	// Temporary fix: append the node name to the namespace
+	node_name = concatenateNamespace(ns, node_name);
+	this->dataPtr_->node_ = std::make_shared<rclcpp::Node>("node",node_name); // this for some reason doesn't allow the node name to be changed??
+	// this->dataPtr_->node_.reset(env_ptr_); // This approach doesn't work, as the getURDF requires a valid executor-spinning node to get the data from robot_state_publisher,
+											  // and the env_ptr_ cannot spin until this function is finished (since it's managed by mujoco_ros' main loop), causing a deadlock.
+
+	RCLCPP_INFO_STREAM(get_my_logger(), "Fully qualified mujoco_ros2_control node name: " << this->dataPtr_->node_->get_fully_qualified_name());
+
 	// executor creation
 	this->dataPtr_->executor_ = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
 	this->dataPtr_->executor_->add_node(this->dataPtr_->node_);
-	RCLCPP_INFO_STREAM(get_my_logger(), "Adding executor : " << node_name.c_str());
 	auto spin = [this]()
 		{
 		this->dataPtr_->executor_->spin();
 		};
 	this->dataPtr_->thread_executor_spin_ = std::thread(spin);
-	RCLCPP_INFO_STREAM(get_my_logger(), "Executor spin : " << node_name.c_str());
-
 	// ### TODO: Namespace cleanup! ### //
 
 	// Read urdf from ros parameter server then
@@ -251,6 +263,7 @@ bool MujocoRos2ControlPlugin::Load(const mjModel *model, mjData *data)
 
 	// Get controller manager node name
 	std::string controllerManagerNodeName{"controller_manager"};
+	controllerManagerNodeName = concatenateNamespace(ns, controllerManagerNodeName);
 
 	// ### TODO: Namespace cleanup! ### //
 	// Create the controller manager
@@ -260,9 +273,9 @@ bool MujocoRos2ControlPlugin::Load(const mjModel *model, mjData *data)
 		new controller_manager::ControllerManager(
 		std::move(resource_manager_),
 		this->dataPtr_->executor_,
-		controllerManagerNodeName,
+		"node", // this does nothing, and gets overwritten with mujoco_server
+		controllerManagerNodeName)); // temp fix 
 		// this->dataPtr_->node_->get_namespace()));
-		"controller_manager"));
 	this->dataPtr_->executor_->add_node(this->dataPtr_->controller_manager_);
 
 	if (!this->dataPtr_->controller_manager_->has_parameter("update_rate")) {
