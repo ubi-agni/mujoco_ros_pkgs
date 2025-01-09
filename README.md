@@ -26,6 +26,8 @@ Currently, we use MuJoCo's simulation time (`mjData* d_->time`) to synchronize t
 This is mainly to give users more control over how the simulation and control are executed, and to not be bound by the computer's resources should super short timesteps be required.
 This will, of course, cause some issues when using it with other nodes that run dependent on ROS' own time. A feature for changing the source of the clock is planned.
 
+There is currently an odd bug where the names of the nodes created inside the ros2_control plugin are always fixed to `mujoco_server`. This only affects the node name itself, not the topic; a workaround has been implemented with some explanation in the example launch and yaml files, so please take note when you create your custom launch files.
+
 ### Continuous Integration
 
 service    | Noetic / One | Humble (coming soon)
