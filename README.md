@@ -12,18 +12,15 @@ This project is mainly built for Ubuntu Focal with ROS Noetic. But we are workin
 #### ROS2 Humble Development
 This branch is for porting the project into ROS2 Humble.
 
-In the current state, there is a headless MuJoCo simulation integrated with a working, but pretty basic, `ros2_control` plugin.
-You can clone this branch and build it normally, as all the ROS1 packages have `COLCON_IGNORE` in them, which prevents them from being built by `colcon`.
-It's currently comprised of 3 packages:
-- `mujoco_ros2_base` with the parent `MujocoPlugin` class in `plugin_utils.h`, and a main node (`mujoco_ros2_main.cpp`) that loads the `ros2_control` plugin using a matching `pendulum.xml/urdf` file found in `sample_xml`.
+In the current state, ros2_control has been implemented as a plugin to the latest humble port of the source repository.
+There are still some kinks to be fixed, mainly the way nodes are being created in the plugin and the resulting namespace errors, but it still works.
+To test it out, you can do `colcon build --packages-up-to mujoco_ros2_control_system`. Then source the workspace, and run `ros2 launch mujoco_ros2_control mujoco_ros2_control.launch.py`. You will see a GUI with a basic pendulum. Open up RVIZ and add a robot model, then press Shift-Tab to open up the control GUI and nudge the pendulum. You should see the model in RVIZ also moving.
+
+This fork adds two packages:
 - `mujoco_ros2_control` plugin package that implements a `ros2_control` plugin using `MujocoPlugin` class, mainly taken from gazebo's ros2_control, and provides an interface class for the SystemInterfaces.
 - `mujoco_ros2_control_system` package that implements a very basic SystemInterface using the interface class from above, and is loaded in by `mujoco_ros2_control`. It has a working initialization, `read` and `write` functions. An example controller much in the style of Gazebo's demos is in the works.
 
-Basically, in the current structure, `mujoco_ros2_base` loads `mujoco_ros2_control` loads `mujoco_ros2_control_system`.
-
-To try out, install ROS2 and MuJoCo 3.2.0, build the package and then run `ros2 launch mujoco_ros2_base mujoco_ros2_main_launch.py`.
-
-The pendulum can be visualized in RVIZ. You can open up the `pendulum.rviz` file under `mujoco_ros2_base/config/rviz` to see it.
+In the current structure, `mujoco_ros` loads `mujoco_ros2_control` loads `mujoco_ros2_control_system`.
 
 Currently, we use MuJoCo's simulation time (`mjData* d_->time`) to synchronize the controller's read/write loops. This means the main loop's `sleep` function needs to be adjusted, if you want the simulation to run faster.
 This is mainly to give users more control over how the simulation and control are executed, and to not be bound by the computer's resources should super short timesteps be required.
