@@ -14,7 +14,7 @@ mujoco_server:
           type: mujoco_ros_control/RobotHW
           control_period: 0.001
         params:
-          namespace: ""
+          namespace: "test"
           robot_description_node: "robot_state_publisher"
           robot_description: "robot_description"
     
@@ -27,9 +27,10 @@ mujoco_server:
 # e.g. if there is a namespace,called foo, the root must be foo, followed by controller_manager and mujoco_server.
 # if there is no namespace, then the root would just be controller_manager.
 
-controller_manager:
-  mujoco_server:
-    ros__parameters:
-      update_rate: 10
-      joint_state_broadcaster:
-        type: joint_state_broadcaster/JointStateBroadcaster
+test:
+  controller_manager:
+    mujoco_server:
+      ros__parameters:
+        update_rate: 10
+        joint_state_broadcaster:
+          type: joint_state_broadcaster/JointStateBroadcaster
