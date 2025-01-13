@@ -1772,6 +1772,7 @@ Viewer::Viewer(std::unique_ptr<PlatformUIAdapter> platform_ui_adapter, MujocoEnv
 void Viewer::Sync()
 {
 	MutexLock lock(this->mtx);
+	MutexLock lock_env(env_->physics_thread_mutex_);
 	if (!m_ || !d_) {
 		return;
 	}
