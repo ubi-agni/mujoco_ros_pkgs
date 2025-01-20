@@ -274,7 +274,7 @@ bool MujocoEnv::InitModelFromQueue()
 	// Update real-time settings
 	int num_clicks  = sizeof(percentRealTime) / sizeof(percentRealTime[0]);
 	float min_error = 1e6f;
-	float desired;
+	float desired   = 0.f;
 #if MJR_ROS_VERSION == ROS_1
 	nh_->param<float>("realtime", desired, mnew->vis.global.realtime);
 #else // MJR_ROS_VERSION == ROS_2
