@@ -218,6 +218,13 @@ if (ROS_VERSION EQUAL "1")
 else()
   install(DIRECTORY include/${PROJECT_NAME} DESTINATION include)
 
+  # Explicitly copy the generated header files
+  install(FILES
+    ${GENERATED_HEADERS_DIR}/${PROJECT_NAME}/ros_version.hpp
+    ${GENERATED_HEADERS_DIR}/${PROJECT_NAME}/render_backend.hpp
+    DESTINATION include/${PROJECT_NAME}
+  )
+
   install(DIRECTORY launch/ros2/launch config assets
     DESTINATION share/${PROJECT_NAME}
   )
