@@ -22,7 +22,7 @@ target_include_directories(mujoco_ros2_control_system PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 
-  ament_target_dependencies(
+ament_target_dependencies(
   mujoco_ros2_control_system
   "mujoco_ros2_control"
   "hardware_interface"

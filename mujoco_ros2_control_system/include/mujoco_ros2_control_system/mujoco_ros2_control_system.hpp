@@ -150,7 +150,10 @@ public:
   std::vector<hardware_interface::CommandInterface> command_interfaces_;
 
   /// \brief Mujoco data pointer
-  mjData* d_; // model doesn't need to be stored, since we should only need it at init.
+  mjData* d_; 
+
+  /// \brief Mujoco model pointer
+  const mjModel* m_; 
 
   /// \brief controller update rate
   int * update_rate;

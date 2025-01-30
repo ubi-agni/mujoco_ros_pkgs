@@ -12,15 +12,17 @@ bool MujocoRos2System::initSim(
     // Lesson: Using an uninitialized nh_ will cause the node to simply crash without warning,
     // probably because the output is not piped to stdout.
     // this was the main reason for the crashing, ironically the logging itself was set up wrongly.
+
     this->nh_ = model_nh;
     this->dataPtr_ = std::make_unique<MujocoRos2SystemPrivate>();
     this->dataPtr_->last_update_sim_time_mj_ = rclcpp::Time(0L, RCL_STEADY_TIME);
-    // this->dataPtr_->m_ = m;
+    this->dataPtr_->m_ = m;
     this->dataPtr_->d_ = d;
     this->dataPtr_->update_rate = &update_rate;
     this->dataPtr_->n_dof_ = hardware_info.joints.size();
     this->dataPtr_->joints_.resize(this->dataPtr_->n_dof_);
 
+    RCLCPP_INFO(this->nh_->get_logger(), "initSim start, update rate: %d", *this->dataPtr_->update_rate);
     RCLCPP_DEBUG(this->nh_->get_logger(), "initSim assignments done, update rate: %d", *this->dataPtr_->update_rate);
     RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "Joint size: " << this->dataPtr_->n_dof_);
     for (uint i = 0; i<this->dataPtr_->n_dof_; i++){
@@ -129,6 +131,8 @@ bool MujocoRos2System::initSim(
       this->dataPtr_->joints_[i].is_actuated = (joint_info.command_interfaces.size() > 0);
       RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "\tJoint processing done: " << joint_name);
     }
+
+    RCLCPP_INFO(this->nh_->get_logger(), "initSim end, update rate: %d", *this->dataPtr_->update_rate);
     return true;
   }
 
