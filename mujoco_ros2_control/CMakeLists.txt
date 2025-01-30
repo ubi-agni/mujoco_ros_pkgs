@@ -11,7 +11,6 @@ find_package(ament_cmake_ros REQUIRED)
 find_package(mujoco_ros REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(controller_manager REQUIRED)
-find_package(mujoco 3.2.0 REQUIRED) # TODO: How to get away without explicitly linking mujoco here?
 
 find_package(rclcpp REQUIRED)
 find_package(pluginlib REQUIRED)
@@ -23,10 +22,6 @@ target_compile_features(mujoco_ros2_control PUBLIC c_std_99 cxx_std_17)  # Requi
 target_include_directories(mujoco_ros2_control PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
-)
-
-target_link_libraries(mujoco_ros2_control
-  mujoco::mujoco
 )
 
 ament_target_dependencies(
