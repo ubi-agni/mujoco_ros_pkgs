@@ -244,6 +244,7 @@ else()
   
   ament_export_include_directories(
     include
+    ${mujoco_INCLUDE_DIRS}
   )
   ament_export_dependencies(
     ament_cmake
@@ -259,6 +260,7 @@ else()
     rosgraph_msgs
     sensor_msgs
     std_srvs
+    mujoco
   )
 
 
