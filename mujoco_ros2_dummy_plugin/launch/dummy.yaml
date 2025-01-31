@@ -1,0 +1,8 @@
+mujoco_server:
+  ros__parameters:
+    MujocoPlugins:
+      names:
+        - dummy_ros2_plugin
+      dummy_ros2_plugin:
+        type: mujoco_ros::DummyRos2Plugin
+  
