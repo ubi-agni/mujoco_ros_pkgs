@@ -1,0 +1,5 @@
+<library path="dummy_ros2_plugin">
+  <class type="mujoco_ros::DummyRos2Plugin" base_class_type="mujoco_ros::MujocoPlugin">
+    <description>This is a dummy ros2_control plugin.</description>
+  </class>
+</library>

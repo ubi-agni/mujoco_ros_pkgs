@@ -1,0 +1,77 @@
+<?xml version="1.0" ?>
+<robot name="pendulum">
+   <link name="base">
+      <visual>
+         <origin xyz="0 0 0" rpy="0 1.572 0" />
+         <geometry>
+            <cylinder length="0.06" radius="0.021" />
+         </geometry>
+         <material name="Cyan">
+            <color rgba="0 1.0 1.0 1.0"/>
+         </material>
+      </visual>
+   </link>
+   <joint type="revolute" name="hinge">
+      <parent link="base"/>
+      <child link="pole"/>
+      <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+      <axis xyz="1.0 0.0 0.0"/>
+      <limit lower="0.0" upper="0.0" effort="100" velocity="100"/>
+   </joint>
+   <link name="pole">
+      <inertial>
+         <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+         <mass value="0.001"/>
+         <inertia ixx="1e-09" iyy="1e-09" izz="1e-09" ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+      <visual>
+         <origin xyz="0 0 0.25" rpy="0 0 0" />
+         <geometry>
+            <cylinder length="0.5" radius="0.02" />
+         </geometry>
+         <material name="Cyan">
+            <color rgba="0 1.0 1.0 1.0"/>
+         </material>
+      </visual>
+   </link>
+   <joint type="fixed" name="glue">
+      <parent link="pole"/>
+      <child link="mass"/>
+      <origin xyz="-0.0 -0.0 -0.0" rpy="0.0 0.0 0.0"/>
+      <!-- <limit lower="0.0" upper="0.0" effort="100" velocity="100"/> -->
+   </joint>
+   <link name="mass">
+      <inertial>
+         <origin xyz="0 0 0" rpy="0.0 0.0 0.0"/>
+         <mass value="1.0"/>
+         <inertia ixx="0.0010000000000000002" iyy="0.0010000000000000002" izz="0.0010000000000000002" ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+      <visual>
+         <origin xyz="0 0 0.5" rpy="0 0 0" />
+         <geometry>
+            <sphere radius="0.05" />
+         </geometry>
+         <material name="Cyan">
+            <color rgba="0 1.0 1.0 1.0"/>
+         </material>
+      </visual>
+   </link>
+   <material name="white">
+      <color rgba="1 1 1 1"/>
+   </material>
+
+   <ros2_control name="MujocoRos2System" type="system">
+    <hardware>
+      <plugin>mujoco_ros2_control_system/MujocoRos2System</plugin>
+    </hardware>
+    <joint name="hinge">
+      <command_interface name="effort">
+        <param name="min">-1000</param>
+        <param name="max">1000</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </ros2_control>
+</robot>
