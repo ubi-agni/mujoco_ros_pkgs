@@ -36,6 +36,9 @@
 
 #pragma once
 
+#include <mujoco_ros/ros_version.hpp>
+#include <mujoco_ros/logging.hpp>
+
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 
@@ -45,6 +48,8 @@
 #include <std_srvs/srv/empty.hpp>
 
 // #include <actionlib/server/simple_action_server.h>
+
+#include <rosgraph_msgs/msg/clock.hpp>
 
 #include <mujoco_ros_msgs/action/step.hpp>
 
@@ -67,6 +72,38 @@
 #include <mujoco_ros_msgs/srv/get_plugin_stats.hpp>
 
 namespace mujoco_ros {
+
+/**
+ * Declares static ROS2 parameter and sets it to a given value if it was not already declared.
+ * @param[in] node Pointer to the node to declare the parameter in.
+ * @param[in] name Name of the parameter to declare.
+ * @param[in] default_value Default value to initialize with.
+ * @param[in] parameter_descriptor Optional parameter descriptor.
+ */
+template <typename NodeType>
+void declare_parameter_if_not_declared(
+    NodeType node, const std::string &name, const rclcpp::ParameterValue &default_value,
+    const rcl_interfaces::msg::ParameterDescriptor &parameter_descriptor = rcl_interfaces::msg::ParameterDescriptor())
+{
+	if (!node->has_parameter(name)) {
+		node->declare_parameter(name, default_value, parameter_descriptor);
+	}
+}
+
+/**
+ * Fetches a ROS2 parameter and sets it to a given value if it was not already declared.
+ * @param[in] node Pointer to the node to fetch/declare the parameter from/in.
+ * @param[in] name Name of the parameter.
+ * @param[in] default_value Default value to maybe initialize with.
+ */
+template <typename T>
+auto get_maybe_undeclared_param(rclcpp::Node *node, const std::string &param_name, const T default_val)
+{
+	if (!node->has_parameter(param_name)) {
+		return node->declare_parameter<T>(param_name, default_val);
+	}
+	return node->get_parameter(param_name).get_value<T>();
+}
 
 class RosAPI
 {

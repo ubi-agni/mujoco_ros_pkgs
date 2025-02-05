@@ -4,7 +4,8 @@ add_library(lodepng OBJECT
 )
 set_property(TARGET lodepng PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(lodepng PRIVATE
-  ${PROJECT_SOURCE_DIR}/include
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
 )
 target_link_libraries(lodepng PRIVATE project_option)
 add_library(mujoco_ros::lodepng ALIAS lodepng)
@@ -18,7 +19,8 @@ if(RENDERING_BACKEND STREQUAL "GLFW")
   )
   set_property(TARGET platform_ui_adapter PROPERTY POSITION_INDEPENDENT_CODE ON)
   target_include_directories(platform_ui_adapter PUBLIC
-    ${PROJECT_SOURCE_DIR}/include
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
     ${GLFW_INTERFACE_INCLUDE_DIRECTORIES}
   )
   target_link_libraries(platform_ui_adapter
@@ -65,7 +67,7 @@ else()
   )
 endif()
 
-add_library(${PROJECT_NAME}
+add_library(${PROJECT_NAME} SHARED
   $<TARGET_OBJECTS:lodepng>
   ${MJR_SOURCE_FILES}
 )
@@ -80,10 +82,11 @@ endif()
 
 target_include_directories(${PROJECT_NAME}
   PUBLIC
-    ${GENERATED_HEADERS_DIR}
-    ${PROJECT_SOURCE_DIR}/include
     ${mujoco_include_DIRS}
     ${GLFW_INCLUDE_DIRS}
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${GENERATED_HEADERS_DIR}>
+    $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
   PRIVATE
     ${catkin_INCLUDE_DIRS}
 )
@@ -106,6 +109,7 @@ else()
   ament_target_dependencies(${PROJECT_NAME}
     PUBLIC
       rclcpp
+      rclcpp_lifecycle
       pluginlib
       tf2
       tf2_ros
@@ -113,6 +117,7 @@ else()
       camera_info_manager
       mujoco_ros_msgs
       rosgraph_msgs
+      lifecycle_msgs
       geometry_msgs
       tf2_geometry_msgs
       sensor_msgs
@@ -144,4 +149,5 @@ if (ROS_VERSION EQUAL "2")
     PUBLIC
       Boost::program_options
   )
+
 endif()

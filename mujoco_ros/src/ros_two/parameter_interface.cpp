@@ -14,48 +14,9 @@ namespace mju = ::mujoco::sample_util;
 
 namespace mujoco_ros {
 
-void MujocoEnv::FetchConfiguration()
+void MujocoEnv::FetchRosConfiguration()
 {
 	RCLCPP_DEBUG(this->get_logger(), "Fetching configuration");
-
-	std::vector<rclcpp::Parameter> params;
-	if (!this->has_parameter("eval_mode")) {
-		params.emplace_back(rclcpp::Parameter("eval_mode", false));
-	}
-	if (!this->has_parameter("no_render")) {
-		params.emplace_back(rclcpp::Parameter("no_render", false));
-	}
-	if (!this->has_parameter("render_offscreen")) {
-		params.emplace_back(rclcpp::Parameter("render_offscreen", false));
-	}
-	if (!this->has_parameter("headless")) {
-		params.emplace_back(rclcpp::Parameter("headless", false));
-	}
-	if (!this->has_parameter("no_x")) {
-		params.emplace_back(rclcpp::Parameter("no_x", rclcpp::PARAMETER_BOOL));
-	}
-	if (!this->has_parameter("unpause")) {
-		params.emplace_back(rclcpp::Parameter("unpause", true));
-	}
-	if (!this->has_parameter("num_steps")) {
-		params.emplace_back(rclcpp::Parameter("num_steps", -1));
-	}
-	if (!this->has_parameter("modelfile")) {
-		params.emplace_back(rclcpp::Parameter("modelfile", ""));
-	}
-	if (!this->has_parameter("realtime")) {
-		params.emplace_back(rclcpp::Parameter("realtime", 1.0));
-	}
-	if (!this->has_parameter(plugin_utils::MUJOCO_PLUGIN_PARAM_NAME + ".names")) {
-		params.emplace_back(
-		    rclcpp::Parameter(plugin_utils::MUJOCO_PLUGIN_PARAM_NAME + ".names", std::vector<std::string>{}));
-	}
-	if (!this->has_parameter("wait_for_xml")) {
-		params.emplace_back(rclcpp::Parameter("wait_for_xml", false));
-	}
-	if (!this->has_parameter("mujoco_xml")) {
-		params.emplace_back(rclcpp::Parameter("mujoco_xml", rclcpp::PARAMETER_STRING));
-	}
 
 	rclcpp::Parameter eval_mode_param = this->get_parameter("eval_mode");
 	settings_.eval_mode               = eval_mode_param.as_bool();
@@ -134,36 +95,25 @@ void MujocoEnv::InitTFBroadcasting()
 	tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
 }
 
-template <typename T>
-void get_maybe_undeclared_param(rclcpp::Node *node, const std::string &param_name, T &param, const T default_val)
-{
-	if (!node->has_parameter(param_name)) {
-		node->declare_parameter(param_name, default_val);
-		param = default_val;
-		return;
-	}
-	// param = node->get_parameter(param_name).get_value();
-}
-
 void MujocoEnv::GetCameraConfiguration(const std::string &cam_name, rendering::StreamType &stream_type,
                                        float &pub_frequency, bool &use_segid, int &width, int &height,
                                        std::string &base_topic, std::string &rgb_topic, std::string &depth_topic,
                                        std::string &segment_topic)
 {
 	int stream_type_int;
-	get_maybe_undeclared_param(this, cam_name + ".stream_type", stream_type_int,
-	                           static_cast<int>(rendering::kDEFAULT_CAM_STREAM_TYPE));
-	stream_type = rendering::StreamType(stream_type_int);
-	get_maybe_undeclared_param(this, cam_name + ".frequency", pub_frequency, rendering::kDEFAULT_CAM_PUB_FREQ);
-	get_maybe_undeclared_param(this, cam_name + ".use_segid", use_segid, rendering::kDEFAULT_CAM_USE_SEGID);
-	get_maybe_undeclared_param(this, cam_name + ".width", width, rendering::kDEFAULT_CAM_WIDTH);
-	get_maybe_undeclared_param(this, cam_name + ".height", height, rendering::kDEFAULT_CAM_HEIGHT);
-	get_maybe_undeclared_param(this, cam_name + ".topic", base_topic, "cameras/" + cam_name);
-	get_maybe_undeclared_param(this, cam_name + ".name_rgb", rgb_topic, std::string(rendering::kDEFAULT_CAM_RGB_TOPIC));
-	get_maybe_undeclared_param(this, cam_name + ".name_depth", depth_topic,
-	                           std::string(rendering::kDEFAULT_CAM_DEPTH_TOPIC));
-	get_maybe_undeclared_param(this, cam_name + ".name_segment", segment_topic,
-	                           std::string(rendering::kDEFAULT_CAM_SEGMENT_TOPIC));
+	stream_type_int = get_maybe_undeclared_param(this, cam_name + ".stream_type",
+	                                             static_cast<int>(rendering::kDEFAULT_CAM_STREAM_TYPE));
+	stream_type     = rendering::StreamType(stream_type_int);
+	pub_frequency   = get_maybe_undeclared_param(this, cam_name + ".frequency", rendering::kDEFAULT_CAM_PUB_FREQ);
+	use_segid       = get_maybe_undeclared_param(this, cam_name + ".use_segid", rendering::kDEFAULT_CAM_USE_SEGID);
+	width           = get_maybe_undeclared_param(this, cam_name + ".width", rendering::kDEFAULT_CAM_WIDTH);
+	height          = get_maybe_undeclared_param(this, cam_name + ".height", rendering::kDEFAULT_CAM_HEIGHT);
+	base_topic      = get_maybe_undeclared_param(this, cam_name + ".topic", "cameras/" + cam_name);
+	rgb_topic = get_maybe_undeclared_param(this, cam_name + ".name_rgb", std::string(rendering::kDEFAULT_CAM_RGB_TOPIC));
+	depth_topic =
+	    get_maybe_undeclared_param(this, cam_name + ".name_depth", std::string(rendering::kDEFAULT_CAM_DEPTH_TOPIC));
+	segment_topic =
+	    get_maybe_undeclared_param(this, cam_name + ".name_segment", std::string(rendering::kDEFAULT_CAM_SEGMENT_TOPIC));
 }
 
 void MujocoEnv::GetInitialJointPositions(std::map<std::string, std::vector<double>> & /*joint_pos_map*/)

@@ -111,31 +111,58 @@ void UpdateModelFlags(const mjOption *) {}
 void MujocoEnv::RunLastStageCbs() {}
 
 #if MJR_ROS_VERSION == ROS_1
+
 MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 {
-	nh_ = std::make_shared<ros::NodeHandle>("~");
-#else // MJR_ROS_VERSION == ROS_2
-MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
-    : Node(
-          "mujoco_server",
-          rclcpp::NodeOptions().allow_undeclared_parameters(true).automatically_declare_parameters_from_overrides(true))
-{
-#endif
-	FetchConfiguration();
-#if MJR_ROS_VERSION == ROS_1
-	ros_api_ = std::make_unique<RosAPI>(nh_, this);
-#else // MJR_ROS_VERSION == ROS_2
-	ros_api_ = std::make_unique<RosAPI>(this);
-#endif
-
-	MJR_DEBUG("Starting simulation server");
-
 	if (!admin_hash.empty()) {
 		mju::strcpy_arr(settings_.admin_hash, admin_hash.c_str());
 	} else {
 		// make sure hash is empty and null-terminated
 		settings_.admin_hash[0] = '\0';
 	}
+
+	nh_      = std::make_shared<ros::NodeHandle>("~");
+	ros_api_ = std::make_unique<RosAPI>(nh_, this);
+	plugin_utils::InitPluginLoader();
+	Configure();
+}
+
+#else // MJR_ROS_VERSION == ROS_2
+
+MujocoEnv::MujocoEnv(rclcpp::Executor::SharedPtr executor, const std::string &admin_hash /* = std::string()*/)
+    : rclcpp::Node("mujoco_server", "", rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true))
+    , executor_(executor)
+{
+	if (!admin_hash.empty()) {
+		mju::strcpy_arr(settings_.admin_hash, admin_hash.c_str());
+	} else {
+		// make sure hash is empty and null-terminated
+		settings_.admin_hash[0] = '\0';
+	}
+
+	ros_api_ = std::make_unique<RosAPI>(this);
+	plugin_utils::InitPluginLoader();
+	Configure();
+}
+
+void MujocoEnv::AddNodeToExecutor(rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node)
+{
+	executor_->add_node(node);
+}
+
+void MujocoEnv::RemoveNodeFromExecutor(rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node)
+{
+	executor_->remove_node(node);
+}
+
+#endif
+
+void MujocoEnv::Configure()
+{
+	MJR_DEBUG("Configuring simulation server");
+
+	FetchRosConfiguration();
+	ros_api_->SetupServices();
 
 	if (settings_.eval_mode) {
 		MJR_INFO("Running in evaluation mode. Parsing admin hash...");
@@ -214,8 +241,6 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 
 	mjcb_control = ProxyControlCB;
 	mjcb_passive = ProxyPassiveCB;
-
-	plugin_utils::InitPluginLoader();
 
 	InitTFBroadcasting();
 }

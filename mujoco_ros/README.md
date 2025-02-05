@@ -1,5 +1,38 @@
 # MuJoCo Ros
 
+# Humble 2 Port Notes
+
+**This is a temporary overview over the current progress of the WIP ROS 2 Humble port for a quick reference**
+
+status:
+  - msgs can be built
+  - Minimal node version can be built and run (humble/One),
+  - PhysicsLoop and EventLoop are functional
+  - Clock is publishing time
+  - Plugin definition running
+  - Offscreen rendering done
+  - Viewer works
+  - Services and step action implemented
+  - MujocoEnv now has `AddNodeToExecutor` and `RemoveNodeFromExecutor` functions to add/remove Plugins (`rclcpp::LifecycleNodes`) to the main executor. For top-level plugins this is done automatically, but otherwise created (sub-)nodes should be added and removed using these functions.
+
+changes/fixes:
+  - enforced codestyle for function naming
+    + CamelCase function names (excpetion accessors)
+  - Updated copyright notices dates
+
+feats:
+  - unnamed cameras don't cause crashes anymore, instead they are named
+  `unnamed_cam_X` where X is a counting variable.
+
+TODOs:
+  [ ] Fix crashing on reloading (only Humble)
+  [ ] Adapt and re-enable tests in ROS 1
+  [ ] Add ROS 2 tests
+  [ ] Add ROS 2 Docker image and CI workflows
+  [ ] Add callbacks for parameter changes for ROS 2
+  [ ] Re-enable dynamic reconfigure for ROS 1
+  [x] ROS 2 services and action are not in the node's namespace
+
 
 ## Plugins
 Plugins provide an easy way of including new functionality into _mujoco\_ros_. The lifecycle of a Plugin is as follows:

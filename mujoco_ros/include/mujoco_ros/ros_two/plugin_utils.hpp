@@ -36,22 +36,37 @@
 
 #pragma once
 
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp_lifecycle/lifecycle_node.hpp>
+#include <lifecycle_msgs/msg/state.hpp>
+
 #include <mujoco_ros/ros_version.hpp>
 #include <mujoco_ros/logging.hpp>
-#include <rclcpp/rclcpp.hpp>
 #include <mujoco_ros/common_types.hpp>
 #include <mujoco_ros/mujoco_env.hpp>
 
 #include <pluginlib/class_loader.hpp>
 
 namespace mujoco_ros {
+using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
-class MujocoPlugin
+class MujocoPlugin : public rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface
 {
 public:
+	/**
+	 * Override default implementation for configure to get parameters.
+	 */
+	const rclcpp_lifecycle::State &configure();
+
 	virtual ~MujocoPlugin()
 	{
 		RCLCPP_DEBUG_STREAM(rclcpp::get_logger("MujocoPlugin"), "Deleted plugin of type " << type_);
+		if (node_.get() && get_lifecycle_state().id() != lifecycle_msgs::msg::State::PRIMARY_STATE_FINALIZED &&
+		    rclcpp::ok()) {
+			RCLCPP_DEBUG_STREAM(rclcpp::get_logger(plugin_name_), "Removing node from executor");
+			node_->shutdown();
+			env_ptr_->RemoveNodeFromExecutor(this->get_node()->get_node_base_interface());
+		}
 	}
 
 	// Called directly after plugin creation
@@ -60,7 +75,45 @@ public:
 		env_ptr_     = env_ptr;
 		plugin_name_ = name;
 		type_        = type;
+		// std::string ns(env_ptr->get_name());
+		// ns.append("/"+name);
+		// RCLCPP_ERROR_STREAM(rclcpp::get_logger("MujocoPlugin"), "Namespace: " << ns << "(" << env_ptr->get_name() << "
+		// + /" << name << ")");
+		auto options          = rclcpp::NodeOptions();
+		std::string remap_str = name + ":__node:=" + name;
+		options.arguments({ "--ros-args", "--remap", remap_str });
+		node_ = std::make_shared<rclcpp_lifecycle::LifecycleNode>(name, options, false);
+
+		node_->register_on_configure(std::bind(&MujocoPlugin::on_configure, this, std::placeholders::_1));
+		node_->register_on_cleanup(std::bind(&MujocoPlugin::on_cleanup, this, std::placeholders::_1));
+		node_->register_on_activate(std::bind(&MujocoPlugin::on_activate, this, std::placeholders::_1));
+		node_->register_on_deactivate(std::bind(&MujocoPlugin::on_deactivate, this, std::placeholders::_1));
+		node_->register_on_shutdown(std::bind(&MujocoPlugin::on_shutdown, this, std::placeholders::_1));
+		node_->register_on_error(std::bind(&MujocoPlugin::on_error, this, std::placeholders::_1));
 	};
+
+	const rclcpp_lifecycle::State &get_lifecycle_state() const
+	{
+		if (!node_.get()) {
+			throw std::runtime_error("Node has not been initialized yet. Call Init() on plugins first");
+		}
+		return node_->get_current_state();
+	}
+
+	std::shared_ptr<const rclcpp_lifecycle::LifecycleNode> get_node() const
+	{
+		if (!node_.get()) {
+			throw std::runtime_error("Node has not been initialized yet. Call Init() on plugins first");
+		}
+		return node_;
+	}
+	std::shared_ptr<rclcpp_lifecycle::LifecycleNode> get_node()
+	{
+		if (!node_.get()) {
+			throw std::runtime_error("Node has not been initialized yet. Call Init() on plugins first");
+		}
+		return node_;
+	}
 
 	std::string get_name() const { return plugin_name_; }
 	std::string get_type() const { return type_; }
@@ -249,6 +302,7 @@ protected:
 
 private:
 	bool loading_successful_ = false;
+	std::shared_ptr<rclcpp_lifecycle::LifecycleNode> node_;
 
 protected:
 	MujocoPlugin() = default;
@@ -291,7 +345,7 @@ bool ParsePlugins(MujocoEnv *env_ptr, std::vector<std::string> &plugin_names);
  * @param[inout] plugins vector of plugins. If successfully initialized, each plugin is appended to the vector.
  */
 void RegisterPlugins(const std::vector<std::string> &plugin_names, std::vector<MujocoPluginPtr> &plugins,
-                     MujocoEnvPtr env_ptr);
+                     MujocoEnv *env_ptr);
 
 void UnloadPluginloader();
 void InitPluginLoader();

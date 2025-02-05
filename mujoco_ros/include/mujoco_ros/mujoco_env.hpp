@@ -153,19 +153,42 @@ struct OffscreenRenderContext
 #if MJR_ROS_VERSION == ROS_1
 class MujocoEnv
 {
-#else // MJR_ROS_VERSION == ROS_2
-class MujocoEnv : public rclcpp::Node
-{
-#endif
-	// Friend declaration of RosAPI for access to private members
-	friend class RosAPI;
-
 public:
 	/**
 	 * @brief Construct a new Mujoco Env object.
 	 *
 	 */
 	MujocoEnv(const std::string &admin_hash = std::string());
+#else // MJR_ROS_VERSION == ROS_2
+class MujocoEnv : public rclcpp::Node
+{
+public:
+	/**
+	 * @brief Construct a new Mujoco Env object.
+	 *
+	 */
+	MujocoEnv(rclcpp::Executor::SharedPtr executor, const std::string &admin_hash = std::string());
+
+	/**
+	 * @brief Add a node to the executor of this server instance.
+	 * This is a utility function to prevent subnodes needing to create their own executors
+	 * inefficiently running separate threads. If the subnode is a direct plugin this will
+	 * get called automatically, this is only be meant to be called manually in case plugins
+	 * instanciate subnodes of their own.
+	 */
+	void AddNodeToExecutor(rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node);
+
+	/**
+	 * @brief Remove a node to the executor of this server instance.
+	 * This function gets called automatically on destructing a plugin.
+	 * In case a plugin creates more subnodes, this function should be used on their destruction.
+	 */
+	void RemoveNodeFromExecutor(rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node);
+#endif
+	// Friend declaration of RosAPI for access to private members
+	friend class RosAPI;
+
+public:
 	~MujocoEnv();
 
 	MujocoEnv(const MujocoEnv &) = delete;
@@ -353,7 +376,7 @@ public:
 
 	void UpdateModelFlags(const mjOption *opt);
 
-	void FetchConfiguration();
+	void FetchRosConfiguration();
 	void GetCameraConfiguration(const std::string &cam_name, rendering::StreamType &stream_type, float &pub_frequency,
 	                            bool &use_segid, int &width, int &height, std::string &base_topic,
 	                            std::string &rgb_topic, std::string &depth_topic, std::string &segment_topic);
@@ -406,9 +429,13 @@ protected:
 	void PublishSimTime(mjtNum time);
 #if MJR_ROS_VERSION == ROS_1
 	std::shared_ptr<ros::NodeHandle> nh_;
+#else // MJR_ROS_VERSION == ROS_2
+	rclcpp::Executor::SharedPtr executor_;
 #endif
 	// ros api implementation
 	std::unique_ptr<RosAPI> ros_api_;
+
+	void Configure();
 
 	void RunLastStageCbs();
 

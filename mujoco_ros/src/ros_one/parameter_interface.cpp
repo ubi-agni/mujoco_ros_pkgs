@@ -18,7 +18,7 @@ namespace mju = ::mujoco::sample_util;
 
 namespace mujoco_ros {
 
-void MujocoEnv::FetchConfiguration()
+void MujocoEnv::FetchRosConfiguration()
 {
 	ROS_DEBUG("Fetching configuration");
 

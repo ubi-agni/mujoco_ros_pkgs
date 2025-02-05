@@ -79,6 +79,8 @@ void RegisterPlugins(const std::vector<std::string> &plugin_names, std::vector<M
 		try {
 			MujocoPlugin *mjplugin_ptr = plugin_loader_ptr_->createUnmanagedInstance(type);
 			mjplugin_ptr->Init(plugin_name, env_ptr, type);
+			env_ptr->AddNodeToExecutor(mjplugin_ptr->get_node()->get_node_base_interface());
+			mjplugin_ptr->get_node()->configure();
 			plugins.emplace_back(std::unique_ptr<MujocoPlugin>(mjplugin_ptr));
 			MJR_DEBUG_STREAM_NAMED("mujoco_ros_plugin_loader",
 			                       "Added " << type << " to the list of loaded plugins in namespace '" << plugin_name

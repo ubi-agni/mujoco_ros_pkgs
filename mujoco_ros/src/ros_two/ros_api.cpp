@@ -38,6 +38,7 @@
 #include <mujoco_ros/logging.hpp>
 
 #include <mujoco_ros/mujoco_env.hpp>
+#include <mujoco_ros/ros_two/plugin_utils.hpp>
 #include <mujoco_ros/ros_two/ros_api.hpp>
 #include <mujoco_ros/util.hpp>
 
@@ -47,67 +48,71 @@ namespace mujoco_ros {
 
 RosAPI::RosAPI(MujocoEnvPtr env_ptr) : env_ptr_(env_ptr)
 {
-	SetupServices();
+	RCLCPP_DEBUG(env_ptr_->get_logger(), "Declaring default ros parameters");
+	declare_parameter_if_not_declared(env_ptr_, "eval_mode", rclcpp::ParameterValue(false));
+	declare_parameter_if_not_declared(env_ptr_, "no_render", rclcpp::ParameterValue(false));
+	declare_parameter_if_not_declared(env_ptr_, "render_offscreen", rclcpp::ParameterValue(false));
+	declare_parameter_if_not_declared(env_ptr_, "headless", rclcpp::ParameterValue(false));
+	declare_parameter_if_not_declared(env_ptr_, "no_x", rclcpp::ParameterValue(false));
+	declare_parameter_if_not_declared(env_ptr_, "unpause", rclcpp::ParameterValue(true));
+	declare_parameter_if_not_declared(env_ptr_, "num_steps", rclcpp::ParameterValue(-1));
+	declare_parameter_if_not_declared(env_ptr_, "modelfile", rclcpp::ParameterValue(std::string("")));
+	declare_parameter_if_not_declared(env_ptr_, "realtime", rclcpp::ParameterValue(1.0));
+	declare_parameter_if_not_declared(env_ptr_, plugin_utils::MUJOCO_PLUGIN_PARAM_NAME + ".names",
+	                                  rclcpp::ParameterValue(std::vector<std::string>{}));
+	declare_parameter_if_not_declared(env_ptr_, "wait_for_xml", rclcpp::ParameterValue(false));
+	declare_parameter_if_not_declared(env_ptr_, "mujoco_xml", rclcpp::ParameterValue(std::string("")));
+	declare_parameter_if_not_declared(env_ptr_, "use_sim_time", rclcpp::ParameterValue(true));
 }
 
 void RosAPI::SetupServices()
 {
-	MJR_ERROR_STREAM("Effective namespace: " << env_ptr_->get_effective_namespace());
+	MJR_ERROR_STREAM("Effective namespace: " << env_ptr_->get_namespace());
+	std::string ns = env_ptr_->get_namespace();
 	set_pause_srv_ = env_ptr_->create_service<mujoco_ros_msgs::srv::SetPause>(
-	    env_ptr_->get_effective_namespace() + "set_pause",
-	    std::bind(&RosAPI::SetPauseCB, this, std::placeholders::_1, std::placeholders::_2));
+	    ns + "set_pause", std::bind(&RosAPI::SetPauseCB, this, std::placeholders::_1, std::placeholders::_2));
 	shutdown_srv_ = env_ptr_->create_service<std_srvs::srv::Empty>(
-	    env_ptr_->get_effective_namespace() + "shutdown",
-	    std::bind(&RosAPI::ShutdownCB, this, std::placeholders::_1, std::placeholders::_2));
+	    ns + "shutdown", std::bind(&RosAPI::ShutdownCB, this, std::placeholders::_1, std::placeholders::_2));
 	reload_srv_ = env_ptr_->create_service<mujoco_ros_msgs::srv::Reload>(
-	    env_ptr_->get_effective_namespace() + "reload",
-	    std::bind(&RosAPI::ReloadCB, this, std::placeholders::_1, std::placeholders::_2));
+	    ns + "reload", std::bind(&RosAPI::ReloadCB, this, std::placeholders::_1, std::placeholders::_2));
 	reset_srv_ = env_ptr_->create_service<std_srvs::srv::Empty>(
-	    env_ptr_->get_effective_namespace() + "reset",
-	    std::bind(&RosAPI::ResetCB, this, std::placeholders::_1, std::placeholders::_2));
+	    ns + "reset", std::bind(&RosAPI::ResetCB, this, std::placeholders::_1, std::placeholders::_2));
 	set_body_state_srv_ = env_ptr_->create_service<mujoco_ros_msgs::srv::SetBodyState>(
-	    env_ptr_->get_effective_namespace() + "set_body_state",
-	    std::bind(&RosAPI::SetBodyStateCB, this, std::placeholders::_1, std::placeholders::_2));
+	    ns + "set_body_state", std::bind(&RosAPI::SetBodyStateCB, this, std::placeholders::_1, std::placeholders::_2));
 	get_body_state_srv_ = env_ptr_->create_service<mujoco_ros_msgs::srv::GetBodyState>(
-	    env_ptr_->get_effective_namespace() + "get_body_state",
-	    std::bind(&RosAPI::GetBodyStateCB, this, std::placeholders::_1, std::placeholders::_2));
+	    ns + "get_body_state", std::bind(&RosAPI::GetBodyStateCB, this, std::placeholders::_1, std::placeholders::_2));
 	set_geom_properties_srv_ = env_ptr_->create_service<mujoco_ros_msgs::srv::SetGeomProperties>(
-	    env_ptr_->get_effective_namespace() + "set_geom_properties",
+	    ns + "set_geom_properties",
 	    std::bind(&RosAPI::SetGeomPropertiesCB, this, std::placeholders::_1, std::placeholders::_2));
 	get_geom_properties_srv_ = env_ptr_->create_service<mujoco_ros_msgs::srv::GetGeomProperties>(
-	    env_ptr_->get_effective_namespace() + "get_geom_properties",
+	    ns + "get_geom_properties",
 	    std::bind(&RosAPI::GetGeomPropertiesCB, this, std::placeholders::_1, std::placeholders::_2));
 	set_eq_constraint_parameters_srv_ = env_ptr_->create_service<mujoco_ros_msgs::srv::SetEqualityConstraintParameters>(
-	    env_ptr_->get_effective_namespace() + "set_eq_constraint_parameters",
+	    ns + "set_eq_constraint_parameters",
 	    std::bind(&RosAPI::SetEqualityConstraintParametersArrayCB, this, std::placeholders::_1, std::placeholders::_2));
 	get_eq_constraint_parameters_srv_ = env_ptr_->create_service<mujoco_ros_msgs::srv::GetEqualityConstraintParameters>(
-	    env_ptr_->get_effective_namespace() + "get_eq_constraint_parameters",
+	    ns + "get_eq_constraint_parameters",
 	    std::bind(&RosAPI::GetEqualityConstraintParametersArrayCB, this, std::placeholders::_1, std::placeholders::_2));
 	load_initial_joint_states_srv_ = env_ptr_->create_service<std_srvs::srv::Empty>(
-	    env_ptr_->get_effective_namespace() + "load_initial_joint_states",
+	    ns + "load_initial_joint_states",
 	    std::bind(&RosAPI::LoadInitialJointStatesCB, this, std::placeholders::_1, std::placeholders::_2));
 	get_state_uint_srv_ = env_ptr_->create_service<mujoco_ros_msgs::srv::GetStateUint>(
-	    env_ptr_->get_effective_namespace() + "get_loading_request_state",
+	    ns + "get_loading_request_state",
 	    std::bind(&RosAPI::GetStateUintCB, this, std::placeholders::_1, std::placeholders::_2));
 	get_sim_info_srv_ = env_ptr_->create_service<mujoco_ros_msgs::srv::GetSimInfo>(
-	    env_ptr_->get_effective_namespace() + "get_sim_info",
-	    std::bind(&RosAPI::GetSimInfoCB, this, std::placeholders::_1, std::placeholders::_2));
+	    ns + "get_sim_info", std::bind(&RosAPI::GetSimInfoCB, this, std::placeholders::_1, std::placeholders::_2));
 	set_rt_factor_srv_ = env_ptr_->create_service<mujoco_ros_msgs::srv::SetFloat>(
-	    env_ptr_->get_effective_namespace() + "set_rt_factor",
-	    std::bind(&RosAPI::SetRTFactorCB, this, std::placeholders::_1, std::placeholders::_2));
+	    ns + "set_rt_factor", std::bind(&RosAPI::SetRTFactorCB, this, std::placeholders::_1, std::placeholders::_2));
 	get_plugin_stats_srv_ = env_ptr_->create_service<mujoco_ros_msgs::srv::GetPluginStats>(
-	    env_ptr_->get_effective_namespace() + "get_plugin_stats",
+	    ns + "get_plugin_stats",
 	    std::bind(&RosAPI::GetPluginStatsCB, this, std::placeholders::_1, std::placeholders::_2));
 	set_gravity_srv_ = env_ptr_->create_service<mujoco_ros_msgs::srv::SetGravity>(
-	    env_ptr_->get_effective_namespace() + "set_gravity",
-	    std::bind(&RosAPI::SetGravityCB, this, std::placeholders::_1, std::placeholders::_2));
+	    ns + "set_gravity", std::bind(&RosAPI::SetGravityCB, this, std::placeholders::_1, std::placeholders::_2));
 	get_gravity_srv_ = env_ptr_->create_service<mujoco_ros_msgs::srv::GetGravity>(
-	    env_ptr_->get_effective_namespace() + "get_gravity",
-	    std::bind(&RosAPI::GetGravityCB, this, std::placeholders::_1, std::placeholders::_2));
+	    ns + "get_gravity", std::bind(&RosAPI::GetGravityCB, this, std::placeholders::_1, std::placeholders::_2));
 
 	action_step_ = rclcpp_action::create_server<mujoco_ros_msgs::action::Step>(
-	    env_ptr_, env_ptr_->get_effective_namespace() + "step",
-	    std::bind(&RosAPI::HandleGoal, this, std::placeholders::_1, std::placeholders::_2),
+	    env_ptr_, ns + "step", std::bind(&RosAPI::HandleGoal, this, std::placeholders::_1, std::placeholders::_2),
 	    std::bind(&RosAPI::HandleCancel, this, std::placeholders::_1),
 	    std::bind(&RosAPI::OnStepGoal, this, std::placeholders::_1));
 }
