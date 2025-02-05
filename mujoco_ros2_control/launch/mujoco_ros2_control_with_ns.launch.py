@@ -34,7 +34,7 @@ def generate_launch_description():
     doc = xacro.parse(open(xacro_file))
     xacro.process_doc(doc)
     params = {'robot_description': doc.toxml()}
-    ns = ''     # this must match the namespace argument under mujoco_ros2_control in the plugin's parameter yaml file. 
+    ns = 'test'     # this must match the namespace argument under mujoco_ros2_control in the plugin's parameter yaml file. 
                 # See the ros2_control_plugins_example_with_ns.yaml file for more details.
 
     # pendulum_config = os.path.join(get_package_share_directory('mujoco_ros2_base'), 'config','pendulum.yaml')
@@ -63,7 +63,7 @@ def generate_launch_description():
                 'modelfile': xml_path,
                 'verbose': "true",
                 'ns': ns,
-                'mujoco_plugin_config': os.path.join(mjr2_control_path, 'example', 'ros2_control_plugins_example.yaml')
+                'mujoco_plugin_config': os.path.join(mjr2_control_path, 'example', 'ros2_control_plugins_example_with_ns.yaml')
             }.items()
         ),
         node_robot_state_publisher,
