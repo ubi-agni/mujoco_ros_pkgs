@@ -18,18 +18,12 @@ mujoco_server:
           robot_description_node: "robot_state_publisher"
           robot_description: "robot_description"
     
-    # controller manager parameters
-    update_rate: 10
-    joint_state_broadcaster:
-      type: joint_state_broadcaster/JointStateBroadcaster
-      
 # The indentation must reflect the namespace argument given under mujoco_ros2_control part above.
 # e.g. if there is a namespace,called foo, the root must be foo, followed by controller_manager and mujoco_server.
 # if there is no namespace, then the root would just be controller_manager.
 
 controller_manager:
-  mujoco_server:
-    ros__parameters:
-      update_rate: 10
-      joint_state_broadcaster:
-        type: joint_state_broadcaster/JointStateBroadcaster
+  ros__parameters:
+    update_rate: 10
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
