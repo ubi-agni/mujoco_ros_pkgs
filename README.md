@@ -44,7 +44,7 @@ We provide some code examples in our [demo repository](https://github.com/ubi-ag
 
 ### Documentation
 
-We are currently working on setting up more detailed documentation including tutorials and guides. The current prototype can be found [here](davidpl1.github.io/mujoco_ros_pkgs) (though note that this will migrate once its ready for an initial proper release).
+We are currently working on setting up more detailed documentation including tutorials and guides. The current prototype can be found [here](https://davidpl1.github.io/mujoco_ros_pkgs) (though note that this will migrate once its ready for an initial proper release).
 
 Some more structural and configuration info, which is not yet included in the documentation, can be found [here](./mujoco_ros/README.md).
 
