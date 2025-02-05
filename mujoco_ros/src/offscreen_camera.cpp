@@ -105,9 +105,11 @@ OffscreenCamera::OffscreenCamera(const uint8_t cam_id, const std::string &base_t
 	mjv_makeSceneState(const_cast<mjModel *>(model), data, &scn_state_, Viewer::kMaxGeom);
 
 #if MJR_ROS_VERSION == ROS_2
-	// If env should become LifecycleNode, we need to replace nh_ creation with
+	auto options = rclcpp::NodeOptions().arguments({ "--ros-args", "--remap", cam_name + ":__node:=" + cam_name });
+	nh_ = std::make_shared<rclcpp::Node>(cam_name, std::string(env_ptr->get_name()) + "/" + base_topic, options);
+	// nh_ = env_ptr->create_sub_node(base_topic);
 	// nh_ = std::shared_ptr<rclcpp::Node>(new rclcpp::Node(*env_ptr, base_topic));
-	nh_ = env_ptr->create_sub_node(base_topic);
+	MJR_ERROR_STREAM("Created cam node with name " << nh_->get_name() << " and namespace " << nh_->get_namespace());
 	// Initialize transport
 	it_ = std::make_unique<image_transport::ImageTransport>(nh_);
 #endif
