@@ -49,6 +49,8 @@ if (ROS_VERSION EQUAL "1")
 else()
   find_package(ament_cmake REQUIRED)
   find_package(rclcpp REQUIRED)
+  find_package(rclcpp_lifecycle REQUIRED)
+
   find_package(pluginlib REQUIRED)
   find_package(Boost REQUIRED COMPONENTS program_options)
   find_package(tf2 REQUIRED)
@@ -59,6 +61,7 @@ else()
   find_package(tf2_geometry_msgs REQUIRED)
   find_package(mujoco_ros_msgs REQUIRED)
   find_package(rosgraph_msgs REQUIRED)
+  find_package(lifecycle_msgs REQUIRED)
   find_package(sensor_msgs REQUIRED)
   find_package(std_srvs REQUIRED)
 endif()
@@ -213,16 +216,46 @@ if (ROS_VERSION EQUAL "1")
   #   add_subdirectory(test)
   # endif()
 else()
-  install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME})
+  install(DIRECTORY include/${PROJECT_NAME} DESTINATION include)
 
   install(DIRECTORY launch/ros2/launch config assets
     DESTINATION share/${PROJECT_NAME}
   )
 
-  install(TARGETS ${PROJECT_NAME} mujoco_node
+  install(TARGETS ${PROJECT_NAME}
+    EXPORT ${PROJECT_NAME}Targets
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION lib
+    ARCHIVE DESTINATION lib
+  )
+
+  install(TARGETS mujoco_node
     LIBRARY DESTINATION lib/${PROJECT_NAME}
     RUNTIME DESTINATION lib/${PROJECT_NAME}
     ARCHIVE DESTINATION lib/${PROJECT_NAME}
+  )
+
+  ament_export_include_directories(
+    include
+    ${GENERATED_HEADERS_DIR}
+    ${mujoco_INCLUDE_DIRS}
+  )
+  ament_export_dependencies(
+    ament_cmake
+    rclcpp
+    rclcpp_lifecycle
+    pluginlib
+    tf2
+    tf2_ros
+    image_transport
+    camera_info_manager
+    geometry_msgs
+    tf2_geometry_msgs
+    mujoco_ros_msgs
+    rosgraph_msgs
+    lifecycle_msgs
+    sensor_msgs
+    std_srvs
   )
 
   ament_package()

@@ -18,7 +18,7 @@ namespace mju = ::mujoco::sample_util;
 
 namespace mujoco_ros {
 
-void MujocoEnv::FetchConfiguration()
+void MujocoEnv::FetchRosConfiguration()
 {
 	ROS_DEBUG("Fetching configuration");
 
@@ -33,10 +33,6 @@ void MujocoEnv::FetchConfiguration()
 	}
 	bool no_render;
 	nh_->param("no_render", no_render, false);
-	if (nh_->hasParam("no_x")) {
-		ROS_WARN("The 'no_x' parameter is deprecated. Use 'no_render' instead.");
-		nh_->param("no_x", no_render, no_render);
-	}
 
 	if (no_render) {
 		ROS_INFO("no_render is set. Disabling rendering and setting headless to true");

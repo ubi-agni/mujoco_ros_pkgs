@@ -75,10 +75,10 @@ using Seconds = std::chrono::duration<double>;
 
 #if MJR_ROS_VERSION == ROS_2
 static bool should_exit = false;
-void async_spin(rclcpp::executors::MultiThreadedExecutor &executor)
+void async_spin(const rclcpp::executors::MultiThreadedExecutor::SharedPtr &executor)
 {
 	while (!should_exit) {
-		executor.spin_some();
+		executor->spin_some();
 		std::this_thread::sleep_for(Seconds(0.01));
 	}
 }
@@ -128,12 +128,15 @@ int main(int argc, char **argv)
 	}
 
 	// TODO(dleins): Should MuJoCo Plugins be loaded?
-	env = std::make_shared<mujoco_ros::MujocoEnv>(admin_hash);
 
-#if MJR_ROS_VERSION == ROS_2
+#if MJR_ROS_VERSION == ROS_1
+	env = std::make_shared<mujoco_ros::MujocoEnv>(admin_hash);
+#else // MJR_ROS_VERSION == ROS_2
 	// prepare for spinning later
-	rclcpp::executors::MultiThreadedExecutor executor;
-	executor.add_node(env);
+	rclcpp::executors::MultiThreadedExecutor::SharedPtr executor =
+	    std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
+	env = std::make_shared<mujoco_ros::MujocoEnv>(executor, admin_hash);
+	executor->add_node(env);
 #endif
 
 	env->StartPhysicsLoop();
@@ -165,7 +168,7 @@ int main(int argc, char **argv)
 	MJR_INFO_COND(env->settings_.headless, "Running headless");
 
 #if MJR_ROS_VERSION == ROS_2 && RENDER_BACKEND != GLFW_BACKEND
-	executor.spin();
+	executor->spin();
 #endif
 
 	env->WaitForPhysicsJoin();

@@ -106,6 +106,8 @@ OffscreenCamera::OffscreenCamera(const uint8_t cam_id, const std::string &base_t
 	data_state_  = mj_copyData(nullptr, model_state_, data);
 
 #if MJR_ROS_VERSION == ROS_2
+	// If env should become LifecycleNode, we need to replace nh_ creation with
+	// nh_ = std::shared_ptr<rclcpp::Node>(new rclcpp::Node(*env_ptr, base_topic));
 	nh_ = env_ptr->create_sub_node(base_topic);
 	// Initialize transport
 	it_ = std::make_unique<image_transport::ImageTransport>(nh_);

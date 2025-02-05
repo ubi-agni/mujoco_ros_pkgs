@@ -47,10 +47,7 @@
 namespace mujoco_ros {
 namespace mju = ::mujoco::sample_util;
 
-RosAPI::RosAPI(std::shared_ptr<ros::NodeHandle> &nh, MujocoEnvPtr env_ptr) : nh_(nh), env_ptr_(env_ptr)
-{
-	SetupServices();
-}
+RosAPI::RosAPI(std::shared_ptr<ros::NodeHandle> &nh, MujocoEnvPtr env_ptr) : nh_(nh), env_ptr_(env_ptr) {}
 
 void RosAPI::SetupServices()
 {
