@@ -52,3 +52,18 @@ Some more structural and configuration info, which is not yet included in the do
 
 This work is licensed under the BSD 3-Clause License (see LICENSE).
 It is built on top of MuJoCo, which was released under an Apache 2.0 License. For the original MuJoCo and further third party licenses, see [THIRD_PARTY_NOTICES](./THIRD_PARTY_NOTICES).
+
+# Cite
+
+If you are using this framework in your research, please cite the following work in your publications:
+
+```bibtex
+@inproceedings{leinsMuJoCoROSIntegrating2025
+    author = {Leins, David P. and Haschke, Robert and Ritter, Helge},
+    title = {MuJoCo ROS: Integrating ROS with the MuJoCo Engine for Accurate and Scalable Robotic Simulation},
+    booktitle={2025 IEEE International Conference on Simulation, Modeling, and Programming for Autonomous Robots (SIMPAR)},
+    year={2025},
+    organization = {IEEE. in press},
+}
+
+```
