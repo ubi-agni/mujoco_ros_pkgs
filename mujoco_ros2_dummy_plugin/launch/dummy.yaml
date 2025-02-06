@@ -5,4 +5,9 @@ mujoco_server:
         - dummy_ros2_plugin
       dummy_ros2_plugin:
         type: mujoco_ros::DummyRos2Plugin
-  
+
+dummy_ros2_plugin:
+  ros__parameters:
+    child_name: NameFromDummyDotYaml
+    parallel_name: ParallelNodeFromDummyDotYaml
+    test_name: TestNameFromDummyDotYaml
