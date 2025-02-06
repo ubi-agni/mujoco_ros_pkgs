@@ -27,12 +27,17 @@ class DummyRos2Plugin : public mujoco_ros::MujocoPlugin
 public:
 	// MujocoRos2ControlPlugin();
 
+	mujoco_ros::CallbackReturn on_configure(const rclcpp_lifecycle::State &/*previous_state*/) override;
+
 	~DummyRos2Plugin() override;
 	void ControlCallback(const mjModel* model, mjData* data) override;
-	void PassiveCallback(const mjModel* model, mjData* data) override;
-	void RenderCallback(const mjModel* model, mjData* data, mjvScene* scene) override;
-	void LastStageCallback(const mjModel* model, mjData* data) override;
-	void OnGeomChanged(const mjModel* model, mjData* data, const int geom_id) override;
+	
+
+    // These don't need to be implemented if they are not used
+	// void PassiveCallback(const mjModel* model, mjData* data) override;
+	// void RenderCallback(const mjModel* model, mjData* data, mjvScene* scene) override;
+	// void LastStageCallback(const mjModel* model, mjData* data) override;
+	// void OnGeomChanged(const mjModel* model, mjData* data, const int geom_id) override;
 
 protected:
 	/**
@@ -53,12 +58,15 @@ protected:
 private:
 	// std::unique_ptr<MujocoRos2ControlPluginPrivate> dataPtr_;
 	rclcpp::Logger get_my_logger() { return rclcpp::get_logger("DummyRos2Plugin"); };
-	std::string MUJOCO_PLUGIN_PARAM_NAME = "MujocoPlugins";
 	std::string plugin_name = "dummy_ros2_plugin";
-    rclcpp::Node::SharedPtr my_node_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher_;
-	rclcpp::executors::MultiThreadedExecutor::SharedPtr executor_;
-	std::thread thread_executor_spin_;
+
+	rclcpp::Node::SharedPtr child_node_;
+	rclcpp::Publisher<std_msgs::msg::String>::SharedPtr child_publisher_;
+
+	rclcpp::Node::SharedPtr parallel_node_;
+	rclcpp::Publisher<std_msgs::msg::String>::SharedPtr parallel_publisher_;
+
     mjData* d_;
     size_t count_;
     const mjModel* m_;
