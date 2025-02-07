@@ -27,13 +27,13 @@ public:
 	std::string getURDF() const;
 
 	/// \brief Node Handles
-	std::shared_ptr<rclcpp::Node> node_{ nullptr };
+	std::shared_ptr<rclcpp_lifecycle::LifecycleNode> node_{ nullptr };
 
 	/// \brief Thread where the executor will spin
 	std::thread thread_executor_spin_;
 
 	/// \brief Executor to spin the controller
-	rclcpp::executors::MultiThreadedExecutor::SharedPtr executor_;
+	rclcpp::Executor::SharedPtr executor_;
 
 	/// \brief Timing
 	rclcpp::Duration control_period_ = rclcpp::Duration(1, 0);
@@ -51,7 +51,7 @@ public:
 	rclcpp::Time last_update_sim_time_mj_ = rclcpp::Time((int64_t)0, RCL_STEADY_TIME);
 
 	/// \brief controller update rate
-	int update_rate;
+	unsigned int update_rate;
 
 	/// \brief Interface loader
 	std::shared_ptr<pluginlib::ClassLoader<mujoco_ros2_control::MujocoRos2SystemInterface>>
@@ -64,11 +64,14 @@ public:
 	// MujocoRos2ControlPlugin();
 
 	~MujocoRos2ControlPlugin() override;
+	mujoco_ros::CallbackReturn on_configure(const rclcpp_lifecycle::State &/*previous_state*/) override;
+	
 	void ControlCallback(const mjModel* model, mjData* data) override;
 	void PassiveCallback(const mjModel* model, mjData* data) override;
 	void RenderCallback(const mjModel* model, mjData* data, mjvScene* scene) override;
 	void LastStageCallback(const mjModel* model, mjData* data) override;
 	void OnGeomChanged(const mjModel* model, mjData* data, const int geom_id) override;
+	
 
 protected:
 	/**

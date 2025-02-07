@@ -12,11 +12,13 @@ mujoco_server:
         type: mujoco_ros2_control::MujocoRos2ControlPlugin
         hardware:
           type: mujoco_ros_control/RobotHW
-          control_period: 0.001
-        params:
-          namespace: "test"
-          robot_description_node: "robot_state_publisher"
-          robot_description: "robot_description"
+          
+test:
+  mujoco_ros2_control:
+    ros__parameters:
+      namespace: ""
+      robot_description_node: "robot_state_publisher"
+      robot_description: "robot_description"
       
 test: # this should match the "namespace" value in "params" in line 17
   controller_manager:
