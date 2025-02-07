@@ -62,11 +62,11 @@ public:
 
   // Documentation Inherited
   bool initSim(
-    rclcpp::Node::SharedPtr & model_nh,
+    rclcpp_lifecycle::LifecycleNode::SharedPtr & model_nh,
     const hardware_interface::HardwareInfo & hardware_info,
     const mjModel* m,
     mjData* d,
-    int & update_rate) override;
+    unsigned int & update_rate) override;
 
 private:
   // Register a sensor (for now just IMUs)
@@ -156,7 +156,7 @@ public:
   const mjModel* m_; 
 
   /// \brief controller update rate
-  int * update_rate;
+  unsigned int * update_rate;
 
 };
 

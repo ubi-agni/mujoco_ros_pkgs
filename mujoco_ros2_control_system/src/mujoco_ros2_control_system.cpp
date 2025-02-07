@@ -3,15 +3,19 @@
 namespace mujoco_ros2_control{
 
 bool MujocoRos2System::initSim(
-    rclcpp::Node::SharedPtr & model_nh,
+    rclcpp_lifecycle::LifecycleNode::SharedPtr & model_nh,
     const hardware_interface::HardwareInfo & hardware_info,
     const mjModel* m,
     mjData* d,
-    int & update_rate){
+    unsigned int & update_rate){
     
     // Lesson: Using an uninitialized nh_ will cause the node to simply crash without warning,
     // probably because the output is not piped to stdout.
     // this was the main reason for the crashing, ironically the logging itself was set up wrongly.
+    // const std::string node_name = hardware_info.name + "_node";
+    // const std::string ns = std::string(model_nh->get_name());
+    // const auto node_options = rclcpp::NodeOptions().arguments({"--ros-args", "--remap", node_name + ":__node:=" + node_name});
+    // this->nh_ = std::make_shared<rclcpp_lifecycle::LifecycleNode>(node_name, ns, node_options);
 
     this->nh_ = model_nh;
     this->dataPtr_ = std::make_unique<MujocoRos2SystemPrivate>();
@@ -22,8 +26,8 @@ bool MujocoRos2System::initSim(
     this->dataPtr_->n_dof_ = hardware_info.joints.size();
     this->dataPtr_->joints_.resize(this->dataPtr_->n_dof_);
 
-    RCLCPP_INFO(this->nh_->get_logger(), "initSim start, update rate: %d", *this->dataPtr_->update_rate);
-    RCLCPP_DEBUG(this->nh_->get_logger(), "initSim assignments done, update rate: %d", *this->dataPtr_->update_rate);
+    RCLCPP_DEBUG(this->nh_->get_logger(), "initSim start, update rate: %d", *this->dataPtr_->update_rate);
+    RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "initSim assignments done, update rate: %d", *this->dataPtr_->update_rate);
     RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "Joint size: " << this->dataPtr_->n_dof_);
     for (uint i = 0; i<this->dataPtr_->n_dof_; i++){
       auto & joint_info = hardware_info.joints[i];
@@ -132,7 +136,7 @@ bool MujocoRos2System::initSim(
       RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "\tJoint processing done: " << joint_name);
     }
 
-    RCLCPP_INFO(this->nh_->get_logger(), "initSim end, update rate: %d", *this->dataPtr_->update_rate);
+    RCLCPP_DEBUG(this->nh_->get_logger(), "initSim end, update rate: %d", *this->dataPtr_->update_rate);
     return true;
   }
 
@@ -179,9 +183,7 @@ hardware_interface::return_type MujocoRos2System::perform_command_mode_switch(
 hardware_interface::return_type MujocoRos2System::read(
   const rclcpp::Time & time,
   const rclcpp::Duration & /* period */){
-
     if(epsilonComp(time, this->dataPtr_->last_update_sim_time_mj_, static_cast<double>(*this->dataPtr_->update_rate))){
-      RCLCPP_DEBUG(this->nh_->get_logger(), "read, curr time: %f, last update: %f", time.seconds(), this->dataPtr_->last_update_sim_time_mj_.seconds());
       for(uint i = 0; i < this->dataPtr_->joints_.size(); i++){
         // qposadr and dofadr are always populated, if the system was initialized successfully.
         this->dataPtr_->joints_[i].joint_position = this->dataPtr_->d_->qpos[this->dataPtr_->joints_[i].joint_qposadr];
@@ -200,7 +202,6 @@ hardware_interface::return_type MujocoRos2System::write(
   const rclcpp::Duration & period){
     
     if(epsilonComp(time, this->dataPtr_->last_update_sim_time_mj_, static_cast<double>(*this->dataPtr_->update_rate))){
-      RCLCPP_DEBUG(this->nh_->get_logger(), "write");
       for(uint i = 0; i < this->dataPtr_->joints_.size(); i++){
         // Simply check the joint's control method, and whether the corresponding mj actuator index is populated or not
         if(this->dataPtr_->joints_[i].joint_control_method & ControlMethod_::POSITION &&

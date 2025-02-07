@@ -27,6 +27,7 @@
 #include <hardware_interface/types/hardware_interface_type_values.hpp>
 
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_lifecycle/lifecycle_node.hpp>
 
 namespace mujoco_ros2_control
 {
@@ -83,11 +84,11 @@ public:
   /// param[in] _ecm Entity-component manager.
   /// param[in] update_rate controller update rate
   virtual bool initSim(
-    rclcpp::Node::SharedPtr & model_nh,
+    rclcpp_lifecycle::LifecycleNode::SharedPtr & model_nh,
     const hardware_interface::HardwareInfo & hardware_info,
     const mjModel* m,
     mjData* d,
-    int & update_rate) = 0;
+    unsigned int & update_rate) = 0;
 
   /// @brief Performs an epsilon (1e-5) comparison to deal with floating point precision bugs.
   /// @param time1 The "current" time.
@@ -96,7 +97,7 @@ public:
   /// @return 
   bool epsilonComp(const rclcpp::Time & time1, const rclcpp::Time & time2, const double update_rate){
     const double eps = 1e-5;
-    return abs(time1.seconds() - time2.seconds() - (1.0 / update_rate)) < eps;
+    return time1.seconds() - time2.seconds() > (1.0 / update_rate) - eps;
   }
 
   // Methods used to control a joint.
@@ -111,7 +112,7 @@ public:
   typedef SafeEnum<enum ControlMethod_> ControlMethod;
 
 protected:
-  rclcpp::Node::SharedPtr nh_;
+  rclcpp_lifecycle::LifecycleNode::SharedPtr nh_;
 };
 
 }  // namespace ign_ros2_control
