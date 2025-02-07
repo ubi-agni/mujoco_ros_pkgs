@@ -155,6 +155,10 @@ void MujocoEnv::RemoveNodeFromExecutor(rclcpp::node_interfaces::NodeBaseInterfac
 	executor_->remove_node(node);
 }
 
+rclcpp::Executor::SharedPtr MujocoEnv::GetExecutorPtr(){
+	return executor_;
+}
+
 #endif
 
 void MujocoEnv::Configure()
