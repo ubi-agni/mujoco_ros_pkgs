@@ -77,6 +77,7 @@ namespace mju = ::mujoco::sample_util;
 
 TEST_F(BaseEnvFixture, Not_Headless_Warn)
 {
+	ROS_WARN("NotHeadlessWarn");
 	nh->setParam("no_render", false);
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
@@ -94,6 +95,7 @@ TEST_F(BaseEnvFixture, Not_Headless_Warn)
     RENDER_BACKEND == OSMESA_BACKEND // i.e. any render backend available
 TEST_F(BaseEnvFixture, NoRender_Params_Correct)
 {
+	ROS_WARN("NoRenderParamsCorrect");
 	nh->setParam("no_render", true);
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
@@ -113,6 +115,7 @@ TEST_F(BaseEnvFixture, NoRender_Params_Correct)
 
 TEST_F(BaseEnvFixture, Headless_params_correct)
 {
+	ROS_WARN("HeadlessParamsCorrect");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
@@ -128,6 +131,7 @@ TEST_F(BaseEnvFixture, Headless_params_correct)
 
 TEST_F(BaseEnvFixture, RGB_Topics_Available)
 {
+	ROS_WARN("RGBTopicsAvailable");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::RGB);
@@ -165,6 +169,7 @@ TEST_F(BaseEnvFixture, RGB_Topics_Available)
 
 TEST_F(BaseEnvFixture, DEPTH_Topics_Available)
 {
+	ROS_WARN("DepthTopicsAvailable");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::DEPTH);
@@ -202,6 +207,7 @@ TEST_F(BaseEnvFixture, DEPTH_Topics_Available)
 
 TEST_F(BaseEnvFixture, SEGMENTATION_Topics_Available)
 {
+	ROS_WARN("SEGMENTATIONTopicsAvailable");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::SEGMENTED);
@@ -238,6 +244,7 @@ TEST_F(BaseEnvFixture, SEGMENTATION_Topics_Available)
 
 TEST_F(BaseEnvFixture, RGB_DEPTH_Topics_Available)
 {
+	ROS_WARN("RGBDEPTHTopicsAvailable");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::RGB_D);
@@ -280,6 +287,7 @@ TEST_F(BaseEnvFixture, RGB_DEPTH_Topics_Available)
 
 TEST_F(BaseEnvFixture, RGB_SEGMENTATION_Topics_Available)
 {
+	ROS_WARN("RGBSEGMENTATIONTopicsAvailable");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::RGB_S);
@@ -322,6 +330,7 @@ TEST_F(BaseEnvFixture, RGB_SEGMENTATION_Topics_Available)
 
 TEST_F(BaseEnvFixture, DEPTH_SEGMENTATION_Topics_Available)
 {
+	ROS_WARN("DEPTHSEGMENTATIONTopicsAvailable");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::DEPTH_S);
@@ -363,6 +372,7 @@ TEST_F(BaseEnvFixture, DEPTH_SEGMENTATION_Topics_Available)
 
 TEST_F(BaseEnvFixture, RGB_DEPTH_SEGMENTATION_Topics_Available)
 {
+	ROS_WARN("RGBDEPTHSEGMENTATIONTopicsAvailable");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::RGB_D_S);
@@ -409,6 +419,7 @@ TEST_F(BaseEnvFixture, RGB_DEPTH_SEGMENTATION_Topics_Available)
 
 TEST_F(BaseEnvFixture, Default_Cam_Settings)
 {
+	ROS_WARN("DefaultCamSettings");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
@@ -435,6 +446,7 @@ TEST_F(BaseEnvFixture, Default_Cam_Settings)
 
 TEST_F(BaseEnvFixture, Resolution_Settings)
 {
+	ROS_WARN("ResolutionSettings");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("cam_config/test_cam/width", 640);
@@ -464,6 +476,7 @@ TEST_F(BaseEnvFixture, Resolution_Settings)
 
 TEST_F(BaseEnvFixture, Stream_BaseTopic_Relative)
 {
+	ROS_WARN("StreamBaseTopicRelative");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::RGB_D_S);
@@ -510,6 +523,7 @@ TEST_F(BaseEnvFixture, Stream_BaseTopic_Relative)
 
 TEST_F(BaseEnvFixture, Stream_BaseTopic_Absolute)
 {
+	ROS_WARN("StreamBaseTopicAbsolute");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::RGB_D_S);
@@ -556,6 +570,7 @@ TEST_F(BaseEnvFixture, Stream_BaseTopic_Absolute)
 
 TEST_F(BaseEnvFixture, RGB_Alternative_StreamName)
 {
+	ROS_WARN("RGBAlternativeStreamName");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::RGB);
@@ -592,6 +607,7 @@ TEST_F(BaseEnvFixture, RGB_Alternative_StreamName)
 
 TEST_F(BaseEnvFixture, DEPTH_Alternative_StreamName)
 {
+	ROS_WARN("DEPTHAlternativeStreamName");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::DEPTH);
@@ -628,6 +644,7 @@ TEST_F(BaseEnvFixture, DEPTH_Alternative_StreamName)
 
 TEST_F(BaseEnvFixture, SEGMENT_Alternative_StreamName)
 {
+	ROS_WARN("SEGMENTAlternativeStreamName");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("cam_config/test_cam/stream_type", rendering::streamType::SEGMENTED);
@@ -664,6 +681,7 @@ TEST_F(BaseEnvFixture, SEGMENT_Alternative_StreamName)
 
 TEST_F(BaseEnvFixture, RGB_Published_Correctly)
 {
+	ROS_WARN("RGBPublishedCorrectly");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("unpause", false);
@@ -726,6 +744,7 @@ TEST_F(BaseEnvFixture, RGB_Published_Correctly)
 
 TEST_F(BaseEnvFixture, Cam_Timing_Correct)
 {
+	ROS_WARN("CamTimingCorrect");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("unpause", false);
@@ -826,6 +845,7 @@ TEST_F(BaseEnvFixture, Cam_Timing_Correct)
 
 TEST_F(BaseEnvFixture, RGB_Image_Dtype)
 {
+	ROS_WARN("RGBImageDtype");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("unpause", false);
@@ -872,6 +892,7 @@ TEST_F(BaseEnvFixture, RGB_Image_Dtype)
 
 TEST_F(BaseEnvFixture, DEPTH_Image_Dtype)
 {
+	ROS_WARN("DEPTHImageDtype");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("unpause", false);
@@ -921,6 +942,7 @@ TEST_F(BaseEnvFixture, DEPTH_Image_Dtype)
 
 TEST_F(BaseEnvFixture, SEGMENTED_Image_Dtype)
 {
+	ROS_WARN("SEGMENTEDImageDtype");
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("unpause", false);
@@ -973,6 +995,7 @@ TEST_F(BaseEnvFixture, SEGMENTED_Image_Dtype)
 #if RENDER_BACKEND == NO_BACKEND // i.e. no render backend available
 TEST_F(BaseEnvFixture, No_Render_Backend_Headless_Warn)
 {
+	ROS_WARN("NoRenderBackendHeadlessWarn");
 	nh->setParam("headless", true);
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
