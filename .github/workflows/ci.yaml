@@ -23,16 +23,30 @@ jobs:
         distro: [noetic, one]
         render_backend: [GLFW, OSMESA, EGL, DISABLE]
         mujoco: [3.2.0]
-        include:
+        # include:
+        #   - distro: noetic
+        #     mujoco: 3.2.0
+        #     env:
+        #       CATKIN_LINT: true
+        #       CCOV: true
+        #   - distro: one
+        #     mujoco: 3.2.0
+        #     env:
+        #       CLANG_TIDY: pedantic
+        exclude:
           - distro: noetic
-            mujoco: 3.2.0
-            env:
-              CATKIN_LINT: true
-              CCOV: true
+            render_backend: DISABLE
+          - distro: noetic
+            render_backend: OSMESA
+          - distro: noetic
+            render_backend: EGL
+          - distro: noetic
+            render_backend: GLFW
           - distro: one
-            mujoco: 3.2.0
-            env:
-              CLANG_TIDY: pedantic
+            render_backend: DISABLE
+          - distro: one
+            render_backend: OSMESA
+
 
     env:
       BUILDER: colcon
