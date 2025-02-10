@@ -125,7 +125,7 @@ jobs:
         uses: rhaschke/lcov-action@main
         if: always() && matrix.env.CCOV && steps.ici.outputs.target_test_results == '0'
         with:
-          docker: $DOCKER_IMAGE
+          docker: ${{ matrix.render_backend != 'EGL' && '$DOCKER_IMAGE' || '' }}
           workdir: ${{ env.BASEDIR }}/target_ws
           ignore: '"*/target_ws/build/*" "*/target_ws/install/*" "*/test/*"'
           output: ${{ env.BASEDIR }}/target_ws/coverage-${{ matrix.distro }}-${{ matrix.render_backend }}.info
