@@ -100,6 +100,33 @@ public:
     return time1.seconds() - time2.seconds() > (1.0 / update_rate) - eps;
   }
 
+  // Commonly used methods for setting actuator values
+  void setTorqueControl(const mjModel* m,int actuator_no,int flag)
+  {
+    if(actuator_no < 0){
+      return;
+    }
+    if (flag==0)
+      m->actuator_gainprm[10*actuator_no+0]=0;
+    else
+      m->actuator_gainprm[10*actuator_no+0]=1;
+  }
+  void setPositionServo(const mjModel* m,int actuator_no,double kp)
+  {
+    if(actuator_no < 0){
+      return;
+    }
+    m->actuator_gainprm[10*actuator_no+0]=kp;
+    m->actuator_biasprm[10*actuator_no+1]=-kp;
+  }
+  void setVelocityServo(const mjModel* m,int actuator_no,double kv)
+  {
+    if(actuator_no < 0){
+      return;
+    }
+    m->actuator_gainprm[10*actuator_no+0]=kv;
+    m->actuator_biasprm[10*actuator_no+2]=-kv;
+  }
   // Methods used to control a joint.
   enum ControlMethod_
   {
