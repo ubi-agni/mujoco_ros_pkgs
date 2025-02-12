@@ -25,15 +25,30 @@ bool MujocoRos2System::initSim(
     this->dataPtr_->update_rate = &update_rate;
     this->dataPtr_->n_dof_ = hardware_info.joints.size();
     this->dataPtr_->joints_.resize(this->dataPtr_->n_dof_);
-
+    this->dataPtr_->robot_name_ = hardware_info.name;
+    RCLCPP_INFO(this->nh_->get_logger(), "InitSim Robot name: %s", this->dataPtr_->robot_name_.c_str());
     RCLCPP_DEBUG(this->nh_->get_logger(), "initSim start, update rate: %d", *this->dataPtr_->update_rate);
-    RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "initSim assignments done, update rate: %d", *this->dataPtr_->update_rate);
+    RCLCPP_DEBUG(this->nh_->get_logger(), "initSim assignments done, update rate: %d", *this->dataPtr_->update_rate);
     RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "Joint size: " << this->dataPtr_->n_dof_);
     for (uint i = 0; i<this->dataPtr_->n_dof_; i++){
       auto & joint_info = hardware_info.joints[i];
       std::string joint_name = this->dataPtr_->joints_[i].name = joint_info.name;
       RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "Processing joint #" << i << " named " << joint_name);
 
+      // Handle the default kv and kp parameters to set the joint by, for velocity and position actuators respectively      
+      this->dataPtr_->joints_[i].kv = 0.0;
+      this->dataPtr_->joints_[i].kp = 0.0;
+      this->dataPtr_->joints_[i].is_actuated = false;
+      if(joint_info.parameters.find("kv") != joint_info.parameters.end()){
+        this->dataPtr_->joints_[i].kv = stod(joint_info.parameters.at("kv"));
+        this->dataPtr_->joints_[i].is_actuated = true;
+      }
+      if(joint_info.parameters.find("kp") != joint_info.parameters.end()){
+        this->dataPtr_->joints_[i].kp = stod(joint_info.parameters.at("kp"));
+        this->dataPtr_->joints_[i].is_actuated = true;
+      }
+
+      bool has_value = joint_info.parameters.find("test") != joint_info.parameters.end();
       int jnt_idx = mj_name2id(m, mjOBJ_JOINT, joint_name.c_str());
       if(jnt_idx == -1){ // basic check to see if URDF and MuJoCo joint names match
         RCLCPP_FATAL(this->nh_->get_logger(), "The requested joint %s cannot be found in the MuJoCo model!", joint_name.c_str());
@@ -140,6 +155,30 @@ bool MujocoRos2System::initSim(
     return true;
   }
 
+bool startsWith(const std::string& mainStr, const std::string& toMatch) {
+    if (mainStr.size() < toMatch.size()) {
+        return false;
+    }
+    return mainStr.compare(0, toMatch.size(), toMatch) == 0;
+  };
+bool stringExistsInVector(const std::vector<std::string>& vec, const std::string& element) {
+    return std::find(vec.begin(), vec.end(), element) != vec.end();
+}
+std::string getLastElement(const std::string& str, char delimiter) {
+    std::stringstream ss(str);
+    std::string item;
+    std::vector<std::string> elements;
+
+    while (std::getline(ss, item, delimiter)) {
+        elements.push_back(item);
+    }
+
+    if (!elements.empty()) {
+        return elements.back();
+    }
+
+    return "";
+}
 
 CallbackReturn MujocoRos2System::on_init(const hardware_interface::HardwareInfo & system_info){
   RCLCPP_WARN(this->nh_->get_logger(), "On init...");
@@ -170,12 +209,185 @@ CallbackReturn MujocoRos2System::on_deactivate(const rclcpp_lifecycle::State & p
   return CallbackReturn::SUCCESS;
 };
 
+hardware_interface::return_type MujocoRos2System::prepare_command_mode_switch(
+  const std::vector<std::string> & start_interfaces,
+  const std::vector<std::string> & stop_interfaces){
+
+    /*
+    For the interface,
+    first we get a collection of interfaces that match the joint names in this system.
+    Then we check that the interfaces are unique on the joint level, i.e. 
+    we should avoid
+    joint1/velocity
+    joint1/effort -> throw error
+    
+    ending up with filtered_interfaces
+
+    then we enforce that the no. of unique joints are leq to the joints in this system,
+    filtered_interfaces.size() <= this->dataPtr_->joints_.size()
+
+    then finally we change the joints' control modes,
+    which will then be used in perform_command_mode_switch
+
+    */
+    RCLCPP_DEBUG(this->nh_->get_logger(), "prepare_command_mode_switch");
+
+    ///////////////////////////////////
+    //            Start case         //
+    ///////////////////////////////////
+    std::vector<std::string> filtered_starts;
+    std::vector<std::string> started_joints;
+    for(auto& start : start_interfaces){
+      RCLCPP_INFO_STREAM(this->nh_->get_logger(), "Starts: " << start);
+      for(auto& joint : this->dataPtr_->joints_){
+        if(startsWith(start, joint.name)){
+          RCLCPP_INFO_STREAM(this->nh_->get_logger(), start << " starts with " << joint.name);
+          if(!stringExistsInVector(started_joints,joint.name)){
+            filtered_starts.push_back(start);
+            break;
+          }
+          else{
+            RCLCPP_ERROR(this->nh_->get_logger(), "The joint %s has already been marked to be"
+                                            " started! Check that you are not trying to start"
+                                            " two command interfaces on the same joint together."
+                                            " Given: %s, target joint: %s", 
+                                            start.c_str(), joint.name.c_str());
+            return hardware_interface::return_type::ERROR;
+          }
+        }
+        else{
+          RCLCPP_INFO_STREAM(this->nh_->get_logger(), start << " doesn't start with " << joint.name);
+        }
+      }
+    }
+    // Make sure that the filtered interfaces are leq to the number of joints in the system
+    if(filtered_starts.size() > this->dataPtr_->joints_.size()){
+      RCLCPP_ERROR(this->nh_->get_logger(), "The number of start interfaces is"
+                                            " greater than the number of joints in this system!"
+                                            " start interfaces: %d, system joint size: %d", 
+                                            filtered_starts.size(), this->dataPtr_->joints_.size());
+      return hardware_interface::return_type::ERROR;
+    }
+    // If things have progressed to this point, we can safely set the joint's command mode
+    for(auto& start : filtered_starts){
+      for(auto& joint : this->dataPtr_->joints_){
+        if(startsWith(start, joint.name)){
+          if(!joint.is_actuated){
+            RCLCPP_WARN(this->nh_->get_logger(), "Joint %s has received a start interface, but"
+                                                 " it is not actuated! Skipping the joint.", joint.name.c_str());
+            break;
+          }
+          // extract the command mode
+          auto interface = getLastElement(start, '/');
+          joint.joint_control_method &= NONE; // mask to none
+          if(interface == "position"){
+            joint.joint_control_method |= POSITION;
+          }
+          if(interface == "velocity"){
+            joint.joint_control_method |= VELOCITY;
+          }
+          if(interface == "effort"){
+            joint.joint_control_method |= EFFORT;
+          }
+          RCLCPP_INFO(this->nh_->get_logger(), "Joint %s has been set to %s", joint.name.c_str(), interface.c_str());
+          break;
+        }
+      }
+    }
+
+
+    ///////////////////////////////////
+    //            Stop case          //
+    ///////////////////////////////////
+    std::vector<std::string> filtered_stops;
+    std::vector<std::string> stopped_joints;
+    for(auto& stop : stop_interfaces){
+      RCLCPP_INFO_STREAM(this->nh_->get_logger(), "Stops: " << stop);
+      for(auto& joint : this->dataPtr_->joints_){
+        if(startsWith(stop, joint.name)){
+          RCLCPP_INFO_STREAM(this->nh_->get_logger(), stop << " starts with " << joint.name);
+          if(!stringExistsInVector(stopped_joints,joint.name)){
+            filtered_stops.push_back(stop);
+            break;
+          }
+          else{
+            RCLCPP_ERROR(this->nh_->get_logger(), "The joint %s has already been marked to be"
+                                            " stopped! Check that you are not trying to stop"
+                                            " two command interfaces on the same joint together."
+                                            " Given: %s, target joint: %s", 
+                                            stop.c_str(), joint.name.c_str());
+            return hardware_interface::return_type::ERROR;
+          }
+        }
+        else{
+          RCLCPP_INFO_STREAM(this->nh_->get_logger(), stop << " doesn't start with " << joint.name);
+        }
+      }
+    }
+    // Make sure that the filtered interfaces are leq to the number of joints in the system
+    if(filtered_stops.size() > this->dataPtr_->joints_.size()){
+      RCLCPP_ERROR(this->nh_->get_logger(), "The number of stop interfaces is"
+                                            " greater than the number of joints in this system!"
+                                            " stop interfaces: %d, system joint size: %d", 
+                                            filtered_stops.size(), this->dataPtr_->joints_.size());
+      return hardware_interface::return_type::ERROR;
+    }
+    // If things have progressed to this point, we can safely set the joint's command mode
+    for(auto& stop : filtered_stops){
+      for(auto& joint : this->dataPtr_->joints_){
+        if(startsWith(stop, joint.name)){
+          if(!joint.is_actuated){
+            RCLCPP_WARN(this->nh_->get_logger(), "Joint %s has received a stop interface, but"
+                                                 " it is not actuated! Skipping the joint.", joint.name.c_str());
+            break;
+          }
+          // extract the command mode
+          auto interface = getLastElement(stop, '/');
+          joint.joint_control_method &= NONE; // mask to none
+          RCLCPP_INFO(this->nh_->get_logger(), "Joint %s has been set to STOP", joint.name.c_str(), interface.c_str());
+          break;
+        }
+      }
+    }
+
+    return hardware_interface::return_type::OK;
+  };
+
 // Documentation Inherited
 hardware_interface::return_type MujocoRos2System::perform_command_mode_switch(
   const std::vector<std::string> & start_interfaces,
   const std::vector<std::string> & stop_interfaces){
 
     RCLCPP_DEBUG(this->nh_->get_logger(), "perform_command_mode_switch");
+    // This is a simple for loop over joints with a switch case over the control mode enum.
+    // TODO: Set the appropriate gains for each of the command modes 
+    for(auto &joint : this->dataPtr_->joints_){
+      if(joint.joint_control_method & EFFORT){
+        RCLCPP_INFO(this->nh_->get_logger(), "Joint %s has EFFORT", joint.name.c_str());
+        setTorqueControl(this->dataPtr_->m_, joint.act_effidx, 1);
+        setPositionServo(this->dataPtr_->m_, joint.act_posidx, 0);
+        setVelocityServo(this->dataPtr_->m_, joint.act_velidx, 0);
+      }
+      else if(joint.joint_control_method & POSITION){
+        RCLCPP_INFO(this->nh_->get_logger(), "Joint %s has POSITION", joint.name.c_str());
+        setTorqueControl(this->dataPtr_->m_, joint.act_effidx, 0);
+        setPositionServo(this->dataPtr_->m_, joint.act_posidx, joint.kp);
+        setVelocityServo(this->dataPtr_->m_, joint.act_velidx, 0);
+      }
+      else if(joint.joint_control_method & VELOCITY){
+        RCLCPP_INFO(this->nh_->get_logger(), "Joint %s has VELOCITY", joint.name.c_str());
+        setTorqueControl(this->dataPtr_->m_, joint.act_effidx, 0);
+        setPositionServo(this->dataPtr_->m_, joint.act_posidx, 0);
+        setVelocityServo(this->dataPtr_->m_, joint.act_velidx, joint.kv);
+      }
+      else{
+        RCLCPP_INFO(this->nh_->get_logger(), "Joint %s has NONE", joint.name.c_str());
+        setTorqueControl(this->dataPtr_->m_, joint.act_effidx, 0);
+        setPositionServo(this->dataPtr_->m_, joint.act_posidx, 0);
+        setVelocityServo(this->dataPtr_->m_, joint.act_velidx, 0);
+      }
+
+    }
     return hardware_interface::return_type::OK;
   };
 
@@ -191,7 +403,9 @@ hardware_interface::return_type MujocoRos2System::read(
         this->dataPtr_->joints_[i].joint_effort   = this->dataPtr_->d_->qfrc_applied[this->dataPtr_->joints_[i].joint_dofadr] +
                                                     this->dataPtr_->d_->qfrc_actuator[this->dataPtr_->joints_[i].joint_dofadr];
       }
-      this->dataPtr_->last_update_sim_time_mj_ = time;
+      // last sim time should be updated in the write function, not read,
+      // since read is always called before write.
+      // this->dataPtr_->last_update_sim_time_mj_ = time;
     }
     return hardware_interface::return_type::OK;
   };
@@ -204,20 +418,35 @@ hardware_interface::return_type MujocoRos2System::write(
     if(epsilonComp(time, this->dataPtr_->last_update_sim_time_mj_, static_cast<double>(*this->dataPtr_->update_rate))){
       for(uint i = 0; i < this->dataPtr_->joints_.size(); i++){
         // Simply check the joint's control method, and whether the corresponding mj actuator index is populated or not
-        if(this->dataPtr_->joints_[i].joint_control_method & ControlMethod_::POSITION &&
-          this->dataPtr_->joints_[i].act_posidx != -1){
-          this->dataPtr_->d_->ctrl[this->dataPtr_->joints_[i].act_posidx]= this->dataPtr_->joints_[i].joint_position_cmd;
+        if(this->dataPtr_->joints_[i].act_posidx != -1)
+        {
+          if(this->dataPtr_->joints_[i].joint_control_method & ControlMethod_::POSITION){
+            this->dataPtr_->d_->ctrl[this->dataPtr_->joints_[i].act_posidx] = this->dataPtr_->joints_[i].joint_position_cmd;
+          }
+          else{
+            this->dataPtr_->d_->ctrl[this->dataPtr_->joints_[i].act_posidx] = 0.0;
+          }
         }
-        if(this->dataPtr_->joints_[i].joint_control_method & ControlMethod_::VELOCITY &&
-          this->dataPtr_->joints_[i].act_velidx != -1){
-        this->dataPtr_->d_->ctrl[this->dataPtr_->joints_[i].act_velidx]= this->dataPtr_->joints_[i].joint_velocity_cmd;
+        if(this->dataPtr_->joints_[i].act_velidx != -1){
+          if(this->dataPtr_->joints_[i].joint_control_method & ControlMethod_::VELOCITY){
+            this->dataPtr_->d_->ctrl[this->dataPtr_->joints_[i].act_velidx] = this->dataPtr_->joints_[i].joint_velocity_cmd;
+          }
+          else{
+            this->dataPtr_->d_->ctrl[this->dataPtr_->joints_[i].act_velidx] = 0.0;
+          }
+
         }
-        if(this->dataPtr_->joints_[i].joint_control_method & ControlMethod_::EFFORT &&
-          this->dataPtr_->joints_[i].act_effidx != -1){
-        this->dataPtr_->d_->ctrl[this->dataPtr_->joints_[i].act_effidx]= this->dataPtr_->joints_[i].joint_effort_cmd;
+        if(this->dataPtr_->joints_[i].act_effidx != -1){
+          if(this->dataPtr_->joints_[i].joint_control_method & ControlMethod_::EFFORT){
+            this->dataPtr_->d_->ctrl[this->dataPtr_->joints_[i].act_effidx] = this->dataPtr_->joints_[i].joint_effort_cmd;
+          }
+          else{
+            this->dataPtr_->d_->ctrl[this->dataPtr_->joints_[i].act_effidx] = 0.0;
+          }
         }
       }
     }
+    this->dataPtr_->last_update_sim_time_mj_ = time;
     return hardware_interface::return_type::OK;
   };
 

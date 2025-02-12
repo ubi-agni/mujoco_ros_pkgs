@@ -46,6 +46,11 @@ public:
   CallbackReturn on_deactivate(const rclcpp_lifecycle::State & previous_state) override;
 
   // Documentation Inherited
+  hardware_interface::return_type prepare_command_mode_switch(
+    const std::vector<std::string> & start_interfaces,
+    const std::vector<std::string> & stop_interfaces) override;
+  
+  // Documentation Inherited
   hardware_interface::return_type perform_command_mode_switch(
     const std::vector<std::string> & start_interfaces,
     const std::vector<std::string> & stop_interfaces) override;
@@ -91,11 +96,11 @@ struct jointData
   int joint_dofadr;
 
   /// @brief Corresponding joint's effort (torque) actuator index
-  int act_effidx;
+  int act_effidx = -1;
   /// @brief Corresponding joint's position actuator index
-  int act_posidx;
+  int act_posidx = -1;
   /// @brief Corresponding joint's velocity actuator index
-  int act_velidx;
+  int act_velidx = -1;
 
   /// \brief Current joint position
   double joint_position;
@@ -118,9 +123,12 @@ struct jointData
   /// \brief flag if joint is actuated (has command interfaces) or passive
   bool is_actuated;
 
-  /// \brief handles to the joints from within Gazebo
-  // ignition::gazebo::Entity sim_joint;
+  /// \brief value to be used for setting velocity actuator's gain, if it exists
+  double kv;
 
+  /// \brief value to be used for setting position actuator's gain, if it exists
+  double kp;
+  
   /// \brief Control method defined in the URDF for each joint.
   mujoco_ros2_control::MujocoRos2SystemInterface::ControlMethod joint_control_method;
 };
@@ -157,6 +165,8 @@ public:
 
   /// \brief controller update rate
   unsigned int * update_rate;
+
+  std::string robot_name_;
 
 };
 
