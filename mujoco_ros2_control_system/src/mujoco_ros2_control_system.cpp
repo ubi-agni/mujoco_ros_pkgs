@@ -141,7 +141,7 @@ bool MujocoRos2System::initSim(
           }
           this->dataPtr_->joints_[i].act_effidx = act_idx;
           this->dataPtr_->command_interfaces_.emplace_back(joint_name, 
-                                                          hardware_interface::HW_IF_POSITION, 
+                                                          hardware_interface::HW_IF_EFFORT, 
                                                           &this->dataPtr_->joints_[i].joint_effort_cmd);
           this->dataPtr_->joints_[i].joint_effort_cmd = d->qvel[this->dataPtr_->joints_[i].act_effidx];                                                          
         }
@@ -297,10 +297,8 @@ hardware_interface::return_type MujocoRos2System::prepare_command_mode_switch(
     std::vector<std::string> filtered_stops;
     std::vector<std::string> stopped_joints;
     for(auto& stop : stop_interfaces){
-      RCLCPP_INFO_STREAM(this->nh_->get_logger(), "Stops: " << stop);
       for(auto& joint : this->dataPtr_->joints_){
         if(startsWith(stop, joint.name)){
-          RCLCPP_INFO_STREAM(this->nh_->get_logger(), stop << " starts with " << joint.name);
           if(!stringExistsInVector(stopped_joints,joint.name)){
             filtered_stops.push_back(stop);
             break;
