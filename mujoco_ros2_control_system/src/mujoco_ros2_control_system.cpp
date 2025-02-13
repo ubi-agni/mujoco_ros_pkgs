@@ -238,10 +238,8 @@ hardware_interface::return_type MujocoRos2System::prepare_command_mode_switch(
     std::vector<std::string> filtered_starts;
     std::vector<std::string> started_joints;
     for(auto& start : start_interfaces){
-      RCLCPP_INFO_STREAM(this->nh_->get_logger(), "Starts: " << start);
       for(auto& joint : this->dataPtr_->joints_){
         if(startsWith(start, joint.name)){
-          RCLCPP_INFO_STREAM(this->nh_->get_logger(), start << " starts with " << joint.name);
           if(!stringExistsInVector(started_joints,joint.name)){
             filtered_starts.push_back(start);
             break;
@@ -254,9 +252,6 @@ hardware_interface::return_type MujocoRos2System::prepare_command_mode_switch(
                                             start.c_str(), joint.name.c_str());
             return hardware_interface::return_type::ERROR;
           }
-        }
-        else{
-          RCLCPP_INFO_STREAM(this->nh_->get_logger(), start << " doesn't start with " << joint.name);
         }
       }
     }
