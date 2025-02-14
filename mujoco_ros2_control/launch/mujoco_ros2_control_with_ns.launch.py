@@ -57,7 +57,7 @@ def generate_launch_description():
     )
     return LaunchDescription([
         IncludeLaunchDescription(
-            FrontendLaunchDescriptionSource(mujoco_ros_path + '/launch/launch_server.launch'),
+            FrontendLaunchDescriptionSource(mjr2_control_path + '/launch/launch_server.launch'),
             launch_arguments={
                 'use_sim_time': "true",
                 'modelfile': xml_path,
