@@ -26,7 +26,7 @@ Currently, we use MuJoCo's simulation time (`mjData* d_->time`) to synchronize t
 This is mainly to give users more control over how the simulation and control are executed, and to not be bound by the computer's resources should super short timesteps be required.
 This will, of course, cause some issues when using it with other nodes that run dependent on ROS' own time. A feature for changing the source of the clock is planned.
 
-There is currently an odd bug where the names of the nodes created inside the ros2_control plugin are always fixed to `mujoco_server`. This only affects the node name itself, not the topic; a workaround has been implemented with some explanation in the example launch and yaml files, so please take note when you create your custom launch files.
+There is currently a bug where the names of the nodes created inside the ros2_control plugin are always fixed to `mujoco_server`, when the main MuJoCo server is launched via `mujoco_ros/launch/ros2/launch_server.launch`. This is due to the `name='mujoco_server` parameter. As such, the `mujoco_ros2_control` package provides a copy of the launch file without the `name` parameter. This issue is unfortunately not fixable with the Humble version of `ros2_control`.
 
 ### Continuous Integration
 
@@ -63,14 +63,20 @@ export LIBRARY_PATH=$LIBRARY_PATH:$MUJOCO_DIR/lib
 where `PATH/TO/MUJOCO/DIR` is `~/.mujoco/mujoco-3.2.0` if you used the recommended location to install mujoco (if downloaded as tarball). If you built MuJoCo from source and the install path is known to catkin, you can skip this step.
 
 4. Build with `catkin_build`, `catkin b` or `colcon build`.
-5. Source your workspace and try `roslaunch mujoco_ros launch_server.launch use_sim_time:=true` to test if it runs.
+5. Source your workspace and try `ros2 launch mujoco_ros launch_server.launch use_sim_time:=true` to test if it runs.
+6. To test the `ros2_control` plugin, try `ros2 launch mujoco_ros2_control mujoco_ros2_control.launch.py`.
+
+
 
 > **Warning**
 > To prevent action servers ignoring actions for a limited time after resetting the simulation, until https://github.com/ros/actionlib/pull/203 is merged, you need to build the PR branch and any packages implementing action servers (like MoveIt) yourself.
 
 
 ### Plugin Examples
+A `mujoco_ros2_control` integration of the Franka Emika Panda robot is available at [multipanda_ros2](https://github.com/tenfoldpaper/multipanda_ros2/).
 
+---
+(Only relevant for ROS1-Noetic)
 As an example for extended functionality through plugins, take a look at [mujoco_ros_control](https://github.com/ubi-agni/mujoco_ros_pkgs/tree/noetic-devel/mujoco_ros_control), [mujoco_screw_plugin](https://github.com/ubi-agni/mujoco_screw_plugin), [mujoco_contact_surfaces](https://github.com/ubi-agni/mujoco_contact_surfaces) or [mujoco_ros_sensors](https://github.com/ubi-agni/mujoco_ros_pkgs/tree/noetic-devel/mujoco_ros_sensors).
 
 We provide some code examples in our [demo repository](https://github.com/ubi-agni/mujoco_ros_demos)
