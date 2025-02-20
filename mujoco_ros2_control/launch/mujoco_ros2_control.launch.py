@@ -37,7 +37,6 @@ def generate_launch_description():
     ns = ''     # this must match the namespace argument under mujoco_ros2_control in the plugin's parameter yaml file. 
                 # See the ros2_control_plugins_example_with_ns.yaml file for more details.
 
-    # pendulum_config = os.path.join(get_package_share_directory('mujoco_ros2_base'), 'config','pendulum.yaml')
 
     node_robot_state_publisher = Node(
         package='robot_state_publisher',
