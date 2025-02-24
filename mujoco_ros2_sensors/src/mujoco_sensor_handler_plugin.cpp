@@ -696,6 +696,8 @@ void MujocoRos2SensorsPlugin::configureLidarMap(const mjModel *model, mjData *da
 		lidar->msg_.range_max = lidar->max_;
 		lidar->msg_.range_min = lidar->min_;
 		lidar->msg_.angle_increment = lidar->angle_;
+		lidar->msg_.scan_time = (360.0/lidar->angle_to_rotate_) / (1.0/model->opt.timestep); 
+		lidar->msg_.time_increment = model->opt.timestep / lidar->rf_count_;
 
 		RCLCPP_INFO(getLogger(), "Creating publishers for lidar %s in frame %s", lidar_name.c_str(), frame_id.c_str());
 		SensorConfigPtr config;
