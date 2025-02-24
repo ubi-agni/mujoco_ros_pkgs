@@ -2,12 +2,36 @@ mujoco_server:
   ros__parameters:
     MujocoPlugins:
       names:
-        - dummy_ros2_plugin
-      dummy_ros2_plugin:
-        type: mujoco_ros::DummyRos2Plugin
+        # - dummy_ros2_plugin
+        - mujoco_ros2_sensors
+        - mujoco_ros2_control
+      # dummy_ros2_plugin:
+      #   type: mujoco_ros::DummyRos2Plugin
+      mujoco_ros2_sensors:
+        type: mujoco_ros::sensors::MujocoRos2SensorsPlugin
+      mujoco_ros2_control:
+        type: mujoco_ros2_control::MujocoRos2ControlPlugin
 
-dummy_ros2_plugin:
+# dummy_ros2_plugin:
+#   ros__parameters:
+#     child_name: NameFromDummyDotYaml
+#     parallel_name: ParallelNodeFromDummyDotYaml
+#     test_name: TestNameFromDummyDotYaml
+
+mujoco_ros2_sensors:
   ros__parameters:
-    child_name: NameFromDummyDotYaml
-    parallel_name: ParallelNodeFromDummyDotYaml
-    test_name: TestNameFromDummyDotYaml
+    test_name: MujocoRos2SensorsName
+    lidars:
+      - lidar_mass
+    lidar_mass:
+      max: 10.0
+      min: 1.0
+      rf_count: 8
+      angle: 0.45
+    
+
+controller_manager:
+  ros__parameters:
+    update_rate: 50
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
