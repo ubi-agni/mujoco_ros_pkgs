@@ -438,8 +438,8 @@ hardware_interface::return_type MujocoRos2System::write(
           }
         }
       }
+      this->dataPtr_->last_update_sim_time_mj_ = time;
     }
-    this->dataPtr_->last_update_sim_time_mj_ = time;
     return hardware_interface::return_type::OK;
   };
 
