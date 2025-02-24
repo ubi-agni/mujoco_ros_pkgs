@@ -108,7 +108,11 @@ MujocoEnv *MujocoEnv::instance = nullptr;
 
 void MujocoEnv::RunRenderCbs(mjvScene * /*scene*/) {}
 void UpdateModelFlags(const mjOption *) {}
-void MujocoEnv::RunLastStageCbs() {}
+void MujocoEnv::RunLastStageCbs() {
+	for (const auto &plugin : this->cb_ready_plugins_) {
+		plugin->WrappedLastStageCallback(this->model_.get(), this->data_.get());
+	}
+}
 
 #if MJR_ROS_VERSION == ROS_1
 
