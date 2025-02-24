@@ -1,0 +1,5 @@
+<library path="mujoco_ros2_sensors_plugin">
+  <class type="mujoco_ros::sensors::MujocoRos2SensorsPlugin" base_class_type="mujoco_ros::MujocoPlugin">
+    <description>This is a ros2 sensors plugin.</description>
+  </class>
+</library>
