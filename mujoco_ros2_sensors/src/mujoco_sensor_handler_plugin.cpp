@@ -618,9 +618,9 @@ void MujocoRos2SensorsPlugin::initSensors(const mjModel *model, mjData *data)
 }
 
 void MujocoRos2SensorsPlugin::configureLidarMap(const mjModel *model, mjData *data){
-	RCLCPP_INFO(getLogger(), "Configuring lidars");
 	auto lidar_names = sensors_nh_->get_parameter("lidars").as_string_array();
 	for (const auto &lidar_name : lidar_names) {
+		RCLCPP_INFO(getLogger(), "Configuring lidar %s", lidar_name.c_str());
 		// Do we really need to manually declare params like this?
 		sensors_nh_->declare_parameter<double>(lidar_name+".max",-1);
 		sensors_nh_->declare_parameter<double>(lidar_name+".min",-1);
@@ -695,8 +695,13 @@ void MujocoRos2SensorsPlugin::configureLidarMap(const mjModel *model, mjData *da
 		lidar->msg_.header.frame_id = frame_id;
 		lidar->msg_.range_max = lidar->max_;
 		lidar->msg_.range_min = lidar->min_;
+		lidar->msg_.angle_min = 0;
+		lidar->msg_.angle_max = M_PI*2;
+		
+		RCLCPP_INFO(getLogger(), "Lidar %s config:\nRanges: [%f %f], Angle min/max: [%f %f], increment: %f, rf_count: %d", 
+								lidar_name.c_str(), lidar->min_, lidar->max_, lidar->msg_.angle_min, lidar->msg_.angle_max, lidar->angle_, lidar->rf_count_);
 		lidar->msg_.angle_increment = lidar->angle_;
-		lidar->msg_.scan_time = (360.0/lidar->angle_to_rotate_) / (1.0/model->opt.timestep); 
+		lidar->msg_.scan_time = (M_PI*2/lidar->angle_to_rotate_) / (1.0/model->opt.timestep); 
 		lidar->msg_.time_increment = model->opt.timestep / lidar->rf_count_;
 
 		RCLCPP_INFO(getLogger(), "Creating publishers for lidar %s in frame %s", lidar_name.c_str(), frame_id.c_str());
@@ -722,14 +727,10 @@ void MujocoRos2SensorsPlugin::publishLidarData(const mjModel* model, mjData *dat
 			continue;
 		}
 
-		if(lidar_config.second->accumulated_angle_ == 0){
-			lidar_config.second->msg_.ranges.clear(); // clear out the message at the beginning
-		}
-
 		// read the data. Since we are reading then adding to accumulated angle, this should ensure that
 		// sensor data from rangefinder that exceeds the 360 degree are not written to the message.
 		for(int i = 0; i < lidar_config.second->rf_count_; i++){
-			if(lidar_config.second->accumulated_angle_ >= 360.0){
+			if(lidar_config.second->accumulated_angle_ >= M_PI*2){
 				// if the accumulated angle exceeds 360, stop adding sensor data
 				break;
 			}
@@ -738,47 +739,18 @@ void MujocoRos2SensorsPlugin::publishLidarData(const mjModel* model, mjData *dat
 			// RCLCPP_INFO(getLogger(), "Current angle: %f", lidar_config.second->accumulated_angle_);
 		}
 		// if the accumulated angle >= 360 degrees, reset it to 0, and publish the message with timestamp
-		if(lidar_config.second->accumulated_angle_ >= 360.0){
+		if(lidar_config.second->accumulated_angle_ >= M_PI*2){
 			lidar_config.second->msg_.header.stamp = sensors_nh_->now();
 			sensor_map_[lidar_config.first]->value_pub->publish(sensor_map_[lidar_config.first]->serializeMessage(lidar_config.second->msg_));
-			
 			data->qpos[model->jnt_qposadr[model->body_jntadr[lidar_config.second->body_id_]]] = 0;
-			// data->xquat[(lidar_config.second->body_id_ * 4)    ] = 1.0;
-			// data->xquat[(lidar_config.second->body_id_ * 4) + 1] = 0.0;
-			// data->xquat[(lidar_config.second->body_id_ * 4) + 2] = 0.0;
-			// data->xquat[(lidar_config.second->body_id_ * 4) + 3] = 0.0;
 			lidar_config.second->accumulated_angle_ = 0.0;
+			lidar_config.second->msg_.ranges.clear(); // clear out the message at the beginning
 		}
 		else{
 			// rotate the body, i.e. the joint on which the body is attached to.
-			double angle_to_rotate_rad = lidar_config.second->accumulated_angle_ * M_PI / 180.0;
-
-			data->qpos[model->jnt_qposadr[model->body_jntadr[lidar_config.second->body_id_]]] = angle_to_rotate_rad;
-			// RCLCPP_INFO(getLogger(), "Current body %d's joint %d angle: %f", lidar_config.second->body_id_, model->body_jntadr[lidar_config.second->body_id_], data->qpos[model->jnt_qposadr[model->body_jntadr[lidar_config.second->body_id_]]]);
-			// mjtNum res[4];
-			// mjtNum z_quat[4] = {cos(angle_to_rotate_rad/2.0), 0, 0, sin(angle_to_rotate_rad/2.0)};
-			// mjtNum curr_quat[4] = {data->xquat[lidar_config.second->body_id_ * 4],
-			// 					   data->xquat[(lidar_config.second->body_id_ * 4) + 1],
-			// 					   data->xquat[(lidar_config.second->body_id_ * 4) + 2],
-			// 					   data->xquat[(lidar_config.second->body_id_ * 4) + 3]};
-			// double* curr_quat = data->xquat + 4 * lidar_config.second->body_id_;
-			// mju_mulQuat(res, curr_quat, z_quat);
-			
-			// for(int j = 0; j < 4; j++){
-			// 	curr_quat[j] = res[j];
-			// }
-			// data->xquat[(lidar_config.second->body_id_ * 4)    ] = res[0];
-			// data->xquat[(lidar_config.second->body_id_ * 4) + 1] = res[1];
-			// data->xquat[(lidar_config.second->body_id_ * 4) + 2] = res[2];
-			// data->xquat[(lidar_config.second->body_id_ * 4) + 3] = res[3];
-			// RCLCPP_INFO(getLogger(), "Current body %d quat: %f %f %f %f", lidar_config.second->body_id_,
-			// 	data->xquat[(lidar_config.second->body_id_ * 4)    ],
-			// 	data->xquat[(lidar_config.second->body_id_ * 4) + 1],
-			// 	data->xquat[(lidar_config.second->body_id_ * 4) + 2],
-			// 	data->xquat[(lidar_config.second->body_id_ * 4) + 3]);
+			// RCLCPP_INFO(getLogger(), "Rotating by %f", lidar_config.second->accumulated_angle_);
+			data->qpos[model->jnt_qposadr[model->body_jntadr[lidar_config.second->body_id_]]] = lidar_config.second->accumulated_angle_;
 		}
-		
-		
 
 	};
 }
