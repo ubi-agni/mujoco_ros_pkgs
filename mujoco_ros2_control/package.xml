@@ -14,6 +14,9 @@
   <depend>pluginlib</depend>
   <depend>controller_manager</depend>
   <depend>hardware_interface</depend>
+  <depend>joint_state_broadcaster</depend>
+  <depend>robot_state_publisher</depend>
+  <depend>xacro</depend>
 
 
   <test_depend>ament_lint_auto</test_depend>
