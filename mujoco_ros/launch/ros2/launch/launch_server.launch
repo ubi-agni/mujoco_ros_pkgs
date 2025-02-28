@@ -18,7 +18,7 @@
   <arg name="realtime"             default="1.0"   description="Fraction of desired realtime (0,1]. -1 to run as fast as possible." />
   <arg name="profile"              default="false" description="Whether mujoco_ros should be profiled." />
   <arg name="num_sim_steps"        default="-1" />
-  <arg name="mujoco_plugin_config" default="$(find-pkg-share mujoco_ros)/config/ros2_plugins_dummy.yaml"      description="Optionally provide the path to a yaml with plugin configurations to load." />
+  <arg name="mujoco_plugin_config" default=""      description="Optionally provide the path to a yaml with plugin configurations to load." />
   <arg name="mujoco_threads"       default="1"     description="Number of threads to use in the MuJoCo simulation." />
   <arg name="gdb_term_cmd"         default="gnome-terminal -- " description="Command to open gdb in a new terminal. Common alternative: 'xterm -e '" />
 
