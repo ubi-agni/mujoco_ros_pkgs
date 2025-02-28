@@ -48,8 +48,9 @@ export LIBRARY_PATH=$LIBRARY_PATH:$MUJOCO_DIR/lib
 where `PATH/TO/MUJOCO/DIR` is `~/.mujoco/mujoco-3.2.0` if you used the recommended location to install mujoco (if downloaded as tarball). If you built MuJoCo from source and the install path is known to catkin, you can skip this step.
 
 4. Build with `catkin_build`, `catkin b` or `colcon build`.
-5. Source your workspace and try `ros2 launch mujoco_ros launch_server.launch use_sim_time:=true` to test if it runs.
-6. To test the `ros2_control` plugin, try `ros2 launch mujoco_ros2_control mujoco_ros2_control.launch.py`.
+5. Install the dependencies with (ROS2) `rosdep install --from-paths src -y --ignore-src`
+6. Source your workspace and try `ros2 launch mujoco_ros launch_server.launch use_sim_time:=true` to test if it runs. If it starts up and you see a basic pendulum floating in the air, that means it's working.
+7. To test the `ros2_control` plugin, try `ros2 launch mujoco_ros2_control mujoco_ros2_control.launch.py`. You should see a pendulum with a mass at the tip. Now do `Shift-Tab` and try to change the control value. If it resets back to 0, that's expected behavior, as the actuator is now being managed by `ros2_control` and needs to be controlled by a proper `Controller` class.
 
 
 
