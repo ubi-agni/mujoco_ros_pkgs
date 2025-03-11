@@ -16,6 +16,21 @@ service    | Noetic / One | Humble (coming soon)
 GitHub | [![Format](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/format.yaml/badge.svg?branch=noetic-devel)](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/format.yaml?query=branch%3Anoetic-devel) [![CI](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/ci.yaml/badge.svg?branch=noetic-devel)](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/ci.yaml?query=branch%3Anoetic-devel) | - |
 CodeCov | [![codecov](https://codecov.io/gh/ubi-agni/mujoco_ros_pkgs/branch/noetic-devel/graph/badge.svg?token=W7uHKcY0ly)](https://codecov.io/gh/ubi-agni/mujoco_ros_pkgs) | - |
 
+# Features at a Glance
+
+Feature | Noetic / One | Humble
+------- | :----------: | :-----:
+Interactive GUI  | ✔️ | ✔️ |
+Headless Mode (OSMESA\EGL) | ✔️ | ✔️ |
+Virtual Camera Streams (RGB, Depth, Segmentation Masks) | ✔️ | ✔️ |
+Loading Custom PluginLib Plugins | ✔️ | ✔️ |
+Simulation Controls Through Services/Actions | ✔️ | ✔️ |
+ROS Control |️ ✔️ | ✖️ ([WIP](https://github.com/tenfoldpaper/mujoco_ros_pkgs/tree/wip_ros_control_humble))|
+MuJoCo Sensor Streams  | ✔️ | ✖️ |
+Laser Sensors | ✔️ | ✖️ |
+Mocap Body Control Topic/Service | ✔️ | ✖️ |
+Python Bindings          | (✔️) WIP | ✖️ |
+Spawning Objects via ROS | ✖️ | ✖️ |
 
 # Build Instructions
 1. Make sure MuJoCo is installed (the current build uses version 3.2.0) and runs on your machine.
