@@ -38,7 +38,7 @@
 
   <group if="$(var debug)">
     <group unless="$(var debug_server)">
-      <node pkg="mujoco_ros" exec="mujoco_node" name="mujoco_server" output="screen" launch-prefix="$(var gdb_term_cmd) gdb --args" args="--admin-hash $(var admin_hash) --ros-args --log-level mujoco_server:=$(var log_level) --log-level mujoco_ros_plugin_loader:=$(var log_level) --log-level Viewer:=$(var log_level)" >
+      <node pkg="mujoco_ros" exec="mujoco_node" output="screen" launch-prefix="$(var gdb_term_cmd) gdb --args" args="--admin-hash $(var admin_hash) --ros-args --log-level mujoco_server:=$(var log_level) --log-level mujoco_ros_plugin_loader:=$(var log_level) --log-level Viewer:=$(var log_level)" >
         <param name="/use_sim_time"        value="$(var use_sim_time)"/>
         <param name="ns"                   value="$(var ns)" />
         <param name="unpause"              value="$(var unpause)" />
@@ -57,7 +57,7 @@
       </node>
     </group>
     <group if="$(var debug_server)">
-      <node pkg="mujoco_ros" exec="mujoco_node" name="mujoco_server" output="screen" launch-prefix="gdbserver localhost:1234" args="--admin-hash $(var admin_hash) --ros-args --log-level mujoco_server:=$(var log_level) --log-level mujoco_ros_plugin_loader:=$(var log_level) --log-level Viewer:=$(var log_level)" >
+      <node pkg="mujoco_ros" exec="mujoco_node" output="screen" launch-prefix="gdbserver localhost:1234" args="--admin-hash $(var admin_hash) --ros-args --log-level mujoco_server:=$(var log_level) --log-level mujoco_ros_plugin_loader:=$(var log_level) --log-level Viewer:=$(var log_level)" >
         <param name="/use_sim_time"        value="$(var use_sim_time)"/>
         <param name="ns"                   value="$(var ns)" />
         <param name="unpause"              value="$(var unpause)" />
@@ -79,7 +79,7 @@
 
   <group unless="$(var debug)">
     <group if="$(var valgrind)">
-      <node pkg="mujoco_ros" exec="mujoco_node" name="mujoco_server" output="screen" args="--admin-hash $(var admin_hash) --ros-args --log-level mujoco_server:=$(var log_level) --log-level mujoco_ros_plugin_loader:=$(var log_level)" launch-prefix="valgrind $(var valgrind_args) --log-level Viewer:=$(var log_level)" >
+      <node pkg="mujoco_ros" exec="mujoco_node" output="screen" args="--admin-hash $(var admin_hash) --ros-args --log-level mujoco_server:=$(var log_level) --log-level mujoco_ros_plugin_loader:=$(var log_level)" launch-prefix="valgrind $(var valgrind_args) --log-level Viewer:=$(var log_level)" >
         <param name="/use_sim_time"        value="$(var use_sim_time)"/>
         <param name="ns"                   value="$(var ns)" />
         <param name="unpause"              value="$(var unpause)" />
@@ -102,7 +102,7 @@
         <set_env name="CPUPROFILE" value="/tmp/profile.out" />
       </group>
 
-      <node pkg="mujoco_ros" exec="mujoco_node" name="mujoco_server" output="screen" args="--admin-hash $(var admin_hash) --ros-args --log-level mujoco_server:=$(var log_level) --log-level mujoco_ros_plugin_loader:=$(var log_level) --log-level Viewer:=$(var log_level)" >
+      <node pkg="mujoco_ros" exec="mujoco_node" output="screen" args="--admin-hash $(var admin_hash) --ros-args --log-level mujoco_server:=$(var log_level) --log-level mujoco_ros_plugin_loader:=$(var log_level) --log-level Viewer:=$(var log_level)" >
         <param name="use_sim_time"        value="$(var use_sim_time)"/>
         <param name="ns"                   value="$(var ns)" />
         <param name="unpause"              value="$(var unpause)" />
