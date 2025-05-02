@@ -596,10 +596,11 @@ void UpdateInfoText(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *
 
 	// prepare info text
 	mju::strcpy_arr(title, "Time\nSize\nCPU\nSolver   \nFPS\nMemory");
-	mju::sprintf_arr(content, "%-9.3f\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%s\n%.2g of %s", d->time, d->nefc, d->ncon,
+	mju::sprintf_arr(content, "%-9.3f\n%d  (%d con)\n%.3f\n%.1f  (%d it)\n%s\n%.1f%% of %s", d->time, d->nefc, d->ncon,
 	                 viewer->run ? d->timer[mjTIMER_STEP].duration / mjMAX(1, d->timer[mjTIMER_STEP].number) :
 	                               d->timer[mjTIMER_FORWARD].duration / mjMAX(1, d->timer[mjTIMER_FORWARD].number),
-	                 solerr, solver_niter, fps, d->maxuse_arena / static_cast<double>(util::as_unsigned(d->narena)),
+	                 solerr, solver_niter, fps,
+	                 100 * d->maxuse_arena / static_cast<double>(util::as_unsigned(d->narena)),
 	                 mju_writeNumBytes(util::as_unsigned(d->narena)));
 
 	// add Energy if enabled

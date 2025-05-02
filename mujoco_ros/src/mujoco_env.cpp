@@ -762,10 +762,8 @@ bool MujocoEnv::initModelFromQueue()
 		ROS_WARN_STREAM("Model compiled, but got simulation warning: " << load_error_);
 		if (!settings_.headless)
 			settings_.run = 0;
-	} else {
-		if (load_seconds > 0.25) {
-			mju::sprintf_arr(load_error_, "Model loaded in %.2g seconds", load_seconds);
-		}
+	} else if (load_seconds > 0.25) {
+		mju::sprintf_arr(load_error_, "Model loaded in %.2g seconds", load_seconds);
 	}
 
 	for (const auto viewer : connected_viewers_) {
