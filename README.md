@@ -73,12 +73,11 @@ It is built on top of MuJoCo, which was released under an Apache 2.0 License. Fo
 If you are using this framework in your research, please cite the following work in your publications:
 
 ```bibtex
-@inproceedings{leinsMuJoCoROSIntegrating2025
-    author = {Leins, David P. and Haschke, Robert and Ritter, Helge},
-    title = {MuJoCo ROS: Integrating ROS with the MuJoCo Engine for Accurate and Scalable Robotic Simulation},
-    booktitle={2025 IEEE International Conference on Simulation, Modeling, and Programming for Autonomous Robots (SIMPAR)},
-    year={2025},
-    organization = {IEEE. in press},
+@inproceedings{leinsMuJoCoROSIntegrating2025,
+  author={Leins, David P. and Haschke, Robert and Ritter, Helge},
+  title={MuJoCo ROS: Integrating ROS with the MuJoCo Engine for Accurate and Scalable Robotic Simulation},
+  booktitle={2025 IEEE International Conference on Simulation, Modeling, and Programming for Autonomous Robots (SIMPAR)},
+  year={2025},
+  doi={10.1109/SIMPAR62925.2025.10979045}
 }
-
 ```
