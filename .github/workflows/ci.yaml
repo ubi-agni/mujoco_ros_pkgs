@@ -75,7 +75,7 @@ jobs:
       CCOV: ${{ matrix.env.CCOV || 'false' }}
 
     name: "${{ matrix.distro }} mj-${{ matrix.mujoco }} ${{ matrix.render_backend }} ${{ matrix.env.CATKIN_LINT && ' + catkin_lint' || ''}}${{ matrix.env.CCOV && ' + ccov' || ''}}${{ matrix.env.CLANG_TIDY && (github.event_name != 'workflow_dispatch' && ' + clang-tidy (delta)' || ' + clang-tidy (all)') || '' }}"
-    runs-on: ${{ matrix.render_backend == 'EGL' && matrix.distro || 'ubuntu-20.04' }}
+    runs-on: ${{ matrix.render_backend == 'EGL' && matrix.distro || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
       - name: Cache upstream workspace
