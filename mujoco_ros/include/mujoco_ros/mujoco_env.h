@@ -300,6 +300,15 @@ protected:
 	XmlRpc::XmlRpcValue rpc_plugin_config_;
 	std::vector<MujocoPluginPtr> plugins_;
 
+	// Get warning message for diverged simulation if autoreset is enabled.
+	const char *Diverged(int disableflags, const mjData *d);
+
+	/**
+	 * @brief Utility function that runs a step, publishes sim time, triggers last stage callbacks, and notifies
+	 * offscreen rendering condition if enabled.
+	 */
+	void WrappedStep();
+
 	// This variable keeps track of remaining steps if the environment was configured to terminate after a fixed number
 	// of steps (-1 means no limit).
 	int num_steps_until_exit_ = -1;

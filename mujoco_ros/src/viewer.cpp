@@ -1928,6 +1928,7 @@ void Viewer::Sync()
 	}
 
 	if (pending_.ui_reset) {
+		load_error[0] = '\0';
 		env_->settings_.reset_request.store(1);
 		pending_.ui_reset             = false;
 		update_profiler               = true;
@@ -1937,6 +1938,7 @@ void Viewer::Sync()
 	}
 
 	if (pending_.ui_reload) {
+		load_error[0] = '\0';
 		env_->settings_.load_request.store(3); // 3 triggers prepare reload
 		pending_.ui_reload = false;
 		update_profiler    = true;
