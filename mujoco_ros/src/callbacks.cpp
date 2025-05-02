@@ -128,8 +128,8 @@ void readSimParams(SimParamsConfig &config, mjModel *model_, bool is_running, co
 		config.ls_tol      = model_->opt.ls_tolerance;
 		config.noslip_iter = model_->opt.noslip_iterations;
 		config.noslip_tol  = model_->opt.noslip_tolerance;
-		config.mpr_iter    = model_->opt.mpr_iterations;
-		config.mpr_tol     = model_->opt.mpr_tolerance;
+		config.ccd_iter    = model_->opt.ccd_iterations;
+		config.ccd_tol     = model_->opt.ccd_tolerance;
 		config.sdf_iter    = model_->opt.sdf_iterations;
 		config.sdf_init    = model_->opt.sdf_initpoints;
 
@@ -251,8 +251,8 @@ void MujocoEnv::dynparamCallback(mujoco_ros::SimParamsConfig &config, uint32_t l
 	model_->opt.ls_tolerance      = config.ls_tol;
 	model_->opt.noslip_iterations = config.noslip_iter;
 	model_->opt.noslip_tolerance  = config.noslip_tol;
-	model_->opt.mpr_iterations    = config.mpr_iter;
-	model_->opt.mpr_tolerance     = config.mpr_tol;
+	model_->opt.ccd_iterations    = config.ccd_iter;
+	model_->opt.ccd_tolerance     = config.ccd_tol;
 	model_->opt.sdf_iterations    = config.sdf_iter;
 	model_->opt.sdf_initpoints    = config.sdf_init;
 

@@ -2425,11 +2425,11 @@ TEST_F(PendulumEnvFixture, DynamicReconfigureAllParams)
 	double_param.value = 1e-5;
 	conf.doubles.emplace_back(double_param);
 
-	int_param.name  = "mpr_iter";
+	int_param.name  = "ccd_iter";
 	int_param.value = 60;
 	conf.ints.emplace_back(int_param);
 
-	double_param.name  = "mpr_tol";
+	double_param.name  = "ccd_tol";
 	double_param.value = 1e-5;
 	conf.doubles.emplace_back(double_param);
 
@@ -2585,8 +2585,8 @@ TEST_F(PendulumEnvFixture, DynamicReconfigureAllParams)
 	    << "No-slip iterations are already set to the target value!";
 	EXPECT_NE(env_ptr->getModelPtr()->opt.noslip_tolerance, 1e-5)
 	    << "No-slip tolerance is already set to the target value!";
-	EXPECT_NE(env_ptr->getModelPtr()->opt.mpr_iterations, 60) << "MPR iterations are already set to the target value!";
-	EXPECT_NE(env_ptr->getModelPtr()->opt.mpr_tolerance, 1e-5) << "MPR tolerance is already set to the target value!";
+	EXPECT_NE(env_ptr->getModelPtr()->opt.ccd_iterations, 60) << "CCD iterations are already set to the target value!";
+	EXPECT_NE(env_ptr->getModelPtr()->opt.ccd_tolerance, 1e-5) << "CCD tolerance is already set to the target value!";
 	EXPECT_NE(env_ptr->getModelPtr()->opt.sdf_iterations, 15) << "SDF iterations are already set to the target value!";
 	EXPECT_NE(env_ptr->getModelPtr()->opt.sdf_initpoints, 50) << "SDF init is already set to the target value!";
 
@@ -2659,8 +2659,8 @@ TEST_F(PendulumEnvFixture, DynamicReconfigureAllParams)
 	EXPECT_EQ(env_ptr->getModelPtr()->opt.noslip_iterations, 10) << "No-slip iterations should have been updated!";
 	EXPECT_DOUBLE_EQ(env_ptr->getModelPtr()->opt.noslip_tolerance, 1e-5)
 	    << "No-slip tolerance should have been updated!";
-	EXPECT_EQ(env_ptr->getModelPtr()->opt.mpr_iterations, 60) << "MPR iterations should have been updated!";
-	EXPECT_DOUBLE_EQ(env_ptr->getModelPtr()->opt.mpr_tolerance, 1e-5) << "MPR tolerance should have been updated!";
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.ccd_iterations, 60) << "CCD iterations should have been updated!";
+	EXPECT_DOUBLE_EQ(env_ptr->getModelPtr()->opt.ccd_tolerance, 1e-5) << "CCD tolerance should have been updated!";
 	EXPECT_EQ(env_ptr->getModelPtr()->opt.sdf_iterations, 15) << "SDF iterations should have been updated!";
 	EXPECT_EQ(env_ptr->getModelPtr()->opt.sdf_initpoints, 50) << "SDF init should have been updated!";
 
