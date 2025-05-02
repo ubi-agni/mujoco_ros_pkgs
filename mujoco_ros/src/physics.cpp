@@ -43,6 +43,38 @@
 namespace mujoco_ros {
 namespace mju = ::mujoco::sample_util;
 
+void MujocoEnv::WrappedStep()
+{
+	mj_step(model_.get(), data_.get());
+	publishSimTime(data_->time);
+	runLastStageCbs();
+	const char *message = Diverged(model_->opt.disableflags, data_.get());
+
+	if (message) {
+		ROS_WARN("Simulation diverged: %s", message);
+		for (const auto &viewer : connected_viewers_) {
+			mju::strcpy_arr(viewer->load_error, message);
+		}
+	}
+
+	if (settings_.render_offscreen) {
+		// Wait until no render request is pending
+		while (offscreen_.request_pending.load()) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(3));
+		}
+		std::unique_lock<std::mutex> lock(offscreen_.render_mutex);
+
+		for (const auto &cam_ptr : offscreen_.cams) {
+			if (cam_ptr->shouldRender(ros::Time(data_->time))) {
+				mjv_updateSceneState(model_.get(), data_.get(), &cam_ptr->vopt_, &cam_ptr->scn_state_);
+				runRenderCbs(&cam_ptr->scn_state_.scratch);
+				offscreen_.request_pending.store(true);
+			}
+		}
+	}
+	offscreen_.cond_render_request.notify_one();
+}
+
 void MujocoEnv::physicsLoop()
 {
 	ROS_DEBUG("Physics loop started");
@@ -102,25 +134,7 @@ void MujocoEnv::simPausedPhysics(mjtNum &syncSim)
 		       (connected_viewers_.empty() ||
 		        Clock::now() - startCPU < Seconds(mujoco_ros::Viewer::render_ui_rate_lower_bound_))) {
 			// Run single step
-			mj_step(model_.get(), data_.get());
-			publishSimTime(data_->time);
-			runLastStageCbs();
-			if (settings_.render_offscreen) {
-				// Wait until no render request is pending
-				while (offscreen_.request_pending.load()) {
-					std::this_thread::sleep_for(std::chrono::milliseconds(3));
-				}
-				std::unique_lock<std::mutex> lock(offscreen_.render_mutex);
-
-				for (const auto &cam_ptr : offscreen_.cams) {
-					if (cam_ptr->shouldRender(ros::Time(data_->time))) {
-						mjv_updateSceneState(model_.get(), data_.get(), &cam_ptr->vopt_, &cam_ptr->scn_state_);
-						runRenderCbs(&cam_ptr->scn_state_.scratch);
-						offscreen_.request_pending.store(true);
-					}
-				}
-			}
-			offscreen_.cond_render_request.notify_one();
+			WrappedStep();
 
 			settings_.env_steps_request.fetch_sub(1); // Decrement requested steps counter
 			// Break if reset
@@ -162,25 +176,7 @@ void MujocoEnv::simUnpausedPhysics(mjtNum &syncSim, std::chrono::time_point<Cloc
 		settings_.speed_changed = false;
 
 		// run single step, let next iteration deal with timing
-		mj_step(model_.get(), data_.get());
-		publishSimTime(data_->time);
-		runLastStageCbs();
-		if (settings_.render_offscreen) {
-			// Wait until no render request is pending
-			while (offscreen_.request_pending.load()) {
-				std::this_thread::sleep_for(std::chrono::milliseconds(3));
-			}
-			std::unique_lock<std::mutex> lock(offscreen_.render_mutex);
-
-			for (const auto &cam_ptr : offscreen_.cams) {
-				if (cam_ptr->shouldRender(ros::Time(data_->time))) {
-					mjv_updateSceneState(model_.get(), data_.get(), &cam_ptr->vopt_, &cam_ptr->scn_state_);
-					runRenderCbs(&cam_ptr->scn_state_.scratch);
-					offscreen_.request_pending.store(true);
-				}
-			}
-		}
-		offscreen_.cond_render_request.notify_one();
+		WrappedStep();
 
 		if (num_steps_until_exit_ > 0) {
 			num_steps_until_exit_--;
@@ -212,25 +208,7 @@ void MujocoEnv::simUnpausedPhysics(mjtNum &syncSim, std::chrono::time_point<Cloc
 			}
 
 			// Call mj_step
-			mj_step(model_.get(), data_.get());
-			publishSimTime(data_->time);
-			runLastStageCbs();
-			if (settings_.render_offscreen) {
-				// Wait until no render request is pending
-				while (offscreen_.request_pending.load()) {
-					std::this_thread::sleep_for(std::chrono::milliseconds(5));
-				}
-				std::unique_lock<std::mutex> lock(offscreen_.render_mutex);
-
-				for (const auto &cam_ptr : offscreen_.cams) {
-					if (cam_ptr->shouldRender(ros::Time(data_->time))) {
-						mjv_updateSceneState(model_.get(), data_.get(), &cam_ptr->vopt_, &cam_ptr->scn_state_);
-						runRenderCbs(&cam_ptr->scn_state_.scratch);
-						offscreen_.request_pending.store(true);
-					}
-				}
-			}
-			offscreen_.cond_render_request.notify_one();
+			WrappedStep();
 
 			if (num_steps_until_exit_ > 0) {
 				num_steps_until_exit_--;

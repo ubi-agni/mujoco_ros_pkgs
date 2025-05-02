@@ -81,6 +81,19 @@ int MaybeGlfwInit()
 
 MujocoEnv *MujocoEnv::instance = nullptr;
 
+const char *MujocoEnv::Diverged(int disableflags, const mjData *d)
+{
+	if (disableflags & mjDSBL_AUTORESET) {
+		for (mjtWarning w : { mjWARN_BADQACC, mjWARN_BADQVEL, mjWARN_BADQPOS }) {
+			if (d->warning[w].number > 0) {
+				return mju_warningText(w, d->warning[w].lastinfo);
+			}
+		}
+	}
+
+	return nullptr;
+}
+
 MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 {
 	nh_ = std::make_unique<ros::NodeHandle>("~");
@@ -307,8 +320,10 @@ void MujocoEnv::resetSim()
 	std::this_thread::sleep_for(std::chrono::milliseconds(100));
 	ROS_DEBUG("Resetting simulation environment");
 
+	this->load_error_[0] = '\0';
 	mj_resetData(this->model_.get(), this->data_.get());
 	loadInitialJointStates();
+	mj_forward(this->model_.get(), this->data_.get());
 	publishSimTime(this->data_->time);
 
 	for (auto &plugin : plugins_) {

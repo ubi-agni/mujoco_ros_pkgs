@@ -65,7 +65,7 @@ configure_project_option(
 )
 
 # Find MuJoCo
-find_package(mujoco 3.2.0 REQUIRED)
+find_package(mujoco 3.2.1 REQUIRED)
 
 # ###############################################
 # # Declare ROS dynamic reconfigure parameters ##
