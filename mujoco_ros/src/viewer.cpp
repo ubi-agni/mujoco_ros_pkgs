@@ -533,6 +533,11 @@ void ShowSensor(mujoco_ros::Viewer *viewer, mjrRect rect)
 	mjr_figure(viewport, &viewer->figsensor, &viewer->platform_ui->mjr_context());
 }
 
+void ShowFigure(mujoco_ros::Viewer *viewer, mjrRect viewport, mjvFigure *fig)
+{
+	mjr_figure(viewport, fig, &viewer->platform_ui->mjr_context());
+}
+
 // load state from history buffer
 static void LoadScrubState(mujoco_ros::Viewer * /*viewer*/)
 {
@@ -2589,6 +2594,11 @@ void Viewer::Render()
 				std::printf("Saved screenshot to %s\n", path.c_str());
 			}
 		}
+	}
+
+	// user figures
+	for (auto &[viewport, figure] : this->user_figures_) {
+		ShowFigure(this, viewport, &figure);
 	}
 
 	// Finalize
