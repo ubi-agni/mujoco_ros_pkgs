@@ -310,7 +310,7 @@ void UpdateProfiler(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *
 	memset(viewer->figcost.linepnt, 0, mjMAXLINE * sizeof(int));
 
 	// number of islands that have diagnostics
-	int nisland = mjMIN(d->solver_nisland, mjNISLAND);
+	int nisland = mjMAX(1, mjMIN(d->nisland, mjNISLAND));
 
 	for (int k = 0; k < nisland; k++) {
 		// === update Constarint ("Counts") figure
@@ -411,8 +411,9 @@ void UpdateProfiler(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *
 	}
 
 	// get sizes: nv, nbody, nefc, sqrt(nnz), ncont, iter
-	float sdata[6] = { static_cast<float>(m->nv),    static_cast<float>(m->nbody), static_cast<float>(d->nefc),
-		                static_cast<float>(sqrt_nnz), static_cast<float>(d->ncon),  static_cast<float>(solver_niter) };
+	float sdata[6] = { static_cast<float>(m->nv),   static_cast<float>(m->nbody),
+		                static_cast<float>(d->nefc), static_cast<float>(sqrt_nnz),
+		                static_cast<float>(d->ncon), static_cast<float>(solver_niter) / nisland };
 
 	// update figsize
 	int pnt = mjMIN(201, viewer->figsize.linepnt[0] + 1);
@@ -579,7 +580,7 @@ void UpdateInfoText(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *
 	char tmp[20];
 
 	// number of islands with statistics
-	int nisland = mjMIN(d->solver_nisland, mjNISLAND);
+	int nisland = mjMAX(1, mjMIN(d->nisland, mjNISLAND));
 
 	// compute solver error (maximum over islands)
 	mjtNum solerr = 0;
@@ -1114,6 +1115,10 @@ void CopyKey(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *d, bool
 	const char p_full[]    = "%-22.16g";
 	const char *format     = fp ? p_full : p_regular;
 
+// ignore format-nonliteral warning to not repeat code for each buffer addition
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
+
 	// time
 	mju::strcat_arr(clipboard, "  time=\"");
 	mju::sprintf_arr(buf, format, d->time);
@@ -1184,6 +1189,8 @@ void CopyKey(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *d, bool
 			mju::strcat_arr(clipboard, buf);
 		}
 	}
+// restore warning
+#pragma clang diagnostic pop
 
 	mju::strcat_arr(clipboard, "'/>");
 

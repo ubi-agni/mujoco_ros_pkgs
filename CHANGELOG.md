@@ -3,7 +3,7 @@
 
 ### Added
 * Now it's possible to use MuJoCos intenal threadpool to speed up simulation. The number ob threads can be set with either `mujoco_threads` in the server launchfile or directly with `num_mj_threads` for the server node.
-If a number above 1 is used, multithreading is enabled. MuJoCo will then use the threadpool for parallel computations in the engine itself, but also plugins may use the threadpool to dispatch tasks (via (mjTask)[https://mujoco.readthedocs.io/en/3.2.0/APIreference/APItypes.html#mjtask] and (mju_threadPoolEnqueue)[https://mujoco.readthedocs.io/en/3.2.0/APIreference/APIfunctions.html#mju-threadpoolenqueue]).
+If a number above 1 is used, multithreading is enabled. MuJoCo will then use the threadpool for parallel computations in the engine itself, but also plugins may use the threadpool to dispatch tasks (via (mjTask)[https://mujoco.readthedocs.io/en/3.3.2/APIreference/APItypes.html#mjtask] and (mju_threadPoolEnqueue)[https://mujoco.readthedocs.io/en/3.3.2/APIreference/APIfunctions.html#mju-threadpoolenqueue]).
 The default is `min(#available_threads - 1, 4)`.
 * Added profiling of plugin load and callback execution times. For each callback an EMA with sensitivity of 1000 steps is computed. In case a plugin has lower frequency than simulation step size, the callback should set `skip_ema_ = true` when skipping computations.
 Loading and reset times are reported in the server debug log. All plugin stats can be retrieved by the `get_plugin_stats` service call.
@@ -31,6 +31,7 @@ Loading and reset times are reported in the server debug log. All plugin stats c
 * Added sleeping at least until the next lowerbound GUI refresh when paused to reduce cpu load.
 * deprecated `no_x` launchparameter in favor of using `no_render`, as offscreen rendering now is also available without X.
 * Optimized camera render configurations where RGB, Segmented and Depth streams are active, but only Segmented and Depth are subscribed. Previously, this would result in two separate low-level render calls, now it's done in one.
+* Upgraded MuJoCo library version to 3.3.2
 
 Contributors: @DavidPL1
 
