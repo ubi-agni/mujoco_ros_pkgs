@@ -538,6 +538,17 @@ void ShowFigure(mujoco_ros::Viewer *viewer, mjrRect viewport, mjvFigure *fig)
 	mjr_figure(viewport, fig, &viewer->platform_ui->mjr_context());
 }
 
+void ShowOverlayText(mujoco_ros::Viewer *viewer, mjrRect viewport, int font, int gridpos, std::string text1,
+                     std::string text2)
+{
+	mjr_overlay(font, gridpos, viewport, text1.c_str(), text2.c_str(), &viewer->platform_ui->mjr_context());
+}
+
+void ShowImage(mujoco_ros::Viewer *viewer, mjrRect viewport, const unsigned char *image)
+{
+	mjr_drawPixels(image, nullptr, viewport, &viewer->platform_ui->mjr_context());
+}
+
 // load state from history buffer
 static void LoadScrubState(mujoco_ros::Viewer * /*viewer*/)
 {
@@ -1094,17 +1105,86 @@ void AlignAndScaleView(mujoco_ros::Viewer *viewer, const mjModel *m)
 	mjv_defaultFreeCamera(m, &viewer->cam);
 }
 
-// copy qpos to clipboard as key
-void CopyPose(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *d)
+// copy state to clipboard as key
+void CopyKey(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *d, bool fp)
 {
-	char clipboard[5000] = "<key qpos='";
+	char clipboard[5000] = "<key\n";
 	char buf[200];
+	const char p_regular[] = "%g";
+	const char p_full[]    = "%-22.16g";
+	const char *format     = fp ? p_full : p_regular;
 
-	// prepare string
+	// time
+	mju::strcat_arr(clipboard, "  time=\"");
+	mju::sprintf_arr(buf, format, d->time);
+	mju::strcat_arr(clipboard, buf);
+
+	// qpos
+	mju::strcat_arr(clipboard, "\"\n  qpos=\"");
 	for (int i = 0; i < m->nq; i++) {
-		mju::sprintf_arr(buf, i == m->nq - 1 ? "%g" : "%g ", d->qpos[i]);
+		mju::sprintf_arr(buf, format, d->qpos[i]);
+		if (i < m->nq - 1) {
+			mju::strcat_arr(buf, " ");
+		}
 		mju::strcat_arr(clipboard, buf);
 	}
+
+	// qvel
+	mju::strcat_arr(clipboard, "\"\n  qvel=\"");
+	for (int i = 0; i < m->nv; i++) {
+		mju::sprintf_arr(buf, format, d->qvel[i]);
+		if (i < m->nv - 1) {
+			mju::strcat_arr(buf, " ");
+		}
+		mju::strcat_arr(clipboard, buf);
+	}
+
+	// act
+	if (m->na > 0) {
+		mju::strcat_arr(clipboard, "\"\n  act=\"");
+		for (int i = 0; i < m->na; i++) {
+			mju::sprintf_arr(buf, format, d->act[i]);
+			if (i < m->na - 1) {
+				mju::strcat_arr(buf, " ");
+			}
+			mju::strcat_arr(clipboard, buf);
+		}
+	}
+
+	// ctrl
+	if (m->nu > 0) {
+		mju::strcat_arr(clipboard, "\"\n  ctrl=\"");
+		for (int i = 0; i < m->nu; i++) {
+			mju::sprintf_arr(buf, format, d->ctrl[i]);
+			if (i < m->nu - 1) {
+				mju::strcat_arr(buf, " ");
+			}
+			mju::strcat_arr(clipboard, buf);
+		}
+	}
+
+	if (m->nmocap > 0) {
+		// mocap_pos
+		mju::strcat_arr(clipboard, "\"\n  mpos=\"");
+		for (int i = 0; i < m->nmocap * 3; i++) {
+			mju::sprintf_arr(buf, format, d->mocap_pos[i]);
+			if (i < m->nmocap * 3 - 1) {
+				mju::strcat_arr(buf, " ");
+			}
+			mju::strcat_arr(clipboard, buf);
+		}
+
+		// mocap_quat
+		mju::strcat_arr(clipboard, "\"\n  mquat=\"");
+		for (int i = 0; i < m->nmocap * 4; i++) {
+			mju::sprintf_arr(buf, format, d->mocap_quat[i]);
+			if (i < m->nmocap * 4 - 1) {
+				mju::strcat_arr(buf, " ");
+			}
+			mju::strcat_arr(clipboard, buf);
+		}
+	}
+
 	mju::strcat_arr(clipboard, "'/>");
 
 	// copy to clipboard
@@ -1366,7 +1446,8 @@ void UiEvent(mjuiState *state)
 					break;
 
 				case 4: // Copy pose
-					viewer->pending_.copy_pose = true;
+					viewer->pending_.copy_key                = true;
+					viewer->pending_.copy_key_full_precision = viewer->platform_ui->IsShiftKeyPressed();
 					break;
 
 				case 5: // Adjust key
@@ -1964,9 +2045,10 @@ void Viewer::Sync()
 		pending_.align = false;
 	}
 
-	if (pending_.copy_pose) {
-		CopyPose(this, m_.get(), d_.get());
-		pending_.copy_pose = false;
+	if (pending_.copy_key) {
+		CopyKey(this, m_.get(), d_.get(), pending_.copy_key_full_precision);
+		pending_.copy_key                = false;
+		pending_.copy_key_full_precision = false;
 	}
 
 	if (pending_.load_from_history) {
@@ -2599,6 +2681,16 @@ void Viewer::Render()
 	// user figures
 	for (auto &[viewport, figure] : this->user_figures_) {
 		ShowFigure(this, viewport, &figure);
+	}
+
+	// overlay text
+	for (auto &[font, gridpos, text1, text2] : this->user_texts_) {
+		ShowOverlayText(this, rect, font, gridpos, text1, text2);
+	}
+
+	// user images
+	for (auto &[viewport, image] : this->user_images_) {
+		ShowImage(this, viewport, image);
 	}
 
 	// Finalize
