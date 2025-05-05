@@ -351,6 +351,7 @@ public:
 	char info_content[Viewer::kMaxFilenameLength] = { 0 };
 
 	mjtByte user_scn_flags_prev_[mjNRNDFLAG];
+	std::vector<std::pair<mjrRect, mjvFigure>> user_figures_;
 	// whether the viewer is operating in passive mode, where it cannot assume
 	// that it has exclusive access to the model, data, and various mjv objects
 	bool is_passive_ = false;
