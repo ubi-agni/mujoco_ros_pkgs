@@ -61,6 +61,7 @@
 #include <ratio>
 #include <string>
 #include <utility>
+#include <tuple>
 #include <vector>
 
 #include <mujoco/mjui.h>
@@ -196,7 +197,8 @@ public:
 		std::optional<std::string> print_model;
 		std::optional<std::string> print_data;
 		bool align;
-		bool copy_pose;
+		bool copy_key;
+		bool copy_key_full_precision;
 		bool load_from_history;
 		bool load_key;
 		int newperturb;
@@ -295,7 +297,7 @@ public:
 	int hfield_upload_  = -1;
 	std::condition_variable_any cond_upload_;
 
-	// additional user-defined viszualization geoms
+	// additional user-defined viszualization
 	mjvScene *user_scn = nullptr;
 
 	// OpenGL rendering and UI
@@ -329,7 +331,7 @@ public:
 		                                  { mjITEM_BUTTON, "Reset", 2, nullptr, " #259" },
 		                                  { mjITEM_BUTTON, "Reload", 5, nullptr, "CL" },
 		                                  { mjITEM_BUTTON, "Align", 2, nullptr, "CA" },
-		                                  { mjITEM_BUTTON, "Copy pose", 2, nullptr, "CC" },
+		                                  { mjITEM_BUTTON, "Copy State", 2, nullptr, "CC" },
 		                                  { mjITEM_SLIDERINT, "Key", 3, &this->key, "0 0" },
 		                                  { mjITEM_BUTTON, "Load key", 3 },
 		                                  { mjITEM_BUTTON, "Save key", 3 },
@@ -352,6 +354,8 @@ public:
 
 	mjtByte user_scn_flags_prev_[mjNRNDFLAG];
 	std::vector<std::pair<mjrRect, mjvFigure>> user_figures_;
+	std::vector<std::tuple<int, int, std::string, std::string>> user_texts_;
+	std::vector<std::tuple<mjrRect, unsigned char *>> user_images_;
 	// whether the viewer is operating in passive mode, where it cannot assume
 	// that it has exclusive access to the model, data, and various mjv objects
 	bool is_passive_ = false;
