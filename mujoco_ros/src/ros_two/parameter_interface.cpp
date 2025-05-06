@@ -101,19 +101,19 @@ void MujocoEnv::GetCameraConfiguration(const std::string &cam_name, rendering::S
                                        std::string &segment_topic)
 {
 	int stream_type_int;
-	stream_type_int = get_maybe_undeclared_param(this, cam_name + ".stream_type",
+	stream_type_int = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".stream_type",
 	                                             static_cast<int>(rendering::kDEFAULT_CAM_STREAM_TYPE));
 	stream_type     = rendering::StreamType(stream_type_int);
-	pub_frequency   = get_maybe_undeclared_param(this, cam_name + ".frequency", rendering::kDEFAULT_CAM_PUB_FREQ);
-	use_segid       = get_maybe_undeclared_param(this, cam_name + ".use_segid", rendering::kDEFAULT_CAM_USE_SEGID);
-	width           = get_maybe_undeclared_param(this, cam_name + ".width", rendering::kDEFAULT_CAM_WIDTH);
-	height          = get_maybe_undeclared_param(this, cam_name + ".height", rendering::kDEFAULT_CAM_HEIGHT);
-	base_topic      = get_maybe_undeclared_param(this, cam_name + ".topic", "cameras/" + cam_name);
-	rgb_topic = get_maybe_undeclared_param(this, cam_name + ".name_rgb", std::string(rendering::kDEFAULT_CAM_RGB_TOPIC));
+	pub_frequency   = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".frequency", rendering::kDEFAULT_CAM_PUB_FREQ);
+	use_segid       = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".use_segid", rendering::kDEFAULT_CAM_USE_SEGID);
+	width           = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".width", rendering::kDEFAULT_CAM_WIDTH);
+	height          = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".height", rendering::kDEFAULT_CAM_HEIGHT);
+	base_topic      = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".topic", "cameras/" + cam_name);
+	rgb_topic = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".name_rgb", std::string(rendering::kDEFAULT_CAM_RGB_TOPIC));
 	depth_topic =
-	    get_maybe_undeclared_param(this, cam_name + ".name_depth", std::string(rendering::kDEFAULT_CAM_DEPTH_TOPIC));
+	    get_maybe_undeclared_param(this, "cam_config." + cam_name + ".name_depth", std::string(rendering::kDEFAULT_CAM_DEPTH_TOPIC));
 	segment_topic =
-	    get_maybe_undeclared_param(this, cam_name + ".name_segment", std::string(rendering::kDEFAULT_CAM_SEGMENT_TOPIC));
+	    get_maybe_undeclared_param(this, "cam_config." + cam_name + ".name_segment", std::string(rendering::kDEFAULT_CAM_SEGMENT_TOPIC));
 }
 
 void MujocoEnv::GetInitialJointPositions(std::map<std::string, std::vector<double>> & /*joint_pos_map*/)
