@@ -40,101 +40,83 @@
 #include <mujoco/mujoco.h>
 #include <sstream>
 
-namespace mujoco_ros::util
-{
+namespace mujoco_ros::util {
 
 template <class T>
 inline typename std::make_unsigned<T>::type as_unsigned(T x)
 {
-  return static_cast<typename std::make_unsigned<T>::type>(x);
+	return static_cast<typename std::make_unsigned<T>::type>(x);
 }
 
-static inline int jointName2id(mjModel* m, const std::string& joint_name,
-							   const std::string& robot_namespace = std::string())
+static inline int jointName2id(mjModel *m, const std::string &joint_name,
+                               const std::string &robot_namespace = std::string())
 {
-  int result = mj_name2id(m, mjOBJ_JOINT, joint_name.c_str());
-  if (result == -1 && !robot_namespace.empty())
-  {
-	MJR_DEBUG_STREAM("Trying to find without namespace (" << joint_name.substr(robot_namespace.size()) << ")");
-	result = mj_name2id(m, mjOBJ_JOINT, joint_name.substr(robot_namespace.size()).c_str());
-  }
-  return result;
+	int result = mj_name2id(m, mjOBJ_JOINT, joint_name.c_str());
+	if (result == -1 && !robot_namespace.empty()) {
+		MJR_DEBUG_STREAM("Trying to find without namespace (" << joint_name.substr(robot_namespace.size()) << ")");
+		result = mj_name2id(m, mjOBJ_JOINT, joint_name.substr(robot_namespace.size()).c_str());
+	}
+	return result;
 }
 
 // Helper function to convert a double array to a space-delimited string
-static inline void arr_to_string(const mjtNum* arr, int size, std::string& str)
+static inline void arr_to_string(const mjtNum *arr, int size, std::string &str)
 {
-  str.clear();
-  for (int i = 0; i < size; ++i)
-  {
-	str += std::to_string(arr[i]);
-	if (i < size - 1)
-	{
-	  str += " ";
+	str.clear();
+	for (int i = 0; i < size; ++i) {
+		str += std::to_string(arr[i]);
+		if (i < size - 1) {
+			str += " ";
+		}
 	}
-  }
 }
 // Helper function to set a bit in a flags int
-static inline void bit_set_to(int& flags, int bit, bool value)
+static inline void bit_set_to(int &flags, int bit, bool value)
 {
-  if (value)
-  {
-	flags |= (1 << bit);
-  }
-  else
-  {
-	flags &= ~(1 << bit);
-  }
+	if (value) {
+		flags |= (1 << bit);
+	} else {
+		flags &= ~(1 << bit);
+	}
 }
 
 // Helper function to read size values from a space-delimited string
-static inline void set_from_string(mjtNum* vec, std::string str, uint8_t size)
+static inline void set_from_string(mjtNum *vec, std::string str, uint8_t size)
 {
-  uint8_t count = 0;
-  char* pch = strtok(&str[0], " ");
-  while (pch != nullptr)
-  {
-	if (count < size)
-	{
-	  vec[count] = std::stod(pch);
-	  count++;
+	uint8_t count = 0;
+	char *pch     = strtok(&str[0], " ");
+	while (pch != nullptr) {
+		if (count < size) {
+			vec[count] = std::stod(pch);
+			count++;
+		} else {
+			MJR_WARN_STREAM("Too many values in string '" << str << "' expected " << size << ". Ignoring the rest.");
+		}
+		pch = strtok(nullptr, " ");
 	}
-	else
-	{
-	  MJR_WARN_STREAM("Too many values in string '" << str << "' expected " << size << ". Ignoring the rest.");
+	if (count < size - 1) {
+		MJR_WARN_STREAM("Too few values in string '" << str << "' expected " << size << ". Filling with zeros.");
+		for (uint8_t i = count; i < size; i++) {
+			vec[i] = 0;
+		}
 	}
-	pch = strtok(nullptr, " ");
-  }
-  if (count < size - 1)
-  {
-	MJR_WARN_STREAM("Too few values in string '" << str << "' expected " << size << ". Filling with zeros.");
-	for (uint8_t i = count; i < size; i++)
-	{
-	  vec[i] = 0;
-	}
-  }
 }
 
 template <typename T>
-static inline std::string vector_to_string(const std::vector<T>& vec)
+static inline std::string vector_to_string(const std::vector<T> &vec)
 {
-  std::ostringstream oss;
-  for (size_t i = 0; i < vec.size(); ++i)
-  {
-	if constexpr (std::is_arithmetic_v<T>)
-	{  // Only handle arithmetic types (like double, float, int, etc.)
-	  oss << std::fixed << std::setprecision(2) << vec[i];	// Format to 2 decimal places
+	std::ostringstream oss;
+	for (size_t i = 0; i < vec.size(); ++i) {
+		if constexpr (std::is_arithmetic_v<T>) { // Only handle arithmetic types (like double, float, int, etc.)
+			oss << std::fixed << std::setprecision(2) << vec[i]; // Format to 2 decimal places
+		} else {
+			oss << vec[i]; // Handle non-arithmetic types
+		}
+		if (i != vec.size() - 1) {
+			oss << ", "; // Add a comma except for the last element
+		}
 	}
-	else
-	{
-	  oss << vec[i];  // Handle non-arithmetic types
-	}
-	if (i != vec.size() - 1)
-	{
-	  oss << ", ";	// Add a comma except for the last element
-	}
-  }
-  return oss.str();
+	return oss.str();
 };
 
-}  // namespace mujoco_ros::util
+} // namespace mujoco_ros::util

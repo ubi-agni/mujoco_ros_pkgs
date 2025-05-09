@@ -7,12 +7,12 @@ import os
 
 import xacro
 def concatenate_ns(ns1, ns2, absolute=False):
-    
+
     if(len(ns1) == 0):
         return ns2
     if(len(ns2) == 0):
         return ns1
-    
+
     # check for /s at the end and start
     if(ns1[0] == '/'):
         ns1 = ns1[1:]
@@ -35,9 +35,9 @@ def generate_launch_description():
     doc = xacro.parse(open(xacro_file))
     xacro.process_doc(doc)
     params = {'robot_description': doc.toxml()}
-    ns = ''     # this must match the namespace argument under mujoco_ros2_control in the plugin's parameter yaml file. 
+    ns = ''     # this must match the namespace argument under mujoco_ros2_control in the plugin's parameter yaml file.
                 # See the ros2_control_plugins_example_with_ns.yaml file for more details.
-    
+
     node_robot_state_publisher = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',

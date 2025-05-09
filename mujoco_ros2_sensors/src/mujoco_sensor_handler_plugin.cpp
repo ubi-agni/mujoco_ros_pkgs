@@ -38,8 +38,6 @@
 
 #include <mujoco_ros2_sensors/mujoco_sensor_handler_plugin.h>
 
-
-
 // #include <geometry_msgs/PointStamped.h>
 // #include <geometry_msgs/QuaternionStamped.h>
 // #include <geometry_msgs/Vector3Stamped.h>
@@ -56,10 +54,10 @@
 #include <mujoco_ros/mujoco_env.hpp>
 
 // TODO:
-// x All the .publish to -> publish, 
-// x creating publishers, 
-// message creation, 
-// x node handle-related functions, 
+// x All the .publish to -> publish,
+// x creating publishers,
+// message creation,
+// x node handle-related functions,
 // ros time
 namespace mujoco_ros::sensors {
 
@@ -129,17 +127,16 @@ bool MujocoRos2SensorsPlugin::Load(const mjModel *model, mjData *data)
 	initSensors(model, data);
 	RCLCPP_INFO(sensors_nh_->get_logger(), "All sensors initialized");
 
-	register_noise_model_server_ = sensors_nh_->create_service<mujoco_ros_msgs::srv::RegisterSensorNoiseModels>("~/sensors/register_noise_models",
-	                                                            std::bind(&MujocoRos2SensorsPlugin::registerNoiseModelsCB, 
-																		  this, 
-																		  std::placeholders::_1, 
-																		  std::placeholders::_2));
+	register_noise_model_server_ = sensors_nh_->create_service<mujoco_ros_msgs::srv::RegisterSensorNoiseModels>(
+	    "~/sensors/register_noise_models",
+	    std::bind(&MujocoRos2SensorsPlugin::registerNoiseModelsCB, this, std::placeholders::_1, std::placeholders::_2));
 
 	return true;
 }
 
-void MujocoRos2SensorsPlugin::registerNoiseModelsCB(const mujoco_ros_msgs::srv::RegisterSensorNoiseModels::Request::SharedPtr &req,
-                                                    const mujoco_ros_msgs::srv::RegisterSensorNoiseModels::Response::SharedPtr &resp)
+void MujocoRos2SensorsPlugin::registerNoiseModelsCB(
+    const mujoco_ros_msgs::srv::RegisterSensorNoiseModels::Request::SharedPtr &req,
+    const mujoco_ros_msgs::srv::RegisterSensorNoiseModels::Response::SharedPtr &resp)
 {
 	if (env_ptr_->settings_.eval_mode) {
 		RCLCPP_DEBUG(rclcpp::get_logger("mujoco"), "Evaluation mode is active. Checking hash validity");
@@ -159,13 +156,14 @@ void MujocoRos2SensorsPlugin::registerNoiseModelsCB(const mujoco_ros_msgs::srv::
 		const std::map<std::string, SensorConfigPtr>::const_iterator &pos = sensor_map_.find(noise_model.sensor_name);
 		if (pos == sensor_map_.end()) {
 			RCLCPP_WARN_STREAM(getLogger(), "No sensor with name '"
-			                                     << noise_model.sensor_name
-			                                     << "' was registered on init. Can not apply noise model");
+			                                    << noise_model.sensor_name
+			                                    << "' was registered on init. Can not apply noise model");
 			continue;
 		}
 
 		const SensorConfigPtr &config = pos->second;
-		RCLCPP_DEBUG_STREAM_EXPRESSION(getLogger(), config->is_set > 0, "Overriding current noise model with newly provided");
+		RCLCPP_DEBUG_STREAM_EXPRESSION(getLogger(), config->is_set > 0,
+		                               "Overriding current noise model with newly provided");
 
 		if (noise_model.set_flag & 0x01) {
 			config->mean[noise_idx]  = noise_model.mean[noise_idx];
@@ -474,7 +472,7 @@ void MujocoRos2SensorsPlugin::initSensors(const mjModel *model, mjData *data)
 			sensor_name = mj_id2name(const_cast<mjModel *>(model), mjOBJ_SENSOR, n);
 		} else {
 			RCLCPP_WARN_STREAM(getLogger(),
-			                      "Sensor name resolution error. Skipping sensor of type " << type << " on site " << site);
+			                   "Sensor name resolution error. Skipping sensor of type " << type << " on site " << site);
 			continue;
 		}
 
@@ -499,13 +497,15 @@ void MujocoRos2SensorsPlugin::initSensors(const mjModel *model, mjData *data)
 						}
 						frame_id = mj_id2name(const_cast<mjModel *>(model), reftype, refid);
 						RCLCPP_DEBUG_STREAM(getLogger(), "Sensor has relative frame with id " << refid << " and type "
-						                                                                       << reftype << " and ref_frame "
-						                                                                       << frame_id);
+						                                                                      << reftype << " and ref_frame "
+						                                                                      << frame_id);
 					}
 					config = std::make_unique<SensorConfig>(frame_id);
-					config->value_pub = sensors_nh_->create_generic_publisher(sensor_name, "geometry_msgs/msg/Vector3Stamped", 1);
+					config->value_pub =
+					    sensors_nh_->create_generic_publisher(sensor_name, "geometry_msgs/msg/Vector3Stamped", 1);
 					if (!env_ptr_->settings_.eval_mode) {
-						config->gt_pub = sensors_nh_->create_generic_publisher(sensor_name + "_GT", "geometry_msgs/msg/Vector3Stamped", 1);
+						config->gt_pub =
+						    sensors_nh_->create_generic_publisher(sensor_name + "_GT", "geometry_msgs/msg/Vector3Stamped", 1);
 					}
 					sensor_map_[sensor_name] = std::move(config);
 					break;
@@ -514,9 +514,11 @@ void MujocoRos2SensorsPlugin::initSensors(const mjModel *model, mjData *data)
 			case mjSENS_SUBTREELINVEL:
 			case mjSENS_SUBTREEANGMOM:
 				config = std::make_unique<SensorConfig>(frame_id);
-				config->value_pub = sensors_nh_->create_generic_publisher(sensor_name, "geometry_msgs/msg/Vector3Stamped", 1);
+				config->value_pub =
+				    sensors_nh_->create_generic_publisher(sensor_name, "geometry_msgs/msg/Vector3Stamped", 1);
 				if (!env_ptr_->settings_.eval_mode) {
-					config->gt_pub = sensors_nh_->create_generic_publisher(sensor_name + "_GT", "geometry_msgs/msg/Vector3Stamped", 1);
+					config->gt_pub =
+					    sensors_nh_->create_generic_publisher(sensor_name + "_GT", "geometry_msgs/msg/Vector3Stamped", 1);
 				}
 				sensor_map_[sensor_name] = std::move(config);
 				global_frame             = true;
@@ -532,13 +534,15 @@ void MujocoRos2SensorsPlugin::initSensors(const mjModel *model, mjData *data)
 							}
 							frame_id = mj_id2name(const_cast<mjModel *>(model), reftype, refid);
 							RCLCPP_DEBUG_STREAM(getLogger(), "Sensor has relative frame with id "
-							                                      << refid << " and type " << reftype << " and ref_frame "
-							                                      << frame_id);
+							                                     << refid << " and type " << reftype << " and ref_frame "
+							                                     << frame_id);
 						}
 						config = std::make_unique<SensorConfig>(frame_id);
-						config->value_pub = sensors_nh_->create_generic_publisher(sensor_name, "geometry_msgs/msg/PointStamped", 1);
+						config->value_pub =
+						    sensors_nh_->create_generic_publisher(sensor_name, "geometry_msgs/msg/PointStamped", 1);
 						if (!env_ptr_->settings_.eval_mode) {
-							config->gt_pub = sensors_nh_->create_generic_publisher(sensor_name + "_GT", "geometry_msgs/msg/PointStamped", 1);
+							config->gt_pub = sensors_nh_->create_generic_publisher(sensor_name + "_GT",
+							                                                       "geometry_msgs/msg/PointStamped", 1);
 						}
 						sensor_map_[sensor_name] = std::move(config);
 						global_frame             = true;
@@ -548,9 +552,11 @@ void MujocoRos2SensorsPlugin::initSensors(const mjModel *model, mjData *data)
 			case mjSENS_BALLQUAT:
 			case mjSENS_FRAMEQUAT:
 				config = std::make_unique<SensorConfig>(frame_id);
-				config->value_pub = sensors_nh_->create_generic_publisher(sensor_name, "geometry_msgs/msg/QuaternionStamped", 1);
+				config->value_pub =
+				    sensors_nh_->create_generic_publisher(sensor_name, "geometry_msgs/msg/QuaternionStamped", 1);
 				if (!env_ptr_->settings_.eval_mode) {
-					config->gt_pub = sensors_nh_->create_generic_publisher(sensor_name + "_GT", "geometry_msgs/msg/QuaternionStamped", 1);
+					config->gt_pub =
+					    sensors_nh_->create_generic_publisher(sensor_name + "_GT", "geometry_msgs/msg/QuaternionStamped", 1);
 				}
 				sensor_map_[sensor_name] = std::move(config);
 				global_frame             = true;
@@ -560,13 +566,13 @@ void MujocoRos2SensorsPlugin::initSensors(const mjModel *model, mjData *data)
 		// Check if sensor is in global frame and already setup
 		if (global_frame || frame_id != "world") {
 			RCLCPP_DEBUG_STREAM(getLogger(), "Setting up sensor " << sensor_name << " on site " << site << " (frame_id: "
-			                                                       << frame_id << ") of type " << SENSOR_STRING[type]);
+			                                                      << frame_id << ") of type " << SENSOR_STRING[type]);
 			continue;
 		}
 
 		frame_id = mj_id2name(const_cast<mjModel *>(model), mjOBJ_BODY, parent_id);
 		RCLCPP_DEBUG_STREAM(getLogger(), "Setting up sensor " << sensor_name << " on site " << site << " (frame_id: "
-		                                                       << frame_id << ") of type " << SENSOR_STRING[type]);
+		                                                      << frame_id << ") of type " << SENSOR_STRING[type]);
 
 		switch (type) {
 			case mjSENS_ACCELEROMETER:
@@ -578,9 +584,11 @@ void MujocoRos2SensorsPlugin::initSensors(const mjModel *model, mjData *data)
 			case mjSENS_BALLANGVEL:
 				config = std::make_unique<SensorConfig>(frame_id);
 				// create_publisher<sensor_msgs/msg/JointState>("~/joint_states", 1);
-				config->value_pub = sensors_nh_->create_generic_publisher(sensor_name, "geometry_msgs/msg/Vector3Stamped", 1);
+				config->value_pub =
+				    sensors_nh_->create_generic_publisher(sensor_name, "geometry_msgs/msg/Vector3Stamped", 1);
 				if (!env_ptr_->settings_.eval_mode) {
-					config->gt_pub = sensors_nh_->create_generic_publisher(sensor_name + "_GT", "geometry_msgs/msg/Vector3Stamped", 1);
+					config->gt_pub =
+					    sensors_nh_->create_generic_publisher(sensor_name + "_GT", "geometry_msgs/msg/Vector3Stamped", 1);
 				}
 				sensor_map_[sensor_name] = std::move(config);
 				break;
@@ -602,73 +610,77 @@ void MujocoRos2SensorsPlugin::initSensors(const mjModel *model, mjData *data)
 			case mjSENS_TENDONLIMITVEL:
 			case mjSENS_TENDONLIMITFRC:
 				config = std::make_unique<SensorConfig>(frame_id);
-				config->value_pub = sensors_nh_->create_generic_publisher(sensor_name, "mujoco_ros_msgs/msg/ScalarStamped", 1);
+				config->value_pub =
+				    sensors_nh_->create_generic_publisher(sensor_name, "mujoco_ros_msgs/msg/ScalarStamped", 1);
 				if (!env_ptr_->settings_.eval_mode) {
-					config->gt_pub = sensors_nh_->create_generic_publisher(sensor_name + "_GT", "mujoco_ros_msgs/msg/ScalarStamped", 1);
+					config->gt_pub =
+					    sensors_nh_->create_generic_publisher(sensor_name + "_GT", "mujoco_ros_msgs/msg/ScalarStamped", 1);
 				}
 				sensor_map_[sensor_name] = std::move(config);
 				break;
 
 			default:
 				RCLCPP_WARN_STREAM(getLogger(), "Sensor of type '" << type << "' (" << sensor_name
-				                                                    << ") is unknown! Cannot publish to ROS");
+				                                                   << ") is unknown! Cannot publish to ROS");
 				break;
 		}
 	}
 }
 
-void MujocoRos2SensorsPlugin::configureLidarMap(const mjModel *model, mjData *data){
+void MujocoRos2SensorsPlugin::configureLidarMap(const mjModel *model, mjData *data)
+{
 	auto lidar_names = sensors_nh_->get_parameter("lidars").as_string_array();
 	for (const auto &lidar_name : lidar_names) {
 		RCLCPP_INFO(getLogger(), "Configuring lidar %s", lidar_name.c_str());
 		// Do we really need to manually declare params like this?
-		sensors_nh_->declare_parameter<double>(lidar_name+".max",-1);
-		sensors_nh_->declare_parameter<double>(lidar_name+".min",-1);
-		sensors_nh_->declare_parameter<double>(lidar_name+".angle",0);
-		sensors_nh_->declare_parameter<int>(lidar_name+".rf_count",0);
-		
+		sensors_nh_->declare_parameter<double>(lidar_name + ".max", -1);
+		sensors_nh_->declare_parameter<double>(lidar_name + ".min", -1);
+		sensors_nh_->declare_parameter<double>(lidar_name + ".angle", 0);
+		sensors_nh_->declare_parameter<int>(lidar_name + ".rf_count", 0);
+
 		LidarConfigPtr lidar = std::make_unique<LidarConfig>();
-		if(sensors_nh_->has_parameter(lidar_name + ".max")){
-			lidar->max_ = sensors_nh_->get_parameter(lidar_name+".max").as_double();
+		if (sensors_nh_->has_parameter(lidar_name + ".max")) {
+			lidar->max_ = sensors_nh_->get_parameter(lidar_name + ".max").as_double();
 		}
-		if(sensors_nh_->has_parameter(lidar_name + ".min")){
-			lidar->min_ = sensors_nh_->get_parameter(lidar_name+".min").as_double();
+		if (sensors_nh_->has_parameter(lidar_name + ".min")) {
+			lidar->min_ = sensors_nh_->get_parameter(lidar_name + ".min").as_double();
 		}
-		if(sensors_nh_->has_parameter(lidar_name + ".angle")){
-			lidar->angle_ = sensors_nh_->get_parameter(lidar_name+".angle").as_double();
+		if (sensors_nh_->has_parameter(lidar_name + ".angle")) {
+			lidar->angle_ = sensors_nh_->get_parameter(lidar_name + ".angle").as_double();
 		}
-		if(sensors_nh_->has_parameter(lidar_name + ".rf_count")){
-			lidar->rf_count_ = sensors_nh_->get_parameter(lidar_name+".rf_count").as_int();
+		if (sensors_nh_->has_parameter(lidar_name + ".rf_count")) {
+			lidar->rf_count_ = sensors_nh_->get_parameter(lidar_name + ".rf_count").as_int();
 		}
 		// Make the lidar only valid if all the parameters have been set correctly,
 		// since the lidar data calculation depends on it
-		lidar->valid_ = (lidar->max_ > 0 &&  
-						 lidar->min_ > 0 && 
-						 lidar->max_ > lidar->min_ &&  // max should be bigger than min
-						 lidar->rf_count_ > 0 &&  // there must be at least 1 rangefinder
-						 lidar->angle_ > 0); // angle between each rangefinder must be bigger than 0.
-		
-		// now calculate by how much the lidar object needs to be rotated at each tick, in order to cover a full circle given the number of rangefinders.
-		lidar->angle_to_rotate_ = lidar->angle_ * (lidar->rf_count_);
+		lidar->valid_ =
+		    (lidar->max_ > 0 && lidar->min_ > 0 && lidar->max_ > lidar->min_ && // max should be bigger than min
+		     lidar->rf_count_ > 0 && // there must be at least 1 rangefinder
+		     lidar->angle_ > 0); // angle between each rangefinder must be bigger than 0.
+
+		// now calculate by how much the lidar object needs to be rotated at each tick, in order to cover a full circle
+		// given the number of rangefinders.
+		lidar->angle_to_rotate_   = lidar->angle_ * (lidar->rf_count_);
 		lidar->accumulated_angle_ = 0;
 		// Lidars are populated using repeat on a site.
 		// so actually, the lidar name in the config should be its SITE, not the SENSOR.
 		// Sensors populated using repeat will have no name.
 		std::string frame_id, site_name;
 		int site_id;
-		for(int i = 0; i < lidar->rf_count_; i++){
+		for (int i = 0; i < lidar->rf_count_; i++) {
 			// validate that the number of RF matches the number of sites
 			site_name = lidar_name + std::to_string(i);
-			site_id = mj_name2id(const_cast<mjModel *>(model), mjOBJ_SITE, site_name.c_str());
+			site_id   = mj_name2id(const_cast<mjModel *>(model), mjOBJ_SITE, site_name.c_str());
 
-			if(site_id == -1){
+			if (site_id == -1) {
 				lidar->valid_ = false;
 				break;
 			}
 
-			for(int n = 0; n < model->nsensor; n++){
+			for (int n = 0; n < model->nsensor; n++) {
 				// check that the sites all have 1 sensor of rangefinder type attached to it
-				if(model->sensor_objtype[n] == mjOBJ_SITE && model->sensor_objid[n] == site_id && model->sensor_type[n] == mjSENS_RANGEFINDER){
+				if (model->sensor_objtype[n] == mjOBJ_SITE && model->sensor_objid[n] == site_id &&
+				    model->sensor_type[n] == mjSENS_RANGEFINDER) {
 					lidar->sensor_ids_.push_back(n);
 					break;
 				}
@@ -676,61 +688,60 @@ void MujocoRos2SensorsPlugin::configureLidarMap(const mjModel *model, mjData *da
 		}
 
 		// ensure that the number of rangefinder sensors in the vector container is the same as rf_count
-		if(lidar->sensor_ids_.size() != (size_t)lidar->rf_count_){
-			RCLCPP_WARN(getLogger(), "Number of rangefinder sensors in %s is not %d! Found %ld.", lidar_name.c_str(), lidar->rf_count_, lidar->sensor_ids_.size());
+		if (lidar->sensor_ids_.size() != (size_t)lidar->rf_count_) {
+			RCLCPP_WARN(getLogger(), "Number of rangefinder sensors in %s is not %d! Found %ld.", lidar_name.c_str(),
+			            lidar->rf_count_, lidar->sensor_ids_.size());
 			lidar->valid_ = false;
 		}
-		
+
 		// if any of the conditions fail, we move on
-		if(!lidar->valid_){
+		if (!lidar->valid_) {
 			RCLCPP_WARN(getLogger(), "Lidar %s is not valid! Skipping it.", lidar_name.c_str());
 			lidar_map_[lidar_name] = std::move(lidar); // still move it, to have record for what lidar names were given.
 			continue;
 		}
-		
+
 		// now we've validated what we can, move on with setting up other stuff
-		lidar->body_id_ = model->site_bodyid[site_id];
-		frame_id = mj_id2name(const_cast<mjModel *>(model), mjOBJ_BODY, model->site_bodyid[site_id]);
-		lidar->msg_ = sensor_msgs::msg::LaserScan();
+		lidar->body_id_             = model->site_bodyid[site_id];
+		frame_id                    = mj_id2name(const_cast<mjModel *>(model), mjOBJ_BODY, model->site_bodyid[site_id]);
+		lidar->msg_                 = sensor_msgs::msg::LaserScan();
 		lidar->msg_.header.frame_id = frame_id;
-		lidar->msg_.range_max = lidar->max_;
-		lidar->msg_.range_min = lidar->min_;
-		lidar->msg_.angle_min = 0;
-		lidar->msg_.angle_max = M_PI*2;
-		
-		RCLCPP_INFO(getLogger(), "Lidar %s config:\nRanges: [%f %f], Angle min/max: [%f %f], increment: %f, rf_count: %d", 
-								lidar_name.c_str(), lidar->min_, lidar->max_, lidar->msg_.angle_min, lidar->msg_.angle_max, lidar->angle_, lidar->rf_count_);
+		lidar->msg_.range_max       = lidar->max_;
+		lidar->msg_.range_min       = lidar->min_;
+		lidar->msg_.angle_min       = 0;
+		lidar->msg_.angle_max       = M_PI * 2;
+
+		RCLCPP_INFO(getLogger(), "Lidar %s config:\nRanges: [%f %f], Angle min/max: [%f %f], increment: %f, rf_count: %d",
+		            lidar_name.c_str(), lidar->min_, lidar->max_, lidar->msg_.angle_min, lidar->msg_.angle_max,
+		            lidar->angle_, lidar->rf_count_);
 		lidar->msg_.angle_increment = lidar->angle_;
-		lidar->msg_.scan_time = (M_PI*2/lidar->angle_to_rotate_) / (1.0/model->opt.timestep); 
-		lidar->msg_.time_increment = model->opt.timestep / lidar->rf_count_;
+		lidar->msg_.scan_time       = (M_PI * 2 / lidar->angle_to_rotate_) / (1.0 / model->opt.timestep);
+		lidar->msg_.time_increment  = model->opt.timestep / lidar->rf_count_;
 
 		RCLCPP_INFO(getLogger(), "Creating publishers for lidar %s in frame %s", lidar_name.c_str(), frame_id.c_str());
 		SensorConfigPtr config;
-		config = std::make_unique<SensorConfig>(frame_id);
+		config            = std::make_unique<SensorConfig>(frame_id);
 		config->value_pub = sensors_nh_->create_generic_publisher(lidar_name, "sensor_msgs/msg/LaserScan", 1);
 		if (!env_ptr_->settings_.eval_mode) {
 			config->gt_pub = sensors_nh_->create_generic_publisher(lidar_name + "_GT", "sensor_msgs/msg/LaserScan", 1);
 		}
 		sensor_map_[lidar_name] = std::move(config);
-		lidar_map_[lidar_name] = std::move(lidar);
+		lidar_map_[lidar_name]  = std::move(lidar);
 	}
-
 };
 
-
-void MujocoRos2SensorsPlugin::publishLidarData(const mjModel* model, mjData *data){
-
+void MujocoRos2SensorsPlugin::publishLidarData(const mjModel *model, mjData *data)
+{
 	for (const auto &lidar_config : lidar_map_) {
-
-		if(!lidar_config.second->valid_){
+		if (!lidar_config.second->valid_) {
 			// don't bother with invalid lidars
 			continue;
 		}
 
 		// read the data. Since we are reading then adding to accumulated angle, this should ensure that
 		// sensor data from rangefinder that exceeds the 360 degree are not written to the message.
-		for(int i = 0; i < lidar_config.second->rf_count_; i++){
-			if(lidar_config.second->accumulated_angle_ >= M_PI*2){
+		for (int i = 0; i < lidar_config.second->rf_count_; i++) {
+			if (lidar_config.second->accumulated_angle_ >= M_PI * 2) {
 				// if the accumulated angle exceeds 360, stop adding sensor data
 				break;
 			}
@@ -739,19 +750,19 @@ void MujocoRos2SensorsPlugin::publishLidarData(const mjModel* model, mjData *dat
 			// RCLCPP_INFO(getLogger(), "Current angle: %f", lidar_config.second->accumulated_angle_);
 		}
 		// if the accumulated angle >= 360 degrees, reset it to 0, and publish the message with timestamp
-		if(lidar_config.second->accumulated_angle_ >= M_PI*2){
+		if (lidar_config.second->accumulated_angle_ >= M_PI * 2) {
 			lidar_config.second->msg_.header.stamp = sensors_nh_->now();
-			sensor_map_[lidar_config.first]->value_pub->publish(sensor_map_[lidar_config.first]->serializeMessage(lidar_config.second->msg_));
+			sensor_map_[lidar_config.first]->value_pub->publish(
+			    sensor_map_[lidar_config.first]->serializeMessage(lidar_config.second->msg_));
 			data->qpos[model->jnt_qposadr[model->body_jntadr[lidar_config.second->body_id_]]] = 0;
-			lidar_config.second->accumulated_angle_ = 0.0;
+			lidar_config.second->accumulated_angle_                                           = 0.0;
 			lidar_config.second->msg_.ranges.clear(); // clear out the message at the beginning
-		}
-		else{
+		} else {
 			// rotate the body, i.e. the joint on which the body is attached to.
 			// RCLCPP_INFO(getLogger(), "Rotating by %f", lidar_config.second->accumulated_angle_);
-			data->qpos[model->jnt_qposadr[model->body_jntadr[lidar_config.second->body_id_]]] = lidar_config.second->accumulated_angle_;
+			data->qpos[model->jnt_qposadr[model->body_jntadr[lidar_config.second->body_id_]]] =
+			    lidar_config.second->accumulated_angle_;
 		}
-
 	};
 }
 // Nothing to do on reset

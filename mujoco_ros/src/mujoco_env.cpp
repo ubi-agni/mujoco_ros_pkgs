@@ -108,7 +108,8 @@ MujocoEnv *MujocoEnv::instance = nullptr;
 
 void MujocoEnv::RunRenderCbs(mjvScene * /*scene*/) {}
 void UpdateModelFlags(const mjOption *) {}
-void MujocoEnv::RunLastStageCbs() {
+void MujocoEnv::RunLastStageCbs()
+{
 	for (const auto &plugin : this->cb_ready_plugins_) {
 		plugin->WrappedLastStageCallback(this->model_.get(), this->data_.get());
 	}
@@ -159,7 +160,8 @@ void MujocoEnv::RemoveNodeFromExecutor(rclcpp::node_interfaces::NodeBaseInterfac
 	executor_->remove_node(node);
 }
 
-rclcpp::Executor::SharedPtr MujocoEnv::GetExecutorPtr(){
+rclcpp::Executor::SharedPtr MujocoEnv::GetExecutorPtr()
+{
 	return executor_;
 }
 
