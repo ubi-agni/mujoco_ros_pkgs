@@ -163,7 +163,7 @@ void MujocoEnv::GetInitialJointPositions(std::map<std::string, std::vector<doubl
 	if (joint.get_type() == rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY)
 	{
 	  joint_pos_map[joint_name] = joint.as_double_array();
-	  RCLCPP_WARN_STREAM(this->get_logger(), "Joint " << joint_name << " has initial values: ["
+	  RCLCPP_INFO_STREAM(this->get_logger(), "Joint " << joint_name << " has initial values: ["
 													  << mujoco_ros::util::vector_to_string(joint.as_double_array())
 													  << "]");
 	}
