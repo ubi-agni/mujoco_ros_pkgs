@@ -27,13 +27,12 @@ class DummyRos2Plugin : public mujoco_ros::MujocoPlugin
 public:
 	// MujocoRos2ControlPlugin();
 
-	mujoco_ros::CallbackReturn on_configure(const rclcpp_lifecycle::State &/*previous_state*/) override;
+	mujoco_ros::CallbackReturn on_configure(const rclcpp_lifecycle::State & /*previous_state*/) override;
 
 	~DummyRos2Plugin() override;
-	void ControlCallback(const mjModel* model, mjData* data) override;
-	
+	void ControlCallback(const mjModel *model, mjData *data) override;
 
-    // These don't need to be implemented if they are not used
+	// These don't need to be implemented if they are not used
 	// void PassiveCallback(const mjModel* model, mjData* data) override;
 	// void RenderCallback(const mjModel* model, mjData* data, mjvScene* scene) override;
 	// void LastStageCallback(const mjModel* model, mjData* data) override;
@@ -59,7 +58,7 @@ private:
 	// std::unique_ptr<MujocoRos2ControlPluginPrivate> dataPtr_;
 	rclcpp::Logger get_my_logger() { return rclcpp::get_logger("DummyRos2Plugin"); };
 	std::string plugin_name = "dummy_ros2_plugin";
-    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher_;
+	rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher_;
 
 	rclcpp::Node::SharedPtr child_node_;
 	rclcpp::Publisher<std_msgs::msg::String>::SharedPtr child_publisher_;
@@ -67,9 +66,9 @@ private:
 	rclcpp::Node::SharedPtr parallel_node_;
 	rclcpp::Publisher<std_msgs::msg::String>::SharedPtr parallel_publisher_;
 
-    mjData* d_;
-    size_t count_;
-    const mjModel* m_;
+	mjData *d_;
+	size_t count_;
+	const mjModel *m_;
 };
 
 } // namespace mujoco_ros

@@ -187,7 +187,7 @@ public:
 	void RemoveNodeFromExecutor(rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node);
 
 	/**
-	 * @brief returns the executor_ shared pointer. 
+	 * @brief returns the executor_ shared pointer.
 	 * Some plugins (like ros2 control's controller manager) need direct reference to the executor.
 	 */
 	rclcpp::Executor::SharedPtr GetExecutorPtr();

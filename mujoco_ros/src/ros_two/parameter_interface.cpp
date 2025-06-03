@@ -1,12 +1,14 @@
 #include <mujoco_ros/ros_version.hpp>
 #include <mujoco_ros/render_backend.hpp>
 #include <mujoco_ros/logging.hpp>
+#include <mujoco_ros/util.hpp>
 
 #include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros/ros_two/plugin_utils.hpp>
 
 #include <mujoco/mujoco.h>
 #include <mujoco_ros/array_safety.h>
+#include <map>
 
 #include <rosgraph_msgs/msg/clock.hpp>
 
@@ -99,46 +101,52 @@ void MujocoEnv::GetCameraConfiguration(const std::string &cam_name, rendering::S
 	stream_type_int = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".stream_type",
 	                                             static_cast<int>(rendering::kDEFAULT_CAM_STREAM_TYPE));
 	stream_type     = rendering::StreamType(stream_type_int);
-	pub_frequency   = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".frequency", rendering::kDEFAULT_CAM_PUB_FREQ);
-	use_segid       = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".use_segid", rendering::kDEFAULT_CAM_USE_SEGID);
-	width           = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".width", rendering::kDEFAULT_CAM_WIDTH);
-	height          = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".height", rendering::kDEFAULT_CAM_HEIGHT);
-	base_topic      = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".topic", "cameras/" + cam_name);
-	rgb_topic = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".name_rgb", std::string(rendering::kDEFAULT_CAM_RGB_TOPIC));
-	depth_topic =
-	    get_maybe_undeclared_param(this, "cam_config." + cam_name + ".name_depth", std::string(rendering::kDEFAULT_CAM_DEPTH_TOPIC));
-	segment_topic =
-	    get_maybe_undeclared_param(this, "cam_config." + cam_name + ".name_segment", std::string(rendering::kDEFAULT_CAM_SEGMENT_TOPIC));
+	pub_frequency =
+	    get_maybe_undeclared_param(this, "cam_config." + cam_name + ".frequency", rendering::kDEFAULT_CAM_PUB_FREQ);
+	use_segid =
+	    get_maybe_undeclared_param(this, "cam_config." + cam_name + ".use_segid", rendering::kDEFAULT_CAM_USE_SEGID);
+	width       = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".width", rendering::kDEFAULT_CAM_WIDTH);
+	height      = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".height", rendering::kDEFAULT_CAM_HEIGHT);
+	base_topic  = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".topic", "cameras/" + cam_name);
+	rgb_topic   = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".name_rgb",
+	                                         std::string(rendering::kDEFAULT_CAM_RGB_TOPIC));
+	depth_topic = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".name_depth",
+	                                         std::string(rendering::kDEFAULT_CAM_DEPTH_TOPIC));
+	segment_topic = get_maybe_undeclared_param(this, "cam_config." + cam_name + ".name_segment",
+	                                           std::string(rendering::kDEFAULT_CAM_SEGMENT_TOPIC));
 }
 
-void MujocoEnv::GetInitialJointPositions(std::map<std::string, std::vector<double>> & /*joint_pos_map*/)
+void MujocoEnv::GetInitialJointPositions(std::map<std::string, std::vector<double>> &joint_pos_map)
 {
-	MJR_WARN("Initial joint positions NYI in ROS 2");
-	// std::map<std::string, std::string> joint_map;
-	// nh_->getParam("initial_joint_positions/joint_map", joint_map);
+	std::string param_name = "initial_joint_states";
+	auto result            = this->list_parameters({ param_name }, 2);
 
-	// // This check only assures that there aren't single axis joint values that are non-strings.
-	// // One ill-defined value among correct parameters can't be detected.
-	// if (nh_->hasParam("initial_joint_positions/joint_map") && joint_map.empty()) {
-	// 	MJR_WARN("Initial joint positions not recognized by rosparam server. Check your config, "
-	// 	         "especially values for single axis joints should explicitly provided as string!");
-	// 	return;
-	// }
+	if (result.names.size() == 0) {
+		RCLCPP_WARN(this->get_logger(),
+		            "No initial joint position specified (failed to get 'initial_joint_states' parameter).");
+		return;
+	}
+	std::vector<std::string> joint_names;
 
-	// for (auto const &[name, str_values] : joint_map) {
-	// 	MJR_DEBUG_STREAM("fetched jointpos values of joint " << name << ": " << str_values);
+	for (const auto &joint_name : result.names) {
+		if (joint_name.rfind(param_name + ".", 0) == 0) {
+			joint_names.push_back(joint_name);
+		}
+	}
 
-	// 	std::vector<double> axis_vals;
-	// 	axis_vals.reserve(7);
+	auto parameters = this->get_parameters(joint_names);
 
-	// 	std::stringstream stream_values(str_values);
-	// 	std::string value;
-	// 	while (std::getline(stream_values, value, ' ')) {
-	// 		axis_vals.push_back(std::stod(value));
-	// 	}
-	// 	axis_vals.shrink_to_fit();
-	// 	joint_pos_map[name] = axis_vals;
-	// }
+	for (const auto &joint : parameters) {
+		std::string joint_name = joint.get_name().substr(param_name.length() + 1); // Strip "initial_joint_states."
+		if (joint.get_type() == rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY) {
+			joint_pos_map[joint_name] = joint.as_double_array();
+			RCLCPP_INFO_STREAM(this->get_logger(), "Joint " << joint_name << " has initial values: ["
+			                                                << mujoco_ros::util::vector_to_string(joint.as_double_array())
+			                                                << "]");
+		} else {
+			RCLCPP_WARN(this->get_logger(), "Joint %s is not a double array", joint.get_name().c_str());
+		}
+	}
 }
 
 void MujocoEnv::GetInitialJointVelocities(std::map<std::string, std::vector<double>> & /*joint_vel_map*/)

@@ -38,6 +38,7 @@
 #include <mujoco_ros/logging.hpp>
 #include <mujoco_ros/common_types.hpp>
 #include <mujoco/mujoco.h>
+#include <sstream>
 
 namespace mujoco_ros::util {
 
@@ -113,5 +114,22 @@ static inline void set_from_string(mjtNum *vec, std::string str, uint8_t size)
 		}
 	}
 }
+
+template <typename T>
+static inline std::string vector_to_string(const std::vector<T> &vec)
+{
+	std::ostringstream oss;
+	for (size_t i = 0; i < vec.size(); ++i) {
+		if constexpr (std::is_arithmetic_v<T>) { // Only handle arithmetic types (like double, float, int, etc.)
+			oss << std::fixed << std::setprecision(2) << vec[i]; // Format to 2 decimal places
+		} else {
+			oss << vec[i]; // Handle non-arithmetic types
+		}
+		if (i != vec.size() - 1) {
+			oss << ", "; // Add a comma except for the last element
+		}
+	}
+	return oss.str();
+};
 
 } // namespace mujoco_ros::util
