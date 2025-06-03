@@ -28,7 +28,7 @@ mujoco_ros2_sensors:
       min: 1.0
       rf_count: 8
       angle: 0.45
-    
+
 
 controller_manager:
   ros__parameters:

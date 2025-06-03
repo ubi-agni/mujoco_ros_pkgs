@@ -54,8 +54,9 @@ public:
 	unsigned int update_rate;
 
 	/// \brief Interface loader
-	std::shared_ptr<pluginlib::ClassLoader<mujoco_ros2_control::MujocoRos2SystemInterface>>
-		robot_hw_sim_loader_{nullptr};
+	std::shared_ptr<pluginlib::ClassLoader<mujoco_ros2_control::MujocoRos2SystemInterface>> robot_hw_sim_loader_{
+		nullptr
+	};
 };
 
 class MujocoRos2ControlPlugin : public mujoco_ros::MujocoPlugin
@@ -64,14 +65,13 @@ public:
 	// MujocoRos2ControlPlugin();
 
 	~MujocoRos2ControlPlugin() override;
-	mujoco_ros::CallbackReturn on_configure(const rclcpp_lifecycle::State &/*previous_state*/) override;
-	
-	void ControlCallback(const mjModel* model, mjData* data) override;
-	void PassiveCallback(const mjModel* model, mjData* data) override;
-	void RenderCallback(const mjModel* model, mjData* data, mjvScene* scene) override;
-	void LastStageCallback(const mjModel* model, mjData* data) override;
-	void OnGeomChanged(const mjModel* model, mjData* data, const int geom_id) override;
-	
+	mujoco_ros::CallbackReturn on_configure(const rclcpp_lifecycle::State & /*previous_state*/) override;
+
+	void ControlCallback(const mjModel *model, mjData *data) override;
+	void PassiveCallback(const mjModel *model, mjData *data) override;
+	void RenderCallback(const mjModel *model, mjData *data, mjvScene *scene) override;
+	void LastStageCallback(const mjModel *model, mjData *data) override;
+	void OnGeomChanged(const mjModel *model, mjData *data, const int geom_id) override;
 
 protected:
 	/**
@@ -93,9 +93,9 @@ private:
 	std::unique_ptr<MujocoRos2ControlPluginPrivate> dataPtr_;
 	rclcpp::Logger get_my_logger() { return rclcpp::get_logger("MujocoRos2ControlPlugin"); };
 	std::string MUJOCO_PLUGIN_PARAM_NAME = "MujocoPlugins";
-	std::string plugin_name = "mujoco_ros2_control";
+	std::string plugin_name              = "mujoco_ros2_control";
 };
 
-} // namespace mujoco_ros2
+} // namespace mujoco_ros2_control
 
 #endif // MUJOCO_ROS2_CONTROL__MUJOCO_ROS2_CONTROL_HPP_

@@ -82,7 +82,9 @@ public:
 	// void registerGTPub(const ros::Publisher &pub) { gt_pub = pub; };
 	// void registerGTPub(rclcpp::GenericPublisher::SharedPtr &pub) { gt_pub = pub; };
 
-	template<typename M> rclcpp::SerializedMessage serializeMessage(const M &msg){
+	template <typename M>
+	rclcpp::SerializedMessage serializeMessage(const M &msg)
+	{
 		rclcpp::Serialization<M> serializer;
 		rclcpp::SerializedMessage serialized_msg;
 		serializer.serialize_message(&msg, &serialized_msg);
@@ -103,7 +105,8 @@ public:
 	uint8_t is_set = 0; // 0 for unset, otherwise binary code for combination of dims
 };
 
-struct LidarConfig{
+struct LidarConfig
+{
 	sensor_msgs::msg::LaserScan msg_;
 	double max_;
 	double min_;
@@ -118,7 +121,7 @@ struct LidarConfig{
 };
 
 using SensorConfigPtr = std::unique_ptr<SensorConfig>;
-using LidarConfigPtr = std::unique_ptr<LidarConfig>;
+using LidarConfigPtr  = std::unique_ptr<LidarConfig>;
 
 class MujocoRos2SensorsPlugin : public mujoco_ros::MujocoPlugin
 {
@@ -132,26 +135,23 @@ public:
 
 	void LastStageCallback(const mjModel *model, mjData *data) override; // last -> Last
 
-	mujoco_ros::CallbackReturn on_configure(const rclcpp_lifecycle::State &/*previous_state*/){
-        // RCLCPP_INFO_STREAM(get_my_logger(), "Configuring DummyRos2Plugin");
+	mujoco_ros::CallbackReturn on_configure(const rclcpp_lifecycle::State & /*previous_state*/)
+	{
+		// RCLCPP_INFO_STREAM(get_my_logger(), "Configuring DummyRos2Plugin");
 
-        declare_parameter_if_not_declared(
-            this->get_node()->get_node_parameters_interface(),
-            "test_name",
-            rclcpp::ParameterValue("parallel_node_name")
-        );
+		declare_parameter_if_not_declared(this->get_node()->get_node_parameters_interface(), "test_name",
+		                                  rclcpp::ParameterValue("parallel_node_name"));
 
 		if (!this->get_node()->has_parameter("lidars")) {
 			this->get_node()->declare_parameter<std::vector<std::string>>("lidars", std::vector<std::string>());
 		}
 
-        return mujoco_ros::CallbackReturn::SUCCESS;
-    }
+		return mujoco_ros::CallbackReturn::SUCCESS;
+	}
 
 private:
 	// replaced via env_ptr_
 	rclcpp_lifecycle::LifecycleNode::SharedPtr sensors_nh_;
-
 
 	void initSensors(const mjModel *model, mjData *data);
 	std::mt19937 rand_generator = std::mt19937(std::random_device{}());
@@ -166,13 +166,11 @@ private:
 	// bool registerNoiseModelsCB(mujoco_ros_msgs::RegisterSensorNoiseModels::Request &req,
 	//                            mujoco_ros_msgs::RegisterSensorNoiseModels::Response &rep);
 	void registerNoiseModelsCB(const mujoco_ros_msgs::srv::RegisterSensorNoiseModels::Request::SharedPtr &req,
-							   const mujoco_ros_msgs::srv::RegisterSensorNoiseModels::Response::SharedPtr &rep);
+	                           const mujoco_ros_msgs::srv::RegisterSensorNoiseModels::Response::SharedPtr &rep);
 	void configureLidarMap(const mjModel *model, mjData *data);
-	void publishLidarData(const mjModel* model, mjData *data);
+	void publishLidarData(const mjModel *model, mjData *data);
 
-	static rclcpp::Logger getLogger(){
-		return rclcpp::get_logger("MujocoRos2SensorPlugin");
-	};
+	static rclcpp::Logger getLogger() { return rclcpp::get_logger("MujocoRos2SensorPlugin"); };
 };
 
 const char *SENSOR_STRING[37];

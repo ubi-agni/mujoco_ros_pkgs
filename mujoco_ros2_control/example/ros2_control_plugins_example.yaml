@@ -12,7 +12,7 @@ mujoco_server:
         type: mujoco_ros2_control::MujocoRos2ControlPlugin
         hardware:
           type: mujoco_ros_control/RobotHW
-    
+
 mujoco_ros2_control:
   ros__parameters:
     namespace: ""
