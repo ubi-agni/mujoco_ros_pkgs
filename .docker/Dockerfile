@@ -3,8 +3,8 @@ ARG ROS_DISTRO=noetic
 ARG BASE_DOCKER_NAME=${ROS_DISTRO}
 FROM ${IMAGE_PREFIX}ros:${BASE_DOCKER_NAME}-ros-base AS base
 
-ENV TERM xterm
-ENV IN_DOCKER 1
+ENV TERM=xterm
+ENV IN_DOCKER=1
 
 
 ###################################################################################
