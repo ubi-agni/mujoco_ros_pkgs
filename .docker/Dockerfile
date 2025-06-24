@@ -30,8 +30,8 @@ RUN src/mujoco_ros_pkgs/.docker/mujoco_installer.sh
 RUN vcs import --shallow --input src/mujoco_ros_pkgs/.github/workflows/upstream.rosinstall src
 
 # Create list of ros dependencies
-RUN rosdep update
-RUN rosdep install -y --from-paths src --ignore-src --simulate > /tmp/deps.sh
+RUN rosdep update $(test "${ROS_DISTRO}" = "noetic" && echo --rosdistro ${ROS_DISTRO})
+RUN rosdep install -y --from-paths src --ignore-src --simulate > /tmp/deps.sh $(test "${ROS_DISTRO}" = "noetic" && echo --rosdistro ${ROS_DISTRO})
 RUN chmod 755 /tmp/deps.sh
 
 
