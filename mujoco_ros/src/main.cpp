@@ -48,6 +48,7 @@
 #if RENDER_BACKEND == GLFW_BACKEND
 #include <mujoco_ros/glfw_adapter.h>
 #include <mujoco_ros/viewer.h>
+#include <mujoco_ros/plugin_utils.h>
 #endif
 
 namespace {
@@ -100,6 +101,9 @@ int main(int argc, char **argv)
 		ROS_ERROR("Error parsing command line: %s", e.what());
 		exit(-1);
 	}
+
+	/* Load MuJoCo Engine Plugins */
+	mujoco_ros::plugin_utils::registerEnginePlugins();
 
 	/*
 	 * Model (file) passing: the model can be provided as file to parse or directly as string stored in the rosparam

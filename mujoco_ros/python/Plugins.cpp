@@ -5,6 +5,19 @@ namespace py = pybind11;
 namespace mujoco_ros::python {
 using namespace mujoco_ros;
 
+namespace {
+struct EnginePluginLoader
+{
+	EnginePluginLoader()
+	{
+		// This will register the MuJoCo engine plugins
+		mujoco_ros::plugin_utils::registerEnginePlugins(true);
+	}
+};
+} // namespace
+
+static EnginePluginLoader _engine_plugin_loader;
+
 void InitPluginsPy(py::module &m)
 {
 	py::class_<MujocoPlugin, std::shared_ptr<MujocoPlugin>>(m, "_MujocoPlugin")

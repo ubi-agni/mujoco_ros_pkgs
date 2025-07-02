@@ -40,6 +40,10 @@
 
 #include <pluginlib/class_loader.h>
 
+#ifndef MUJOCO_PLUGIN_DIR
+#define MUJOCO_PLUGIN_DIR "mujoco_plugin"
+#endif
+
 namespace mujoco_ros {
 
 class MujocoPlugin
@@ -262,6 +266,8 @@ protected:
 };
 
 namespace plugin_utils {
+
+void registerEnginePlugins(bool from_python = false);
 
 /**
  * @brief Searches for plugins to load in the ros parameter server and stores a the configuration in \c

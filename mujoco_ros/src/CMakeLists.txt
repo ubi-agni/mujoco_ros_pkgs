@@ -90,4 +90,9 @@ target_link_libraries(mujoco_node
     project_warning
 )
 
+# Set MuJoCo plugin directory to load engine plugins
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+  MUJOCO_PLUGIN_DIR="${MUJOCO_DIR}/bin/mujoco_plugin"
+)
+
 # configure_coverage(TARGET ${PROJECT_NAME})

@@ -38,6 +38,31 @@
 
 namespace mujoco_ros::plugin_utils {
 
+void registerEnginePlugins(bool from_python)
+{
+	// In Python, we don't load the MuJoCo engine plugins, since they are already
+	// loaded by the mujoco python bindings.
+	if (!from_python) {
+		// check and print message for plugins that are directly linked into the executable
+		int nplugin = mjp_pluginCount();
+		if (nplugin > 0) {
+			ROS_INFO_STREAM("Built-in Plugins:");
+			for (int i = 0; i < nplugin; ++i) {
+				ROS_INFO_STREAM("  " << mjp_getPluginAtSlot(i)->name);
+			}
+		}
+	}
+
+	ROS_INFO_STREAM("Searching for MuJoCo engine plugins in " << MUJOCO_PLUGIN_DIR);
+	mj_loadAllPluginLibraries(
+	    MUJOCO_PLUGIN_DIR, +[](const char *filename, int first, int count) {
+		    ROS_INFO_STREAM("Loaded MuJoCo engine plugin library '" << filename << "': ");
+		    for (int i = first; i < first + count; ++i) {
+			    ROS_INFO_STREAM("  " << mjp_getPluginAtSlot(i)->name);
+		    }
+	    });
+}
+
 bool parsePlugins(const ros::NodeHandle *nh, XmlRpc::XmlRpcValue &plugin_config_rpc)
 {
 	std::string param_path;

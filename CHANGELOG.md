@@ -19,6 +19,7 @@ Loading and reset times are reported in the server debug log. All plugin stats c
 * Added dynamic reconfigure for all MuJoCo settings for fast model testing.
 * Added initial python bindings for the core library, mocap plugin, and sensor plugin.
 An example of how to run a simulation in python is [run_mjrospy_example.py](mujoco_ros/scripts/run_mjrospy_example.py).
+* Added loading of MuJoCo engine plugins.
 
 ### Fixed
 * Added missing call to render callbacks in viewer. While the callbacks were still being run for offscreen rendering, the viewer did not render additional geoms added by plugins.

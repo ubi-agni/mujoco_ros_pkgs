@@ -2,12 +2,38 @@ find_package(mujoco QUIET NO_MODULE)
 
 if (mujoco_FOUND AND mujoco_FIND_VERSION)
 	if (NOT mujoco_FIND_VERSION_MAJOR EQUAL mujoco_VERSION_MAJOR OR mujoco_FIND_VERSION_MINOR GREATER mujoco_VERSION_MINOR OR mujoco_FIND_VERSION_PATCH GREATER mujoco_VERSION_PATCH)
-		message(WARNING "Requested MuJoCo version ${mujoco_FIND_VERSION} but found incompatible version ${mujoco_VERSION}")
+		message(STATUS "Requested MuJoCo version ${mujoco_FIND_VERSION} but found incompatible version ${mujoco_VERSION}")
 		unset(mujoco_FOUND)
 	endif()
+	message(STATUS "Found MuJoCo version ${mujoco_VERSION} at ${mujoco_DIR}")
 endif()
 
-if(NOT mujoco_FOUND)
+function(_get_imported_location tgt out_var)
+  foreach(cfg "" "_DEBUG" "_RELEASE" "_RELWITHDEBINFO" "_MINSIZEREL")
+    get_target_property(loc "${tgt}" IMPORTED_LOCATION${cfg})
+    if(loc)
+      set(${out_var} "${loc}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  message(FATAL_ERROR
+    "Could not find any IMPORTED_LOCATION* property on target ${tgt}")
+endfunction()
+
+if (mujoco_FOUND)
+	_get_imported_location(mujoco::mujoco mujoco_LIBRARIES)
+
+	get_filename_component(_MJ_LIB_DIR
+		"${mujoco_LIBRARIES}"
+		DIRECTORY
+	)
+	get_filename_component(MUJOCO_ROOT_DIR
+		"${_MJ_LIB_DIR}"
+		DIRECTORY
+	)
+
+	set(MUJOCO_DIR "${MUJOCO_ROOT_DIR}" CACHE PATH "Path to MuJoCo installation directory")
+else()
 	message(STATUS "Looking for MuJoCo tar install ...")
 	# Initialize MUJOCO_DIR from environment variable if not yet set as cmake variable
 	if(NOT DEFINED MUJOCO_DIR)
