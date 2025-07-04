@@ -61,8 +61,9 @@ public:
 
 	~OffscreenCamera()
 	{
-		ROS_DEBUG("Freeing offscreen scene state");
-		mjv_freeSceneState(&scn_state_);
+		ROS_DEBUG("Freeing offscreen model and data states");
+		mj_deleteData(data_state_);
+		mj_deleteModel(model_state_);
 
 		rgb_pub_.shutdown();
 		depth_pub_.shutdown();
@@ -82,8 +83,9 @@ public:
 
 	bool initial_published_ = false;
 
-	mjvOption vopt_ = {}; // Options should be individual for each camera
-	mjvSceneState scn_state_; // Update depends on vopt, so every CamStream needs one
+	mjvOption vopt_       = {}; // Options should be individual for each camera
+	mjModel *model_state_ = nullptr;
+	mjData *data_state_   = nullptr;
 
 	ros::Time last_pub_;
 	ros::NodeHandle nh_;

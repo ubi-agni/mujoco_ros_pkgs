@@ -131,8 +131,9 @@ struct OffscreenRenderContext
 		bool initialized = false;
 	} osmesa;
 #endif
-	mjrContext con = {};
-	mjvScene scn   = {};
+	mjrContext con         = {};
+	mjvScene scn           = {};
+	mjvScene callbacks_scn = {};
 
 	boost::thread render_thread_handle;
 
