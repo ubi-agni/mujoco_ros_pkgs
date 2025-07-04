@@ -66,10 +66,11 @@ void MujocoEnv::WrappedStep()
 
 		for (const auto &cam_ptr : offscreen_.cams) {
 			if (cam_ptr->shouldRender(ros::Time(data_->time))) {
-				mjv_updateSceneState(model_.get(), data_.get(), &cam_ptr->vopt_, &cam_ptr->scn_state_);
-				runRenderCbs(&cam_ptr->scn_state_.scratch);
+				mjv_copyModel(cam_ptr->model_state_, model_.get());
+				mjv_copyData(cam_ptr->data_state_, cam_ptr->model_state_, data_.get());
 				offscreen_.request_pending.store(true);
 			}
+			runRenderCbs(&offscreen_.callbacks_scn);
 		}
 	}
 	offscreen_.cond_render_request.notify_one();
