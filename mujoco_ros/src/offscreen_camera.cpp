@@ -67,8 +67,9 @@ OffscreenCamera::OffscreenCamera(const uint8_t cam_id, const std::string &base_t
 	last_pub_ = ros::Time::now();
 
 	mjv_defaultOption(&vopt_);
-	mjv_defaultSceneState(&scn_state_);
-	mjv_makeSceneState(const_cast<mjModel *>(model), data, &scn_state_, Viewer::kMaxGeom);
+	// Full copy of model and data on init, afterwards only visualization state is updated
+	model_state_ = mj_copyModel(nullptr, model);
+	data_state_  = mj_copyData(nullptr, model_state_, data);
 
 	if (stream_type & streamType::RGB) {
 		ROS_DEBUG_NAMED("mujoco_env", "\tCreating rgb publisher");
@@ -184,8 +185,19 @@ bool OffscreenCamera::renderAndPubIfNecessary(mujoco_ros::OffscreenRenderContext
 	offscreen->con.offHeight = height_;
 	mjrRect viewport         = mjr_maxViewport(&offscreen->con);
 
-	// Update from scn_state_
-	mjv_updateSceneFromState(&scn_state_, &vopt_, nullptr, &offscreen->cam, mjCAT_ALL, &offscreen->scn);
+	// Update from last state
+	mjv_updateScene(model_state_, data_state_, &vopt_, nullptr, &offscreen->cam, mjCAT_ALL, &offscreen->scn);
+	// Add geoms from callbacks
+	int nplugingeom = offscreen->callbacks_scn.ngeom;
+	int ngeom       = std::min(nplugingeom, offscreen->scn.maxgeom - offscreen->scn.ngeom);
+	if (ngeom < nplugingeom) {
+		ROS_WARN_STREAM_NAMED("offscreen_camera", "Not enough space in offscreen scene for all plugin geoms, "
+		                                              << "only rendering " << ngeom << " of " << nplugingeom
+		                                              << " plugin geoms");
+	}
+	std::memcpy(offscreen->scn.geoms + offscreen->scn.ngeom, offscreen->callbacks_scn.geoms, ngeom * sizeof(mjvGeom));
+	offscreen->scn.ngeom += ngeom;
+
 	// Render to buffer
 	mjr_render(viewport, &offscreen->scn, &offscreen->con);
 	// read buffers
@@ -201,7 +213,7 @@ bool OffscreenCamera::renderAndPubIfNecessary(mujoco_ros::OffscreenRenderContext
 #endif
 
 	// create info msg
-	auto ros_time                           = ros::Time(scn_state_.data.time);
+	auto ros_time                           = ros::Time(data_state_->time);
 	sensor_msgs::CameraInfo camera_info_msg = camera_info_manager_->getCameraInfo();
 	camera_info_msg.header.stamp            = ros_time;
 
@@ -249,9 +261,9 @@ bool OffscreenCamera::renderAndPubIfNecessary(mujoco_ros::OffscreenRenderContext
 		auto *dest_float = reinterpret_cast<float *>(&depth_msg->data[0]);
 		uint index       = 0;
 
-		auto e  = static_cast<float>(scn_state_.model.stat.extent);
-		float f = e * scn_state_.model.vis.map.zfar;
-		float n = e * scn_state_.model.vis.map.znear;
+		auto e  = static_cast<float>(model_state_->stat.extent);
+		float f = e * model_state_->vis.map.zfar;
+		float n = e * model_state_->vis.map.znear;
 
 		for (uint32_t j = depth_msg->height; j > 0; j--) {
 			for (uint32_t i = 0; i < depth_msg->width; i++) {
@@ -270,13 +282,13 @@ bool OffscreenCamera::renderAndPubIfNecessary(mujoco_ros::OffscreenRenderContext
 
 void OffscreenCamera::renderAndPublish(mujoco_ros::OffscreenRenderContext *offscreen)
 {
-	if (!shouldRender(ros::Time(scn_state_.data.time))) {
+	if (!shouldRender(ros::Time(data_state_->time))) {
 		return;
 	}
 
 	initial_published_ = true;
 
-	last_pub_ = ros::Time(scn_state_.data.time);
+	last_pub_ = ros::Time(data_state_->time);
 
 	bool segment = (stream_type_ & streamType::SEGMENTED) &&
 	               (segment_pub_.getNumSubscribers() > 0 || segment_camera_info_pub_.getNumSubscribers() > 0);

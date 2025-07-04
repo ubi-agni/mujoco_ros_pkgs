@@ -87,12 +87,14 @@ OffscreenRenderContext::~OffscreenRenderContext()
 		std::unique_lock<std::mutex> lock(render_mutex);
 		request_pending.store(false);
 		mjv_freeScene(&scn);
+		mjv_freeScene(&callbacks_scn);
 		mjr_defaultContext(&con);
 		mjr_freeContext(&con);
 	}
 #elif RENDER_BACKEND == EGL_BACKEND
 	ROS_DEBUG("Freeing EGL offscreen context");
 	mjv_freeScene(&scn);
+	mjv_freeScene(&callbacks_scn);
 	mjr_defaultContext(&con);
 	mjr_freeContext(&con);
 
@@ -124,6 +126,7 @@ OffscreenRenderContext::~OffscreenRenderContext()
 	}
 	ROS_DEBUG("Freeing OSMesa offscreen context");
 	mjv_freeScene(&scn);
+	mjv_freeScene(&callbacks_scn);
 	mjr_defaultContext(&con);
 	mjr_freeContext(&con);
 	OSMesaDestroyContext(osmesa.ctx);
@@ -219,6 +222,7 @@ void MujocoEnv::initializeRenderResources()
 	mjr_makeContext(this->model_.get(), &offscreen_.con, 50);
 	ROS_DEBUG_NAMED("offscreen_rendering", "\tApplied model to context");
 	mjv_makeScene(this->model_.get(), &offscreen_.scn, Viewer::kMaxGeom);
+	mjv_makeScene(this->model_.get(), &offscreen_.callbacks_scn, Viewer::kMaxGeom);
 	mjr_setBuffer(mjFB_OFFSCREEN, &offscreen_.con);
 }
 
@@ -373,6 +377,7 @@ void MujocoEnv::offscreenRenderLoop()
 
 	mjv_defaultScene(&offscreen_.scn);
 	mjv_makeScene(nullptr, &offscreen_.scn, Viewer::kMaxGeom);
+	mjv_makeScene(nullptr, &offscreen_.callbacks_scn, Viewer::kMaxGeom);
 
 	while (ros::ok() && !settings_.exit_request.load()) {
 		{

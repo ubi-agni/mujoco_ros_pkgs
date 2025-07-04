@@ -339,7 +339,7 @@ void UpdateProfiler(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *
 			viewer->figconstraint.linedata[start + 4][2 * i] = static_cast<float>(i);
 
 			// y
-			int nefc                                             = nisland == 1 ? d->nefc : d->island_efcnum[k];
+			int nefc                                             = nisland == 1 ? d->nefc : d->island_nefc[k];
 			viewer->figconstraint.linedata[start + 0][2 * i + 1] = static_cast<float>(nefc);
 			const mjSolverStat *stat                             = d->solver + k * mjNSOLVER + i;
 			viewer->figconstraint.linedata[start + 1][2 * i + 1] = static_cast<float>(stat->nactive);
@@ -679,7 +679,7 @@ void UpdateWatch(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *d)
 // make physics section of UI
 void MakePhysicsSection(mujoco_ros::Viewer *viewer)
 {
-	mjOption *opt                = viewer->is_passive_ ? &viewer->scnstate_.model.opt : &viewer->m_->opt;
+	mjOption *opt                = viewer->is_passive_ ? &viewer->m_passive_->opt : &viewer->m_->opt;
 	mjuiDef defPhysics[]         = { { mjITEM_SECTION, "Physics", mjPRESERVE, nullptr, "AP" },
 		                              { mjITEM_SELECT, "Integrator", 2, &(opt->integrator),
 		                                "Euler\nRK4\nimplicit\nimplicitfast" },
@@ -840,12 +840,12 @@ void MakeRenderingSection(mujoco_ros::Viewer *viewer, const mjModel *m)
 // make visualization section of UI
 void MakeVisualizationSection(mujoco_ros::Viewer *viewer, const mjModel * /*m*/)
 {
-	mjStatistic *stat = viewer->is_passive_ ? &viewer->scnstate_.model.stat : &viewer->m_->stat;
-	mjVisual *vis     = viewer->is_passive_ ? &viewer->scnstate_.model.vis : &viewer->m_->vis;
+	mjStatistic *stat = viewer->is_passive_ ? &viewer->m_passive_->stat : &viewer->m_->stat;
+	mjVisual *vis     = viewer->is_passive_ ? &viewer->m_passive_->vis : &viewer->m_->vis;
 
 	mjuiDef defVisualization[] = { { mjITEM_SECTION, "Visualization", mjPRESERVE, nullptr, "AV" },
 		                            { mjITEM_SEPARATOR, "Headlight", 1 },
-		                            { mjITEM_RADIO, "Active", 5, &(vis->headlight.active), "Off\nOn" },
+		                            { mjITEM_RADIO, "Active", 2, &(vis->headlight.active), "Off\nOn" },
 		                            { mjITEM_EDITFLOAT, "Ambient", 2, &(vis->headlight.ambient), "3" },
 		                            { mjITEM_EDITFLOAT, "Diffuse", 2, &(vis->headlight.diffuse), "3" },
 		                            { mjITEM_EDITFLOAT, "Specular", 2, &(vis->headlight.specular), "3" },
@@ -858,7 +858,7 @@ void MakeVisualizationSection(mujoco_ros::Viewer *viewer, const mjModel * /*m*/)
 		                            { mjITEM_BUTTON, "Align", 2, nullptr, "CA" },
 		                            { mjITEM_SEPARATOR, "Global", 1 },
 		                            { mjITEM_EDITNUM, "Extent", 2, &(stat->extent), "1" },
-		                            { mjITEM_RADIO, "Inertia", 5, &(vis->global.ellipsoidinertia), "Box\nEllipsoid" },
+		                            { mjITEM_RADIO, "Inertia", 2, &(vis->global.ellipsoidinertia), "Box\nEllipsoid" },
 		                            { mjITEM_RADIO, "BVH active", 5, &(vis->global.bvactive), "False\nTrue" },
 		                            { mjITEM_SEPARATOR, "Map", 1 },
 		                            { mjITEM_EDITFLOAT, "Stiffness", 2, &(vis->map.stiffness), "1" },
@@ -1477,7 +1477,7 @@ void UiEvent(mjuiState *state)
 
 		// physics section
 		else if (it && it->sectionid == SECT_PHYSICS && viewer->m_) {
-			mjOption *opt = !viewer->is_passive_ ? &viewer->scnstate_.model.opt : &viewer->m_->opt;
+			mjOption *opt = !viewer->is_passive_ ? &viewer->m_passive_->opt : &viewer->m_->opt;
 
 			// update disable flags in mjOption
 			opt->disableflags = 0;
@@ -1746,15 +1746,14 @@ void UiEvent(mjuiState *state)
 		return;
 	}
 
+	// local pointers used below
+	mjModel *model = viewer->is_passive_ ? viewer->m_passive_ : viewer->m_.get();
+	mjData *data   = viewer->is_passive_ ? viewer->d_passive_ : viewer->d_.get();
+
 	// 3D scroll
-	if (state->type == mjEVENT_SCROLL && state->mouserect == 3) {
+	if (state->type == mjEVENT_SCROLL && state->mouserect == 3 && model) {
 		// emulate vertical mouse motion = 2% of window height
-		if (viewer->m_ && !viewer->is_passive_) {
-			mjv_moveCamera(viewer->m_.get(), mjMOUSE_ZOOM, 0, -zoom_increment * state->sy, &viewer->scn, &viewer->cam);
-		} else {
-			mjv_moveCameraFromState(&viewer->scnstate_, mjMOUSE_ZOOM, 0, -zoom_increment * state->sy, &viewer->scn,
-			                        &viewer->cam);
-		}
+		mjv_moveCamera(model, mjMOUSE_ZOOM, 0, -zoom_increment * state->sy, &viewer->scn, &viewer->cam);
 		return;
 	}
 
@@ -1810,21 +1809,9 @@ void UiEvent(mjuiState *state)
 		// move perturb or camera
 		mjrRect r = state->rect[3];
 		if (viewer->pert.active) {
-			if (!viewer->is_passive_) {
-				mjv_movePerturb(viewer->m_.get(), viewer->d_.get(), action, state->dx / r.height, -state->dy / r.height,
-				                &viewer->scn, &viewer->pert);
-			} else {
-				mjv_movePerturbFromState(&viewer->scnstate_, action, state->dx / r.height, -state->dy / r.height,
-				                         &viewer->scn, &viewer->pert);
-			}
+			mjv_movePerturb(model, data, action, state->dx / r.height, -state->dy / r.height, &viewer->scn, &viewer->pert);
 		} else {
-			if (!viewer->is_passive_) {
-				mjv_moveCamera(viewer->m_.get(), action, state->dx / r.height, -state->dy / r.height, &viewer->scn,
-				               &viewer->cam);
-			} else {
-				mjv_moveCameraFromState(&viewer->scnstate_, action, state->dx / r.height, -state->dy / r.height,
-				                        &viewer->scn, &viewer->cam);
-			}
+			mjv_moveCamera(model, action, state->dx / r.height, -state->dy / r.height, &viewer->scn, &viewer->cam);
 		}
 		return;
 	}
@@ -1857,11 +1844,11 @@ Viewer::Viewer(std::unique_ptr<PlatformUIAdapter> platform_ui_adapter, MujocoEnv
     , is_passive_(is_passive)
 {
 	mjv_defaultScene(&scn);
-	mjv_defaultSceneState(&scnstate_);
 	env_->connectViewer(this);
 }
 
-// synchronize model and data
+//------------------------- Synchronize render and physics threads ---------------------------------
+
 // operations which require holding the mutex, prevents racing with physics thread
 void Viewer::Sync()
 {
@@ -1933,46 +1920,29 @@ void Viewer::Sync()
 		}
 	}
 
+	// in passive mode, synchronize user's mjModel with changes made via the UI
 	if (is_passive_) {
-		// synchronize m_->opt with changes made via the UI
-#define X(name)                                                   \
-	if (IsDifferent(scnstate_.model.opt.name, mjopt_prev_.name)) { \
-		pending_.ui_update_physics = true;                          \
-		Copy(m_->opt.name, scnstate_.model.opt.name);               \
-	}
+		// synchronize mjModel.opt
+		if (std::memcmp(&m_passive_->opt, &mjopt_prev_, sizeof(mjOption))) {
+			pending_.ui_update_physics = true;
+			m_->opt                    = m_passive_->opt;
+		}
 
-		X(timestep);
-		X(apirate);
-		X(impratio);
-		X(tolerance);
-		X(noslip_tolerance);
-		X(ccd_tolerance);
-		X(gravity);
-		X(wind);
-		X(magnetic);
-		X(density);
-		X(viscosity);
-		X(o_margin);
-		X(o_solref);
-		X(o_solimp);
-		X(o_friction);
-		X(integrator);
-		X(cone);
-		X(jacobian);
-		X(solver);
-		X(iterations);
-		X(noslip_iterations);
-		X(ccd_iterations);
-		X(disableflags);
-		X(enableflags);
-		X(disableactuator);
-		X(sdf_initpoints);
-		X(sdf_iterations);
-#undef X
+		// synchronize mjModel.vis
+		if (std::memcmp(&m_passive_->vis, &mjvis_prev_, sizeof(mjVisual))) {
+			pending_.ui_update_visualization = true;
+			m_->vis                          = m_passive_->vis;
+		}
+
+		// synchronize mjModel.stat
+		if (std::memcmp(&m_passive_->stat, &mjstat_prev_, sizeof(mjStatistic))) {
+			pending_.ui_update_visualization = true;
+			m_->stat                         = m_passive_->stat;
+		}
 
 		// synchronize number of mjWARN_VGEOMFULL warnings
-		if (scnstate_.data.warning[mjWARN_VGEOMFULL].number > warn_vgeomfull_prev_) {
-			d_->warning[mjWARN_VGEOMFULL].number += scnstate_.data.warning[mjWARN_VGEOMFULL].number - warn_vgeomfull_prev_;
+		if (d_passive_->warning[mjWARN_VGEOMFULL].number > warn_vgeomfull_prev_) {
+			d_->warning[mjWARN_VGEOMFULL].number += d_passive_->warning[mjWARN_VGEOMFULL].number - warn_vgeomfull_prev_;
 		}
 	}
 
@@ -2157,22 +2127,19 @@ void Viewer::Sync()
 		pending_.select = false;
 	}
 
+	// update scene or sync data from user in passive mode
 	if (!is_passive_) {
 		mjv_updateScene(m_.get(), d_.get(), &this->opt, &this->pert, &this->cam, mjCAT_ALL, &this->scn);
 	} else {
-		mjv_updateSceneState(m_.get(), d_.get(), &this->opt, &scnstate_);
+		mjv_copyModel(m_.get(), m_passive_);
+		mjv_copyData(d_.get(), m_passive_, d_passive_);
 
-		// append geoms from user_scn to scnstate_ scratch space
+		// append geoms from user_scn to scratch space
 		if (user_scn) {
-			int ngeom   = user_scn->ngeom;
-			int maxgeom = scnstate_.scratch.maxgeom - scnstate_.scratch.ngeom;
-			if (ngeom > maxgeom) {
-				mj_warning(d_.get(), mjWARN_VGEOMFULL, scnstate_.scratch.maxgeom);
-				ngeom = maxgeom;
-			}
-			if (ngeom > 0) {
-				std::memcpy(scnstate_.scratch.geoms + scnstate_.scratch.ngeom, user_scn->geoms, sizeof(mjvGeom) * ngeom);
-				scnstate_.scratch.ngeom += ngeom;
+			user_scn_geoms_.clear();
+			user_scn_geoms_.reserve(user_scn->ngeom);
+			for (int i = 0; i < user_scn->ngeom; ++i) {
+				user_scn_geoms_.push_back(user_scn->geoms[i]);
 			}
 		}
 
@@ -2188,8 +2155,10 @@ void Viewer::Sync()
 			Copy(user_scn_flags_prev_, user_scn->flags);
 		}
 
-		mjopt_prev_          = scnstate_.model.opt;
-		warn_vgeomfull_prev_ = scnstate_.data.warning[mjWARN_VGEOMFULL].number;
+		mjopt_prev_          = m_passive_->opt;
+		mjvis_prev_          = m_passive_->vis;
+		mjstat_prev_         = m_passive_->stat;
+		warn_vgeomfull_prev_ = d_passive_->warning[mjWARN_VGEOMFULL].number;
 	}
 
 	// Run render cbs from plugins
@@ -2370,15 +2339,8 @@ void Viewer::LoadOnRenderThread()
 		}
 	}
 
-	// re-create scene and context
+	// re-create scene
 	mjv_makeScene(this->m_.get(), &this->scn, this->kMaxGeom);
-	if (this->is_passive_) {
-		mjopt_prev_          = m_->opt;
-		opt_prev_            = opt;
-		cam_prev_            = cam;
-		warn_vgeomfull_prev_ = d_->warning[mjWARN_VGEOMFULL].number;
-		mjv_makeSceneState(this->m_.get(), this->d_.get(), &this->scnstate_, this->kMaxGeom);
-	}
 
 	this->platform_ui->RefreshMjrContext(this->m_.get(), 50 * (this->font + 1));
 	UiModify(&this->ui0, &this->uistate, &this->platform_ui->mjr_context());
@@ -2406,11 +2368,18 @@ void Viewer::LoadOnRenderThread()
 		mju::strcpy_arr(this->previous_filename, this->filename);
 	}
 
-	// update scene
+	// update scene in managed mode, in passive mode copy data from user (update in RenderLoop)
 	if (!is_passive_) {
 		mjv_updateScene(this->m_.get(), this->d_.get(), &this->opt, &this->pert, &this->cam, mjCAT_ALL, &this->scn);
 	} else {
-		mjv_updateSceneState(this->m_.get(), this->d_.get(), &this->opt, &this->scnstate_);
+		mjopt_prev_          = this->m_->opt;
+		opt_prev_            = opt;
+		cam_prev_            = cam;
+		warn_vgeomfull_prev_ = this->d_->warning[mjWARN_VGEOMFULL].number;
+
+		// full copy on init
+		m_passive_ = mj_copyModel(nullptr, this->m_.get());
+		d_passive_ = mj_copyData(nullptr, m_passive_, this->d_.get());
 	}
 
 	// set window title to model name
@@ -2524,6 +2493,13 @@ void Viewer::Render()
 			mjui0_update_section(this, SECT_PHYSICS);
 		}
 		pending_.ui_update_physics = false;
+	}
+
+	if (pending_.ui_update_visualization) {
+		if (this->ui0_enable && this->ui0.sect[SECT_VISUALIZATION].state) {
+			mjui0_update_section(this, SECT_VISUALIZATION);
+		}
+		pending_.ui_update_visualization = false;
 	}
 
 	if (is_passive_) {
@@ -2686,18 +2662,36 @@ void Viewer::Render()
 	}
 
 	// user figures
+	if (this->newfigurerequest.load() == 1) {
+		this->user_figures_.clear();
+		std::swap(this->user_figures_, this->user_figures_new_);
+		int value = 1;
+		this->newfigurerequest.compare_exchange_strong(value, 0);
+	}
 	for (auto &[viewport, figure] : this->user_figures_) {
 		ShowFigure(this, viewport, &figure);
 	}
 
 	// overlay text
+	if (this->newtextrequest.load() == 1) {
+		this->user_texts_.clear();
+		std::swap(this->user_texts_, this->user_texts_new_);
+		int value = 1;
+		this->newtextrequest.compare_exchange_strong(value, 0);
+	}
 	for (auto &[font, gridpos, text1, text2] : this->user_texts_) {
 		ShowOverlayText(this, rect, font, gridpos, text1, text2);
 	}
 
 	// user images
+	if (this->newimagerequest.load() == 1) {
+		this->user_images_.clear();
+		std::swap(this->user_images_, this->user_images_new_);
+		int value = 1;
+		this->newimagerequest.compare_exchange_strong(value, 0);
+	}
 	for (auto &[viewport, image] : this->user_images_) {
-		ShowImage(this, viewport, image);
+		ShowImage(this, viewport, image.get());
 	}
 
 	// Finalize
@@ -2816,11 +2810,20 @@ void Viewer::RenderLoop()
 			}
 
 			// Update scene, doing a full sync if the environment is not busy loading
-			if (!this->is_passive_ && this->env_->getOperationalStatus() == 0) {
+			if (!is_passive_ && this->env_->getOperationalStatus() == 0) {
 				Sync();
-			} else {
-				scnstate_.data.warning[mjWARN_VGEOMFULL].number +=
-				    mjv_updateSceneFromState(&scnstate_, &this->opt, &this->pert, &this->cam, mjCAT_ALL, &this->scn);
+			} else if (m_passive_ && d_passive_) {
+				// the user has called Sync() in their code
+				mjv_updateScene(m_passive_, d_passive_, &this->opt, &this->pert, &this->cam, mjCAT_ALL, &this->scn);
+
+				// add user geoms to scene
+				int nusergeom = user_scn_geoms_.size();
+				int ngeom     = std::min(nusergeom, this->scn.maxgeom - this->scn.ngeom);
+				if (ngeom < nusergeom) {
+					mj_warning(d_passive_, mjWARN_VGEOMFULL, this->scn.maxgeom);
+				}
+				std::memcpy(this->scn.geoms + this->scn.ngeom, user_scn_geoms_.data(), ngeom * sizeof(mjvGeom));
+				this->scn.ngeom += ngeom;
 			}
 		} // MutexLock (unblocks simulation thread)
 
@@ -2841,7 +2844,8 @@ void Viewer::RenderLoop()
 	const MutexLock lock(this->mtx);
 	mjv_freeScene(&this->scn);
 	if (is_passive_) {
-		mjv_freeSceneState(&scnstate_);
+		mj_deleteData(d_passive_);
+		mj_deleteModel(m_passive_);
 	}
 
 	this->exit_request.store(2);
