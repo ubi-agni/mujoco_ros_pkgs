@@ -544,7 +544,7 @@ void MujocoEnv::waitForEventsJoin()
 
 void MujocoEnv::connectViewer(Viewer *viewer)
 {
-	if (!connected_viewers_.empty()) {
+	if (connected_viewers_.empty()) {
 		ROS_INFO("Connected first viewer, disabling headless mode");
 		settings_.headless = false;
 	}
