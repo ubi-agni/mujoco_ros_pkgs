@@ -125,6 +125,14 @@ class MujocoEnv:
                 cam_buff_size=cam_buff_size,
             )
 
+    def pause(self):
+        """Pause simulation"""
+        self.settings.run = 0
+
+    def unpause(self):
+        """Unpause simulation"""
+        self.settings.run = 1
+
     def step(self, num_steps: int = 1, blocking: bool = True):
         """Step simulation
 
