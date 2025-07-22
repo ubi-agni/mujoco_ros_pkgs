@@ -63,7 +63,7 @@ class ROSCoreHandler:
 
 
 class MujocoEnv:
-    def __init__(self, xml_path: str, start_ros_core: bool = False, **kwargs):
+    def __init__(self, xml_path: str = None, start_ros_core: bool = False, **kwargs):
         self.ros_core = None
         if start_ros_core:
             self.ros_core = ROSCoreHandler()
@@ -72,7 +72,7 @@ class MujocoEnv:
 
     def setup(
         self,
-        xml_path: str,
+        xml_path: str = None,
         unpause: bool = False,
         configs_to_load: List[str] = [],
         cam_buff_size: int = 1,
@@ -99,6 +99,13 @@ class MujocoEnv:
         rospy.set_param("/use_sim_time", True)
         rospy.set_param("/mujoco_server/verbose", True)
         rospy.set_param("/mujoco_server/unpause", unpause)
+
+        if xml_path is None:
+            xml_path = rospy.get_param("/mujoco_server/modelfile", None)
+        if xml_path is None:
+            raise ValueError(
+                "No model path provided. Please provide a valid XML or MJB file path."
+            )
 
         self._env = _MujocoEnvWrapper()
         super(MujocoEnv, self).__init__(**kwargs)
