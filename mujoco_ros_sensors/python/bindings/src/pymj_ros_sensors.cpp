@@ -34,8 +34,10 @@ public:
 namespace mujoco_ros::python::sensors {
 
 using namespace pybind11::literals;
-PYBIND11_MODULE(_mujoco_ros_sensors_python, m)
+PYBIND11_MODULE(pymujoco_ros_sensors, m)
 {
+	py::module::import("mujoco_ros"); // Import mujoco_ros to ensure MujocoEnv is registered
+
 	// py::class_<mujoco_ros::sensors::SensorConfig, std::shared_ptr<mujoco_ros::sensors::SensorConfig>>(
 	py::class_<mujoco_ros::sensors::SensorConfig>(m, "_SensorConfig")
 	    // .def_property_readonly("frame_id", &mujoco_ros::sensors::SensorConfig::frame_id)

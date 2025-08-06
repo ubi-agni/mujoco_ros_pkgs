@@ -60,8 +60,10 @@ public:
 } // namespace mujoco_ros::mocap
 
 namespace mujoco_ros::python::mocap {
-PYBIND11_MODULE(_mujoco_ros_mocap_python, m)
+PYBIND11_MODULE(pymujoco_ros_mocap, m)
 {
+	py::module::import("mujoco_ros"); // Import mujoco_ros to ensure MujocoPlugin is registered
+
 	py::class_<mujoco_ros::mocap::MocapPlugin, mujoco_ros::MujocoPlugin,
 	           std::shared_ptr<mujoco_ros::mocap::MocapPlugin>>(m, "MujocoRosMocapPlugin")
 	    .def(py::init<>())

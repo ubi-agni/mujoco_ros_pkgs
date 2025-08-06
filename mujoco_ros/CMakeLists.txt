@@ -126,7 +126,7 @@ catkin_package(
 )
 
 add_subdirectory(src)
-add_subdirectory(python)
+add_subdirectory(python/bindings)
 
 # Depend on gencfg to ensure build before lib
 add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_gencfg)

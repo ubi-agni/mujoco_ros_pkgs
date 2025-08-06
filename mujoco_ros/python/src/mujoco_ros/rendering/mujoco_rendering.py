@@ -7,7 +7,7 @@ import mujoco
 import numpy as np
 
 from functools import singledispatchmethod
-from _mujoco_ros_python import _OffscreenCamera, _OffscreenCameraBuffer
+from pymujoco_ros import _OffscreenCamera, _OffscreenCameraBuffer
 
 
 # def _import_egl(width, height):

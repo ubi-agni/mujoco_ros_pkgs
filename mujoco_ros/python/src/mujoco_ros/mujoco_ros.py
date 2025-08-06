@@ -18,10 +18,21 @@ from typing import List, Dict
 import numpy as np
 
 try:
-    from _mujoco_ros_python import _MujocoEnvWrapper, __mujoco_version__
+    from pymujoco_ros import _MujocoEnvWrapper, __mujoco_version__
 except ImportError:
-    print("_mujoco_ros_python not found")
+    print("pymujoco_ros not found")
     pass
+
+import mujoco_ros.plugins
+
+if len(mujoco_ros.plugins._entry_points_list):
+    print(f"Available bindings for mujoco_ros plugins:")
+    for plugin in mujoco_ros.plugins._entry_points_list:
+        print(f"\t{plugin}")
+elif len(mujoco_ros.plugins._entry_points_list) == 0:
+    rospy.logwarn(
+        f"No python bindings for mujoco_ros plugins found. When using a devel space, importing plugins from mujoco_ros.plugins will not work!"
+    )
 
 from py_binding_tools import roscpp_init, roscpp_shutdown
 
@@ -78,7 +89,7 @@ class MujocoEnv:
         cam_buff_size: int = 1,
         **kwargs,
     ):
-        rospy.init_node("mujoco_ros_python")
+        rospy.init_node("pymujoco_ros")
         roscpp_init("mujoco_server")
 
         curr_params = rospy.get_param("/", default={})
@@ -224,32 +235,3 @@ class MujocoEnv:
         if self.ros_core:
             roscpp_shutdown()
             self.ros_core.terminate()
-
-
-class MujocoEnvWrapper(_MujocoEnvWrapper):
-    def __init__(
-        self,
-        model: mujoco.MjModel,
-        data: mujoco.MjData,
-        admin_hash: str = None,
-        **kwargs,
-    ):
-        roscpp_init("mujoco_server")
-        super(MujocoEnvWrapper, self).__init__(admin_hash)
-        self._load(model, data)
-
-        print("\tmujoco version: {}".format(mujoco.__version__))
-        print("\tmujoco_ros mujoco version: {}".format(__mujoco_version__))
-
-    @property
-    def plugins(self):
-        """Get all loaded plugins"""
-        return self._env.get_plugins()
-
-    @property
-    def model(self):
-        return self.model_py
-
-    @property
-    def data(self):
-        return self.data_py

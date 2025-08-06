@@ -1,4 +1,4 @@
-#include "mujoco_ros_python.h"
+#include "pymujoco_ros.h"
 
 #include <mujoco_ros/common_types.h>
 #include <mujoco_ros/mujoco_env.h>

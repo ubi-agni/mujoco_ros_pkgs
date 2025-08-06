@@ -1,6 +1,6 @@
 /* Author: David P. Leins */
 
-#include "mujoco_ros_python.h"
+#include "pymujoco_ros.h"
 
 #include <optional>
 
@@ -27,7 +27,7 @@ namespace py = pybind11;
 //    - [x] Disable reload service call in C++ if is_python_bound is true
 //    - [ ] Serve reload service call in Python that performs load
 
-PYBIND11_MODULE(_mujoco_ros_python, m)
+PYBIND11_MODULE(pymujoco_ros, m)
 {
 	// m.doc() = "Python bindings for Mujoco ROS environment";
 	m.attr("__mujoco_version__") = mj_versionString();

@@ -5,6 +5,10 @@ from setuptools import setup, find_packages
 
 packages = find_packages("python/src")
 
-d = generate_distutils_setup(packages=packages, package_dir={"": "python/src"})
+d = generate_distutils_setup(
+    packages=packages,
+    package_dir={"": "python/src"},
+    entry_points={"mujoco_ros.plugins": ["sensors = mujoco_ros_sensors"]},
+)
 
-setup(**d)
+dist = setup(**d)

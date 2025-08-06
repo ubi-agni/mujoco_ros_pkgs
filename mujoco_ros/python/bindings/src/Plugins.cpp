@@ -1,4 +1,4 @@
-#include "mujoco_ros_python.h"
+#include "pymujoco_ros.h"
 #include <mujoco_ros/plugin_utils.h>
 
 namespace py = pybind11;
