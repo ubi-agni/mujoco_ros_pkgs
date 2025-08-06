@@ -189,7 +189,7 @@ public:
 		bool use_sim_time     = true;
 
 		// Sim speed
-		int real_time_index = 8;
+		int real_time_index = 9;
 		int busywait        = 0;
 
 		// Mode
