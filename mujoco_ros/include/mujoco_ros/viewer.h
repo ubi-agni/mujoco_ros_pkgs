@@ -87,7 +87,7 @@ using MutexLock = std::unique_lock<std::recursive_mutex>;
 class Viewer
 {
 public:
-	static int constexpr kMaxGeom = 20000;
+	static int constexpr kMaxGeom = 100000;
 
 	// Create object and initialize the ui
 	Viewer(std::unique_ptr<PlatformUIAdapter> platform_ui_adapter, MujocoEnv *env, bool is_passive);
