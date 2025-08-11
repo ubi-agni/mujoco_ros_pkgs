@@ -131,6 +131,7 @@ enum
 	// right ui
 	SECT_JOINT = 0,
 	SECT_CONTROL,
+	SECT_EQUALITY,
 	NSECT1
 };
 
@@ -1081,6 +1082,31 @@ void MakeControlSection(mujoco_ros::Viewer *viewer)
 	}
 }
 
+// make equality section of UI
+void MakeEqualitySection(mujoco_ros::Viewer *viewer)
+{
+	mjuiDef defEquality[] = { { mjITEM_SECTION, "Equality", mjPRESERVE, nullptr, "AE" }, { mjITEM_END } };
+	mjuiDef defCheckBox[] = { { mjITEM_CHECKBYTE, "", 2, nullptr, "" }, { mjITEM_END } };
+
+	// add section
+	mjui_add(&viewer->ui1, defEquality);
+
+	// add equality constraints, exit if UI limit reached
+	for (int i = 0; i < viewer->m_->neq && i < mjMAXUIITEM; i++) {
+		// set data
+		defCheckBox[0].pdata = &viewer->d_->eq_active[i];
+
+		// set name
+		if (viewer->equality_names_[i].empty()) {
+			mju::strcpy_arr(defCheckBox[0].name, viewer->equality_names_[i].c_str());
+		} else {
+			mju::sprintf_arr(defCheckBox[0].name, "equality %d", i);
+		}
+
+		mjui_add(&viewer->ui1, defCheckBox);
+	}
+}
+
 // make model-dependent UI sections
 void MakeUiSections(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData * /*d*/)
 {
@@ -1095,6 +1121,7 @@ void MakeUiSections(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *
 	MakeGroupSection(viewer);
 	MakeJointSection(viewer);
 	MakeControlSection(viewer);
+	MakeEqualitySection(viewer);
 }
 
 //---------------------------------- utility functions ---------------------------------------------
@@ -1102,8 +1129,16 @@ void MakeUiSections(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *
 // align and scale view
 void AlignAndScaleView(mujoco_ros::Viewer *viewer, const mjModel *m)
 {
-	// use default free camera parameters
-	mjv_defaultFreeCamera(m, &viewer->cam);
+	// if the id is valid, use the initial fixed camera
+	if (m->vis.global.cameraid >= 0 && m->vis.global.cameraid < m->ncam) {
+		viewer->cam.fixedcamid = m->vis.global.cameraid;
+		viewer->cam.type       = mjCAMERA_FIXED;
+	}
+
+	// otherwise use default free camera
+	else {
+		mjv_defaultFreeCamera(m, &viewer->cam);
+	}
 }
 
 // copy state to clipboard as key
@@ -1850,7 +1885,7 @@ Viewer::Viewer(std::unique_ptr<PlatformUIAdapter> platform_ui_adapter, MujocoEnv
 //------------------------- Synchronize render and physics threads ---------------------------------
 
 // operations which require holding the mutex, prevents racing with physics thread
-void Viewer::Sync()
+void Viewer::Sync(bool state_only)
 {
 	MutexLock lock(this->mtx);
 	MutexLock lock_env(env_->physics_thread_mutex_);
@@ -1917,6 +1952,18 @@ void Viewer::Sync()
 		if (ctrl_prev_[i] != ctrl_[i]) {
 			pending_.ui_update_ctrl = true;
 			ctrl_prev_[i]           = ctrl_[i];
+		}
+	}
+
+	for (int i = 0; i < m_->neq; ++i) {
+		if (eq_active_[i] != eq_active_prev_[i]) {
+			d_->eq_active[i] = eq_active_[i];
+		} else {
+			eq_active_[i] = d_->eq_active[i];
+		}
+		if (eq_active_prev_[i] != eq_active_[i]) {
+			pending_.ui_update_equality = true;
+			eq_active_prev_[i]          = eq_active_[i];
 		}
 	}
 
@@ -2131,8 +2178,17 @@ void Viewer::Sync()
 	if (!is_passive_) {
 		mjv_updateScene(m_.get(), d_.get(), &this->opt, &this->pert, &this->cam, mjCAT_ALL, &this->scn);
 	} else {
-		mjv_copyModel(m_.get(), m_passive_);
-		mjv_copyData(d_.get(), m_passive_, d_passive_);
+		if (state_only) {
+			int state_size = mj_stateSize(m_.get(), mjSTATE_INTEGRATION);
+			mjtNum *state  = new mjtNum[state_size];
+			mj_getState(m_.get(), d_.get(), state, mjSTATE_INTEGRATION);
+			mj_setState(m_passive_, d_passive_, state, mjSTATE_INTEGRATION);
+			mj_forward(m_passive_, d_passive_);
+			delete[] state;
+		} else {
+			mjv_copyModel(m_.get(), m_passive_);
+			mjv_copyData(d_.get(), m_passive_, d_passive_);
+		}
 
 		// append geoms from user_scn to scratch space
 		if (user_scn) {
@@ -2305,6 +2361,12 @@ void Viewer::LoadOnRenderThread()
 	}
 	actuator_names_.shrink_to_fit();
 
+	equality_names_.clear();
+	equality_names_.reserve(util::as_unsigned(this->m_->neq));
+	for (int i = 0; i < this->m_->neq; ++i) {
+		equality_names_.emplace_back(this->m_->names + this->m_->name_eqadr[i]);
+	}
+
 	qpos_.resize(util::as_unsigned(this->m_->nq));
 	std::memcpy(qpos_.data(), this->m_->qpos0, sizeof(this->m_->qpos0[0]) * util::as_unsigned(this->m_->nq));
 	qpos_.shrink_to_fit();
@@ -2314,6 +2376,11 @@ void Viewer::LoadOnRenderThread()
 	std::memcpy(ctrl_.data(), this->d_->ctrl, sizeof(this->d_->ctrl[0]) * util::as_unsigned(this->m_->nu));
 	ctrl_.shrink_to_fit();
 	ctrl_prev_ = ctrl_;
+
+	eq_active_.resize(util::as_unsigned(this->m_->neq));
+	std::memcpy(eq_active_.data(), this->d_->eq_active,
+	            sizeof(this->d_->eq_active[0]) * util::as_unsigned(this->m_->neq));
+	eq_active_prev_ = eq_active_;
 
 	// allocate history buffer: smaller of {2000 states, 100 MB}
 	if (!this->is_passive_) {
@@ -2551,6 +2618,13 @@ void Viewer::Render()
 			mjui_update(SECT_CONTROL, -1, &this->ui1, &this->uistate, &this->platform_ui->mjr_context());
 		}
 		pending_.ui_update_ctrl = false;
+	}
+
+	if (pending_.ui_update_equality) {
+		if (this->ui1_enable && this->ui1.sect[SECT_EQUALITY].state) {
+			mjui_update(SECT_EQUALITY, -1, &this->ui1, &this->uistate, &this->platform_ui->mjr_context());
+		}
+		pending_.ui_update_equality = false;
 	}
 
 	// Render scene
