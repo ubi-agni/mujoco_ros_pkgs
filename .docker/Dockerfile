@@ -9,7 +9,7 @@ ENV IN_DOCKER=1
 
 ###################################################################################
 FROM base AS prepare
-ARG MUJOCO_VERSIONS=3.3.3  # ARG must be declared in stage were it is used!
+ARG MUJOCO_VERSIONS=3.3.5  # ARG must be declared in stage were it is used!
 
 # Setup temporary ROS workspace
 WORKDIR /root/ws_mujoco
