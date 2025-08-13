@@ -19,6 +19,7 @@
     <exec_depend>mujoco_ros_control</exec_depend>
     <exec_depend>mujoco_ros_sensors</exec_depend>
     <exec_depend>mujoco_ros_mocap</exec_depend>
+    <exec_depend>mujoco_ros_laser</exec_depend>
 
     <export>
         <metapackage/>
