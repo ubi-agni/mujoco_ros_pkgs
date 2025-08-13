@@ -1,7 +1,7 @@
 /**
  * Software License Agreement (BSD 3-Clause License)
  *
- *  Copyright (c) 2023, Bielefeld University
+ *  Copyright (c) 2022-2025, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -34,7 +34,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* Authors: David Leins */
+/* Authors: David Leins, Julian Leichert */
 
 #include <geometry_msgs/PoseStamped.h>
 #include <mujoco/mujoco.h>
