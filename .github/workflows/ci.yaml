@@ -21,7 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         distro: [noetic, one]
-        render_backend: [GLFW, OSMESA, EGL, DISABLE]
+        render_backend: [GLFW, OSMESA, DISABLE] # EGL currently removed due to issues with the local CI runners
         mujoco: [3.3.5]
         include:
           - distro: noetic
