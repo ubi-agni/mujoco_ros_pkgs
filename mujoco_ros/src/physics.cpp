@@ -64,6 +64,9 @@ void MujocoEnv::WrappedStep()
 		}
 		std::unique_lock<std::mutex> lock(offscreen_.render_mutex);
 
+		// Reset geoms created by the render callbacks otherwise they will be rendered again
+		offscreen_.callbacks_scn.ngeom = 0;
+
 		for (const auto &cam_ptr : offscreen_.cams) {
 			if (cam_ptr->shouldRender(ros::Time(data_->time))) {
 				mjv_copyModel(cam_ptr->model_state_, model_.get());
