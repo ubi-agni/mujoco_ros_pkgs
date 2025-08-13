@@ -7,7 +7,6 @@
   <arg name="unpause"              default="false" doc="Whether the simulation should be unpaused on start." />
   <arg name="headless"             default="false" />
   <arg name="render_offscreen"     default="true"  doc="Whether offscreen rendering should be enabled." />
-  <arg name="no_x"                 default=""      doc="Set to true to enable running on a server without X, disabling everything related to OpenGL rendering. (deprecated)"/>
   <arg name="no_render"            default="false" doc="Set to true to disabling rendering on- and off screen. (shorthand for render_offscreen:=false headless:=true)"/>
   <arg name="eval_mode"            default="false" doc="Whether to run mujoco_ros in evaluation mode." />
   <arg name="admin_hash"           default="''"    doc="Hash to verify critical operations in evaluation mode." />
@@ -45,7 +44,6 @@
         <param name="unpause"              value="$(arg unpause)" />
         <param name="headless"             value="$(arg headless)" />
         <param name="render_offscreen"     value="$(arg render_offscreen)" />
-        <param name="no_x"                 value="$(arg no_x)" />
         <param name="no_render"            value="$(arg no_render)" />
         <param name="num_steps"            value="$(arg num_sim_steps)" />
         <param name="eval_mode"            value="$(arg eval_mode)" />
@@ -62,7 +60,6 @@
         <param name="unpause"              value="$(arg unpause)" />
         <param name="headless"             value="$(arg headless)" />
         <param name="render_offscreen"     value="$(arg render_offscreen)" />
-        <param name="no_x"                 value="$(arg no_x)" />
         <param name="no_render"            value="$(arg no_render)" />
         <param name="num_steps"            value="$(arg num_sim_steps)" />
         <param name="eval_mode"            value="$(arg eval_mode)" />
@@ -82,7 +79,6 @@
         <param name="unpause"              value="$(arg unpause)" />
         <param name="headless"             value="$(arg headless)" />
         <param name="render_offscreen"     value="$(arg render_offscreen)" />
-        <param name="no_x"                 value="$(arg no_x)" />
         <param name="no_render"            value="$(arg no_render)" />
         <param name="num_steps"            value="$(arg num_sim_steps)" />
         <param name="eval_mode"            value="$(arg eval_mode)" />
@@ -102,7 +98,6 @@
         <param name="unpause"              value="$(arg unpause)" />
         <param name="headless"             value="$(arg headless)" />
         <param name="render_offscreen"     value="$(arg render_offscreen)" />
-        <param name="no_x"                 value="$(arg no_x)" />
         <param name="no_render"            value="$(arg no_render)" />
         <param name="num_steps"            value="$(arg num_sim_steps)" />
         <param name="eval_mode"            value="$(arg eval_mode)" />

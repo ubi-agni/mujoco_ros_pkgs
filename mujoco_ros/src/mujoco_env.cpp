@@ -130,11 +130,6 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 	bool no_render;
 
 	nh_->param("no_render", no_render, false);
-	if (nh_->hasParam("no_x")) {
-		ROS_WARN("The 'no_x' parameter is deprecated. Use 'no_render' instead.");
-		nh_->param("no_x", no_render, no_render);
-	}
-
 	if (no_render) {
 		ROS_INFO("no_render is set. Disabling rendering and setting headless to true");
 		nh_->setParam("headless", true);
