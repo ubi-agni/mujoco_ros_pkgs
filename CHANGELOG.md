@@ -1,5 +1,5 @@
-<a name="unreleased"></a>
-## Unreleased
+<a name="0.10.0"></a>
+## [0.10.0] - 2025-07-13
 
 ### Added
 * Now it's possible to use MuJoCos intenal threadpool to speed up simulation. The number ob threads can be set with either `mujoco_threads` in the server launchfile or directly with `num_mj_threads` for the server node.
@@ -300,7 +300,7 @@ Contributors: @DavidPL1, @balandbal
 
 Contributors: @DavidPL1
 
-[unreleased]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.9.0...HEAD
+[0.10.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.9.0...0.10.0
 [0.9.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.8.0...0.9.0
 [0.8.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.6.0...0.7.0
