@@ -75,6 +75,7 @@ bool MujocoRosSensorsPlugin::load(const mjModel *model, mjData *data)
 	SENSOR_STRING[mjSENS_TORQUE]         = "torque";
 	SENSOR_STRING[mjSENS_MAGNETOMETER]   = "magnetometer";
 	SENSOR_STRING[mjSENS_RANGEFINDER]    = "rangefinder";
+	SENSOR_STRING[mjSENS_CAMPROJECTION]  = "camprojection";
 	SENSOR_STRING[mjSENS_JOINTPOS]       = "jointpos";
 	SENSOR_STRING[mjSENS_JOINTVEL]       = "jointvel";
 	SENSOR_STRING[mjSENS_TENDONPOS]      = "tendonpos";
@@ -82,9 +83,10 @@ bool MujocoRosSensorsPlugin::load(const mjModel *model, mjData *data)
 	SENSOR_STRING[mjSENS_ACTUATORPOS]    = "actuatorpos";
 	SENSOR_STRING[mjSENS_ACTUATORVEL]    = "actuatorvel";
 	SENSOR_STRING[mjSENS_ACTUATORFRC]    = "actuatorfrc";
+	SENSOR_STRING[mjSENS_JOINTACTFRC]    = "jointactfrc";
+	SENSOR_STRING[mjSENS_TENDONACTFRC]   = "tendonactfrc";
 	SENSOR_STRING[mjSENS_BALLQUAT]       = "ballquat";
 	SENSOR_STRING[mjSENS_BALLANGVEL]     = "ballangvel";
-	SENSOR_STRING[mjSENS_JOINTACTFRC]    = "jointactfrc";
 	SENSOR_STRING[mjSENS_JOINTLIMITPOS]  = "jointlimitpos";
 	SENSOR_STRING[mjSENS_JOINTLIMITVEL]  = "jointlimitvel";
 	SENSOR_STRING[mjSENS_JOINTLIMITFRC]  = "jointlimitfrc";
@@ -103,6 +105,16 @@ bool MujocoRosSensorsPlugin::load(const mjModel *model, mjData *data)
 	SENSOR_STRING[mjSENS_SUBTREECOM]     = "subtreecom";
 	SENSOR_STRING[mjSENS_SUBTREELINVEL]  = "subtreelinvel";
 	SENSOR_STRING[mjSENS_SUBTREEANGMOM]  = "subtreeangmom";
+	SENSOR_STRING[mjSENS_INSIDESITE]     = "insidesite";
+	SENSOR_STRING[mjSENS_GEOMDIST]       = "geomdist";
+	SENSOR_STRING[mjSENS_GEOMNORMAL]     = "geomnormal";
+	SENSOR_STRING[mjSENS_GEOMFROMTO]     = "geomfromto";
+	SENSOR_STRING[mjSENS_CONTACT]        = "contact";
+	SENSOR_STRING[mjSENS_E_POTENTIAL]    = "e_potential";
+	SENSOR_STRING[mjSENS_E_KINETIC]      = "e_kinetic";
+	SENSOR_STRING[mjSENS_TACTILE]        = "tactile";
+	SENSOR_STRING[mjSENS_PLUGIN]         = "plugin";
+	SENSOR_STRING[mjSENS_USER]           = "user";
 
 	std::string sensors_namespace;
 	if (rosparam_config_.hasMember("namespace")) {
