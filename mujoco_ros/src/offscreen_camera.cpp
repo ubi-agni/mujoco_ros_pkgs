@@ -95,8 +95,19 @@ OffscreenCamera::OffscreenCamera(const uint8_t cam_id, const std::string &base_t
 	// The camera is looking along the -Z axis of its frame. The +X axis points to the right, and the +Y axis points up.
 	// https://mujoco.readthedocs.io/en/latest/XMLreference.html#body-camera
 
-	int body_id              = model->cam_bodyid[cam_id];
-	std::string parent_frame = mj_id2name(const_cast<mjModel *>(model), mjOBJ_BODY, body_id);
+	int body_id           = model->cam_bodyid[cam_id];
+	const char *body_name = mj_id2name(const_cast<mjModel *>(model), mjOBJ_BODY, body_id);
+	std::string parent_frame;
+
+	if (body_name == nullptr) {
+		ROS_ERROR_STREAM("Camera '" << cam_name << "' is attached to a nameless body. "
+		                            << "This is not supported by the offscreen camera rendering. "
+		                            << "Please name the parent body, otherwise the camera parent frame cannot be found.");
+		parent_frame = "world"; // Default to world frame if no body can be found
+	} else {
+		parent_frame = std::string(body_name);
+	}
+
 	ROS_DEBUG_STREAM("Creating camera frames for cam '" << cam_name << "' with parent link " << parent_frame);
 
 	geometry_msgs::TransformStamped cam_transform;
