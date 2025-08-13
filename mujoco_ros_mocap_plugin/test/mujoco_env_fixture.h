@@ -85,7 +85,7 @@ protected:
 	{
 		nh.reset(new ros::NodeHandle("~"));
 		nh->setParam("unpause", true);
-		nh->setParam("no_x", true);
+		nh->setParam("no_render", true);
 		nh->setParam("use_sim_time", true);
 	}
 

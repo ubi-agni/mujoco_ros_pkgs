@@ -63,7 +63,7 @@ protected:
 	{
 		nh.reset(new ros::NodeHandle("~"));
 		nh->setParam("unpause", false);
-		nh->setParam("no_x", true);
+		nh->setParam("no_render", true);
 		nh->setParam("use_sim_time", true);
 
 		env_ptr              = new MujocoEnvTestWrapper();

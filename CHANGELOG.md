@@ -29,7 +29,7 @@ Loading and reset times are reported in the server debug log. All plugin stats c
 * Increased test coverage of `mujoco_ros_sensors` plugin.
 * Split monolithic ros interface tests into more individual tests.
 * Added sleeping at least until the next lowerbound GUI refresh when paused to reduce cpu load.
-* deprecated `no_x` launchparameter in favor of using `no_render`, as offscreen rendering now is also available without X.
+* Removed `no_x` launchparameter in favor of using `no_render`, as offscreen rendering now is also available without X.
 * Optimized camera render configurations where RGB, Segmented and Depth streams are active, but only Segmented and Depth are subscribed. Previously, this would result in two separate low-level render calls, now it's done in one.
 * Upgraded MuJoCo library version to 3.3.5
 * * SceneState was removed in 3.3.3 in favor of using `mjv_copyModel` and `mjv_copyData` which only copy arrays that are needed for visualization. The offscreen rendering pipeline was changed accordingly.
