@@ -1,12 +1,36 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-unique_versions=$(grep -HRI "<version>" | sed -n 's/^.*[^0-9]\([0-9]*\.[0-9]*\.[0-9]*\).*$/\1/p' | awk '!seen[$0]++')
-num_versions=$(grep -HRI "<version>" | sed -n 's/^.*[^0-9]\([0-9]*\.[0-9]*\.[0-9]*\).*$/\1/p' | awk '!seen[$0]++' | wc -l)
+# Find all package.xml files
+mapfile -t package_files < <(find . -name "package.xml")
 
-if [[ $num_versions -gt 1 ]]; then
-    echo -e "Found $num_versions unique versions, but should only find one! Found: \n$unique_versions"
-    exit -1
+if [[ ${#package_files[@]} -eq 0 ]]; then
+    echo "No package.xml files found."
+    exit 1
 fi
 
-# echo "Num versions: $num_versions"
-# echo -e "Versions: \n$unique_versions"
+# Get version from the first package.xml
+first_version=$(grep -oPm1 "(?<=<version>)[^<]+" "${package_files[0]}")
+
+echo "Reference version: $first_version"
+echo
+
+# Track mismatches
+mismatch_found=false
+
+for pkg in "${package_files[@]}"; do
+    pkg_dir=$(basename "$(dirname "$pkg")")
+    version=$(grep -oPm1 "(?<=<version>)[^<]+" "$pkg")
+
+    if [[ "$version" != "$first_version" ]]; then
+        echo "Version mismatch in package '$pkg_dir': found $version"
+        mismatch_found=true
+    fi
+done
+
+if [[ "$mismatch_found" = false ]]; then
+    echo "✅ All package.xml files have matching version: $first_version"
+    exit 0
+else
+    exit 1
+fi
