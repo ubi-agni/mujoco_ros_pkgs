@@ -1512,7 +1512,7 @@ void UiEvent(mjuiState *state)
 
 		// physics section
 		else if (it && it->sectionid == SECT_PHYSICS && viewer->m_) {
-			mjOption *opt = !viewer->is_passive_ ? &viewer->m_passive_->opt : &viewer->m_->opt;
+			mjOption *opt = viewer->is_passive_ ? &viewer->m_passive_->opt : &viewer->m_->opt;
 
 			// update disable flags in mjOption
 			opt->disableflags = 0;

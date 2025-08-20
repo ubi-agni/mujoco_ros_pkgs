@@ -1,3 +1,9 @@
+<a name="unreleased"></a>
+## Unreleased
+
+### Fixed
+* Fixed segfault when changing settings in the option panel of the GUI (caused by a wrong conditional assignment).
+
 <a name="0.10.0"></a>
 ## [0.10.0] - 2025-07-13
 
@@ -300,6 +306,7 @@ Contributors: @DavidPL1, @balandbal
 
 Contributors: @DavidPL1
 
+[unreleased]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.10.0...HEAD
 [0.10.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.9.0...0.10.0
 [0.9.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.8.0...0.9.0
 [0.8.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.7.0...0.8.0
