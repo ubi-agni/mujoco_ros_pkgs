@@ -205,6 +205,28 @@ class MujocoEnv:
     def settings(self):
         return self._env.settings
 
+    def set_enableflag(self, bit: int, enable: bool = True):
+        if isinstance(bit, mujoco._enums.mjtEnableBit):
+            bit = bit.value
+        if enable:
+            self._env.model.opt.enableflags |= bit
+        else:
+            self._env.model.opt.enableflags &= ~bit
+
+    def set_disableflag(self, bit: int, disable: bool = True):
+        if isinstance(bit, mujoco._enums.mjtDisableBit):
+            bit = bit.value
+        if disable:
+            self._env.model.opt.disableflags |= bit
+        else:
+            self._env.model.opt.disableflags &= ~bit
+
+    def toggle_enableflag(self, bit: int):
+        self._env.model.opt.enableflags ^= bit
+
+    def toggle_disableflag(self, bit: int):
+        self._env.model.opt.disableflags ^= bit
+
     def _reload_cb(self, req):
         res = ReloadResponse()
         if len(req.model) > self._env.kMaxFilenameLength:

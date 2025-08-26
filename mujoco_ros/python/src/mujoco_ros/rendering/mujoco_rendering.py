@@ -67,15 +67,23 @@ class RosCamWrapper:
 
     @property
     def fps(self):
-        return 1.0 / self.camera.pub_freq
+        return self.camera.pub_freq
+
+    @fps.setter
+    def fps(self, fps: float):
+        self.camera.pub_freq = fps
 
     @property
     def pub_frequency(self):
-        return self.camera.pub_freq
+        return 1.0 / self.camera.pub_freq
 
-    @property
-    def vopt(self):
-        return self.camera.vopt
+    def set_flag(self, flag_idx: int, enable: bool = True):
+        """Set a visualization flag"""
+        self.buffer._set_flag(flag_idx, enable)
+
+    def toggle_flag(self, flag_idx: int):
+        """Toggle a visualization flag"""
+        self.buffer._toggle_flag(flag_idx)
 
     def get_buffered_frames(self):
         """Get buffered frames from the camera"""

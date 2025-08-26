@@ -165,6 +165,15 @@ public:
 		segment_frame_count_.store(std::min(segment_frame_count_.load() + 1, (int)buffer_size_));
 	}
 
+	void setFlag(int flag_idx, bool enable) { cam_->vopt_.flags[flag_idx] = enable ? 1 : 0; }
+
+	void toggleFlag(int flag_idx)
+	{
+		cam_->vopt_.flags[flag_idx] ^= 1; // Toggle the specified flag in vopt
+	}
+
+	int getFlag(int flag_idx) { return cam_->vopt_.flags[flag_idx]; }
+
 	py::tuple getBufferHandles()
 	{
 		py::array_t<uint8_t> rgb_array;
@@ -212,6 +221,10 @@ void InitRenderingPy(py::module &m)
 	    .def(py::init<mujoco_ros::rendering::OffscreenCamera *, uint8_t>())
 	    .def("getBufferHandles", &mujoco_ros::python::rendering::OffscreenCameraBuffer::getBufferHandles,
 	         py::return_value_policy::reference_internal)
+	    .def("_toggle_flag", &mujoco_ros::python::rendering::OffscreenCameraBuffer::toggleFlag, py::arg("flag_idx"))
+	    .def("_set_flag", &mujoco_ros::python::rendering::OffscreenCameraBuffer::setFlag, py::arg("flag_idx"),
+	         py::arg("enable") = true)
+	    .def("_get_flag", &mujoco_ros::python::rendering::OffscreenCameraBuffer::getFlag, py::arg("flag_idx"))
 	    .def_property_readonly(
 	        "_rgb_buf_idx",
 	        [](mujoco_ros::python::rendering::OffscreenCameraBuffer &self) { return self.current_rgb_index_.load(); })
@@ -266,8 +279,7 @@ void InitRenderingPy(py::module &m)
 	    .def_readonly("height", &mujoco_ros::rendering::OffscreenCamera::height_)
 	    .def_readonly("stream_type", &mujoco_ros::rendering::OffscreenCamera::stream_type_)
 	    .def_readonly("use_segid", &mujoco_ros::rendering::OffscreenCamera::use_segid_)
-	    .def_readonly("pub_freq", &mujoco_ros::rendering::OffscreenCamera::pub_freq_)
-	    .def_readwrite("vopt", &mujoco_ros::rendering::OffscreenCamera::vopt_)
+	    .def_readwrite("pub_freq", &mujoco_ros::rendering::OffscreenCamera::pub_freq_)
 	    .def("__repr__", [](const mujoco_ros::rendering::OffscreenCamera &self) {
 		    return "<OffscreenCamera id='" + self.cam_name_ + "'>";
 	    });
