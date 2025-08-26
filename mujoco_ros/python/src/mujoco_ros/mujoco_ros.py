@@ -85,6 +85,7 @@ class MujocoEnv:
         self,
         xml_path: str = None,
         unpause: bool = False,
+        headless: bool = None,
         configs_to_load: List[str] = [],
         cam_buff_size: int = 1,
         **kwargs,
@@ -110,6 +111,9 @@ class MujocoEnv:
         rospy.set_param("/use_sim_time", True)
         rospy.set_param("/mujoco_server/verbose", True)
         rospy.set_param("/mujoco_server/unpause", unpause)
+
+        if headless is not None:
+            rospy.set_param("/mujoco_server/headless", headless)
 
         if xml_path is None:
             xml_path = rospy.get_param("/mujoco_server/modelfile", None)
