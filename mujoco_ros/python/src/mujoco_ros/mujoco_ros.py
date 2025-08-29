@@ -235,6 +235,12 @@ class MujocoEnv:
     def toggle_disableflag(self, bit: int):
         self._env.model.opt.disableflags ^= bit
 
+    def reload(self):
+        """Reload the current model"""
+        m = self._env.model
+        d = mujoco.MjData(m)
+        return self._env._load(m, d)
+
     def _reload_cb(self, req):
         res = ReloadResponse()
         if len(req.model) > self._env.kMaxFilenameLength:
