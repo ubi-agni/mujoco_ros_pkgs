@@ -209,6 +209,10 @@ class MujocoEnv:
     def settings(self):
         return self._env.settings
 
+    @property
+    def plugins(self):
+        return self._env.get_plugins()
+
     def set_enableflag(self, bit: int, enable: bool = True):
         if isinstance(bit, mujoco._enums.mjtEnableBit):
             bit = bit.value
