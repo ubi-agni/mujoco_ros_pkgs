@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
-project(mujoco_ros VERSION 0.7.0 LANGUAGES CXX)
+project(mujoco_ros VERSION 0.9.0 LANGUAGES C CXX)
 
 #catkin_lint: ignore uninstalled_plugin
 
