@@ -1887,8 +1887,9 @@ Viewer::Viewer(std::unique_ptr<PlatformUIAdapter> platform_ui_adapter, MujocoEnv
 // operations which require holding the mutex, prevents racing with physics thread
 void Viewer::Sync(bool state_only)
 {
-	MutexLock lock(this->mtx);
-	MutexLock lock_env(env_->physics_thread_mutex_);
+	MutexLock lock_env(env_->physics_thread_mutex_, std::defer_lock);
+	MutexLock lock(this->mtx, std::defer_lock);
+	std::lock(lock_env, lock); // avoid deadlock
 	if (!m_ || !d_) {
 		return;
 	}
@@ -2263,7 +2264,7 @@ void Viewer::LoadMessage(const char *displayed_filename)
 
 	{
 		MutexLock lock(mtx);
-		this->loadrequest = 3;
+		this->loadrequest.store(3);
 	}
 }
 
@@ -2271,25 +2272,32 @@ void Viewer::LoadMessageClear()
 {
 	{
 		MutexLock lock(mtx);
-		this->loadrequest = 0;
+		this->loadrequest.store(0);
 	}
 }
 
 void Viewer::Load(mjModelPtr m, mjDataPtr d, const char *displayed_filename)
 {
+	ROS_DEBUG("Model load requested from physics thread");
 	this->mnew_ = std::move(m);
 	this->dnew_ = std::move(d);
 	mju::strcpy_arr(this->filename, displayed_filename);
 
+	std::future<void> reload_future;
 	{
+		// Lock mutex to create promise
 		MutexLock lock(mtx);
-		this->loadrequest = 2;
-
-		// Wait for the render thread to be done loading
-		// so that we know the old model and data's memory can
-		// be freed by the other thread (sometimes python)
-		cond_loadrequest.wait(lock, [this]() { return this->loadrequest == 0; });
+		reload_promise_.emplace();
+		reload_future = reload_promise_->get_future();
 	}
+	this->loadrequest.store(2);
+
+	// Wait for the render thread to be done loading
+	// so that we know the old model and data's memory can
+	// be freed by the other thread (sometimes python)
+	reload_future.wait();
+	reload_promise_.reset();
+	ROS_DEBUG("Model load completed in physics thread");
 }
 
 void Viewer::LoadOnRenderThread()
@@ -2475,8 +2483,10 @@ void Viewer::LoadOnRenderThread()
 
 	// clear request
 	ROS_DEBUG("Notifying load request complete");
-	this->loadrequest = 0;
-	cond_loadrequest.notify_all();
+	this->loadrequest.store(0);
+	if (reload_promise_) {
+		reload_promise_->set_value();
+	}
 
 	// set real time index
 	int numclicks   = sizeof(MujocoEnv::percentRealTime) / sizeof(MujocoEnv::percentRealTime[0]);
@@ -2516,7 +2526,7 @@ void Viewer::Render()
 		mjr_rectangle(rect, 0.2f, 0.3f, 0.4f, 1);
 
 		// label
-		if (this->loadrequest) {
+		if (this->loadrequest.load()) {
 			mjr_overlay(mjFONT_BIG, mjGRID_TOP, smallrect, "LOADING...", nullptr, &this->platform_ui->mjr_context());
 		} else {
 			char intro_message[Viewer::kMaxFilenameLength];
@@ -2636,9 +2646,9 @@ void Viewer::Render()
 	}
 
 	// show pause/loading label
-	if (!this->run || this->loadrequest) {
+	if (!this->run || this->loadrequest.load()) {
 		char label[30] = { '\0' };
-		if (this->loadrequest) {
+		if (this->loadrequest.load()) {
 			std::snprintf(label, sizeof(label), "LOADING...");
 		} else if (this->scrub_index == 0) {
 			std::snprintf(label, sizeof(label), "PAUSE");
@@ -2853,10 +2863,12 @@ void Viewer::RenderLoop()
 			const MutexLock lock(this->mtx);
 
 			// Load model (not on first pass, to show "loading" label)
-			if (this->loadrequest == 1) {
+			if (this->loadrequest.load() == 1) {
+				ROS_DEBUG("Model load triggered in render thread");
 				this->LoadOnRenderThread();
-			} else if (this->loadrequest == 2) {
-				this->loadrequest = 1;
+			} else if (this->loadrequest.load() == 2) {
+				ROS_DEBUG("Model load announced in render thread");
+				this->loadrequest.store(1);
 			}
 
 			// Poll and handle events
