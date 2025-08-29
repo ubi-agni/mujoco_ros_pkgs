@@ -27,6 +27,12 @@
 
   <arg name="use_sim_time" />
 
+  <arg if="$(eval arg('debug') and not arg('debug_server'))" name="launch_prefix" value="gdb --args" />
+  <arg if="$(eval arg('debug_server'))" name="launch_prefix" value="gdbserver localhost:1234" />
+  <arg if="$(eval not arg('debug') and not arg('debug_server') and arg('valgrind'))" name="launch_prefix" value="valgrind $(arg valgrind_args)" />
+  <arg if="$(eval not arg('debug') and not arg('debug_server') and not arg('valgrind'))" name="launch_prefix" value="" />
+  <env if="$(eval not arg('debug') and not arg('debug_server') and not arg('valgrind') and arg('profile'))" name="CPUPROFILE" value="/tmp/profile.out" />
+
   <param name="/use_sim_time" value="$(arg use_sim_time)"/>
 
   <env name="ROSCONSOLE_FORMAT" value="[${severity}] [${time}] [${logger}] [${node}] [${function}]: ${message}"/>
@@ -37,77 +43,19 @@
     <rosparam file="$(arg mujoco_plugin_config)" subst_value="true" />
   </group>
 
-  <group if="$(arg debug)">
-    <group unless="$(arg debug_server)">
-      <node pkg="mujoco_ros" type="mujoco_node" name="mujoco_server" output="screen" launch-prefix="gdb --args" args="--admin-hash $(arg admin_hash)" >
-        <param name="ns"                   value="$(arg ns)" />
-        <param name="unpause"              value="$(arg unpause)" />
-        <param name="headless"             value="$(arg headless)" />
-        <param name="render_offscreen"     value="$(arg render_offscreen)" />
-        <param name="no_render"            value="$(arg no_render)" />
-        <param name="num_steps"            value="$(arg num_sim_steps)" />
-        <param name="eval_mode"            value="$(arg eval_mode)" />
-        <param name="modelfile"            value="$(arg modelfile)" />
-        <param name="wait_for_xml"         value="$(arg wait_for_xml)" />
-        <param name="realtime"             value="$(arg realtime)" />
-        <param name="num_mj_threads"       value="$(arg mujoco_threads)" />
-        <rosparam file="$(arg initial_joint_states)" subst_value="true" />
-      </node>
-    </group>
-    <group if="$(arg debug_server)">
-      <node pkg="mujoco_ros" type="mujoco_node" name="mujoco_server" output="screen" launch-prefix="gdbserver localhost:1234" args="--admin-hash '$(arg admin_hash)'" >
-        <param name="ns"                   value="$(arg ns)" />
-        <param name="unpause"              value="$(arg unpause)" />
-        <param name="headless"             value="$(arg headless)" />
-        <param name="render_offscreen"     value="$(arg render_offscreen)" />
-        <param name="no_render"            value="$(arg no_render)" />
-        <param name="num_steps"            value="$(arg num_sim_steps)" />
-        <param name="eval_mode"            value="$(arg eval_mode)" />
-        <param name="modelfile"            value="$(arg modelfile)" />
-        <param name="wait_for_xml"         value="$(arg wait_for_xml)" />
-        <param name="realtime"             value="$(arg realtime)" />
-        <param name="num_mj_threads"       value="$(arg mujoco_threads)" />
-        <rosparam file="$(arg initial_joint_states)" subst_value="true" />
-      </node>
-    </group>
-  </group>
-
-  <group unless="$(arg debug)">
-    <group if="$(arg valgrind)">
-      <node pkg="mujoco_ros" type="mujoco_node" name="mujoco_server" output="screen" args="--admin-hash $(arg admin_hash)" launch-prefix="valgrind $(arg valgrind_args)" >
-        <param name="ns"                   value="$(arg ns)" />
-        <param name="unpause"              value="$(arg unpause)" />
-        <param name="headless"             value="$(arg headless)" />
-        <param name="render_offscreen"     value="$(arg render_offscreen)" />
-        <param name="no_render"            value="$(arg no_render)" />
-        <param name="num_steps"            value="$(arg num_sim_steps)" />
-        <param name="eval_mode"            value="$(arg eval_mode)" />
-        <param name="modelfile"            value="$(arg modelfile)" />
-        <param name="wait_for_xml"         value="$(arg wait_for_xml)" />
-        <param name="realtime"             value="$(arg realtime)" />
-        <param name="num_mj_threads"       value="$(arg mujoco_threads)" />
-        <rosparam file="$(arg initial_joint_states)" subst_value="true" />
-      </node>
-    </group>
-    <group unless="$(arg valgrind)">
-      <group if="$(arg profile)">
-        <env name="CPUPROFILE" value="/tmp/profile.out" />
-      </group>
-      <node pkg="mujoco_ros" type="mujoco_node" name="mujoco_server" output="screen" args="--admin-hash $(arg admin_hash)" >
-        <param name="ns"                   value="$(arg ns)" />
-        <param name="unpause"              value="$(arg unpause)" />
-        <param name="headless"             value="$(arg headless)" />
-        <param name="render_offscreen"     value="$(arg render_offscreen)" />
-        <param name="no_render"            value="$(arg no_render)" />
-        <param name="num_steps"            value="$(arg num_sim_steps)" />
-        <param name="eval_mode"            value="$(arg eval_mode)" />
-        <param name="modelfile"            value="$(arg modelfile)" />
-        <param name="wait_for_xml"         value="$(arg wait_for_xml)" />
-        <param name="realtime"             value="$(arg realtime)" />
-        <param name="num_mj_threads"       value="$(arg mujoco_threads)" />
-        <rosparam file="$(arg initial_joint_states)" subst_value="true" />
-      </node>
-    </group>
-  </group>
+  <node pkg="mujoco_ros" type="mujoco_node" name="mujoco_server" output="screen" launch-prefix="$(arg launch_prefix)" args="--admin-hash $(arg admin_hash)" >
+    <param name="ns"                   value="$(arg ns)" />
+    <param name="unpause"              value="$(arg unpause)" />
+    <param name="headless"             value="$(arg headless)" />
+    <param name="render_offscreen"     value="$(arg render_offscreen)" />
+    <param name="no_render"            value="$(arg no_render)" />
+    <param name="num_steps"            value="$(arg num_sim_steps)" />
+    <param name="eval_mode"            value="$(arg eval_mode)" />
+    <param name="modelfile"            value="$(arg modelfile)" />
+    <param name="wait_for_xml"         value="$(arg wait_for_xml)" />
+    <param name="realtime"             value="$(arg realtime)" />
+    <param name="num_mj_threads"       value="$(arg mujoco_threads)" />
+    <rosparam file="$(arg initial_joint_states)" subst_value="true" />
+  </node>
 
 </launch>
