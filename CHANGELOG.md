@@ -3,6 +3,7 @@
 
 ### Fixed
 * Fixed segfault when changing settings in the option panel of the GUI (caused by a wrong conditional assignment).
+* Fixed deadlock when reloading viewers from outside the viewer (not clicking Ctrl-L but using the ROS service).
 
 <a name="0.10.0"></a>
 ## [0.10.0] - 2025-07-13

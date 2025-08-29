@@ -55,6 +55,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -235,7 +236,7 @@ public:
 	} pending_ = {};
 
 	ViewerMutex mtx; // Should move to MujocoEnv
-	std::condition_variable_any cond_loadrequest;
+	std::optional<std::promise<void>> reload_promise_;
 
 	int frames_ = 0;
 
