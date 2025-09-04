@@ -150,6 +150,9 @@ void MujocoEnv::simPausedPhysics(mjtNum &syncSim)
 		// Run mj_forward, to update rendering and joint sliders
 		mj_forward(model_.get(), data_.get());
 		publishSimTime(data_->time);
+		if (forward_promise_) {
+			forward_promise_->set_value();
+		}
 		// Sleep for the difference between the lower bound render rate (30Hz) and the time it took to run the forward
 		// step to reduce cpu load
 		std::this_thread::sleep_for(Seconds(mujoco_ros::Viewer::render_ui_rate_lower_bound_) - (Clock::now() - startCPU));

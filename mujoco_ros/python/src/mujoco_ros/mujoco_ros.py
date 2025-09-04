@@ -167,6 +167,9 @@ class MujocoEnv:
         """
         self._env.step(num_steps, blocking)
 
+    def wait_for_forward(self):
+        self._env.wait_for_forward()
+
     def _model_from_string(self, m_string):
         fpath = Path(m_string)
         if fpath.suffix == ".xml":

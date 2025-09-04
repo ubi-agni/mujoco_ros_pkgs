@@ -50,6 +50,7 @@
 
 #pragma once
 
+#include <optional>
 #include <thread>
 #include <ros/ros.h>
 
@@ -241,6 +242,12 @@ public:
 	 */
 	void registerStaticTransform(geometry_msgs::TransformStamped &transform);
 
+	/**
+	 * @brief Wait for a forward pass to happen
+	 *
+	 */
+	void waitForForward();
+
 	void waitForPhysicsJoin();
 	void waitForEventsJoin();
 
@@ -415,6 +422,8 @@ protected:
 	std::atomic_int is_physics_running_   = { 0 };
 	std::atomic_int is_event_running_     = { 0 };
 	std::atomic_int is_rendering_running_ = { 0 };
+
+	std::optional<std::promise<void>> forward_promise_;
 
 	/**
 	 * @brief Runs physics steps.

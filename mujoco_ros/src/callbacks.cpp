@@ -36,6 +36,8 @@
 
 #include <mujoco_ros/mujoco_env.h>
 
+#include <future>
+
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Twist.h>
@@ -55,6 +57,18 @@ bool MujocoEnv::verifyAdminHash(const std::string &hash)
 		ROS_DEBUG_NAMED("mujoco", "Hash valid, request authorized.");
 	}
 	return true;
+}
+
+void MujocoEnv::waitForForward()
+{
+	std::future<void> forward_future;
+	{
+		MutexLock lock(physics_thread_mutex_);
+		forward_promise_.emplace();
+		forward_future = forward_promise_->get_future();
+	}
+	forward_future.wait();
+	forward_promise_.reset();
 }
 
 void MujocoEnv::setupServices()

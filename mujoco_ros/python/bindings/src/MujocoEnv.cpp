@@ -359,6 +359,7 @@ void InitMujocoEnvPy(py::module &m)
 	mjenv_wrapper.def("_reset", [](MujocoEnvWrapper &self) { self.settings_.reset_request.store(1); });
 	mjenv_wrapper.def("_wait_for_events_join", &MujocoEnvWrapper::waitForEventsJoin);
 	mjenv_wrapper.def("_wait_for_physics_join", &MujocoEnvWrapper::waitForPhysicsJoin);
+	mjenv_wrapper.def("wait_for_forward", &MujocoEnvWrapper::waitForForward);
 	mjenv_wrapper.def("attach_viewer", &MujocoEnvWrapper::AttachViewer);
 	mjenv_wrapper.def(
 	    "togglePaused",
@@ -366,6 +367,8 @@ void InitMujocoEnvPy(py::module &m)
 		    return self.togglePaused(paused, hash.value_or(""));
 	    },
 	    py::arg("paused"), py::arg("hash") = py::none());
+	mjenv_wrapper.def_readonly("lock", &MujocoEnvWrapper::physics_thread_mutex_,
+	                           py::call_guard<py::gil_scoped_release>(), py::return_value_policy::reference_internal);
 	mjenv_wrapper.def("step", &MujocoEnvWrapper::step, py::arg("num_steps") = 1, py::arg("blocking") = true);
 	mjenv_wrapper.def("get_plugins", &MujocoEnvWrapper::getPlugins, py::return_value_policy::reference_internal);
 	mjenv_wrapper.def("__repr__", [](const MujocoEnvWrapper &self) {
