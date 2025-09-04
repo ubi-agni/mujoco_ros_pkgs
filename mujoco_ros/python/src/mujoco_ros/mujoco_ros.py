@@ -165,6 +165,8 @@ class MujocoEnv:
         blocking : bool, optional
             whether this call should block, by default True.
         """
+        if self._env.settings.exit_request == 1:
+            raise RuntimeError("Cannot step with active shutdown request")
         self._env.step(num_steps, blocking)
 
     def wait_for_forward(self):
