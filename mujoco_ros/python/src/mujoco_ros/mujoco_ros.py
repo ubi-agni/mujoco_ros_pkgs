@@ -244,6 +244,16 @@ class MujocoEnv:
         d = mujoco.MjData(m)
         return self._env._load(m, d)
 
+    def load_from_path(self, path: str):
+        """Load a new model from path"""
+        m = self._model_from_string(path)
+        d = mujoco.MjData(m)
+        return self._env._load(m, d)
+
+    def reset(self):
+        """Reset the current model"""
+        self._env._reset()
+
     def _reload_cb(self, req):
         res = ReloadResponse()
         if len(req.model) > self._env.kMaxFilenameLength:
