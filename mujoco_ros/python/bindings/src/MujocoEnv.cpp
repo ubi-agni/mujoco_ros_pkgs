@@ -370,7 +370,6 @@ void InitMujocoEnvPy(py::module &m)
 	mjenv_wrapper.def_readonly("lock", &MujocoEnvWrapper::physics_thread_mutex_,
 	                           py::call_guard<py::gil_scoped_release>(), py::return_value_policy::reference_internal);
 	mjenv_wrapper.def("step", &MujocoEnvWrapper::step, py::arg("num_steps") = 1, py::arg("blocking") = true);
-	mjenv_wrapper.def("get_plugins", &MujocoEnvWrapper::getPlugins, py::return_value_policy::reference_internal);
 	mjenv_wrapper.def("__repr__", [](const MujocoEnvWrapper &self) {
 		return std::string("<MujocoEnvWrapper filename='") + self.getFilename() + "'>";
 	});
