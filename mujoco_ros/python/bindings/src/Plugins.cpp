@@ -58,6 +58,7 @@ void InitPluginsPy(py::module &m)
 {
 	py::class_<MujocoPlugin, std::shared_ptr<MujocoPlugin>>(m, "_MujocoPlugin")
 	    .def_readonly("type", &MujocoPlugin::type_)
+	    .def_property_readonly("is_loaded", &MujocoPlugin::isLoaded)
 	    .def_readonly("load_time", &MujocoPlugin::load_time_)
 	    .def_readonly("reset_time", &MujocoPlugin::reset_time_)
 	    .def_readonly("ema_steptime_control", &MujocoPlugin::ema_steptime_control_)

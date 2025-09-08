@@ -75,6 +75,8 @@ public:
 	// exponential moving average last stage step time in seconds
 	double ema_steptime_last_stage_ = 0.0;
 
+	bool isLoaded() const { return loading_successful_; }
+
 	/**
 	 * @brief Wrapper method that evaluates if loading the plugin is successful
 	 *
