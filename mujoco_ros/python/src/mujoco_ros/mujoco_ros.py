@@ -196,7 +196,7 @@ class MujocoEnv:
     @property
     def plugins(self):
         """Get all loaded plugins"""
-        return self._env.get_plugins()
+        return self._env.plugins
 
     @property
     def binding(self):
@@ -213,10 +213,6 @@ class MujocoEnv:
     @property
     def settings(self):
         return self._env.settings
-
-    @property
-    def plugins(self):
-        return self._env.get_plugins()
 
     def set_enableflag(self, bit: int, enable: bool = True):
         if isinstance(bit, mujoco._enums.mjtEnableBit):
