@@ -180,24 +180,24 @@ public:
 		py::array_t<float> depth_array;
 		py::array_t<uint8_t> segment_array;
 
+		ssize_t B = static_cast<ssize_t>(buffer_size_);
+		ssize_t H = static_cast<ssize_t>(cam_->height_);
+		ssize_t W = static_cast<ssize_t>(cam_->width_);
+		ssize_t C = 3;
+
 		if (cam_->stream_type_ & mujoco_ros::rendering::streamType::RGB) {
 			py::capsule rgb_capsule(rgb_buffer_, [](void *p) { /* no action needed */ });
-			rgb_array =
-			    py::array_t<uint8_t>({ (ssize_t)buffer_size_, (ssize_t)cam_->height_, (ssize_t)cam_->width_, (ssize_t)3 },
-			                         rgb_buffer_, rgb_capsule);
+			rgb_array                                 = py::array_t<uint8_t>({ B, H, W, C }, rgb_buffer_, rgb_capsule);
 			rgb_array.attr("flags").attr("writeable") = false; // Make the array read-only
 		}
 		if (cam_->stream_type_ & mujoco_ros::rendering::streamType::DEPTH) {
 			py::capsule depth_capsule(depth_buffer_, [](void *p) { /* no action needed */ });
-			depth_array = py::array_t<float>({ (ssize_t)buffer_size_, (ssize_t)cam_->width_, (ssize_t)cam_->height_ },
-			                                 depth_buffer_, depth_capsule);
+			depth_array                                 = py::array_t<float>({ B, H, W }, depth_buffer_, depth_capsule);
 			depth_array.attr("flags").attr("writeable") = false; // Make the array read-only
 		}
 		if (cam_->stream_type_ & mujoco_ros::rendering::streamType::SEGMENTED) {
 			py::capsule segment_capsule(segment_buffer_, [](void *p) { /* no action needed */ });
-			segment_array =
-			    py::array_t<uint8_t>({ (ssize_t)buffer_size_, (ssize_t)cam_->width_, (ssize_t)cam_->height_, (ssize_t)3 },
-			                         segment_buffer_, segment_capsule);
+			segment_array = py::array_t<uint8_t>({ B, H, W, C }, segment_buffer_, segment_capsule);
 			segment_array.attr("flags").attr("writeable") = false; // Make the array read-only
 		}
 
