@@ -193,6 +193,9 @@ class MujocoEnv:
         else:
             print("NYI")
 
+    def set_rt_factor(self, factor: float):
+        self._env.set_rt_factor(factor)
+
     @property
     def plugins(self):
         """Get all loaded plugins"""

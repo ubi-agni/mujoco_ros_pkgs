@@ -362,6 +362,9 @@ void InitMujocoEnvPy(py::module &m)
 	mjenv_wrapper.def("wait_for_forward", &MujocoEnvWrapper::waitForForward);
 	mjenv_wrapper.def("attach_viewer", &MujocoEnvWrapper::AttachViewer);
 	mjenv_wrapper.def(
+	    "set_rt_factor", [](MujocoEnvWrapper &self, float desired_rt_factor) { self.setRTFactor(desired_rt_factor); },
+	    py::arg("rt_factor"));
+	mjenv_wrapper.def(
 	    "togglePaused",
 	    [](MujocoEnvWrapper &self, bool paused, std::optional<std::string> hash) {
 		    return self.togglePaused(paused, hash.value_or(""));

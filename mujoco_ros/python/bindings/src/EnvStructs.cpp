@@ -61,9 +61,18 @@ void InitEnvSettingsPy(py::module &m)
 	                  "If true, the environment uses simulation time instead of wall clock time.")
 	    .def_property(
 	        "real_time_index", [](EnvSettings &self) { return self.real_time_index; },
-	        [](EnvSettings &self) {
+	        [](EnvSettings &self, int real_time_index) {
 		        // TODO: Once ROS2 branch is merged use interface function implementing thread safety
-		        printf("Setting real_time_index not implemented in Python bindings");
+		        // Temporary allow setting real_time_index from Python
+
+		        int num_clicks = sizeof(MujocoEnv::percentRealTime) / sizeof(MujocoEnv::percentRealTime[0]);
+
+		        if (real_time_index < 0 || real_time_index >= num_clicks) {
+			        throw std::out_of_range("real_time_index must be between 0 and " + std::to_string(num_clicks - 1));
+		        }
+
+		        self.real_time_index = real_time_index;
+		        self.speed_changed.store(1);
 	        },
 	        "The index of the real-time factor in the simulation.")
 	    .def_readwrite(

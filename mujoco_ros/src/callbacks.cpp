@@ -1152,6 +1152,30 @@ float findClosestRecursive(const float arr[], uint left, uint right, float targe
 	}
 }
 
+void MujocoEnv::setRTFactor(float factor)
+{
+	if (factor < 0) {
+		settings_.real_time_index = 0;
+		settings_.speed_changed   = true;
+		return;
+	}
+
+	// find value closest to requested
+	size_t num_clicks = sizeof(percentRealTime) / sizeof(percentRealTime[0]);
+	float closest     = findClosestRecursive(percentRealTime, 1, num_clicks - 1,
+	                                         100.f * factor); // start at 1 to not go to unbound mode if the value is too
+	                                                      // small (already handled above)
+
+	ROS_WARN_STREAM_COND(fabs(closest / 100.f - factor) > 0.001f,
+	                     "Requested factor '" << factor
+	                                          << "' not available, setting to closest available: " << closest / 100.f);
+
+	// get index of closest value
+	auto it                   = std::find(std::next(std::begin(percentRealTime)), std::end(percentRealTime), closest);
+	settings_.real_time_index = std::distance(std::begin(percentRealTime), it);
+	settings_.speed_changed   = true;
+}
+
 bool MujocoEnv::setRTFactorCB(mujoco_ros_msgs::SetFloat::Request &req, mujoco_ros_msgs::SetFloat::Response &resp)
 {
 	if (!verifyAdminHash(req.admin_hash)) {
@@ -1161,28 +1185,7 @@ bool MujocoEnv::setRTFactorCB(mujoco_ros_msgs::SetFloat::Request &req, mujoco_ro
 	}
 	resp.success = true;
 
-	if (req.value < 0) {
-		settings_.real_time_index = 0;
-		settings_.speed_changed   = true;
-		resp.success              = true;
-		return true;
-	}
-
-	// find value closest to requested
-	size_t num_clicks = sizeof(percentRealTime) / sizeof(percentRealTime[0]);
-	float closest =
-	    findClosestRecursive(percentRealTime, 1, num_clicks - 1,
-	                         100.f * static_cast<float>(req.value)); // start at 1 to not go to unbound mode if the value
-	                                                                 // is too small (already handled above)
-
-	ROS_WARN_STREAM_COND(fabs(closest / 100.f - static_cast<float>(req.value)) > 0.001f,
-	                     "Requested factor '" << req.value
-	                                          << "' not available, setting to closest available: " << closest / 100.f);
-
-	// get index of closest value
-	auto it                   = std::find(std::next(std::begin(percentRealTime)), std::end(percentRealTime), closest);
-	settings_.real_time_index = std::distance(std::begin(percentRealTime), it);
-	settings_.speed_changed   = true;
+	setRTFactor(req.value);
 	return true;
 }
 
