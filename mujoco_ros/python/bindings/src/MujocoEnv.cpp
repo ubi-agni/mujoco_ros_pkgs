@@ -377,6 +377,7 @@ void InitMujocoEnvPy(py::module &m)
 	// py::return_value_policy::reference_internal)
 
 	// Properties
+	mjenv_wrapper.def_property_readonly("plugins", &MujocoEnvWrapper::getPlugins);
 	mjenv_wrapper.def_property_readonly("filename", &MujocoEnvWrapper::getFilename);
 	mjenv_wrapper.def_property_readonly("model", &MujocoEnvWrapper::getModelPy,
 	                                    py::return_value_policy::reference_internal);
