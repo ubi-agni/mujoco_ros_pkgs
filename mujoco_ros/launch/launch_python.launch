@@ -21,8 +21,9 @@
   <arg name="mujoco_plugin_config" default=""      doc="Optionally provide the path to a yaml with plugin configurations to load." />
   <arg name="mujoco_threads"       default="1"     doc="Number of threads to use in the MuJoCo simulation." />
 
-  <arg name="node_type" />
-  <arg name="package_name" />
+  <arg name="node_type" default="mujoco_py_node" />
+  <arg name="package_name" default="mujoco_ros" />
+  <arg name="start_py_node" default="false" />
 
   <arg name="modelfile"            default="$(find mujoco_ros)/assets/pendulum_world.xml"        doc="MuJoCo xml file to load. Should define robot model and world." />
   <arg name="initial_joint_states" default="$(find mujoco_ros)/config/initial_joint_states.yaml" doc="Provide a filepath containing initial joint states to load." />
@@ -61,6 +62,6 @@
     <rosparam file="$(arg initial_joint_states)" subst_value="true" />
   </group>
 
-  <node pkg="$(arg package_name)" type="$(arg node_type)" name="mjros_py" output="screen" />
+  <node if="$(arg start_py_node)" pkg="$(arg package_name)" type="$(arg node_type)" name="mjros_py" output="screen" />
 
 </launch>
