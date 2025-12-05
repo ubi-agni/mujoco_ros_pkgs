@@ -326,6 +326,11 @@ void MujocoEnv::resetSim()
 		ROS_DEBUG_STREAM("Resetting plugin " << plugin->type_ << " took " << plugin->reset_time_ << " seconds");
 	}
 
+	// Reset offscreen camera last render time
+	for (const auto &cam_ptr : offscreen_.cams) {
+		cam_ptr->initial_published_ = false;
+	}
+
 	for (const auto viewer : connected_viewers_) {
 		viewer->reset_request.store(1);
 	}
