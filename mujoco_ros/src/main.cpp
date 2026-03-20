@@ -73,16 +73,6 @@ using Seconds = std::chrono::duration<double>;
 
 } // anonymous namespace
 
-#if MJR_ROS_VERSION == ROS_2
-static bool should_exit = false;
-void async_spin(const rclcpp::executors::MultiThreadedExecutor::SharedPtr &executor)
-{
-	while (!should_exit) {
-		executor->spin_some();
-		std::this_thread::sleep_for(Seconds(0.01));
-	}
-}
-#endif
 
 int main(int argc, char **argv)
 {
@@ -142,37 +132,46 @@ int main(int argc, char **argv)
 	env->StartPhysicsLoop();
 	env->StartEventLoop();
 
+#if MJR_ROS_VERSION == ROS_2
+	// Start the background executor thread immediately.
+	// This provides the heartbeat for services like controller_manager,
+	// even if we are running in headless mode.
+	std::thread executor_thread([&executor]() {
+		executor->spin();
+	});
+#endif
+
 #if RENDER_BACKEND == GLFW_BACKEND
 	if (!env->settings_.headless) {
 		MJR_INFO("Launching viewer");
 		auto viewer = std::make_unique<mujoco_ros::Viewer>(
-		    std::unique_ptr<mujoco_ros::PlatformUIAdapter>(env->gui_adapter_), env.get(), /* is_passive = */ false);
-#if MJR_ROS_VERSION == ROS_1
-		viewer->RenderLoop();
-#else // MJR_ROS_VERSION == ROS_2
-      // TODO: This is a workaround for running a blocking viewer and a blocking executor in ROS 2.
-      // Running the render loop in a separate thread does not work. The otherway around does, but
-      // I'm not sure this is ideal.
-		std::thread executor_thread = std::thread(std::bind(&async_spin, std::ref(executor)));
+		    std::unique_ptr<mujoco_ros::PlatformUIAdapter>(env->gui_adapter_), env.get(), false);
+
+		// Main thread blocks here for GUI
 		viewer->RenderLoop();
 		MJR_INFO("Viewer terminated");
-		MJR_DEBUG("Joining executor thread");
-		should_exit = true;
-		executor_thread.join();
-		MJR_DEBUG("Joined executor thread");
-#endif
 	}
-#else
-	MJR_ERROR_COND(!env->settings_.headless, "GLFW backend not available. Cannot launch viewer");
-#endif
-	MJR_INFO_COND(env->settings_.headless, "Running headless");
-
-#if MJR_ROS_VERSION == ROS_2 && RENDER_BACKEND != GLFW_BACKEND
-	executor->spin();
 #endif
 
-	env->WaitForPhysicsJoin();
+	if (env->settings_.headless) {
+		MJR_INFO("Running headless. Main thread waiting for shutdown request...");
+		env->WaitForPhysicsJoin();
+	}
+
+	env->settings_.exit_request.store(1);
+
+#if MJR_ROS_VERSION == ROS_2
+	rclcpp::shutdown();
+#endif
+
 	env->WaitForEventsJoin();
+
+#if MJR_ROS_VERSION == ROS_2
+	if (executor_thread.joinable()) {
+		executor_thread.join();
+	}
+#endif
+
 	env.reset();
 
 	MJR_INFO("MuJoCo ROS Simulation Server node is terminating");
@@ -180,8 +179,8 @@ int main(int argc, char **argv)
 #if MJR_ROS_VERSION == ROS_1
 	spinner.stop();
 	ros::shutdown();
-#else // MJR_ROS_VERSION == ROS_2
-	rclcpp::shutdown();
 #endif
-	exit(0);
+
+	return 0;
 }
+

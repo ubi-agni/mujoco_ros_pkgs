@@ -33,9 +33,15 @@ std::string MujocoRos2ControlPluginPrivate::getURDF() const
 	while (urdf_string.empty()) {
 		try {
 			auto f = parameters_client->get_parameters({ this->robot_description_ });
-			executor_->spin_until_future_complete(f);
-			std::vector<rclcpp::Parameter> values = f.get();
-			urdf_string                           = values[0].as_string();
+			// Let the background executor handle the communication.
+			auto status = f.wait_for(std::chrono::seconds(5));
+			if (status == std::future_status::ready) {
+				std::vector<rclcpp::Parameter> values = f.get();
+				urdf_string                           = values[0].as_string();
+			} else {
+				RCLCPP_ERROR(node_->get_logger(), "Service 'robot_description' timed out. "
+				                                 "Ensure robot_state_publisher is running.");
+			}
 		} catch (const std::exception &e) {
 			RCLCPP_ERROR(node_->get_logger(), "%s", e.what());
 		}
@@ -268,3 +274,4 @@ void MujocoRos2ControlPlugin::Reset()
 
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(mujoco_ros2_control::MujocoRos2ControlPlugin, mujoco_ros::MujocoPlugin)
+

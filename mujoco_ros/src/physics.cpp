@@ -99,9 +99,8 @@ void MujocoEnv::PhysicsLoop()
 	}
 	is_physics_running_ = 0;
 	MJR_INFO_COND(num_steps_until_exit_ == 0, "Reached requested number of steps. Exiting simulation");
-	// settings_.exit_request.store(1);
-	if (offscreen_.render_thread_handle.joinable()) {
-		offscreen_.cond_render_request.notify_one();
+	settings_.exit_request.store(1);
+	if (offscreen_.render_thread_handle.joinable()) {		offscreen_.cond_render_request.notify_one();
 		MJR_DEBUG("Joining offscreen render thread");
 		offscreen_.render_thread_handle.join();
 	}
