@@ -1,7 +1,8 @@
 *
 
 !.docker/mujoco_installer.sh
-!.github/workflows/upstream.rosinstall
+!.github/workflows/upstream.ros1.rosinstall
+!.github/workflows/upstream.ros2.rosinstall
 !.github/workflows/downstream.rosinstall
 !**/package.xml
 !**/CATKIN_IGNORE

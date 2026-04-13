@@ -45,7 +45,7 @@ jobs:
       # CXXFLAGS: -Wall -Wextra -Wwrite-strings -Wunreachable-code -Wpointer-arith -Wredundant-decls
       CXXFLAGS: -Wwrite-strings -Wunreachable-code -Wpointer-arith -Wredundant-decls
       CLANG_TIDY_ARGS: --fix --fix-errors --format-style=file
-      UPSTREAM_WORKSPACE: .github/workflows/upstream.rosinstall
+      UPSTREAM_WORKSPACE: .github/workflows/upstream.ros1.rosinstall
       # Install and start xvfb for GLFW
       AFTER_INIT: ${{ matrix.render_backend == 'GLFW' && 'apt-get install -qy xvfb; Xvfb :99 &' || '' }}
       # Pull any updates to the upstream workspace
@@ -86,7 +86,7 @@ jobs:
           restore-keys: ${{ env.CACHE_PREFIX }}
         env:
           GHA_CACHE_SAVE: always
-          CACHE_PREFIX: upstream_ws-${{ matrix.distro }}-${{ hashFiles('.github/workflows/upstream.rosinstall', '.github/workflows/ci.yaml') }}
+          CACHE_PREFIX: upstream_ws-${{ matrix.distro }}-${{ hashFiles('.github/workflows/upstream.ros1.rosinstall', '.github/workflows/ci.ros1.yaml') }}
       # The target directory cache doesn't include the source directory because
       # that comes from the checkout.  See "prepare target_ws for cache" task below
       - name: Cache target workspace
@@ -98,7 +98,7 @@ jobs:
           restore-keys: ${{ env.CACHE_PREFIX }}
         env:
           GHA_CACHE_SAVE: always
-          CACHE_PREFIX: target_ws${{ matrix.env.CCOV && '-ccov' || '' }}-${{ matrix.distro }}-${{ hashFiles('**/CMakeLists.txt', '**/package.xml', '.github/workflows/ci.yaml') }}
+          CACHE_PREFIX: target_ws${{ matrix.env.CCOV && '-ccov' || '' }}-${{ matrix.distro }}-${{ hashFiles('**/CMakeLists.txt', '**/package.xml', '.github/workflows/ci.ros1.yaml') }}
       - name: Cache ccache
         uses: rhaschke/cache@main
         with:

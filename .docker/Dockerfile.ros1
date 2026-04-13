@@ -27,7 +27,7 @@ RUN apt-get -q update && \
 RUN src/mujoco_ros_pkgs/.docker/mujoco_installer.sh
 
 # Download upstream repo dependencies
-RUN vcs import --shallow --input src/mujoco_ros_pkgs/.github/workflows/upstream.rosinstall src
+RUN vcs import --shallow --input src/mujoco_ros_pkgs/.github/workflows/upstream.ros1.rosinstall src
 
 # Create list of ros dependencies
 RUN rosdep update $(test "${ROS_DISTRO}" = "noetic" && echo --rosdistro ${ROS_DISTRO})

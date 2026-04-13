@@ -57,7 +57,7 @@ jobs:
         uses: docker/build-push-action@v5
         if: ${{ github.event_name == 'workflow_dispatch' || github.event_name != 'schedule' || steps.apt.outputs.no_cache }}
         with:
-          file: .docker/Dockerfile
+          file: .docker/Dockerfile.ros1
           build-args: |
             ROS_DISTRO=${{ matrix.ROS_DISTRO }}
             BASE_DOCKER_NAME=${{ matrix.ROS_DISTRO == 'one' && 'jammy' || matrix.ROS_DISTRO }}
