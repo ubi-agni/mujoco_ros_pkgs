@@ -29,6 +29,7 @@
   <depend>camera_info_manager</depend>
   <depend>sensor_msgs</depend>
   <depend>std_srvs</depend>
+  <depend>libboost-program-options-dev</depend>
   <depend version_gte="1.13.2">urdf</depend>
   <test_depend condition="$ROS_VERSION == 1">rostest</test_depend>
 
