@@ -46,6 +46,9 @@ if (ROS_VERSION EQUAL "1")
       rosgraph_msgs
       dynamic_reconfigure
   )
+
+  # Find MuJoCo
+  find_package(mujoco 3.3.5 REQUIRED)
 else()
   find_package(ament_cmake REQUIRED)
   find_package(rclcpp REQUIRED)
@@ -64,6 +67,16 @@ else()
   find_package(lifecycle_msgs REQUIRED)
   find_package(sensor_msgs REQUIRED)
   find_package(std_srvs REQUIRED)
+
+  include(InstallMujocoToWorkspace)
+
+  if(NOT TARGET mujoco::mujoco)
+    add_library(mujoco::mujoco SHARED IMPORTED GLOBAL)
+    set_target_properties(mujoco::mujoco PROPERTIES
+      IMPORTED_LOCATION "${MUJOCO_DIR}/lib/libmujoco.so"
+      INTERFACE_INCLUDE_DIRECTORIES "${MUJOCO_DIR}/include"
+    )
+  endif()
 endif()
 
 # cmake-format: off
@@ -84,9 +97,6 @@ configure_project_option(
   COMPILER_CACHE
     LAUNCHER ccache
 )
-
-# Find MuJoCo
-find_package(mujoco 3.3.5 REQUIRED)
 
 # ###############################################
 # # Declare ROS dynamic reconfigure parameters ##
@@ -216,59 +226,14 @@ if (ROS_VERSION EQUAL "1")
   #   add_subdirectory(test)
   # endif()
 else()
-  install(DIRECTORY include/${PROJECT_NAME} DESTINATION include)
-
-  # Explicitly copy the generated header files
-  install(FILES
-    ${GENERATED_HEADERS_DIR}/${PROJECT_NAME}/ros_version.hpp
-    ${GENERATED_HEADERS_DIR}/${PROJECT_NAME}/render_backend.hpp
-    DESTINATION include/${PROJECT_NAME}
-  )
-
-  install(DIRECTORY launch/ros2/launch config assets
-    DESTINATION share/${PROJECT_NAME}
-  )
-
-  install(TARGETS ${PROJECT_NAME}
-    EXPORT ${PROJECT_NAME}Targets
-    LIBRARY DESTINATION lib
-    RUNTIME DESTINATION lib
-    ARCHIVE DESTINATION lib
-  )
-
-  install(TARGETS mujoco_node
-    LIBRARY DESTINATION lib/${PROJECT_NAME}
-    RUNTIME DESTINATION lib/${PROJECT_NAME}
-    ARCHIVE DESTINATION lib/${PROJECT_NAME}
-  )
-
-  ament_export_include_directories(
-    include
-    ${mujoco_INCLUDE_DIRS}
-  )
-  ament_export_dependencies(
-    ament_cmake
-    rclcpp
-    pluginlib
-    tf2
-    tf2_ros
-    image_transport
-    camera_info_manager
-    geometry_msgs
-    tf2_geometry_msgs
-    mujoco_ros_msgs
-    rosgraph_msgs
-    sensor_msgs
-    std_srvs
-    mujoco
-  )
-
-
   ament_export_include_directories(
     include
     ${GENERATED_HEADERS_DIR}
     ${mujoco_INCLUDE_DIRS}
   )
+
+  ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
+
   ament_export_dependencies(
     ament_cmake
     rclcpp
@@ -285,7 +250,43 @@ else()
     lifecycle_msgs
     sensor_msgs
     std_srvs
+    mujoco
   )
 
-  ament_package()
+  install(DIRECTORY include/${PROJECT_NAME}
+    DESTINATION include
+  )
+
+  # Explicitly copy the generated header files
+  install(FILES
+    ${GENERATED_HEADERS_DIR}/${PROJECT_NAME}/ros_version.hpp
+    ${GENERATED_HEADERS_DIR}/${PROJECT_NAME}/render_backend.hpp
+    DESTINATION include/${PROJECT_NAME}
+  )
+
+  install(DIRECTORY launch/ros2/launch config assets
+    DESTINATION share/${PROJECT_NAME}
+  )
+
+  install(TARGETS ${PROJECT_NAME}
+    EXPORT export_${PROJECT_NAME}
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION lib
+    ARCHIVE DESTINATION lib
+  )
+
+  install(FILES
+    cmake/mujoco_ros-extras.cmake
+    DESTINATION share/${PROJECT_NAME}/cmake
+  )
+
+  install(TARGETS mujoco_node
+    LIBRARY DESTINATION lib/${PROJECT_NAME}
+    RUNTIME DESTINATION lib/${PROJECT_NAME}
+    ARCHIVE DESTINATION lib/${PROJECT_NAME}
+  )
+
+  ament_package(
+    CONFIG_EXTRAS cmake/mujoco_ros-extras.cmake
+  )
 endif()

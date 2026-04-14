@@ -126,7 +126,7 @@ else()
 endif()
 
 if(RENDERING_BACKEND STREQUAL "GLFW")
-  target_link_libraries(${PROJECT_NAME} PUBLIC mujoco_ros::platform_ui_adapter)
+  target_link_libraries(${PROJECT_NAME} PRIVATE mujoco_ros::platform_ui_adapter)
 elseif(RENDERING_BACKEND STREQUAL "EGL")
   target_link_libraries(${PROJECT_NAME} PUBLIC OpenGL::EGL)
 elseif(RENDERING_BACKEND STREQUAL "OSMESA")
