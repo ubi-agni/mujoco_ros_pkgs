@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        distro: [humble, jazzy]
+        distro: [humble] #, jazzy # Jazzy needs another control implementation (the hardware_interfaces differs), skipping build without specific branch for now
         render_backend: [GLFW, OSMESA, DISABLE] # EGL currently removed due to issues with the local CI runners
         mujoco: [3.2.0]
         include:
