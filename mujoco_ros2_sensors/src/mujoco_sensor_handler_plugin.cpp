@@ -452,7 +452,7 @@ void MujocoRos2SensorsPlugin::LastStageCallback(const mjModel *model, mjData *da
 	publishLidarData(model, data);
 }
 
-void MujocoRos2SensorsPlugin::initSensors(const mjModel *model, mjData *data)
+void MujocoRos2SensorsPlugin::initSensors(const mjModel *model, mjData */*data*/)
 {
 	std::string sensor_name, site, frame_id;
 	for (int n = 0; n < model->nsensor; n++) {
@@ -627,7 +627,7 @@ void MujocoRos2SensorsPlugin::initSensors(const mjModel *model, mjData *data)
 	}
 }
 
-void MujocoRos2SensorsPlugin::configureLidarMap(const mjModel *model, mjData *data)
+void MujocoRos2SensorsPlugin::configureLidarMap(const mjModel *model, mjData */*data*/)
 {
 	auto lidar_names = sensors_nh_->get_parameter("lidars").as_string_array();
 	for (const auto &lidar_name : lidar_names) {

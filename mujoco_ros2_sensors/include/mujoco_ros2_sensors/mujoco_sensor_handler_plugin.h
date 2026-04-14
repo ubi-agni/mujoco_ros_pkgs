@@ -89,7 +89,7 @@ public:
 		rclcpp::SerializedMessage serialized_msg;
 		serializer.serialize_message(&msg, &serialized_msg);
 		return serialized_msg;
-	};
+	}
 
 	std::string frame_id;
 
@@ -153,7 +153,7 @@ private:
 	// replaced via env_ptr_
 	rclcpp_lifecycle::LifecycleNode::SharedPtr sensors_nh_;
 
-	void initSensors(const mjModel *model, mjData *data);
+	void initSensors(const mjModel *model, mjData */*data*/);
 	std::mt19937 rand_generator = std::mt19937(std::random_device{}());
 	std::normal_distribution<double> noise_dist;
 
@@ -167,7 +167,7 @@ private:
 	//                            mujoco_ros_msgs::RegisterSensorNoiseModels::Response &rep);
 	void registerNoiseModelsCB(const mujoco_ros_msgs::srv::RegisterSensorNoiseModels::Request::SharedPtr &req,
 	                           const mujoco_ros_msgs::srv::RegisterSensorNoiseModels::Response::SharedPtr &rep);
-	void configureLidarMap(const mjModel *model, mjData *data);
+	void configureLidarMap(const mjModel *model, mjData */*data*/);
 	void publishLidarData(const mjModel *model, mjData *data);
 
 	static rclcpp::Logger getLogger() { return rclcpp::get_logger("MujocoRos2SensorPlugin"); };

@@ -38,8 +38,8 @@ ament_target_dependencies(
   geometry_msgs
   mujoco_ros_msgs
   sensor_msgs
-  "mujoco_ros"
-  "pluginlib"
+  mujoco_ros
+  pluginlib
   tf2
   tf2_ros
   tf2_geometry_msgs
