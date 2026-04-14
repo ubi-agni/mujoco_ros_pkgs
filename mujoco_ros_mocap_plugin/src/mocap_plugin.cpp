@@ -133,7 +133,7 @@ bool MocapPlugin::load(const mjModel *m, mjData *d)
 	return true;
 }
 
-void MocapPlugin::reset(){};
+void MocapPlugin::reset() {};
 } // namespace mujoco_ros::mocap
 
 PLUGINLIB_EXPORT_CLASS(mujoco_ros::mocap::MocapPlugin, mujoco_ros::MujocoPlugin)

@@ -10,7 +10,7 @@ DummyRos2Plugin::~DummyRos2Plugin()
 	env_ptr_->RemoveNodeFromExecutor(child_node_->get_node_base_interface());
 }
 
-void DummyRos2Plugin::ControlCallback(const mjModel */*model*/, mjData */*data*/)
+void DummyRos2Plugin::ControlCallback(const mjModel * /*model*/, mjData * /*data*/)
 {
 	auto message = std_msgs::msg::String();
 	message.data = "Hello, world! " + std::to_string(count_++);

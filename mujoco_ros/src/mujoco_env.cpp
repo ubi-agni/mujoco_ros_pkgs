@@ -65,7 +65,7 @@ namespace roscpp = ros;
 #include <geometry_msgs/msg/transform_stamped.hpp>
 using TransformStamped = geometry_msgs::msg::TransformStamped;
 
-namespace roscpp                  = rclcpp;
+namespace roscpp = rclcpp;
 #endif
 
 #if RENDER_BACKEND == GLFW_BACKEND

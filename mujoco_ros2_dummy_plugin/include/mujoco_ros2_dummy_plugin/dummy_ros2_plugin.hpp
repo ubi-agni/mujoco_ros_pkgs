@@ -30,7 +30,7 @@ public:
 	mujoco_ros::CallbackReturn on_configure(const rclcpp_lifecycle::State & /*previous_state*/) override;
 
 	~DummyRos2Plugin() override;
-	void ControlCallback(const mjModel */*model*/, mjData */*data*/) override;
+	void ControlCallback(const mjModel * /*model*/, mjData * /*data*/) override;
 
 	// These don't need to be implemented if they are not used
 	// void PassiveCallback(const mjModel* model, mjData* data) override;

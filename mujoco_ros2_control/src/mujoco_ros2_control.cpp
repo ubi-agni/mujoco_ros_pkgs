@@ -40,7 +40,7 @@ std::string MujocoRos2ControlPluginPrivate::getURDF() const
 				urdf_string                           = values[0].as_string();
 			} else {
 				RCLCPP_ERROR(node_->get_logger(), "Service 'robot_description' timed out. "
-				                                 "Ensure robot_state_publisher is running.");
+				                                  "Ensure robot_state_publisher is running.");
 			}
 		} catch (const std::exception &e) {
 			RCLCPP_ERROR(node_->get_logger(), "%s", e.what());
@@ -105,11 +105,11 @@ void MujocoRos2ControlPlugin::PassiveCallback(const mjModel * /* model */, mjDat
 	this->dataPtr_->controller_manager_->read(sim_time_mj, sim_period);
 	this->dataPtr_->controller_manager_->update(sim_time_mj, sim_period);
 };
-void MujocoRos2ControlPlugin::RenderCallback(const mjModel * /* model */, mjData * /* data */,
-                                             mjvScene * /* scene */){};
-void MujocoRos2ControlPlugin::LastStageCallback(const mjModel * /* model */, mjData * /* data */){};
-void MujocoRos2ControlPlugin::OnGeomChanged(const mjModel * /* model */, mjData * /* data */,
-                                            const int /* geom_id */){};
+void MujocoRos2ControlPlugin::RenderCallback(const mjModel * /* model */, mjData * /* data */, mjvScene * /* scene */) {
+};
+void MujocoRos2ControlPlugin::LastStageCallback(const mjModel * /* model */, mjData * /* data */) {};
+void MujocoRos2ControlPlugin::OnGeomChanged(const mjModel * /* model */, mjData * /* data */, const int /* geom_id */) {
+};
 
 bool MujocoRos2ControlPlugin::Load(const mjModel *model, mjData *data)
 {
@@ -274,4 +274,3 @@ void MujocoRos2ControlPlugin::Reset()
 
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(mujoco_ros2_control::MujocoRos2ControlPlugin, mujoco_ros::MujocoPlugin)
-

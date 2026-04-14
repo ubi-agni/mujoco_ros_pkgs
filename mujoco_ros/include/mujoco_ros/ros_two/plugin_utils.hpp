@@ -240,7 +240,7 @@ public:
 	 * @param[in] data pointer to mjData.
 	 * @param[in] geom_id id of the geom thas has been changed.
 	 */
-	virtual void OnGeomChanged(const mjModel * /*model*/, mjData * /*data*/, const int /*geom_id*/){};
+	virtual void OnGeomChanged(const mjModel * /*model*/, mjData * /*data*/, const int /*geom_id*/) {};
 
 protected:
 	/**

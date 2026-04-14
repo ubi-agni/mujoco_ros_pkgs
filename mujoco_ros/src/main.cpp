@@ -73,7 +73,6 @@ using Seconds = std::chrono::duration<double>;
 
 } // anonymous namespace
 
-
 int main(int argc, char **argv)
 {
 #if MJR_ROS_VERSION == ROS_1
@@ -136,9 +135,7 @@ int main(int argc, char **argv)
 	// Start the background executor thread immediately.
 	// This provides the heartbeat for services like controller_manager,
 	// even if we are running in headless mode.
-	std::thread executor_thread([&executor]() {
-		executor->spin();
-	});
+	std::thread executor_thread([&executor]() { executor->spin(); });
 #endif
 
 #if RENDER_BACKEND == GLFW_BACKEND
@@ -183,4 +180,3 @@ int main(int argc, char **argv)
 
 	return 0;
 }
-

@@ -617,7 +617,7 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 }
 
 // Nothing to do on reset
-void MujocoRosSensorsPlugin::reset(){};
+void MujocoRosSensorsPlugin::reset() {};
 
 } // namespace mujoco_ros::sensors
 
