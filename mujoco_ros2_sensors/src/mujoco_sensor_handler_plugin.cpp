@@ -452,7 +452,7 @@ void MujocoRos2SensorsPlugin::LastStageCallback(const mjModel *model, mjData *da
 	publishLidarData(model, data);
 }
 
-void MujocoRos2SensorsPlugin::initSensors(const mjModel *model, mjData */*data*/)
+void MujocoRos2SensorsPlugin::initSensors(const mjModel *model, mjData * /*data*/)
 {
 	std::string sensor_name, site, frame_id;
 	for (int n = 0; n < model->nsensor; n++) {
@@ -627,7 +627,7 @@ void MujocoRos2SensorsPlugin::initSensors(const mjModel *model, mjData */*data*/
 	}
 }
 
-void MujocoRos2SensorsPlugin::configureLidarMap(const mjModel *model, mjData */*data*/)
+void MujocoRos2SensorsPlugin::configureLidarMap(const mjModel *model, mjData * /*data*/)
 {
 	auto lidar_names = sensors_nh_->get_parameter("lidars").as_string_array();
 	for (const auto &lidar_name : lidar_names) {
@@ -666,7 +666,7 @@ void MujocoRos2SensorsPlugin::configureLidarMap(const mjModel *model, mjData */*
 		// so actually, the lidar name in the config should be its SITE, not the SENSOR.
 		// Sensors populated using repeat will have no name.
 		std::string frame_id, site_name;
-		int site_id;
+		int site_id = -1;
 		for (int i = 0; i < lidar->rf_count_; i++) {
 			// validate that the number of RF matches the number of sites
 			site_name = lidar_name + std::to_string(i);

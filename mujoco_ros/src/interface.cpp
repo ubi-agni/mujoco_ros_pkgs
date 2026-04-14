@@ -460,7 +460,7 @@ bool MujocoEnv::SetGeomProperties(const std::string &geom_name, const mjtNum bod
 		    size_z > model_->geom_size[geom_id * 3 + 2]) {
 			message = "New geom size is larger than the current size. AABBs are not recomputed, this may cause incorrect "
 			          "collisions!";
-			MJR_WARN(message.c_str());
+			MJR_WARN("%s", message.c_str());
 			if (status_message != nullptr) {
 				std::strncpy(status_message, message.c_str(), status_sz);
 			}

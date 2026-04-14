@@ -222,10 +222,26 @@ if (ROS_VERSION EQUAL "1")
   # ## Testing ##
   # #############
 
-  # if(CATKIN_ENABLE_TESTING)
-  #   add_subdirectory(test)
-  # endif()
+  if(CATKIN_ENABLE_TESTING)
+    add_subdirectory(test)
+  endif()
 else()
+
+  if(BUILD_TESTING)
+    find_package(ament_lint_auto REQUIRED)
+    # the following line skips the linter which checks for copyrights
+    # comment the line when a copyright and license is added to all source files
+    set(ament_cmake_copyright_FOUND TRUE)
+    # the following line skips cpplint (only works in a git repo)
+    # comment the line when this package is in a git repo and when
+    # a copyright and license is added to all source files
+    set(ament_cmake_cpplint_FOUND TRUE)
+    # TODO: Remove after ROS 1 and 2 builds are unified
+    # Disable uncrustify and flake for now to avoid too much deviation from the noetic-devel branch
+    set(ament_cmake_uncrustify_FOUND TRUE)
+    ament_lint_auto_find_test_dependencies()
+  endif()
+
   ament_export_include_directories(
     include
     ${GENERATED_HEADERS_DIR}

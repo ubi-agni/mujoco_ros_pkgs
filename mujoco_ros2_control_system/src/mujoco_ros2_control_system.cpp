@@ -45,8 +45,7 @@ bool MujocoRos2System::initSim(rclcpp_lifecycle::LifecycleNode::SharedPtr &model
 			this->dataPtr_->joints_[i].is_actuated = true;
 		}
 
-		bool has_value = joint_info.parameters.find("test") != joint_info.parameters.end();
-		int jnt_idx    = mj_name2id(m, mjOBJ_JOINT, joint_name.c_str());
+		int jnt_idx = mj_name2id(m, mjOBJ_JOINT, joint_name.c_str());
 		if (jnt_idx == -1) { // basic check to see if URDF and MuJoCo joint names match
 			RCLCPP_FATAL(this->nh_->get_logger(), "The requested joint %s cannot be found in the MuJoCo model!",
 			             joint_name.c_str());
@@ -186,7 +185,7 @@ CallbackReturn MujocoRos2System::on_init(const hardware_interface::HardwareInfo 
 	}
 	return CallbackReturn::SUCCESS;
 };
-CallbackReturn MujocoRos2System::on_configure(const rclcpp_lifecycle::State &previous_state)
+CallbackReturn MujocoRos2System::on_configure(const rclcpp_lifecycle::State & /*previous_state*/)
 {
 	RCLCPP_DEBUG(this->nh_->get_logger(), "on_configure");
 	return CallbackReturn::SUCCESS;
@@ -201,12 +200,12 @@ std::vector<hardware_interface::CommandInterface> MujocoRos2System::export_comma
 	RCLCPP_DEBUG(this->nh_->get_logger(), "export_command_interfaces");
 	return std::move(this->dataPtr_->command_interfaces_);
 };
-CallbackReturn MujocoRos2System::on_activate(const rclcpp_lifecycle::State &previous_state)
+CallbackReturn MujocoRos2System::on_activate(const rclcpp_lifecycle::State & /*previous_state*/)
 {
 	RCLCPP_DEBUG(this->nh_->get_logger(), "on_activate");
 	return CallbackReturn::SUCCESS;
 };
-CallbackReturn MujocoRos2System::on_deactivate(const rclcpp_lifecycle::State &previous_state)
+CallbackReturn MujocoRos2System::on_deactivate(const rclcpp_lifecycle::State & /*previous_state*/)
 {
 	RCLCPP_DEBUG(this->nh_->get_logger(), "on_deactivate");
 	return CallbackReturn::SUCCESS;
@@ -248,7 +247,7 @@ MujocoRos2System::prepare_command_mode_switch(const std::vector<std::string> &st
 					break;
 				} else {
 					RCLCPP_ERROR(this->nh_->get_logger(),
-					             "The joint %s has already been marked to be"
+					             "The joint has already been marked to be"
 					             " started! Check that you are not trying to start"
 					             " two command interfaces on the same joint together."
 					             " Given: %s, target joint: %s",
@@ -263,7 +262,7 @@ MujocoRos2System::prepare_command_mode_switch(const std::vector<std::string> &st
 		RCLCPP_ERROR(this->nh_->get_logger(),
 		             "The number of start interfaces is"
 		             " greater than the number of joints in this system!"
-		             " start interfaces: %d, system joint size: %d",
+		             " start interfaces: %ld, system joint size: %ld",
 		             filtered_starts.size(), this->dataPtr_->joints_.size());
 		return hardware_interface::return_type::ERROR;
 	}
@@ -309,7 +308,7 @@ MujocoRos2System::prepare_command_mode_switch(const std::vector<std::string> &st
 					break;
 				} else {
 					RCLCPP_ERROR(this->nh_->get_logger(),
-					             "The joint %s has already been marked to be"
+					             "The joint has already been marked to be"
 					             " stopped! Check that you are not trying to stop"
 					             " two command interfaces on the same joint together."
 					             " Given: %s, target joint: %s",
@@ -326,7 +325,7 @@ MujocoRos2System::prepare_command_mode_switch(const std::vector<std::string> &st
 		RCLCPP_ERROR(this->nh_->get_logger(),
 		             "The number of stop interfaces is"
 		             " greater than the number of joints in this system!"
-		             " stop interfaces: %d, system joint size: %d",
+		             " stop interfaces: %ld, system joint size: %ld",
 		             filtered_stops.size(), this->dataPtr_->joints_.size());
 		return hardware_interface::return_type::ERROR;
 	}
@@ -344,8 +343,7 @@ MujocoRos2System::prepare_command_mode_switch(const std::vector<std::string> &st
 				// extract the command mode
 				auto interface = getLastElement(stop, '/');
 				joint.joint_control_method &= NONE; // mask to none
-				RCLCPP_INFO(this->nh_->get_logger(), "Joint %s has been set to STOP", joint.name.c_str(),
-				            interface.c_str());
+				RCLCPP_INFO(this->nh_->get_logger(), "Joint %s has been set to STOP", joint.name.c_str());
 				break;
 			}
 		}
@@ -356,8 +354,8 @@ MujocoRos2System::prepare_command_mode_switch(const std::vector<std::string> &st
 
 // Documentation Inherited
 hardware_interface::return_type
-MujocoRos2System::perform_command_mode_switch(const std::vector<std::string> &start_interfaces,
-                                              const std::vector<std::string> &stop_interfaces)
+MujocoRos2System::perform_command_mode_switch(const std::vector<std::string> & /*start_interfaces*/,
+                                              const std::vector<std::string> & /*stop_interfaces*/)
 {
 	RCLCPP_DEBUG(this->nh_->get_logger(), "perform_command_mode_switch");
 	// This is a simple for loop over joints with a switch case over the control mode enum.
@@ -408,7 +406,7 @@ hardware_interface::return_type MujocoRos2System::read(const rclcpp::Time &time,
 };
 
 // Documentation Inherited
-hardware_interface::return_type MujocoRos2System::write(const rclcpp::Time &time, const rclcpp::Duration &period)
+hardware_interface::return_type MujocoRos2System::write(const rclcpp::Time &time, const rclcpp::Duration & /*period*/)
 {
 	if (epsilonComp(time, this->dataPtr_->last_update_sim_time_mj_, static_cast<double>(*this->dataPtr_->update_rate))) {
 		for (uint i = 0; i < this->dataPtr_->joints_.size(); i++) {

@@ -135,7 +135,7 @@ public:
 
 	void LastStageCallback(const mjModel *model, mjData *data) override; // last -> Last
 
-	mujoco_ros::CallbackReturn on_configure(const rclcpp_lifecycle::State & /*previous_state*/)
+	mujoco_ros::CallbackReturn on_configure(const rclcpp_lifecycle::State & /*previous_state*/) override
 	{
 		// RCLCPP_INFO_STREAM(get_my_logger(), "Configuring DummyRos2Plugin");
 
