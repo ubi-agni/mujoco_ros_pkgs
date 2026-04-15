@@ -78,7 +78,7 @@ jobs:
     name: "${{ matrix.distro }} mj-${{ matrix.mujoco }} ${{ matrix.render_backend }} ${{ matrix.check == 'ccov_catkin_lint' && ' + catkin_lint + ccov' || ''}}${{ matrix.check == 'clang_tidy' && (github.event_name != 'workflow_dispatch' && ' + clang-tidy (delta)' || ' + clang-tidy (all)') || '' }}"
     runs-on: ${{ matrix.render_backend == 'EGL' && matrix.distro || 'ubuntu-latest' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # - name: Cache upstream workspace
       #   uses: rhaschke/cache@main
       #   with:
