@@ -27,6 +27,7 @@ jobs:
           - distro: humble
             mujoco: 3.2.0
             env:
+              CATKIN_LINT: true
               CCOV: true
           - distro: humble
             mujoco: 3.2.0

@@ -52,13 +52,15 @@ repos:
         entry: ./.housekeeping/check_unique_version
         language: system
 
-  - repo: local
-    hooks:
-      - id: catkin-lint
-        name: catkin-lint
-        description: Check package.xml and CMake files
-        entry: catkin_lint .
-        language: system
-        always_run: true
-        pass_filenames: false
-        exclude: '^mujoco_ros2.*'
+  # - repo: local
+  #   hooks:
+  #     - id: catkin-lint
+  #       name: catkin-lint
+  #       description: Check package.xml and CMake files
+  #       entry: catkin_lint .
+  #       language: system
+  #       stages:
+  #         - pre-commit
+  #       always_run: true
+  #       pass_filenames: false
+  #       exclude: '^mujoco_ros2.*'
