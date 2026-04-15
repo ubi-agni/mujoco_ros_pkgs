@@ -128,9 +128,9 @@ endif()
 if(RENDERING_BACKEND STREQUAL "GLFW")
   target_link_libraries(${PROJECT_NAME} PRIVATE mujoco_ros::platform_ui_adapter)
 elseif(RENDERING_BACKEND STREQUAL "EGL")
-  target_link_libraries(${PROJECT_NAME} PUBLIC OpenGL::EGL)
+  target_link_libraries(${PROJECT_NAME} PRIVATE OpenGL::EGL)
 elseif(RENDERING_BACKEND STREQUAL "OSMESA")
-  target_link_libraries(${PROJECT_NAME} PUBLIC OSMesa::OSMesa)
+  target_link_libraries(${PROJECT_NAME} PRIVATE OSMesa::OSMesa)
 endif()
 
 add_executable(mujoco_node
