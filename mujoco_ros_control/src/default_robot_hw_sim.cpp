@@ -37,7 +37,7 @@
 /* Authors: David P. Leins*/
 
 #include <mujoco_ros_control/default_robot_hw_sim.h>
-#include <mujoco_ros/util.h>
+#include <mujoco_ros/util.hpp>
 
 namespace {
 double clamp(const double val, const double min_val, const double max_val)
@@ -48,7 +48,7 @@ double clamp(const double val, const double min_val, const double max_val)
 
 namespace mujoco_ros::control {
 
-bool DefaultRobotHWSim::initSim(const mjModel *m_ptr, mjData *d_ptr, MujocoEnv * /*mujoco_env_ptr*/,
+bool DefaultRobotHWSim::InitSim(const mjModel *m_ptr, mjData *d_ptr, MujocoEnv * /*mujoco_env_ptr*/,
                                 const std::string &robot_namespace, ros::NodeHandle model_nh,
                                 const urdf::Model *const urdf_model,
                                 std::vector<transmission_interface::TransmissionInfo> transmissions)
@@ -189,7 +189,7 @@ bool DefaultRobotHWSim::initSim(const mjModel *m_ptr, mjData *d_ptr, MujocoEnv *
 		}
 		mujoco_joint_ids_[j] = (uint)joint_id;
 
-		registerJointLimits(joint_names_[j], joint_handle, joint_control_methods_[j], joint_limit_nh, urdf_model,
+		RegisterJointLimits(joint_names_[j], joint_handle, joint_control_methods_[j], joint_limit_nh, urdf_model,
 		                    &joint_types_[j], &joint_lower_limits_[j], &joint_upper_limits_[j], &joint_effort_limits_[j]);
 		if (joint_control_methods_[j] != EFFORT) {
 			// Initialize the PID controller
@@ -227,14 +227,14 @@ bool DefaultRobotHWSim::initSim(const mjModel *m_ptr, mjData *d_ptr, MujocoEnv *
 	return true;
 }
 
-void DefaultRobotHWSim::readSim(ros::Time time, ros::Duration period)
+void DefaultRobotHWSim::ReadSim(ros::Time time, ros::Duration period)
 {
 	for (unsigned int j = 0; j < n_dof_; j++) {
 		if (mujoco_joint_ids_[j] == -1)
 			continue;
 
 		double position, velocity, effort;
-		getJointData(mujoco_joint_ids_[j], position, velocity, effort);
+		GetJointData(mujoco_joint_ids_[j], position, velocity, effort);
 		if (joint_types_[j] == urdf::Joint::PRISMATIC) {
 			joint_position_[j] = position;
 		} else {
@@ -245,7 +245,7 @@ void DefaultRobotHWSim::readSim(ros::Time time, ros::Duration period)
 	}
 }
 
-void DefaultRobotHWSim::writeSim(ros::Time time, ros::Duration period)
+void DefaultRobotHWSim::WriteSim(ros::Time time, ros::Duration period)
 {
 	// If the E-stop is active, joints controlled by position commands will maintain their positions.
 	if (e_stop_active_) {
@@ -325,19 +325,19 @@ void DefaultRobotHWSim::writeSim(ros::Time time, ros::Duration period)
 	}
 }
 
-void DefaultRobotHWSim::eStopActive(const bool active)
+void DefaultRobotHWSim::EStopActive(const bool active)
 {
 	e_stop_active_ = active;
 }
 
-void DefaultRobotHWSim::getJointData(const int &joint_id, double &position, double &velocity, double &effort)
+void DefaultRobotHWSim::GetJointData(const int &joint_id, double &position, double &velocity, double &effort)
 {
 	position = d_ptr_->qpos[m_ptr_->jnt_qposadr[joint_id]];
 	velocity = d_ptr_->qvel[m_ptr_->jnt_dofadr[joint_id]];
 	effort   = d_ptr_->qfrc_applied[m_ptr_->jnt_dofadr[joint_id]];
 }
 
-void DefaultRobotHWSim::registerJointLimits(const std::string &joint_name,
+void DefaultRobotHWSim::RegisterJointLimits(const std::string &joint_name,
                                             const hardware_interface::JointHandle &joint_handle,
                                             const ControlMethod ctrl_method, const ros::NodeHandle &joint_limit_nh,
                                             const urdf::Model *const urdf_model, int *const joint_type,

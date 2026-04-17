@@ -60,7 +60,7 @@ struct ProcessRayArgs
 	int ray_idx;
 };
 
-void readOptionalDoubleFromConfig(const XmlRpc::XmlRpcValue &config, const std::string &name, double &target,
+void ReadOptionalDoubleFromConfig(const XmlRpc::XmlRpcValue &config, const std::string &name, double &target,
                                   double default_value)
 {
 	if (config.hasMember(name) and config[name].getType() == XmlRpc::XmlRpcValue::TypeDouble) {
@@ -81,14 +81,14 @@ LaserConfig::LaserConfig(const XmlRpc::XmlRpcValue &config, const std::string &f
 		this->visualize = DEFAULT_VISUALIZE;
 	}
 
-	readOptionalDoubleFromConfig(config, "update_rate", this->update_rate, DEFAULT_UPDATE_RATE);
-	readOptionalDoubleFromConfig(config, "min_range", this->min_range, DEFAULT_MIN_RANGE);
-	readOptionalDoubleFromConfig(config, "max_range", this->max_range, DEFAULT_MAX_RANGE);
-	readOptionalDoubleFromConfig(config, "range_resolution", this->range_resolution, DEFAULT_RANGE_RESOLUTION);
-	readOptionalDoubleFromConfig(config, "angular_resolution", this->angular_resolution, DEFAULT_ANGULAR_RESOLUTION);
-	readOptionalDoubleFromConfig(config, "min_angle", this->min_angle, DEFAULT_MIN_ANGLE);
-	readOptionalDoubleFromConfig(config, "max_angle", this->max_angle, DEFAULT_MAX_ANGLE);
-	readOptionalDoubleFromConfig(config, "sensor_std", this->sigma[0], DEFAULT_SENSOR_STD);
+	ReadOptionalDoubleFromConfig(config, "update_rate", this->update_rate, DEFAULT_UPDATE_RATE);
+	ReadOptionalDoubleFromConfig(config, "min_range", this->min_range, DEFAULT_MIN_RANGE);
+	ReadOptionalDoubleFromConfig(config, "max_range", this->max_range, DEFAULT_MAX_RANGE);
+	ReadOptionalDoubleFromConfig(config, "range_resolution", this->range_resolution, DEFAULT_RANGE_RESOLUTION);
+	ReadOptionalDoubleFromConfig(config, "angular_resolution", this->angular_resolution, DEFAULT_ANGULAR_RESOLUTION);
+	ReadOptionalDoubleFromConfig(config, "min_angle", this->min_angle, DEFAULT_MIN_ANGLE);
+	ReadOptionalDoubleFromConfig(config, "max_angle", this->max_angle, DEFAULT_MAX_ANGLE);
+	ReadOptionalDoubleFromConfig(config, "sensor_std", this->sigma[0], DEFAULT_SENSOR_STD);
 
 	if (this->sigma[0] > 0) {
 		this->is_set = 1;
@@ -102,7 +102,7 @@ LaserConfig::LaserConfig(const XmlRpc::XmlRpcValue &config, const std::string &f
 	}
 }
 
-bool LaserPlugin::load(const mjModel *m, mjData *d)
+bool LaserPlugin::Load(const mjModel *m, mjData *d)
 {
 	std::string lasers_namespace;
 	if (rosparam_config_.hasMember("namespace")) {
@@ -122,7 +122,7 @@ bool LaserPlugin::load(const mjModel *m, mjData *d)
 		// iterate through configs
 		// NOLINTNEXTLINE(modernize-loop-convert) range-based for loop throws XmlRpcValue Exception
 		for (uint i = 0; i < rosparam_config_["sensors"].size(); i++) {
-			initSensor(m, rosparam_config_["sensors"][i]);
+			InitSensor(m, rosparam_config_["sensors"][i]);
 		}
 	} else {
 		ROS_ERROR_NAMED("lasers", "Sensors config is not an array!");
@@ -144,7 +144,7 @@ bool LaserPlugin::load(const mjModel *m, mjData *d)
 	return true;
 }
 
-bool LaserPlugin::initSensor(const mjModel *model, const XmlRpc::XmlRpcValue &config)
+bool LaserPlugin::InitSensor(const mjModel *model, const XmlRpc::XmlRpcValue &config)
 {
 	if (!config.hasMember("site_attached")) {
 		ROS_ERROR_NAMED("lasers",
@@ -177,7 +177,7 @@ bool LaserPlugin::initSensor(const mjModel *model, const XmlRpc::XmlRpcValue &co
 	return true;
 }
 
-void LaserPlugin::renderCallback(const mjModel * /*model*/, mjData * /*data*/, mjvScene *scene)
+void LaserPlugin::RenderCallback(const mjModel * /*model*/, mjData * /*data*/, mjvScene *scene)
 {
 	// add visual geoms to render to the scene
 
@@ -190,7 +190,7 @@ void LaserPlugin::renderCallback(const mjModel * /*model*/, mjData * /*data*/, m
 	}
 }
 
-void processRay(const mjModel *model, mjData *data, std::mt19937 rand_generator,
+void ProcessRay(const mjModel *model, mjData *data, std::mt19937 rand_generator,
                 std::normal_distribution<double> &noise_dist, const LaserConfig &laser_config, mjvGeom *geom,
                 mjtNum (&rot)[9], const mjtByte (&ignore_groups)[mjNGROUP], const float (&rgba)[4],
                 sensor_msgs::LaserScan &scan_msg, int ray_idx)
@@ -227,15 +227,15 @@ void processRay(const mjModel *model, mjData *data, std::mt19937 rand_generator,
 	mjv_connector(geom, mjGEOM_LINE, 1., pos, target);
 }
 
-void *processRayThreaded(void *args)
+void *ProcessRayThreaded(void *args)
 {
 	ProcessRayArgs *pargs = static_cast<ProcessRayArgs *>(args);
-	processRay(pargs->model, pargs->data, *pargs->rand_generator, *pargs->noise_dist, *pargs->laser_config, pargs->geom,
+	ProcessRay(pargs->model, pargs->data, *pargs->rand_generator, *pargs->noise_dist, *pargs->laser_config, pargs->geom,
 	           *pargs->rot, *pargs->ignore_groups, *pargs->rgba, *pargs->scan_msg, pargs->ray_idx);
 	return nullptr;
 }
 
-void LaserPlugin::computeLasers(const mjModel *model, mjData *data)
+void LaserPlugin::ComputeLasers(const mjModel *model, mjData *data)
 {
 	// run last stage code here
 	uint n_vGeom        = 0;
@@ -272,7 +272,7 @@ void LaserPlugin::computeLasers(const mjModel *model, mjData *data)
 				g = laser_geoms_ + n_vGeom;
 				n_vGeom++;
 			}
-			processRay(model, data, rand_generator, noise_dist, laser_config, g, rot, ignore_groups, rgba, scan_msg, i);
+			ProcessRay(model, data, rand_generator, noise_dist, laser_config, g, rot, ignore_groups, rgba, scan_msg, i);
 		}
 
 		// publish laser scan
@@ -282,7 +282,7 @@ void LaserPlugin::computeLasers(const mjModel *model, mjData *data)
 	}
 }
 
-void LaserPlugin::computeLasersMultithreaded(const mjModel *model, mjData *data)
+void LaserPlugin::ComputeLasersMultithreaded(const mjModel *model, mjData *data)
 {
 	// run last stage code here
 	uint n_vGeom        = 0;
@@ -342,7 +342,7 @@ void LaserPlugin::computeLasersMultithreaded(const mjModel *model, mjData *data)
 			ray_args[i].ray_idx        = i;
 
 			mju_defaultTask(&tasks[i]);
-			tasks[i].func = processRayThreaded;
+			tasks[i].func = ProcessRayThreaded;
 			tasks[i].args = &ray_args[i];
 
 			// NOLINTNEXTLINE(performance-no-int-to-ptr)
@@ -362,18 +362,18 @@ void LaserPlugin::computeLasersMultithreaded(const mjModel *model, mjData *data)
 	}
 }
 
-void LaserPlugin::lastStageCallback(const mjModel *model, mjData *data)
+void LaserPlugin::LastStageCallback(const mjModel *model, mjData *data)
 {
 	if (!data->threadpool) {
-		computeLasers(model, data);
+		ComputeLasers(model, data);
 		return;
 	} else {
-		computeLasersMultithreaded(model, data);
+		ComputeLasersMultithreaded(model, data);
 	}
 }
 
 // Needs to be defined
-void LaserPlugin::reset() {}
+void LaserPlugin::Reset() {}
 
 LaserPlugin::~LaserPlugin()
 {

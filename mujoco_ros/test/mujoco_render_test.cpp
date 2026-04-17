@@ -38,15 +38,22 @@
 
 #include "mujoco_env_fixture.h"
 
-#include <mujoco_ros/mujoco_env.h>
-#include <mujoco_ros/common_types.h>
+#include <mujoco_ros/mujoco_env.hpp>
+#include <mujoco_ros/common_types.hpp>
 #include <mujoco_ros/offscreen_camera.hpp>
-#include <mujoco_ros/util.h>
+#include <mujoco_ros/util.hpp>
 
+#if MJR_ROS_VERSION == ROS_1
 #include <ros/ros.h>
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/CameraInfo.h>
 #include <sensor_msgs/image_encodings.h>
+#else // MJR_ROS_VERSION == ROS_2
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/camera_info.hpp>
+#include <sensor_msgs/image_encodings.hpp>
+#endif
 #include <vector>
 #include <chrono>
 #include <cmath>

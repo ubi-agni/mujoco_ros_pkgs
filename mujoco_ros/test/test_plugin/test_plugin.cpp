@@ -34,15 +34,22 @@
 
 /* Authors: David P. Leins */
 
-#include <pluginlib/class_list_macros.h>
-
 #include "test_plugin.h"
+
+#include <algorithm>
+
+#if MJR_ROS_VERSION == ROS_1
+#include <pluginlib/class_list_macros.h>
+#else // MJR_ROS_VERSION == ROS_2
+#include <pluginlib/class_list_macros.hpp>
+#endif
 
 using namespace mujoco_ros;
 namespace mujoco_ros {
 
-bool TestPlugin::load(const mjModel *m, mjData *d)
+bool TestPlugin::Load(const mjModel *m, mjData *d)
 {
+#if MJR_ROS_VERSION == ROS_1
 	if (rosparam_config_.hasMember("example_param")) {
 		got_config_param.store(true);
 	}
@@ -65,44 +72,92 @@ bool TestPlugin::load(const mjModel *m, mjData *d)
 		}
 	}
 
-	bool tmp_fail = false;
-	node_handle_.param<bool>("should_fail", tmp_fail, false);
-	should_fail.store(tmp_fail);
-	if (tmp_fail) {
-		return false;
+#else // MJR_ROS_VERSION == ROS_2
+	const auto parameter_names = get_node()->list_parameters({}, 100).names;
+	auto has_parameter_name    = [&parameter_names](const std::string &name) {
+      return std::find(parameter_names.begin(), parameter_names.end(), name) != parameter_names.end();
+	};
+	auto has_parameter_prefix = [&parameter_names](const std::string &prefix) {
+		const std::string prefix_with_separator = prefix + ".";
+		return std::any_of(
+		    parameter_names.begin(), parameter_names.end(),
+		    [&prefix_with_separator](const std::string &name) { return name.rfind(prefix_with_separator, 0) == 0; });
+	};
+	auto has_nested_parameter = [&parameter_names](const std::string &prefix, const std::string &leaf_name) {
+		const std::string prefix_with_separator = prefix + ".";
+		return std::any_of(parameter_names.begin(), parameter_names.end(),
+		                   [&prefix_with_separator, &leaf_name](const std::string &name) {
+			                   return name.rfind(prefix_with_separator, 0) == 0 &&
+			                          name.find(leaf_name) != std::string::npos;
+		                   });
+	};
+
+	if (has_parameter_name("example_param")) {
+		got_config_param.store(true);
 	}
 
-	m_ = m;
-	d_ = d;
-	return true;
+	if (has_parameter_prefix("nested_array_param_1")) {
+		got_lvl1_nested_array.store(true);
+		if (has_nested_parameter("nested_array_param_1", "nested_array_param_2")) {
+			got_lvl2_nested_array.store(true);
+		}
+	}
+
+	if (has_parameter_prefix("nested_struct_param_1")) {
+		got_lvl1_nested_struct.store(true);
+		if (has_nested_parameter("nested_struct_param_1", "nested_struct_param_2")) {
+			got_lvl2_nested_struct.store(true);
+		}
+	}
+#endif
+
+	bool tmp_fail = false;
+
+#if MJR_ROS_VERSION == ROS_1
+	node_handle_.param<bool>("should_fail", tmp_fail, false);
+
+#else // MJR_ROS_VERSION == ROS_2
+	if (get_node()->has_parameter("should_fail")) {
+		tmp_fail = get_node()->get_parameter("should_fail").as_bool();
+	}
+#endif
+
+	should_fail.store(tmp_fail);
+	const bool loaded_ok = !tmp_fail;
+	if (loaded_ok) {
+		m_ = m;
+		d_ = d;
+	}
+
+	return loaded_ok;
 }
 
-void TestPlugin::reset()
+void TestPlugin::Reset()
 {
 	ran_reset.store(true);
 }
 
-void TestPlugin::controlCallback(const mjModel * /*model*/, mjData * /*data*/)
+void TestPlugin::ControlCallback(const mjModel * /*model*/, mjData * /*data*/)
 {
 	ran_control_cb.store(true);
 }
 
-void TestPlugin::passiveCallback(const mjModel * /*model*/, mjData * /*data*/)
+void TestPlugin::PassiveCallback(const mjModel * /*model*/, mjData * /*data*/)
 {
 	ran_passive_cb.store(true);
 }
 
-void TestPlugin::renderCallback(const mjModel * /*model*/, mjData * /*data*/, mjvScene * /*scene*/)
+void TestPlugin::RenderCallback(const mjModel * /*model*/, mjData * /*data*/, mjvScene * /*scene*/)
 {
 	ran_render_cb.store(true);
 }
 
-void TestPlugin::lastStageCallback(const mjModel * /*model*/, mjData * /*data*/)
+void TestPlugin::LastStageCallback(const mjModel * /*model*/, mjData * /*data*/)
 {
 	ran_last_cb.store(true);
 }
 
-void TestPlugin::onGeomChanged(const mjModel * /*model*/, mjData * /*data*/, const int /*geom_id*/)
+void TestPlugin::OnGeomChanged(const mjModel * /*model*/, mjData * /*data*/, const int /*geom_id*/)
 {
 	ran_on_geom_changed_cb.store(true);
 }

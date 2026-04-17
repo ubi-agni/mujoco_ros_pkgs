@@ -51,7 +51,7 @@ namespace mujoco_ros::control {
 
 MujocoRosControlPlugin::~MujocoRosControlPlugin() = default;
 
-bool MujocoRosControlPlugin::load(const mjModel *m, mjData *d)
+bool MujocoRosControlPlugin::Load(const mjModel *m, mjData *d)
 {
 	ROS_INFO_NAMED("mujoco_ros_control", "Loading mujoco_ros_control plugin ...");
 
@@ -114,11 +114,11 @@ bool MujocoRosControlPlugin::load(const mjModel *m, mjData *d)
 
 	if (rosparam_config_["hardware"].hasMember("eStopTopic")) {
 		const std::string e_stop_topic = (std::string)rosparam_config_["hardware"]["eStopTopic"];
-		e_stop_sub_                    = robot_nh_.subscribe(e_stop_topic, 1, &MujocoRosControlPlugin::eStopCB, this);
+		e_stop_sub_                    = robot_nh_.subscribe(e_stop_topic, 1, &MujocoRosControlPlugin::EStopCB, this);
 	}
 
-	std::string urdf_string = getURDF(robot_description_);
-	if (!parseTransmissionsFromURDF(urdf_string)) {
+	std::string urdf_string = GetURDF(robot_description_);
+	if (!ParseTransmissionsFromURDF(urdf_string)) {
 		ROS_ERROR_NAMED("mujoco_ros_control",
 		                "Error parsing URDF for transmissions in mujoco_ros_control plugin, plugin not active.");
 		return false;
@@ -135,7 +135,7 @@ bool MujocoRosControlPlugin::load(const mjModel *m, mjData *d)
 
 		ROS_DEBUG_STREAM_NAMED("mujoco_ros_control",
 		                       "Trying to initialize robot hw sim of type '" << robot_hw_sim_type_str_ << "'");
-		if (!robot_hw_sim_->initSim(m, d, env_ptr_, robot_namespace_, robot_nh_, urdf_model_ptr, transmissions_)) {
+		if (!robot_hw_sim_->InitSim(m, d, env_ptr_, robot_namespace_, robot_nh_, urdf_model_ptr, transmissions_)) {
 			ROS_FATAL_NAMED("mujoco_ros_control", "Could not initialize robot simulation interface");
 			return false;
 		}
@@ -151,7 +151,7 @@ bool MujocoRosControlPlugin::load(const mjModel *m, mjData *d)
 	return true;
 }
 
-void MujocoRosControlPlugin::controlCallback(const mjModel * /*model*/, mjData *data)
+void MujocoRosControlPlugin::ControlCallback(const mjModel * /*model*/, mjData *data)
 {
 	ros::Time sim_time_ros = ros::Time::now();
 
@@ -172,11 +172,11 @@ void MujocoRosControlPlugin::controlCallback(const mjModel * /*model*/, mjData *
 	ros::Duration sim_period = sim_time_ros - last_update_sim_time_ros_;
 	bool reset_ctrls         = last_update_sim_time_ros_.isZero();
 
-	robot_hw_sim_->eStopActive(e_stop_active_);
+	robot_hw_sim_->EStopActive(e_stop_active_);
 
 	if (sim_period >= control_period_ || (reset_ctrls && !sim_period.isZero())) {
 		last_update_sim_time_ros_ = sim_time_ros;
-		robot_hw_sim_->readSim(sim_time_ros, sim_period);
+		robot_hw_sim_->ReadSim(sim_time_ros, sim_period);
 
 		if (e_stop_active_) {
 			last_e_stop_active_ = true;
@@ -189,14 +189,14 @@ void MujocoRosControlPlugin::controlCallback(const mjModel * /*model*/, mjData *
 	}
 
 	if (!last_update_sim_time_ros_.isZero() && (sim_time_ros > last_write_sim_time_ros_)) {
-		robot_hw_sim_->writeSim(sim_time_ros, sim_time_ros - last_write_sim_time_ros_);
+		robot_hw_sim_->WriteSim(sim_time_ros, sim_time_ros - last_write_sim_time_ros_);
 		last_write_sim_time_ros_ = sim_time_ros;
 	}
 }
 
-void MujocoRosControlPlugin::reset() {}
+void MujocoRosControlPlugin::Reset() {}
 
-std::string MujocoRosControlPlugin::getURDF(const std::string &param_name) const
+std::string MujocoRosControlPlugin::GetURDF(const std::string &param_name) const
 {
 	std::string urdf_string;
 
@@ -226,13 +226,13 @@ std::string MujocoRosControlPlugin::getURDF(const std::string &param_name) const
 	return urdf_string;
 }
 
-bool MujocoRosControlPlugin::parseTransmissionsFromURDF(const std::string &urdf_string)
+bool MujocoRosControlPlugin::ParseTransmissionsFromURDF(const std::string &urdf_string)
 {
 	transmission_interface::TransmissionParser::parse(urdf_string, transmissions_);
 	return true;
 }
 
-void MujocoRosControlPlugin::eStopCB(const std_msgs::BoolConstPtr &e_stop_active)
+void MujocoRosControlPlugin::EStopCB(const std_msgs::BoolConstPtr &e_stop_active)
 {
 	e_stop_active_ = e_stop_active->data;
 }

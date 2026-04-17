@@ -35,43 +35,303 @@
 /* Authors: David P. Leins */
 
 #include <gtest/gtest.h>
+
+#include <atomic>
+#include <map>
+#include <mutex>
+#include <vector>
+
+#include <mujoco_ros/ros_version.hpp>
+
+#if MJR_ROS_VERSION == ROS_1
 #include <ros/ros.h>
 #include <ros/package.h>
-#include <mujoco_ros/mujoco_env.h>
 #include <dynamic_reconfigure/server.h>
 #include <mujoco_ros/SimParamsConfig.h>
+#include <mujoco_ros_msgs/EqualityConstraintType.h>
+
+using namespace mujoco_ros_msgs;
+#else // MJR_ROS_VERSION == ROS_2
+#include <rclcpp/rclcpp.hpp>
+#include <ament_index_cpp/get_package_share_directory.hpp>
+#include <mujoco_ros_msgs/msg/equality_constraint_type.hpp>
+using namespace mujoco_ros_msgs::msg;
+
+namespace ros {
+namespace package {
+inline std::string getPath(const std::string &package_name)
+{
+	return ament_index_cpp::get_package_share_directory(package_name);
+}
+} // namespace package
+
+namespace service {
+inline bool exists(const std::string & /*service_name*/, bool /*print_failure_reason*/)
+{
+	return true;
+}
+
+template <typename ServiceType>
+bool call(const std::string & /*service_name*/, ServiceType & /*srv*/)
+{
+	return true;
+}
+} // namespace service
+
+namespace param {
+inline void del(const std::string & /*param_name*/) {}
+} // namespace param
+} // namespace ros
+
+#ifndef ROS_WARN
+#define ROS_WARN(...) RCLCPP_WARN(rclcpp::get_logger("mujoco_ros_test"), __VA_ARGS__)
+#endif
+#endif
+
+#include <mujoco_ros/mujoco_env.hpp>
 
 using namespace mujoco_ros;
 namespace mju = ::mujoco::sample_util;
 
+namespace testing {
+
+#if MJR_ROS_VERSION == ROS_1
+using TestNodeHandle = ros::NodeHandle;
+
+inline void delete_namespace_params(const std::string &ns)
+{
+	ros::param::del(ns);
+}
+#else // MJR_ROS_VERSION == ROS_2
+class TestNodeHandle
+{
+public:
+	explicit TestNodeHandle(const std::string & /*ns*/) {}
+
+	template <typename T>
+	void setParam(const std::string &name, const T &value)
+	{
+		std::lock_guard<std::mutex> lock(param_mutex_);
+		pending_params_[name] = rclcpp::Parameter(name, value);
+	}
+
+	std::string getNamespace() const { return "/mujoco_server"; }
+
+	static std::vector<rclcpp::Parameter> GetPendingParams()
+	{
+		std::lock_guard<std::mutex> lock(param_mutex_);
+		std::vector<rclcpp::Parameter> params;
+		params.reserve(pending_params_.size());
+		for (const auto &entry : pending_params_) {
+			params.push_back(entry.second);
+		}
+		return params;
+	}
+
+	static void clearPendingParams()
+	{
+		std::lock_guard<std::mutex> lock(param_mutex_);
+		pending_params_.clear();
+	}
+
+private:
+	static std::mutex param_mutex_;
+	static std::map<std::string, rclcpp::Parameter> pending_params_;
+};
+
+inline std::mutex TestNodeHandle::param_mutex_;
+inline std::map<std::string, rclcpp::Parameter> TestNodeHandle::pending_params_;
+
+inline void delete_namespace_params(const std::string & /*ns*/)
+{
+	TestNodeHandle::clearPendingParams();
+}
+#endif
+
+inline std::string get_test_model_path(const std::string &model_name)
+{
+#if MJR_ROS_VERSION == ROS_1
+	return ros::package::getPath("mujoco_ros") + "/test/" + model_name;
+#else // MJR_ROS_VERSION == ROS_2
+	return ament_index_cpp::get_package_share_directory("mujoco_ros") + "/test/" + model_name;
+#endif
+}
+
+#pragma diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+inline bool wait_for_service(const std::string &service_name)
+{
+#if MJR_ROS_VERSION == ROS_1
+	return ros::service::exists(service_name, true);
+#else // MJR_ROS_VERSION == ROS_2
+	return true;
+#endif
+}
+#pragma diagnostic pop
+
+} // namespace testing
+
 class MujocoEnvTestWrapper : public MujocoEnv
 {
 public:
-	MujocoEnvTestWrapper(const std::string &admin_hash = std::string()) : MujocoEnv(admin_hash) {}
-	mjModel *getModelPtr() { return model_.get(); }
-	mjData *getDataPtr() { return data_.get(); }
-	MujocoEnvMutex *getMutexPtr() { return &physics_thread_mutex_; }
-	dynamic_reconfigure::Server<mujoco_ros::SimParamsConfig> *getParamServer() { return param_server_; }
-	int getPendingSteps() { return num_steps_until_exit_; }
+#if MJR_ROS_VERSION == ROS_1
+	MujocoEnvTestWrapper(const std::string &admin_hash = std::string())
+	    : MujocoEnv(admin_hash), construction_complete_(true)
+	{
+	}
+#else // MJR_ROS_VERSION == ROS_2
+	MujocoEnvTestWrapper(const std::string &admin_hash = std::string())
+	    : MujocoEnv(std::make_shared<rclcpp::executors::MultiThreadedExecutor>(), admin_hash, false)
+	    , construction_complete_(false)
+	{
+		const auto params = testing::TestNodeHandle::GetPendingParams();
+		for (const auto &param : params) {
+			if (!this->has_parameter(param.get_name())) {
+				this->declare_parameter(param.get_name(), param.get_parameter_value());
+			}
+		}
+		this->set_parameters(params);
+		GetExecutorPtr()->add_node(this->get_node_base_interface());
 
-	void setEvalMode(bool eval_mode) { settings_.eval_mode = eval_mode; }
-	void setAdminHash(const std::string &hash) { mju::strcpy_arr(settings_.admin_hash, hash.c_str()); }
+		// Start executor thread BEFORE Configure() so services and callbacks have a spinning executor
+		executor_thread_handle_ = std::thread([this]() { GetExecutorPtr()->spin(); });
 
-	std::string getFilename() { return { filename_ }; }
-	int isPhysicsRunning() { return is_physics_running_; }
-	int isEventRunning() { return is_event_running_; }
-	int isRenderingRunning() { return is_rendering_running_; }
+		// Give executor thread a moment to start spinning
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-	OffscreenRenderContext *getOffscreenContext() { return &offscreen_; }
+		try {
+			Configure();
+			construction_complete_ = true;
+		} catch (...) {
+			MJR_ERROR("Exception thrown during MujocoEnvTestWrapper construction! Cleaning up executor...");
+			// Stop executor and join thread BEFORE removing node to avoid races
+			GetExecutorPtr()->cancel();
+			if (executor_thread_handle_.joinable()) {
+				executor_thread_handle_.join();
+			}
+			GetExecutorPtr()->remove_node(this->get_node_base_interface());
+			throw;
+		}
+	}
 
-	int getNumCBReadyPlugins() { return cb_ready_plugins_.size(); }
-	void notifyGeomChange() { notifyGeomChanged(0); }
+	~MujocoEnvTestWrapper() override
+	{
+		try {
+			shutdown();
+		} catch (const std::exception &e) {
+			MJR_ERROR_STREAM("Exception during shutdown in destructor: " << e.what());
+		} catch (...) {
+			MJR_ERROR("Unknown exception during shutdown in destructor");
+		}
+	}
+
+#endif
+	std::atomic_bool shutdown_called_{ false };
+	std::atomic_bool construction_complete_{ false };
+	mjModel *getModelPtr()
+	{
+		return model_.get();
+	}
+	mjData *getDataPtr()
+	{
+		return data_.get();
+	}
+	MujocoEnvMutex *getMutexPtr()
+	{
+		return &physics_thread_mutex_;
+	}
+
+#if MJR_ROS_VERSION == ROS_1
+	dynamic_reconfigure::Server<mujoco_ros::SimParamsConfig> *getParamServer()
+	{
+		return nullptr;
+	}
+#else // MJR_ROS_VERSION == ROS_2
+	void *getParamServer()
+	{
+		return nullptr;
+	}
+#endif
+
+	int getPendingSteps()
+	{
+		return num_steps_until_exit_;
+	}
+
+	void setEvalMode(bool eval_mode)
+	{
+		settings_.eval_mode = eval_mode;
+	}
+	void setAdminHash(const std::string &hash)
+	{
+		mju::strcpy_arr(settings_.admin_hash, hash.c_str());
+	}
+
+	std::string getFilename()
+	{
+		return { filename_ };
+	}
+	int isPhysicsRunning()
+	{
+		return is_physics_running_;
+	}
+	int isEventRunning()
+	{
+		return is_event_running_;
+	}
+	int isRenderingRunning()
+	{
+		return is_rendering_running_;
+	}
+
+	OffscreenRenderContext *getOffscreenContext()
+	{
+		return &offscreen_;
+	}
+
+	int GetNumCBReadyPlugins()
+	{
+		return cb_ready_plugins_.size();
+	}
+	void NotifyGeomChange()
+	{
+		NotifyGeomChanged(0);
+	}
+
+	bool step(int num_steps = 1, bool blocking = true)
+	{
+		return MujocoEnv::Step(num_steps, blocking);
+	}
+	bool togglePaused(bool paused, const std::string &admin_hash = std::string())
+	{
+		return TogglePaused(paused, admin_hash);
+	}
+	int GetOperationalStatus()
+	{
+		return MujocoEnv::GetOperationalStatus();
+	}
+	void StartPhysicsLoop()
+	{
+		MujocoEnv::StartPhysicsLoop();
+	}
+	void StartEventLoop()
+	{
+		MujocoEnv::StartEventLoop();
+	}
+	void WaitForPhysicsJoin()
+	{
+		MujocoEnv::WaitForPhysicsJoin();
+	}
+	void WaitForEventsJoin()
+	{
+		MujocoEnv::WaitForEventsJoin();
+	}
 
 	void load_queued_model()
 	{
 		settings_.load_request = 2;
 		float seconds          = 0;
-		while (getOperationalStatus() != 0 && seconds < 2) { // wait for model to be loaded or timeout
+		while (GetOperationalStatus() != 0 && seconds < 2) { // wait for model to be loaded or timeout
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			seconds += 0.001;
 		}
@@ -86,41 +346,70 @@ public:
 
 	void shutdown()
 	{
-		settings_.exit_request = 1;
-		waitForPhysicsJoin();
-		waitForEventsJoin();
+		// Guard against multiple shutdown calls (prevent double-shutdown races)
+		bool expected = false;
+		if (!shutdown_called_.compare_exchange_strong(expected, true)) {
+			return; // Already shutting down or already shut down
+		}
+
+		// Only clean up physics threads if construction completed successfully
+		if (construction_complete_) {
+			settings_.exit_request = 1;
+			MujocoEnv::WaitForPhysicsJoin();
+			MujocoEnv::WaitForEventsJoin();
+		}
+
+#if MJR_ROS_VERSION == ROS_2
+		if (GetExecutorPtr() != nullptr) {
+			GetExecutorPtr()->cancel();
+		}
+		if (executor_thread_handle_.joinable()) {
+			executor_thread_handle_.join();
+		}
+#endif
 	}
 
-	const std::string &getHandleNamespace() { return nh_->getNamespace(); }
+	std::string GetHandleNamespace()
+	{
+#if MJR_ROS_VERSION == ROS_1
+		return nh_->getNamespace();
+#else // MJR_ROS_VERSION == ROS_2
+		return get_namespace();
+#endif
+	}
 
-	void startWithXML(const std::string &xml_path, bool wait = true, float timeout_secs = 2.)
+	void StartWithXML(const std::string &xml_path, bool wait = true, float timeout_secs = 2.)
 	{
 		mju::strcpy_arr(queued_filename_, xml_path.c_str());
 		settings_.load_request = 2;
-		startPhysicsLoop();
-		startEventLoop();
+		MujocoEnv::StartPhysicsLoop();
+		MujocoEnv::StartEventLoop();
 
 		if (not wait)
 			return;
 
 		// Wait for model to be loaded
 		float seconds = 0;
-		while (getOperationalStatus() != 0 && seconds < timeout_secs) { // wait for model to be loaded or timeout
+		while (GetOperationalStatus() != 0 && seconds < timeout_secs) { // wait for model to be loaded or timeout
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			seconds += 0.001;
 		}
 	}
+
+#if MJR_ROS_VERSION == ROS_2
+	std::thread executor_thread_handle_;
+#endif
 };
 
 class BaseEnvFixture : public ::testing::Test
 {
 protected:
-	std::unique_ptr<ros::NodeHandle> nh;
+	std::unique_ptr<testing::TestNodeHandle> nh;
 	std::unique_ptr<MujocoEnvTestWrapper> env_ptr = nullptr;
 
 	void SetUp() override
 	{
-		nh = std::make_unique<ros::NodeHandle>("~");
+		nh = std::make_unique<testing::TestNodeHandle>("~");
 		nh->setParam("unpause", true);
 		nh->setParam("no_render", true);
 		nh->setParam("use_sim_time", true);
@@ -132,19 +421,19 @@ protected:
 			env_ptr->shutdown();
 		}
 		// clean up all parameters
-		ros::param::del(nh->getNamespace());
+		testing::delete_namespace_params(nh->getNamespace());
 	}
 };
 
 class PendulumEnvFixture : public ::testing::Test
 {
 protected:
-	std::unique_ptr<ros::NodeHandle> nh;
+	std::unique_ptr<testing::TestNodeHandle> nh;
 	MujocoEnvTestWrapper *env_ptr;
 
 	void SetUp() override
 	{
-		nh = std::make_unique<ros::NodeHandle>("~");
+		nh = std::make_unique<testing::TestNodeHandle>("~");
 		nh->setParam("unpause", false);
 		nh->setParam("no_render", true);
 		nh->setParam("use_sim_time", true);
@@ -152,11 +441,11 @@ protected:
 
 		env_ptr = new MujocoEnvTestWrapper();
 
-		std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
-		env_ptr->startWithXML(xml_path);
+		std::string xml_path = testing::get_test_model_path("pendulum_world.xml");
+		env_ptr->StartWithXML(xml_path);
 
 		float seconds = 0;
-		while (env_ptr->getOperationalStatus() != 0 && seconds < 2) { // wait for model to be loaded or timeout
+		while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) { // wait for model to be loaded or timeout
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			seconds += 0.001;
 		}
@@ -179,14 +468,14 @@ protected:
 class EqualityEnvFixture : public ::testing::Test
 {
 protected:
-	boost::shared_ptr<ros::NodeHandle> nh;
+	std::shared_ptr<testing::TestNodeHandle> nh;
 	MujocoEnvTestWrapper *env_ptr;
 	mjModel *m;
 	mjData *d;
 
 	void SetUp() override
 	{
-		nh.reset(new ros::NodeHandle("~"));
+		nh = std::make_shared<testing::TestNodeHandle>("~");
 		nh->setParam("unpause", false);
 		nh->setParam("no_render", true);
 		nh->setParam("use_sim_time", true);
@@ -198,21 +487,18 @@ protected:
 		EXPECT_EQ(mjNREF, 2) << "This version expects the number of solref parameters to be 2";
 
 		// verify enum consistency
-		EXPECT_EQ(mjEQ_CONNECT, mujoco_ros_msgs::EqualityConstraintType::CONNECT)
-		    << "Mismatch between connect constraint types";
-		EXPECT_EQ(mjEQ_WELD, mujoco_ros_msgs::EqualityConstraintType::WELD) << "Mismatch between weld constraint types";
-		EXPECT_EQ(mjEQ_JOINT, mujoco_ros_msgs::EqualityConstraintType::JOINT)
-		    << "Mismatch between joint constraint types";
-		EXPECT_EQ(mjEQ_TENDON, mujoco_ros_msgs::EqualityConstraintType::TENDON)
-		    << "Mismatch between tendon constraint types";
+		EXPECT_EQ(mjEQ_CONNECT, EqualityConstraintType::CONNECT) << "Mismatch between connect constraint types";
+		EXPECT_EQ(mjEQ_WELD, EqualityConstraintType::WELD) << "Mismatch between weld constraint types";
+		EXPECT_EQ(mjEQ_JOINT, EqualityConstraintType::JOINT) << "Mismatch between joint constraint types";
+		EXPECT_EQ(mjEQ_TENDON, EqualityConstraintType::TENDON) << "Mismatch between tendon constraint types";
 
 		env_ptr = new MujocoEnvTestWrapper();
 
-		std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/equality_world.xml";
-		env_ptr->startWithXML(xml_path);
+		std::string xml_path = testing::get_test_model_path("equality_world.xml");
+		env_ptr->StartWithXML(xml_path);
 
 		float seconds = 0;
-		while (env_ptr->getOperationalStatus() != 0 && seconds < 2) { // wait for model to be loaded or timeout
+		while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) { // wait for model to be loaded or timeout
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			seconds += 0.001;
 		}
@@ -222,7 +508,7 @@ protected:
 
 		EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 		EXPECT_NEAR(d->time, 0, 1e-6) << "Simulation time should be 0.0!";
-		EXPECT_TRUE(ros::service::exists(env_ptr->getHandleNamespace() + "/set_eq_constraint_parameters", true))
+		EXPECT_TRUE(testing::wait_for_service(env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters"))
 		    << "Set eq constraints service should be available!";
 	}
 

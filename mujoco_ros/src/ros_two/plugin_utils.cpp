@@ -41,9 +41,31 @@
 
 namespace mujoco_ros::plugin_utils {
 
+namespace {
+
+std::vector<std::string> GetConfiguredPluginNames(MujocoEnv *env_ptr)
+{
+	const std::string names_param = MUJOCO_PLUGIN_PARAM_NAME + ".names";
+	if (!env_ptr->has_parameter(names_param)) {
+		return {};
+	}
+	return env_ptr->get_parameter(names_param).as_string_array();
+}
+
+std::string GetPluginType(MujocoEnv *env_ptr, const std::string &plugin_name)
+{
+	const std::string type_param = MUJOCO_PLUGIN_PARAM_NAME + "." + plugin_name + ".type";
+	if (!env_ptr->has_parameter(type_param)) {
+		return {};
+	}
+	return env_ptr->get_parameter(type_param).as_string();
+}
+
+} // namespace
+
 bool ParsePlugins(MujocoEnv *env_ptr, std::vector<std::string> &plugin_names)
 {
-	plugin_names = env_ptr->get_parameter(MUJOCO_PLUGIN_PARAM_NAME + ".names").as_string_array();
+	plugin_names = GetConfiguredPluginNames(env_ptr);
 	if (plugin_names.empty()) {
 		MJR_INFO_NAMED("mujoco_ros_pluginloader", "No plugins to load listed in parameter server!");
 		return false;
@@ -63,10 +85,7 @@ void RegisterPlugins(const std::vector<std::string> &plugin_names, std::vector<M
 		MJR_DEBUG_STREAM_NAMED("mujoco_ros_plugin_loader", "Checking for 'type' member in plugin config at "
 		                                                       << MUJOCO_PLUGIN_PARAM_NAME + "." + plugin_name + ".type");
 
-		std::string type;
-		if (env_ptr->has_parameter(MUJOCO_PLUGIN_PARAM_NAME + "." + plugin_name + ".type")) {
-			type = env_ptr->get_parameter(MUJOCO_PLUGIN_PARAM_NAME + "." + plugin_name + ".type").as_string();
-		}
+		std::string type = GetPluginType(env_ptr, plugin_name);
 
 		if (type.empty()) {
 			MJR_ERROR_STREAM_NAMED("mujoco_ros_plugin_loader", "Error while parsing MujocoPlugins rosparam: Every listed "

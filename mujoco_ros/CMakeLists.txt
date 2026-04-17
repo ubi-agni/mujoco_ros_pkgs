@@ -228,6 +228,7 @@ if (ROS_VERSION EQUAL "1")
 else()
 
   if(BUILD_TESTING)
+    add_subdirectory(test)
     find_package(ament_lint_auto REQUIRED)
     # the following line skips the linter which checks for copyrights
     # comment the line when a copyright and license is added to all source files

@@ -37,7 +37,7 @@
 #include <gtest/gtest.h>
 #include <ros/ros.h>
 #include <ros/package.h>
-#include <mujoco_ros/mujoco_env.h>
+#include <mujoco_ros/mujoco_env.hpp>
 
 using namespace mujoco_ros;
 namespace mju = ::mujoco::sample_util;

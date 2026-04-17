@@ -40,9 +40,9 @@
 
 #include <ros/ros.h>
 
-#include <mujoco_ros/common_types.h>
-#include <mujoco_ros/plugin_utils.h>
-#include <mujoco_ros/mujoco_env.h>
+#include <mujoco_ros/common_types.hpp>
+#include <mujoco_ros/ros_one/plugin_utils.hpp>
+#include <mujoco_ros/mujoco_env.hpp>
 
 #include <mujoco_ros_msgs/RegisterSensorNoiseModels.h>
 
@@ -56,11 +56,11 @@ public:
 	SensorConfig() : frame_id(""){};
 	SensorConfig(std::string frame_id) : frame_id(std::move(frame_id)){};
 
-	void setFrameId(const std::string &frame_id) { this->frame_id = frame_id; };
+	void SetFrameId(const std::string &frame_id) { this->frame_id = frame_id; };
 
-	void registerPub(const ros::Publisher &pub) { value_pub = pub; };
+	void RegisterPub(const ros::Publisher &pub) { value_pub = pub; };
 
-	void registerGTPub(const ros::Publisher &pub) { gt_pub = pub; };
+	void RegisterGTPub(const ros::Publisher &pub) { gt_pub = pub; };
 
 	std::string frame_id;
 
@@ -82,15 +82,15 @@ public:
 	~MujocoRosSensorsPlugin() override;
 
 	// Overload entry point
-	bool load(const mjModel *m, mjData *d) override;
+	bool Load(const mjModel *m, mjData *d) override;
 
-	void reset() override;
+	void Reset() override;
 
-	void lastStageCallback(const mjModel *model, mjData *data) override;
+	void LastStageCallback(const mjModel *model, mjData *data) override;
 
 private:
 	ros::NodeHandle sensors_nh_;
-	void initSensors(const mjModel *model, mjData *data);
+	void InitSensors(const mjModel *model, mjData *data);
 	std::mt19937 rand_generator = std::mt19937(std::random_device{}());
 	std::normal_distribution<double> noise_dist;
 
@@ -98,7 +98,7 @@ private:
 
 	ros::ServiceServer register_noise_model_server_;
 
-	bool registerNoiseModelsCB(mujoco_ros_msgs::RegisterSensorNoiseModels::Request &req,
+	bool RegisterNoiseModelsCB(mujoco_ros_msgs::RegisterSensorNoiseModels::Request &req,
 	                           mujoco_ros_msgs::RegisterSensorNoiseModels::Response &rep);
 };
 

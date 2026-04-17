@@ -38,15 +38,21 @@
 
 #include "mujoco_env_fixture.h"
 
-#include <mujoco_ros/mujoco_env.h>
-#include <mujoco_ros/common_types.h>
-#include <mujoco_ros/util.h>
+#include <mujoco_ros/mujoco_env.hpp>
+#include <mujoco_ros/common_types.hpp>
+#include <mujoco_ros/util.hpp>
 
+#if MJR_ROS_VERSION == ROS_1
 #include <ros/ros.h>
+#else // MJR_ROS_VERSION == ROS_2
+#include <rclcpp/rclcpp.hpp>
+#endif
+
 #include <chrono>
 
 int main(int argc, char **argv)
 {
+#if MJR_ROS_VERSION == ROS_1
 	::testing::InitGoogleTest(&argc, argv);
 	ros::init(argc, argv, "mujoco_env_test");
 
@@ -63,6 +69,12 @@ int main(int argc, char **argv)
 	// Stop spinner and shutdown ROS before returning
 	spinner.stop();
 	ros::shutdown();
+#else // MJR_ROS_VERSION == ROS_2
+	rclcpp::init(argc, argv);
+	::testing::InitGoogleTest(&argc, argv);
+	int ret = RUN_ALL_TESTS();
+	rclcpp::shutdown();
+#endif
 	return ret;
 }
 
@@ -85,7 +97,7 @@ TEST_F(BaseEnvFixture, RunEvalMode)
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("some_hash");
 
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 
 	EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
 	EXPECT_FALSE(env_ptr->settings_.exit_request) << "Exit request is set before shutdown!";
@@ -99,7 +111,7 @@ TEST_F(BaseEnvFixture, EvalPauseWithHash)
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("some_hash");
 
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 
 	EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
 
@@ -115,7 +127,7 @@ TEST_F(BaseEnvFixture, EvalUnpauseWithHash)
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("some_hash");
 
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 
 	EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
 
@@ -143,7 +155,7 @@ TEST_F(BaseEnvFixture, StepWhileUnpaused)
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 	EXPECT_FALSE(env_ptr->step(1));
 
 	env_ptr->shutdown();
@@ -155,7 +167,7 @@ TEST_F(BaseEnvFixture, StepSingleWhilePaused)
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 	EXPECT_DOUBLE_EQ(env_ptr->getDataPtr()->time, 0.0);
 	EXPECT_TRUE(env_ptr->step(1));
 	EXPECT_DOUBLE_EQ(env_ptr->getDataPtr()->time, env_ptr->getModelPtr()->opt.timestep);
@@ -169,7 +181,7 @@ TEST_F(BaseEnvFixture, StepMultiWhilePaused)
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 	EXPECT_DOUBLE_EQ(env_ptr->getDataPtr()->time, 0.0);
 	EXPECT_TRUE(env_ptr->step(100));
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 100 * env_ptr->getModelPtr()->opt.timestep, 1e-6);
@@ -183,7 +195,7 @@ TEST_F(BaseEnvFixture, StepUnblocked)
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 	EXPECT_DOUBLE_EQ(env_ptr->getDataPtr()->time, 0.0);
 	EXPECT_TRUE(env_ptr->step(100, false));
 	EXPECT_GT(env_ptr->settings_.env_steps_request, 0);
@@ -204,7 +216,7 @@ TEST_F(BaseEnvFixture, StepNegativeFail)
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 	EXPECT_DOUBLE_EQ(env_ptr->getDataPtr()->time, 0.0);
 	EXPECT_FALSE(env_ptr->step(-10)) << "Stepping with negative steps should not succeed!";
 	EXPECT_EQ(env_ptr->settings_.env_steps_request, 0);
@@ -220,8 +232,8 @@ TEST_F(BaseEnvFixture, Shutdown)
 	EXPECT_FALSE(env_ptr->isPhysicsRunning()) << "Physics thread should not be running yet!";
 	EXPECT_FALSE(env_ptr->isEventRunning()) << "Event thread should not be running yet!";
 
-	env_ptr->startPhysicsLoop();
-	env_ptr->startEventLoop();
+	env_ptr->StartPhysicsLoop();
+	env_ptr->StartEventLoop();
 
 	EXPECT_FALSE(env_ptr->settings_.exit_request) << "Exit request is set before shutdown!";
 
@@ -244,8 +256,8 @@ TEST_F(BaseEnvFixture, Shutdown)
 	EXPECT_FALSE(env_ptr->isPhysicsRunning()) << "Physics thread is still running after shutdown!";
 	EXPECT_FALSE(env_ptr->isEventRunning()) << "Event thread is still running after shutdown!";
 
-	env_ptr->waitForEventsJoin();
-	env_ptr->waitForPhysicsJoin();
+	env_ptr->WaitForEventsJoin();
+	env_ptr->WaitForPhysicsJoin();
 }
 
 TEST_F(BaseEnvFixture, InitWithModel)
@@ -253,10 +265,10 @@ TEST_F(BaseEnvFixture, InitWithModel)
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 
 	float seconds = 0;
-	while (env_ptr->getOperationalStatus() != 0 && seconds < 2) { // wait for model to be loaded or timeout
+	while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) { // wait for model to be loaded or timeout
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		seconds += 0.001;
 	}
@@ -277,7 +289,7 @@ TEST_F(BaseEnvFixture, EvalUnpauseWithoutHash)
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("some_hash");
 
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 
 	EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
 
@@ -293,7 +305,7 @@ TEST_F(BaseEnvFixture, PauseUnpause)
 	env_ptr = std::make_unique<MujocoEnvTestWrapper>("");
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Model should not be running!";
 
@@ -320,7 +332,7 @@ TEST_F(BaseEnvFixture, StepsTerminate)
 
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 
 	float seconds = 0;
 	int current;
@@ -353,7 +365,7 @@ TEST_F(BaseEnvFixture, ManualSteps)
 	env_ptr = std::make_unique<MujocoEnvTestWrapper>("");
 
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 
 	EXPECT_FALSE(env_ptr->settings_.env_steps_request) << "pending manual steps should be 0 after initialization!";
 	EXPECT_FALSE(env_ptr->settings_.run) << "Model should not be running!";
@@ -402,7 +414,7 @@ TEST_F(BaseEnvFixture, Reset)
 	nh->setParam("unpause", false);
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 
 	EXPECT_TRUE(env_ptr->step(100)) << "Stepping failed!";
 
@@ -450,7 +462,7 @@ TEST_F(BaseEnvFixture, Reload)
 
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 
 	// Load same model again in unpaused state
 	env_ptr->load_queued_model();
@@ -492,7 +504,7 @@ TEST_F(BaseEnvFixture, InitModelFromQueuedBuffer)
 	std::string queuedFilename = "<mujoco/>";
 
 	// Call the initModelFromQueue function
-	env_ptr->startWithXML(queuedFilename);
+	env_ptr->StartWithXML(queuedFilename);
 
 	// Check the result
 	ASSERT_TRUE(env_ptr->getModelPtr());
@@ -512,12 +524,12 @@ TEST_F(BaseEnvFixture, InitModelFromInvalidQueuedBuffer)
 	std::string valid = "<mujoco/>";
 
 	// Call the initModelFromQueue function
-	env_ptr->startWithXML(valid);
+	env_ptr->StartWithXML(valid);
 
 	std::string invalid = "<mujoco>";
 	env_ptr->load_filename(invalid);
 
-	while (env_ptr->getOperationalStatus() != 0) { // wait for model to be loaded
+	while (env_ptr->GetOperationalStatus() != 0) { // wait for model to be loaded
 		std::this_thread::sleep_for(std::chrono::milliseconds(3));
 	}
 

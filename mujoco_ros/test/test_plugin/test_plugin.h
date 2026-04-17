@@ -36,9 +36,15 @@
 
 #pragma once
 
-#include <mujoco_ros/plugin_utils.h>
-#include <mujoco_ros/common_types.h>
-#include <mujoco_ros/mujoco_env.h>
+#include <mujoco_ros/ros_version.hpp>
+
+#if MJR_ROS_VERSION == ROS_1
+#include <mujoco_ros/ros_one/plugin_utils.hpp>
+#else // MJR_ROS_VERSION == ROS_2
+#include <mujoco_ros/ros_two/plugin_utils.hpp>
+#endif
+#include <mujoco_ros/common_types.hpp>
+#include <mujoco_ros/mujoco_env.hpp>
 
 using namespace mujoco_ros;
 namespace mujoco_ros {
@@ -47,13 +53,13 @@ class TestPlugin : public MujocoPlugin
 public:
 	TestPlugin()           = default;
 	~TestPlugin() override = default;
-	bool load(const mjModel *m, mjData *d) override;
-	void reset() override;
-	void controlCallback(const mjModel *model, mjData *data) override;
-	void passiveCallback(const mjModel *model, mjData *data) override;
-	void renderCallback(const mjModel *model, mjData *data, mjvScene *scene) override;
-	void lastStageCallback(const mjModel *model, mjData *data) override;
-	void onGeomChanged(const mjModel *model, mjData *data, const int geom_id) override;
+	bool Load(const mjModel *m, mjData *d) override;
+	void Reset() override;
+	void ControlCallback(const mjModel *model, mjData *data) override;
+	void PassiveCallback(const mjModel *model, mjData *data) override;
+	void RenderCallback(const mjModel *model, mjData *data, mjvScene *scene) override;
+	void LastStageCallback(const mjModel *model, mjData *data) override;
+	void OnGeomChanged(const mjModel *model, mjData *data, const int geom_id) override;
 
 	// The env_ptr_ (shared_ptr) in the parent class ensures mjModel and mjData are not destroyed
 	const mjModel *m_;

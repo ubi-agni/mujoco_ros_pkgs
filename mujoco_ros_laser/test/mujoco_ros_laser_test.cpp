@@ -41,8 +41,8 @@
 #include "mujoco_env_wrapper.h"
 
 #include <mujoco_ros_laser/laser.h>
-#include <mujoco_ros/mujoco_env.h>
-#include <mujoco_ros/plugin_utils.h>
+#include <mujoco_ros/mujoco_env.hpp>
+#include <mujoco_ros/ros_one/plugin_utils.hpp>
 #include <string>
 
 using namespace mujoco_ros::sensors::laser;

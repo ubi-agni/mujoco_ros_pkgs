@@ -60,15 +60,15 @@ namespace mujoco_ros::control {
 class DefaultRobotHWSim : public mujoco_ros::control::RobotHWSim
 {
 public:
-	bool initSim(const mjModel *m_ptr, mjData *d_ptr, mujoco_ros::MujocoEnv *mujoco_env_ptr,
+	bool InitSim(const mjModel *m_ptr, mjData *d_ptr, mujoco_ros::MujocoEnv *mujoco_env_ptr,
 	             const std::string &robot_namespace, ros::NodeHandle model_nh, const urdf::Model *const urdf_model,
 	             std::vector<transmission_interface::TransmissionInfo> transmissions) override;
 
-	void readSim(ros::Time time, ros::Duration period) override;
+	void ReadSim(ros::Time time, ros::Duration period) override;
 
-	void writeSim(ros::Time time, ros::Duration period) override;
+	void WriteSim(ros::Time time, ros::Duration period) override;
 
-	void eStopActive(const bool Active) override;
+	void EStopActive(const bool Active) override;
 
 protected:
 	// Methods used to control a joint.
@@ -81,14 +81,14 @@ protected:
 		VELOCITY_PID
 	};
 
-	void getJointData(const int &joint_id, double &position, double &velocity, double &effort);
+	void GetJointData(const int &joint_id, double &position, double &velocity, double &effort);
 
 	/**
 	 * Register the limits of the joint specified by joint_name and joint_handle. The limits are
 	 * retrieved from joint_limit_nh. If urdf_model is not NULL, limits are retrieved from it also.
 	 * Return the joints type, lower position limit, upper position limit, and effort limit.
 	 */
-	void registerJointLimits(const std::string &joint_name, const hardware_interface::JointHandle &joint_handle,
+	void RegisterJointLimits(const std::string &joint_name, const hardware_interface::JointHandle &joint_handle,
 	                         const ControlMethod ctrl_method, const ros::NodeHandle &joint_limit_nh,
 	                         const urdf::Model *const urdf_model, int *const joint_type, double *const lower_limit,
 	                         double *const upper_limit, double *const effort_limit);

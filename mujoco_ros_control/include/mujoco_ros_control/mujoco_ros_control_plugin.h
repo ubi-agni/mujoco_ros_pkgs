@@ -48,9 +48,9 @@
 #include <pluginlib/class_loader.h>
 #include <std_msgs/Bool.h>
 
-#include <mujoco_ros/common_types.h>
-#include <mujoco_ros/mujoco_env.h>
-#include <mujoco_ros/plugin_utils.h>
+#include <mujoco_ros/common_types.hpp>
+#include <mujoco_ros/mujoco_env.hpp>
+#include <mujoco_ros/ros_one/plugin_utils.hpp>
 
 #include <mujoco_ros_control/robot_hw_sim.h>
 
@@ -65,21 +65,21 @@ public:
 	~MujocoRosControlPlugin() override;
 
 	// Overload entry point
-	bool load(const mjModel *m, mjData *d) override;
+	bool Load(const mjModel *m, mjData *d) override;
 
 	// Called on reset
-	void reset() override;
+	void Reset() override;
 
 	// Get URDF from parameter server
-	std::string getURDF(const std::string &param_name) const;
+	std::string GetURDF(const std::string &param_name) const;
 
 	// Get transmissions from URDF
-	bool parseTransmissionsFromURDF(const std::string &urdf_string);
+	bool ParseTransmissionsFromURDF(const std::string &urdf_string);
 
-	void controlCallback(const mjModel *model, mjData *data) override;
+	void ControlCallback(const mjModel *model, mjData *data) override;
 
 protected:
-	void eStopCB(const std_msgs::BoolConstPtr &e_stop_active);
+	void EStopCB(const std_msgs::BoolConstPtr &e_stop_active);
 
 	// Interface loader
 	std::unique_ptr<pluginlib::ClassLoader<mujoco_ros::control::RobotHWSim>> robot_hw_sim_loader_;

@@ -47,7 +47,7 @@
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
-#include <mujoco_ros/mujoco_env.h>
+#include <mujoco_ros/mujoco_env.hpp>
 
 namespace mujoco_ros::sensors {
 
@@ -58,7 +58,7 @@ MujocoRosSensorsPlugin::~MujocoRosSensorsPlugin()
 	register_noise_model_server_.shutdown();
 }
 
-bool MujocoRosSensorsPlugin::load(const mjModel *model, mjData *data)
+bool MujocoRosSensorsPlugin::Load(const mjModel *model, mjData *data)
 {
 	ROS_INFO_NAMED("sensors", "Loading sensors plugin ...");
 	if (env_ptr_->settings_.eval_mode) {
@@ -123,16 +123,16 @@ bool MujocoRosSensorsPlugin::load(const mjModel *model, mjData *data)
 	sensors_nh_ = ros::NodeHandle("/" + sensors_namespace);
 
 	noise_dist = std::normal_distribution<double>(0.0, 1.0);
-	initSensors(model, data);
+	InitSensors(model, data);
 	ROS_INFO_NAMED("sensors", "All sensors initialized");
 
 	register_noise_model_server_ = sensors_nh_.advertiseService("sensors/register_noise_models",
-	                                                            &MujocoRosSensorsPlugin::registerNoiseModelsCB, this);
+	                                                            &MujocoRosSensorsPlugin::RegisterNoiseModelsCB, this);
 
 	return true;
 }
 
-bool MujocoRosSensorsPlugin::registerNoiseModelsCB(mujoco_ros_msgs::RegisterSensorNoiseModels::Request &req,
+bool MujocoRosSensorsPlugin::RegisterNoiseModelsCB(mujoco_ros_msgs::RegisterSensorNoiseModels::Request &req,
                                                    mujoco_ros_msgs::RegisterSensorNoiseModels::Response &resp)
 {
 	if (env_ptr_->settings_.eval_mode) {
@@ -184,7 +184,7 @@ bool MujocoRosSensorsPlugin::registerNoiseModelsCB(mujoco_ros_msgs::RegisterSens
 	return true;
 }
 
-void MujocoRosSensorsPlugin::lastStageCallback(const mjModel *model, mjData *data)
+void MujocoRosSensorsPlugin::LastStageCallback(const mjModel *model, mjData *data)
 {
 	std::string sensor_name;
 
@@ -448,7 +448,7 @@ void MujocoRosSensorsPlugin::lastStageCallback(const mjModel *model, mjData *dat
 	}
 }
 
-void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
+void MujocoRosSensorsPlugin::InitSensors(const mjModel *model, mjData *data)
 {
 	std::string sensor_name, site, frame_id;
 	for (int n = 0; n < model->nsensor; n++) {
@@ -497,9 +497,9 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 						                                                                       << frame_id);
 					}
 					config = std::make_unique<SensorConfig>(frame_id);
-					config->registerPub(sensors_nh_.advertise<geometry_msgs::Vector3Stamped>(sensor_name, 1, true));
+					config->RegisterPub(sensors_nh_.advertise<geometry_msgs::Vector3Stamped>(sensor_name, 1, true));
 					if (!env_ptr_->settings_.eval_mode) {
-						config->registerGTPub(
+						config->RegisterGTPub(
 						    sensors_nh_.advertise<geometry_msgs::Vector3Stamped>(sensor_name + "_GT", 1, true));
 					}
 					sensor_map_[sensor_name] = std::move(config);
@@ -509,9 +509,9 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 			case mjSENS_SUBTREELINVEL:
 			case mjSENS_SUBTREEANGMOM:
 				config = std::make_unique<SensorConfig>(frame_id);
-				config->registerPub(sensors_nh_.advertise<geometry_msgs::Vector3Stamped>(sensor_name, 1, true));
+				config->RegisterPub(sensors_nh_.advertise<geometry_msgs::Vector3Stamped>(sensor_name, 1, true));
 				if (!env_ptr_->settings_.eval_mode) {
-					config->registerGTPub(
+					config->RegisterGTPub(
 					    sensors_nh_.advertise<geometry_msgs::Vector3Stamped>(sensor_name + "_GT", 1, true));
 				}
 				sensor_map_[sensor_name] = std::move(config);
@@ -532,9 +532,9 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 							                                      << frame_id);
 						}
 						config = std::make_unique<SensorConfig>(frame_id);
-						config->registerPub(sensors_nh_.advertise<geometry_msgs::PointStamped>(sensor_name, 1, true));
+						config->RegisterPub(sensors_nh_.advertise<geometry_msgs::PointStamped>(sensor_name, 1, true));
 						if (!env_ptr_->settings_.eval_mode) {
-							config->registerGTPub(
+							config->RegisterGTPub(
 							    sensors_nh_.advertise<geometry_msgs::PointStamped>(sensor_name + "_GT", 1, true));
 						}
 						sensor_map_[sensor_name] = std::move(config);
@@ -545,9 +545,9 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 			case mjSENS_BALLQUAT:
 			case mjSENS_FRAMEQUAT:
 				config = std::make_unique<SensorConfig>(frame_id);
-				config->registerPub(sensors_nh_.advertise<geometry_msgs::QuaternionStamped>(sensor_name, 1, true));
+				config->RegisterPub(sensors_nh_.advertise<geometry_msgs::QuaternionStamped>(sensor_name, 1, true));
 				if (!env_ptr_->settings_.eval_mode) {
-					config->registerGTPub(
+					config->RegisterGTPub(
 					    sensors_nh_.advertise<geometry_msgs::QuaternionStamped>(sensor_name + "_GT", 1, true));
 				}
 				sensor_map_[sensor_name] = std::move(config);
@@ -575,9 +575,9 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 			case mjSENS_MAGNETOMETER:
 			case mjSENS_BALLANGVEL:
 				config = std::make_unique<SensorConfig>(frame_id);
-				config->registerPub(sensors_nh_.advertise<geometry_msgs::Vector3Stamped>(sensor_name, 1, true));
+				config->RegisterPub(sensors_nh_.advertise<geometry_msgs::Vector3Stamped>(sensor_name, 1, true));
 				if (!env_ptr_->settings_.eval_mode) {
-					config->registerGTPub(
+					config->RegisterGTPub(
 					    sensors_nh_.advertise<geometry_msgs::Vector3Stamped>(sensor_name + "_GT", 1, true));
 				}
 				sensor_map_[sensor_name] = std::move(config);
@@ -600,9 +600,9 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 			case mjSENS_TENDONLIMITVEL:
 			case mjSENS_TENDONLIMITFRC:
 				config = std::make_unique<SensorConfig>(frame_id);
-				config->registerPub(sensors_nh_.advertise<mujoco_ros_msgs::ScalarStamped>(sensor_name, 1, true));
+				config->RegisterPub(sensors_nh_.advertise<mujoco_ros_msgs::ScalarStamped>(sensor_name, 1, true));
 				if (!env_ptr_->settings_.eval_mode) {
-					config->registerGTPub(
+					config->RegisterGTPub(
 					    sensors_nh_.advertise<mujoco_ros_msgs::ScalarStamped>(sensor_name + "_GT", 1, true));
 				}
 				sensor_map_[sensor_name] = std::move(config);
@@ -617,7 +617,7 @@ void MujocoRosSensorsPlugin::initSensors(const mjModel *model, mjData *data)
 }
 
 // Nothing to do on reset
-void MujocoRosSensorsPlugin::reset() {};
+void MujocoRosSensorsPlugin::Reset(){};
 
 } // namespace mujoco_ros::sensors
 

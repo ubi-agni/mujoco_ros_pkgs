@@ -36,19 +36,26 @@
 
 #include <gtest/gtest.h>
 
+#include <mujoco_ros/ros_version.hpp>
+
+#if MJR_ROS_VERSION == ROS_1
 #include <ros/package.h>
+#include <ros/ros.h>
+#else // MJR_ROS_VERSION == ROS_2
+#include <rclcpp/rclcpp.hpp>
+#endif
 
 #include "mujoco_env_fixture.h"
 #include "test_plugin/test_plugin.h"
 
 #include <mujoco_ros/render_backend.hpp>
 #include <mujoco_ros/mujoco_env.hpp>
-#include <mujoco_ros/plugin_utils.hpp>
 #include <string>
 
 int main(int argc, char **argv)
 {
-	testing::InitGoogleTest(&argc, argv);
+	::testing::InitGoogleTest(&argc, argv);
+#if MJR_ROS_VERSION == ROS_1
 	ros::init(argc, argv, "mujoco_ros_plugin_test");
 
 	// Create spinner to communicate with ROS
@@ -61,35 +68,41 @@ int main(int argc, char **argv)
 	spinner.stop();
 	ros::shutdown();
 	return ret;
+#else // MJR_ROS_VERSION == ROS_2
+	rclcpp::init(argc, argv);
+	int ret = RUN_ALL_TESTS();
+	rclcpp::shutdown();
+	return ret;
+#endif
 }
 
 class LoadedPluginFixture : public ::testing::Test
 {
 protected:
-	std::unique_ptr<ros::NodeHandle> nh;
+	std::unique_ptr<testing::TestNodeHandle> nh;
 	TestPlugin *test_plugin = nullptr;
 	MujocoEnvTestWrapper *env_ptr;
 
 	void SetUp() override
 	{
-		nh = std::make_unique<ros::NodeHandle>("~");
+		nh = std::make_unique<testing::TestNodeHandle>("~");
 		nh->setParam("unpause", false);
 		nh->setParam("no_render", true);
 		nh->setParam("headless", true);
 		nh->setParam("use_sim_time", true);
 
 		env_ptr              = new MujocoEnvTestWrapper();
-		std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
-		env_ptr->startWithXML(xml_path);
+		std::string xml_path = testing::get_test_model_path("empty_world.xml");
+		env_ptr->StartWithXML(xml_path);
 
 		float seconds = 0;
-		while (env_ptr->getOperationalStatus() != 0 && seconds < 2) {
+		while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			seconds += 0.001;
 		}
 		EXPECT_LT(seconds, 2) << "Env loading ran into 2 seconds timeout!";
 
-		auto &plugins = env_ptr->getPlugins();
+		auto &plugins = env_ptr->GetPlugins();
 		for (const auto &p : plugins) {
 			test_plugin = dynamic_cast<TestPlugin *>(p.get());
 			if (test_plugin != nullptr) {
@@ -103,7 +116,7 @@ protected:
 	void TearDown() override
 	{
 		// cleanup all parameters
-		ros::param::del(nh->getNamespace());
+		testing::delete_namespace_params(nh->getNamespace());
 		test_plugin = nullptr;
 		env_ptr->shutdown();
 		delete env_ptr;
@@ -130,6 +143,7 @@ TEST_F(LoadedPluginFixture, PassiveCallback)
 	EXPECT_TRUE(test_plugin->ran_passive_cb.load());
 }
 
+#if MJR_ROS_VERSION == ROS_1
 #if RENDER_BACKEND == GLFW_BACKEND || RENDER_BACKEND == EGL_BACKEND || RENDER_BACKEND == OSMESA_BACKEND
 TEST_F(BaseEnvFixture, RenderCallback)
 {
@@ -139,14 +153,14 @@ TEST_F(BaseEnvFixture, RenderCallback)
 	nh->setParam("cam_config/test_cam/width", 7);
 	nh->setParam("cam_config/test_cam/height", 4);
 
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
+	std::string xml_path = testing::get_test_model_path("camera_world.xml");
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 
 	// NOP subscriber to trigger render callback
 	ros::Subscriber rgb_sub = nh->subscribe<sensor_msgs::Image>("cameras/test_cam/rgb/image_raw", 1,
 	                                                            [&](const sensor_msgs::Image::ConstPtr & /*msg*/) {});
 
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 
 	EXPECT_TRUE(env_ptr->step());
 
@@ -154,7 +168,7 @@ TEST_F(BaseEnvFixture, RenderCallback)
 	EXPECT_TRUE(offscreen->cams.size() == 1);
 
 	TestPlugin *test_plugin = nullptr;
-	auto &plugins           = env_ptr->getPlugins();
+	auto &plugins           = env_ptr->GetPlugins();
 	for (const auto &p : plugins) {
 		test_plugin = dynamic_cast<TestPlugin *>(p.get());
 		if (test_plugin != nullptr) {
@@ -183,7 +197,7 @@ TEST_F(BaseEnvFixture, RenderCallback_NoRender)
 	nh->setParam("unpause", false);
 	nh->setParam("headless", true);
 
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/camera_world.xml";
+	std::string xml_path = testing::get_test_model_path("camera_world.xml");
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 
 	// NOP subscriber to trigger render callback
@@ -191,11 +205,11 @@ TEST_F(BaseEnvFixture, RenderCallback_NoRender)
 	    "cameras/test_cam/rgb/image_raw", 1,
 	    [&](const sensor_msgs::Image::ConstPtr & /*msg*/) { ROS_ERROR("Got image!"); });
 
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 	EXPECT_TRUE(env_ptr->step(5));
 
 	TestPlugin *test_plugin = nullptr;
-	auto &plugins           = env_ptr->getPlugins();
+	auto &plugins           = env_ptr->GetPlugins();
 	for (const auto &p : plugins) {
 		test_plugin = dynamic_cast<TestPlugin *>(p.get());
 		if (test_plugin != nullptr) {
@@ -214,6 +228,7 @@ TEST_F(BaseEnvFixture, RenderCallback_NoRender)
 	env_ptr->shutdown();
 }
 #endif
+#endif // MJR_ROS_VERSION == ROS_1
 
 TEST_F(LoadedPluginFixture, LastCallback)
 {
@@ -225,7 +240,7 @@ TEST_F(LoadedPluginFixture, LastCallback)
 TEST_F(LoadedPluginFixture, OnGeomChangedCallback)
 {
 	EXPECT_FALSE(test_plugin->ran_on_geom_changed_cb.load());
-	env_ptr->notifyGeomChange();
+	env_ptr->NotifyGeomChange();
 	EXPECT_TRUE(test_plugin->ran_on_geom_changed_cb.load());
 }
 
@@ -233,19 +248,19 @@ TEST_F(BaseEnvFixture, LoadPlugin)
 {
 	nh->setParam("no_render", true);
 	nh->setParam("unpause", false);
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 
 	float seconds = 0;
-	while (env_ptr->getOperationalStatus() != 0 && seconds < 2) {
+	while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		seconds += 0.001;
 	}
 	EXPECT_LT(seconds, 2) << "Env loading ran into 2 seconds timeout!";
-	EXPECT_EQ(env_ptr->getPlugins().size(), 1) << "Env should have 1 plugin registered!";
-	EXPECT_EQ(env_ptr->getNumCBReadyPlugins(), 1) << "Env should have 1 plugin loaded!";
+	EXPECT_EQ(env_ptr->GetPlugins().size(), 1) << "Env should have 1 plugin registered!";
+	EXPECT_EQ(env_ptr->GetNumCBReadyPlugins(), 1) << "Env should have 1 plugin loaded!";
 
 	env_ptr->shutdown();
 }
@@ -286,25 +301,25 @@ TEST_F(BaseEnvFixture, FailedLoad)
 	nh->setParam("unpause", false);
 	nh->setParam("should_fail", true);
 
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 
 	float seconds = 0;
-	while (env_ptr->getOperationalStatus() != 0 && seconds < 2) {
+	while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		seconds += 0.001;
 	}
 	EXPECT_LT(seconds, 2) << "Env loading ran into 2 seconds timeout!";
 
-	EXPECT_EQ(env_ptr->getPlugins().size(), 1) << "Env should have 1 plugin registered!";
-	EXPECT_EQ(env_ptr->getNumCBReadyPlugins(), 0) << "Env should have 0 plugins loaded!";
+	EXPECT_EQ(env_ptr->GetPlugins().size(), 1) << "Env should have 1 plugin registered!";
+	EXPECT_EQ(env_ptr->GetNumCBReadyPlugins(), 0) << "Env should have 0 plugins loaded!";
 
 	{
 		TestPlugin *test_plugin = nullptr;
 
-		auto &plugins = env_ptr->getPlugins();
+		auto &plugins = env_ptr->GetPlugins();
 		for (const auto &p : plugins) {
 			test_plugin = dynamic_cast<TestPlugin *>(p.get());
 			if (test_plugin != nullptr) {
@@ -328,25 +343,25 @@ TEST_F(BaseEnvFixture, FailedLoadRecoverReload)
 {
 	nh->setParam("should_fail", true);
 
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 
 	float seconds = 0;
-	while (env_ptr->getOperationalStatus() != 0 && seconds < 2) {
+	while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		seconds += 0.001;
 	}
 	EXPECT_LT(seconds, 2) << "Env loading ran into 2 seconds timeout!";
 
-	EXPECT_EQ(env_ptr->getPlugins().size(), 1) << "Env should have 1 plugin registered!";
-	EXPECT_EQ(env_ptr->getNumCBReadyPlugins(), 0) << "Env should have 0 plugins loaded!";
+	EXPECT_EQ(env_ptr->GetPlugins().size(), 1) << "Env should have 1 plugin registered!";
+	EXPECT_EQ(env_ptr->GetNumCBReadyPlugins(), 0) << "Env should have 0 plugins loaded!";
 
 	{
 		TestPlugin *test_plugin = nullptr;
 
-		auto &plugins = env_ptr->getPlugins();
+		auto &plugins = env_ptr->GetPlugins();
 		for (const auto &p : plugins) {
 			test_plugin = dynamic_cast<TestPlugin *>(p.get());
 			if (test_plugin != nullptr) {
@@ -360,13 +375,13 @@ TEST_F(BaseEnvFixture, FailedLoadRecoverReload)
 
 		env_ptr->settings_.load_request = 2;
 		float seconds                   = 0;
-		while (env_ptr->getOperationalStatus() != 0 && seconds < 2) {
+		while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			seconds += 0.001;
 		}
 		EXPECT_LT(seconds, 2) << "Env reset ran into 2 seconds timeout!";
-		EXPECT_EQ(env_ptr->getPlugins().size(), 1) << "Env should have 1 plugin registered!";
-		EXPECT_EQ(env_ptr->getNumCBReadyPlugins(), 1) << "Env should have 1 plugin loaded!";
+		EXPECT_EQ(env_ptr->GetPlugins().size(), 1) << "Env should have 1 plugin registered!";
+		EXPECT_EQ(env_ptr->GetNumCBReadyPlugins(), 1) << "Env should have 1 plugin loaded!";
 	}
 
 	env_ptr->shutdown();
@@ -377,25 +392,25 @@ TEST_F(BaseEnvFixture, FailedLoadReset)
 	nh->setParam("should_fail", true);
 	nh->setParam("unpause", false);
 
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
 
-	env_ptr->startWithXML(xml_path);
+	env_ptr->StartWithXML(xml_path);
 
 	float seconds = 0;
-	while (env_ptr->getOperationalStatus() != 0 && seconds < 2) {
+	while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		seconds += 0.001;
 	}
 	EXPECT_LT(seconds, 2) << "Env loading ran into 2 seconds timeout!";
 
-	EXPECT_EQ(env_ptr->getPlugins().size(), 1) << "Env should have 1 plugin registered!";
-	EXPECT_EQ(env_ptr->getNumCBReadyPlugins(), 0) << "Env should have 0 plugins loaded!";
+	EXPECT_EQ(env_ptr->GetPlugins().size(), 1) << "Env should have 1 plugin registered!";
+	EXPECT_EQ(env_ptr->GetNumCBReadyPlugins(), 0) << "Env should have 0 plugins loaded!";
 
 	{
 		TestPlugin *test_plugin = nullptr;
 
-		auto &plugins = env_ptr->getPlugins();
+		auto &plugins = env_ptr->GetPlugins();
 		for (const auto &p : plugins) {
 			test_plugin = dynamic_cast<TestPlugin *>(p.get());
 			if (test_plugin != nullptr) {
@@ -424,10 +439,13 @@ TEST_F(LoadedPluginFixture, PluginStats_InitialPaused)
 {
 	EXPECT_EQ(env_ptr->settings_.run, 0) << "Env should be paused!";
 
+// TODO: once this service is added to ROS 2, refactor to hybrid test fixtures, too
+// Tests the GetPluginStats service
+#if MJR_ROS_VERSION == ROS_1
 	mujoco_ros_msgs::GetPluginStats srv;
-	EXPECT_TRUE(ros::service::exists(env_ptr->getHandleNamespace() + "/get_plugin_stats", true))
+	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/get_plugin_stats", true))
 	    << "Plugin stats service should exist!";
-	EXPECT_TRUE(ros::service::call(env_ptr->getHandleNamespace() + "/get_plugin_stats", srv))
+	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_plugin_stats", srv))
 	    << "Get plugin stats service call failed!";
 	EXPECT_EQ(srv.response.stats.size(), 1) << "Should have 1 plugin stats!";
 	EXPECT_EQ(srv.response.stats[0].plugin_type, "mujoco_ros/TestPlugin") << "Should be TestPlugin!";
@@ -438,6 +456,23 @@ TEST_F(LoadedPluginFixture, PluginStats_InitialPaused)
 	EXPECT_NEAR(srv.response.stats[0].ema_steptime_passive, 0, 1e-7) << "Passive time should be unset!";
 	EXPECT_NEAR(srv.response.stats[0].ema_steptime_render, 0, 1e-8) << "Render time should be unset!";
 	EXPECT_NEAR(srv.response.stats[0].ema_steptime_last_stage, 0, 1e-8) << "Last stage time should be unset!";
+#endif
+
+	// Tests the non-service version of GetPluginStats
+	std::vector<std::string> plugin_names, types;
+	std::vector<double> load_times, reset_times, ema_steptimes_control, ema_steptimes_passive, ema_steptimes_render,
+	    ema_steptimes_last_stage;
+	env_ptr->GetPluginStats(plugin_names, types, load_times, reset_times, ema_steptimes_control, ema_steptimes_passive,
+	                        ema_steptimes_render, ema_steptimes_last_stage);
+	EXPECT_EQ(plugin_names.size(), 1) << "Should have 1 plugin stats!";
+	EXPECT_EQ(types[0], "mujoco_ros/TestPlugin") << "Should be TestPlugin!";
+	EXPECT_GT(load_times[0], -1) << "Load time should be set!";
+	EXPECT_EQ(reset_times[0], -1) << "Reset time should be unset!";
+	// passive and control are also run when paused
+	EXPECT_NEAR(ema_steptimes_control[0], 0, 1e-7) << "Control time should be unset!";
+	EXPECT_NEAR(ema_steptimes_passive[0], 0, 1e-7) << "Passive time should be unset!";
+	EXPECT_NEAR(ema_steptimes_render[0], 0, 1e-8) << "Render time should be unset!";
+	EXPECT_NEAR(ema_steptimes_last_stage[0], 0, 1e-8) << "Last stage time should be unset!";
 }
 
 TEST_F(LoadedPluginFixture, PluginStats_SetTimesOnStep)
@@ -448,10 +483,13 @@ TEST_F(LoadedPluginFixture, PluginStats_SetTimesOnStep)
 	// sleep for a bit to ensure the plugin callbacks have been called
 	std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
+// TODO: once this service is added to ROS 2, refactor to hybrid test fixtures, too
+// Tests the GetPluginStats service
+#if MJR_ROS_VERSION == ROS_1
 	mujoco_ros_msgs::GetPluginStats srv;
-	EXPECT_TRUE(ros::service::exists(env_ptr->getHandleNamespace() + "/get_plugin_stats", true))
+	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/get_plugin_stats", true))
 	    << "Plugin stats service should exist!";
-	EXPECT_TRUE(ros::service::call(env_ptr->getHandleNamespace() + "/get_plugin_stats", srv))
+	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_plugin_stats", srv))
 	    << "Get plugin stats service call failed!";
 
 	EXPECT_EQ(srv.response.stats.size(), 1) << "Should have 1 plugin stats!";
@@ -463,6 +501,23 @@ TEST_F(LoadedPluginFixture, PluginStats_SetTimesOnStep)
 	// EXPECT_GT(srv.response.stats[0].ema_steptime_render, -1) << "Render time should be unset!"; // TODO: add when
 	// rendering is enabled in tests
 	EXPECT_GT(srv.response.stats[0].ema_steptime_last_stage, -1) << "Last stage time should be unset!";
+#endif
+
+	// Tests the non-service version of GetPluginStats
+	std::vector<std::string> plugin_names, types;
+	std::vector<double> load_times, reset_times, ema_steptimes_control, ema_steptimes_passive, ema_steptimes_render,
+	    ema_steptimes_last_stage;
+	env_ptr->GetPluginStats(plugin_names, types, load_times, reset_times, ema_steptimes_control, ema_steptimes_passive,
+	                        ema_steptimes_render, ema_steptimes_last_stage);
+	EXPECT_EQ(plugin_names.size(), 1) << "Should have 1 plugin stats!";
+	EXPECT_EQ(types[0], "mujoco_ros/TestPlugin") << "Should be TestPlugin!";
+	EXPECT_GT(load_times[0], -1) << "Load time should be set!";
+	EXPECT_EQ(reset_times[0], -1) << "Reset time should be unset!";
+	EXPECT_GT(ema_steptimes_control[0], -1) << "Control time should be unset!";
+	EXPECT_GT(ema_steptimes_passive[0], -1) << "Passive time should be unset!";
+	// EXPECT_GT(ema_steptimes_render[0], -1) << "Render time should be unset!"; // TODO: add when rendering is enabled
+	// in tests
+	EXPECT_GT(ema_steptimes_last_stage[0], -1) << "Last stage time should be unset!";
 }
 
 TEST_F(LoadedPluginFixture, PluginStats_ResetTimeOnReset)
@@ -475,13 +530,27 @@ TEST_F(LoadedPluginFixture, PluginStats_ResetTimeOnReset)
 	}
 	EXPECT_LT(seconds, 2) << "Env reset ran into 2 seconds timeout!";
 
+// TODO: once this service is added to ROS 2, refactor to hybrid test fixtures, too
+// Tests the GetPluginStats service
+#if MJR_ROS_VERSION == ROS_1
 	mujoco_ros_msgs::GetPluginStats srv;
-	EXPECT_TRUE(ros::service::exists(env_ptr->getHandleNamespace() + "/get_plugin_stats", true))
+	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/get_plugin_stats", true))
 	    << "Plugin stats service should exist!";
-	EXPECT_TRUE(ros::service::call(env_ptr->getHandleNamespace() + "/get_plugin_stats", srv))
+	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_plugin_stats", srv))
 	    << "Get plugin stats service call failed!";
 
 	EXPECT_EQ(srv.response.stats.size(), 1) << "Should have 1 plugin stats!";
 	EXPECT_EQ(srv.response.stats[0].plugin_type, "mujoco_ros/TestPlugin") << "Should be TestPlugin!";
 	EXPECT_GT(srv.response.stats[0].reset_time, -1) << "Reset time should be unset!";
+#endif
+
+	// Tests the non-service version of GetPluginStats
+	std::vector<std::string> plugin_names, types;
+	std::vector<double> load_times, reset_times, ema_steptimes_control, ema_steptimes_passive, ema_steptimes_render,
+	    ema_steptimes_last_stage;
+	env_ptr->GetPluginStats(plugin_names, types, load_times, reset_times, ema_steptimes_control, ema_steptimes_passive,
+	                        ema_steptimes_render, ema_steptimes_last_stage);
+	EXPECT_EQ(plugin_names.size(), 1) << "Should have 1 plugin stats!";
+	EXPECT_EQ(types[0], "mujoco_ros/TestPlugin") << "Should be TestPlugin!";
+	EXPECT_GT(reset_times[0], -1) << "Reset time should be unset!";
 }

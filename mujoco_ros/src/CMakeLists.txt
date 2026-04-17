@@ -145,8 +145,13 @@ target_link_libraries(mujoco_node
 )
 
 if (ROS_VERSION EQUAL "2")
+  target_link_libraries(${PROJECT_NAME}
+    PRIVATE
+      Boost::program_options
+  )
+
   target_link_libraries(mujoco_node
-    PUBLIC
+    PRIVATE
       Boost::program_options
   )
 

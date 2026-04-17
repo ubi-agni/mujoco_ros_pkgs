@@ -36,9 +36,9 @@
 
 #pragma once
 
-#include <mujoco_ros/plugin_utils.h>
-#include <mujoco_ros/common_types.h>
-#include <mujoco_ros/mujoco_env.h>
+#include <mujoco_ros/ros_one/plugin_utils.hpp>
+#include <mujoco_ros/common_types.hpp>
+#include <mujoco_ros/mujoco_env.hpp>
 
 #include <mujoco_ros_sensors/mujoco_sensor_handler_plugin.h>
 
@@ -114,11 +114,11 @@ class LaserPlugin : public MujocoPlugin
 public:
 	~LaserPlugin() override;
 
-	bool load(const mjModel *m, mjData *d) override;
-	void reset() override;
+	bool Load(const mjModel *m, mjData *d) override;
+	void Reset() override;
 
-	void renderCallback(const mjModel *model, mjData *data, mjvScene *scene) override;
-	void lastStageCallback(const mjModel *model, mjData *data) override;
+	void RenderCallback(const mjModel *model, mjData *data, mjvScene *scene) override;
+	void LastStageCallback(const mjModel *model, mjData *data) override;
 
 private:
 	// The env_ptr_ (shared_ptr) in the parent class ensures mjModel and mjData are not destroyed
@@ -134,12 +134,12 @@ private:
 	ros::Time last_update_time_;
 
 	// Initialize the laser sensor configuration
-	bool initSensor(const mjModel *model, const XmlRpc::XmlRpcValue &config);
+	bool InitSensor(const mjModel *model, const XmlRpc::XmlRpcValue &config);
 
 	// Laser computation
-	void computeLasers(const mjModel *model, mjData *data);
+	void ComputeLasers(const mjModel *model, mjData *data);
 	// Multi-threaded computation of laser rays
-	void computeLasersMultithreaded(const mjModel *model, mjData *data);
+	void ComputeLasersMultithreaded(const mjModel *model, mjData *data);
 
 	// Laser visualization geoms
 	mjvGeom *laser_geoms_;

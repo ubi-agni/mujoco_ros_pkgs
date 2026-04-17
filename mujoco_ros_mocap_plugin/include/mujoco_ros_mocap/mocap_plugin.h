@@ -40,10 +40,10 @@
 
 #include <string>
 
-#include <mujoco_ros/plugin_utils.h>
+#include <mujoco_ros/ros_one/plugin_utils.hpp>
 
-#include <mujoco_ros/common_types.h>
-#include <mujoco_ros/mujoco_env.h>
+#include <mujoco_ros/common_types.hpp>
+#include <mujoco_ros/mujoco_env.hpp>
 
 #include <mujoco_ros_msgs/MocapState.h>
 #include <mujoco_ros_msgs/SetMocapState.h>
@@ -56,15 +56,15 @@ public:
 	~MocapPlugin() override = default;
 
 	// Overload entry point
-	bool load(const mjModel *m, mjData *d) override;
+	bool Load(const mjModel *m, mjData *d) override;
 	// Called on reset
-	void reset() override;
+	void Reset() override;
 
-	void controlCallback(const mjModel *m, mjData *d) override;
+	void ControlCallback(const mjModel *m, mjData *d) override;
 
 private:
-	void mocapStateCallback(const mujoco_ros_msgs::MocapState::ConstPtr &msg);
-	bool mocapServiceCallback(mujoco_ros_msgs::SetMocapState::Request &req,
+	void MocapStateCallback(const mujoco_ros_msgs::MocapState::ConstPtr &msg);
+	bool MocapServiceCallback(mujoco_ros_msgs::SetMocapState::Request &req,
 	                          mujoco_ros_msgs::SetMocapState::Response &resp);
 
 	const mjModel *m_;
