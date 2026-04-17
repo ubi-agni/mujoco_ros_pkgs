@@ -147,7 +147,8 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 
 #else // MJR_ROS_VERSION == ROS_2
 
-MujocoEnv::MujocoEnv(rclcpp::Executor::SharedPtr executor, const std::string &admin_hash /* = std::string()*/)
+MujocoEnv::MujocoEnv(rclcpp::Executor::SharedPtr executor, const std::string &admin_hash /* = std::string()*/,
+                     bool auto_configure /* = true */)
     : rclcpp::Node("mujoco_server", "", rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true))
     , executor_(executor)
 {
@@ -160,7 +161,9 @@ MujocoEnv::MujocoEnv(rclcpp::Executor::SharedPtr executor, const std::string &ad
 
 	ros_api_ = std::make_unique<RosAPI>(this);
 	plugin_utils::InitPluginLoader();
-	Configure();
+	if (auto_configure) {
+		Configure();
+	}
 }
 
 void MujocoEnv::AddNodeToExecutor(rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node)

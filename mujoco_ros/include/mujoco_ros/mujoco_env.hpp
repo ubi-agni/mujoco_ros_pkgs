@@ -168,7 +168,8 @@ public:
 	 * @brief Construct a new Mujoco Env object.
 	 *
 	 */
-	MujocoEnv(rclcpp::Executor::SharedPtr executor, const std::string &admin_hash = std::string());
+	MujocoEnv(rclcpp::Executor::SharedPtr executor, const std::string &admin_hash = std::string(),
+	          bool auto_configure = true);
 
 	/**
 	 * @brief Add a node to the executor of this server instance.
@@ -328,6 +329,7 @@ public:
 	                float &rt_setting);
 	bool SetRealTimeFactor(const float &rt_factor, const std::string &admin_hash = std::string(),
 	                       char *status_message = nullptr, const int status_sz = 0);
+	// TODO: at some point, replace vectors with a data structure PluginStat
 	int GetPluginStats(std::vector<std::string> &plugin_names, std::vector<std::string> &types,
 	                   std::vector<double> &load_times, std::vector<double> &reset_times,
 	                   std::vector<double> &ema_steptimes_control, std::vector<double> &ema_steptimes_passive,
