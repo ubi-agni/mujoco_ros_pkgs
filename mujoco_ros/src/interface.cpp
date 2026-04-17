@@ -70,6 +70,11 @@ int MujocoEnv::GetOperationalStatus()
 
 bool MujocoEnv::Step(int num_steps /* = 1*/, bool blocking /* = true*/)
 {
+	if (settings_.exit_request.load()) {
+		MJR_WARN("Step requested after shutdown has been requested. Ignoring step request.");
+		return false;
+	}
+
 	if (!model_) {
 		MJR_ERROR("No model loaded. Cannot step");
 		return false;
