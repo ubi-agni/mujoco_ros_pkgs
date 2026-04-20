@@ -4,6 +4,9 @@
     MujocoPlugins.names:
       - test_plugin
     MujocoPlugins.test_plugin.type: mujoco_ros/TestPlugin
-    MujocoPlugins.test_plugin.example_param: 0.0
-    MujocoPlugins.test_plugin.nested_array_param_1.nested_array_param_2: true
-    MujocoPlugins.test_plugin.nested_struct_param_1.nested_struct_param_2: true
+
+  test_plugin:
+    ros__parameters:
+      example_param: 0.0
+      nested_array_param_1.nested_array_param_2: true
+      nested_struct_param_1.nested_struct_param_2: true

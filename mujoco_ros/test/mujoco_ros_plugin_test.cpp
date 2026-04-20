@@ -372,6 +372,9 @@ TEST_F(BaseEnvFixture, FailedLoadRecoverReload)
 		ASSERT_NE(test_plugin, nullptr) << "Dummy plugin was not loaded!";
 
 		nh->setParam("should_fail", false);
+#if MJR_ROS_VERSION == ROS_2
+		env_ptr->set_parameters({ rclcpp::Parameter("should_fail", false) });
+#endif
 
 		env_ptr->settings_.load_request = 2;
 		float seconds                   = 0;

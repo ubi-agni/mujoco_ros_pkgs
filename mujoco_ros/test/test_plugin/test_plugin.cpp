@@ -119,6 +119,8 @@ bool TestPlugin::Load(const mjModel *m, mjData *d)
 #else // MJR_ROS_VERSION == ROS_2
 	if (get_node()->has_parameter("should_fail")) {
 		tmp_fail = get_node()->get_parameter("should_fail").as_bool();
+	} else if (env_ptr_ != nullptr && env_ptr_->has_parameter("should_fail")) {
+		tmp_fail = env_ptr_->get_parameter("should_fail").as_bool();
 	}
 #endif
 
