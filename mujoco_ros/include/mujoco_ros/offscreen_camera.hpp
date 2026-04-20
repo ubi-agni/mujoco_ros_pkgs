@@ -41,6 +41,7 @@
 #include <mujoco_ros/ros_version.hpp>
 
 #include <mujoco_ros/common_types.hpp>
+#include <mujoco_ros/logging.hpp>
 #include <mujoco_ros/offscreen_camera.hpp>
 
 #if MJR_ROS_VERSION == ROS_1
