@@ -65,7 +65,7 @@ namespace roscpp = ros;
 #include <geometry_msgs/msg/transform_stamped.hpp>
 using TransformStamped = geometry_msgs::msg::TransformStamped;
 
-namespace roscpp = rclcpp;
+namespace roscpp                  = rclcpp;
 #endif
 
 #if RENDER_BACKEND == GLFW_BACKEND
@@ -119,8 +119,15 @@ const char *MujocoEnv::Diverged(int disableflags, const mjData *d)
 	return nullptr;
 }
 
-void MujocoEnv::RunRenderCbs(mjvScene * /*scene*/) {}
+void MujocoEnv::RunRenderCbs(mjvScene *scene)
+{
+	for (const auto &plugin : this->cb_ready_plugins_) {
+		plugin->WrappedRenderCallback(this->model_.get(), this->data_.get(), scene);
+	}
+}
+
 void UpdateModelFlags(const mjOption *) {}
+
 void MujocoEnv::RunLastStageCbs()
 {
 	for (const auto &plugin : this->cb_ready_plugins_) {
