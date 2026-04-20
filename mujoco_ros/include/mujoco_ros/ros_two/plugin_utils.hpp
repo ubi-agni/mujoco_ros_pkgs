@@ -79,10 +79,12 @@ public:
 		// ns.append("/"+name);
 		// RCLCPP_ERROR_STREAM(rclcpp::get_logger("MujocoPlugin"), "Namespace: " << ns << "(" << env_ptr->get_name() << "
 		// + /" << name << ")");
-		auto options          = rclcpp::NodeOptions();
-		std::string remap_str = name + ":__node:=" + name;
-		options.arguments({ "--ros-args", "--remap", remap_str });
-		node_ = std::make_shared<rclcpp_lifecycle::LifecycleNode>(name, options, false);
+		auto options = rclcpp::NodeOptions();
+		options.allow_undeclared_parameters(true);
+		options.automatically_declare_parameters_from_overrides(true);
+
+		const std::string plugin_namespace = std::string("/") + env_ptr_->get_name();
+		node_ = std::make_shared<rclcpp_lifecycle::LifecycleNode>(name, plugin_namespace, options, false);
 
 		node_->register_on_configure(std::bind(&MujocoPlugin::on_configure, this, std::placeholders::_1));
 		node_->register_on_cleanup(std::bind(&MujocoPlugin::on_cleanup, this, std::placeholders::_1));
@@ -240,7 +242,7 @@ public:
 	 * @param[in] data pointer to mjData.
 	 * @param[in] geom_id id of the geom thas has been changed.
 	 */
-	virtual void OnGeomChanged(const mjModel * /*model*/, mjData * /*data*/, const int /*geom_id*/) {};
+	virtual void OnGeomChanged(const mjModel * /*model*/, mjData * /*data*/, const int /*geom_id*/){};
 
 protected:
 	/**
