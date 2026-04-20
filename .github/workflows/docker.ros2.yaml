@@ -8,23 +8,23 @@ on:
   push:
     branches:
       - wip-ros-humble
-      - fix-pr-history
+      - hybrid-devel
     paths:
       - '**/package.xml'
       - .docker
       - .dockignore
-      - .github/workflows/docker.yml
-      - .github/workflows/*.rosinstall
+      - .github/workflows/docker.ros2.yaml
+      - .github/workflows/*.ros2.rosinstall
   pull_request:
     branches:
       - wip-ros-humble
-      - fix-pr-history
+      - hybrid-devel
     paths:
       - '**/package.xml'
       - .docker
       - .dockignore
-      - .github/workflows/docker.yml
-      - .github/workflows/*.rosinstall
+      - .github/workflows/docker.ros2.yaml
+      - .github/workflows/*.ros2.rosinstall
 
 
 concurrency: # cancel any previous workflow(s) from the same PR or branch/tag

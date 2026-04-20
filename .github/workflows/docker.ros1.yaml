@@ -8,12 +8,23 @@ on:
   push:
     branches:
       - noetic-devel
+      - hybrid-devel
     paths:
       - '**/package.xml'
       - .docker
       - .dockignore
-      - .github/workflows/docker.yml
-      - .github/workflows/*.rosinstall
+      - .github/workflows/docker.ros1.yaml
+      - .github/workflows/*.ros1.rosinstall
+  pull_request:
+    branches:
+      - noetic-devel
+      - hybrid-devel
+    paths:
+      - '**/package.xml'
+      - .docker
+      - .dockerignore
+      - .github/workflows/docker.ros1.yaml
+      - .github/workflows/*.ros1.rosinstall
 
 concurrency: # cancel any previous workflow(s) from the same PR or branch/tag
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
