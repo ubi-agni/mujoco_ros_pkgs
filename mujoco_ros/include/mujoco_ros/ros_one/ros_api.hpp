@@ -81,6 +81,9 @@ public:
 	void PublishSimTime(mjtNum sim_time);
 	void UpdateDynamicParams();
 
+	// Expose param server for testing
+	dynamic_reconfigure::Server<mujoco_ros::SimParamsConfig> *GetParamServerPtr();
+
 private:
 	std::shared_ptr<ros::NodeHandle> nh_;
 	MujocoEnvPtr env_ptr_;

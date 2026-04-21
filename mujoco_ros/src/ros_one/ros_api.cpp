@@ -181,6 +181,11 @@ void RosAPI::UpdateDynamicParams()
 	param_server_->updateConfig(config);
 }
 
+dynamic_reconfigure::Server<mujoco_ros::SimParamsConfig> *RosAPI::GetParamServerPtr()
+{
+	return param_server_.get();
+}
+
 void RosAPI::DynparamCallback(mujoco_ros::SimParamsConfig &config, uint32_t level)
 {
 	boost::recursive_mutex::scoped_lock lk(sim_params_mutex_);
@@ -409,6 +414,7 @@ bool RosAPI::GetBodyStateCB(mujoco_ros_msgs::GetBodyState::Request &req, mujoco_
 
 	res.status_message = std::string(status_msg);
 
+	res.state.name = body_name;
 	res.state.mass = static_cast<decltype(res.state.mass)>(*mass);
 
 	res.state.pose.header             = std_msgs::Header();
@@ -454,10 +460,10 @@ bool RosAPI::SetGeomPropertiesCB(mujoco_ros_msgs::SetGeomProperties::Request &re
 {
 	char status_msg[MujocoEnv::kErrorLength] = { 0 };
 	res.success                              = env_ptr_->SetGeomProperties(
-       req.properties.name, req.properties.body_mass, req.properties.friction_slide, req.properties.friction_spin,
-       req.properties.friction_roll, req.properties.size_0, req.properties.size_1, req.properties.size_2,
-       req.properties.type.value, req.set_mass, req.set_friction, req.set_type, req.set_size, req.admin_hash,
-       status_msg, MujocoEnv::kErrorLength);
+	                                 req.properties.name, req.properties.body_mass, req.properties.friction_slide, req.properties.friction_spin,
+	                                 req.properties.friction_roll, req.properties.size_0, req.properties.size_1, req.properties.size_2,
+	                                 req.properties.type.value, req.set_mass, req.set_friction, req.set_type, req.set_size, req.admin_hash,
+	                                 status_msg, MujocoEnv::kErrorLength);
 	res.status_message = std::string(status_msg);
 	return true;
 }
@@ -518,8 +524,16 @@ bool RosAPI::SetEqualityConstraintParameters(const mujoco_ros_msgs::EqualityCons
 	relpose[5] = parameters.relpose.orientation.y;
 	relpose[6] = parameters.relpose.orientation.z;
 
-	mju_copy(polycoef, parameters.polycoef.data(), mjNEQDATA);
+	mju_copy(polycoef, parameters.polycoef.data(), parameters.polycoef.size());
 	torquescale[0] = parameters.torquescale;
+
+	solver_params[0] = parameters.solver_parameters.dmin;
+	solver_params[1] = parameters.solver_parameters.dmax;
+	solver_params[2] = parameters.solver_parameters.width;
+	solver_params[3] = parameters.solver_parameters.midpoint;
+	solver_params[4] = parameters.solver_parameters.power;
+	solver_params[5] = parameters.solver_parameters.timeconst;
+	solver_params[6] = parameters.solver_parameters.dampratio;
 
 	return env_ptr_->SetEqualityConstraintParameters(
 	    parameters.name, parameters.type.value, solver_params, parameters.active, parameters.element1,
@@ -554,6 +568,10 @@ bool RosAPI::SetEqualityConstraintParametersArrayCB(mujoco_ros_msgs::SetEquality
 		status_message += "Could not set any constraints";
 		res.status_message = status_message;
 		res.success        = false;
+	} else if (!failed_any && !succeeded_any) {
+		status_message += "No constraints provided in request";
+		res.status_message = status_message;
+		res.success        = false;
 	}
 
 	return true;
@@ -579,6 +597,32 @@ bool RosAPI::GetEqualityConstraintParameters(mujoco_ros_msgs::EqualityConstraint
 
 	parameters.type.value = static_cast<decltype(parameters.type.value)>(type);
 	parameters.active     = active;
+
+	parameters.anchor.x = anchor[0];
+	parameters.anchor.y = anchor[1];
+	parameters.anchor.z = anchor[2];
+
+	parameters.relpose.position.x    = relpose[0];
+	parameters.relpose.position.y    = relpose[1];
+	parameters.relpose.position.z    = relpose[2];
+	parameters.relpose.orientation.w = relpose[3];
+	parameters.relpose.orientation.x = relpose[4];
+	parameters.relpose.orientation.y = relpose[5];
+	parameters.relpose.orientation.z = relpose[6];
+
+	parameters.polycoef.resize(mjNEQDATA);
+	mju_copy(parameters.polycoef.data(), polycoef, mjNEQDATA);
+
+	parameters.torquescale = torquescale[0];
+
+	parameters.solver_parameters.dmin      = solver_params[0];
+	parameters.solver_parameters.dmax      = solver_params[1];
+	parameters.solver_parameters.width     = solver_params[2];
+	parameters.solver_parameters.midpoint  = solver_params[3];
+	parameters.solver_parameters.power     = solver_params[4];
+	parameters.solver_parameters.timeconst = solver_params[5];
+	parameters.solver_parameters.dampratio = solver_params[6];
+
 	return success;
 }
 
