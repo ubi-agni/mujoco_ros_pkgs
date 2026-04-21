@@ -107,9 +107,10 @@ OffscreenCamera::OffscreenCamera(const uint8_t cam_id, const std::string &base_t
 
 #if MJR_ROS_VERSION == ROS_2
 	auto options = rclcpp::NodeOptions().arguments({ "--ros-args", "--remap", cam_name + ":__node:=" + cam_name });
-	nh_ = std::make_shared<rclcpp::Node>(cam_name, std::string(env_ptr->get_name()) + "/" + base_topic, options);
-	// nh_ = env_ptr->create_sub_node(base_topic);
-	// nh_ = std::shared_ptr<rclcpp::Node>(new rclcpp::Node(*env_ptr, base_topic));
+	const bool base_topic_is_absolute = !base_topic.empty() && base_topic.front() == '/';
+	const std::string camera_namespace =
+	    base_topic_is_absolute ? base_topic : std::string(env_ptr->get_name()) + "/" + base_topic;
+	nh_ = std::make_shared<rclcpp::Node>(cam_name, camera_namespace, options);
 	MJR_ERROR_STREAM("Created cam node with name " << nh_->get_name() << " and namespace " << nh_->get_namespace());
 	// Initialize transport
 	it_ = std::make_unique<image_transport::ImageTransport>(nh_);
@@ -193,8 +194,7 @@ void OffscreenCamera::InitializeTransport(const std::shared_ptr<ros::NodeHandle>
 void OffscreenCamera::InitializeTransport(const mjModel *model, mjData *data, std::string &rgb_topic,
                                           std::string &depth_topic, std::string &segment_topic)
 {
-	// Because of flawed ROS 2 namespace handling, we need to prepend the effective namespace to the topic
-	// otherwise image transport segfaults
+	// In ROS 2 image_transport expects fully namespaced topics.
 	rgb_topic     = nh_->get_effective_namespace() + "/" + rgb_topic;
 	depth_topic   = nh_->get_effective_namespace() + "/" + depth_topic;
 	segment_topic = nh_->get_effective_namespace() + "/" + segment_topic;
@@ -413,7 +413,7 @@ void OffscreenCamera::RenderAndPublish(mujoco_ros::OffscreenRenderContext *offsc
 	             (depth_pub_.getNumSubscribers() > 0 || depth_camera_info_pub_->getNumSubscribers() > 0);
 
 #else // MJR_ROS_VERSION == ROS_2
-	bool segment = (stream_type_ & StreamType::SEGMENTED) &&
+	bool segment  = (stream_type_ & StreamType::SEGMENTED) &&
 	               (segment_pub_.getNumSubscribers() > 0 || segment_camera_info_pub_->get_subscription_count() > 0);
 	bool rgb = (stream_type_ & StreamType::RGB) &&
 	           (rgb_pub_.getNumSubscribers() > 0 || rgb_camera_info_pub_->get_subscription_count() > 0);
