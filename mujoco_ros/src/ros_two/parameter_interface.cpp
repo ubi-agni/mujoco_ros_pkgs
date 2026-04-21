@@ -32,17 +32,18 @@ void MujocoEnv::FetchRosConfiguration()
 		throw std::runtime_error("/use_sim_time ROS param is unset.");
 	}
 
-	rclcpp::Parameter render_offscreen_param = this->get_parameter("render_offscreen");
-	rclcpp::Parameter headless_param         = this->get_parameter("headless");
-	rclcpp::Parameter unpause_param          = this->get_parameter("unpause");
-	rclcpp::Parameter num_steps_param        = this->get_parameter("num_steps");
-
 	rclcpp::Parameter no_render_param = this->get_parameter("no_render");
 
 	if (no_render_param.as_bool()) {
 		RCLCPP_INFO(this->get_logger(), "no_render is set. Disabling rendering and setting headless to true");
-		this->set_parameters({ rclcpp::Parameter("headless", true), rclcpp::Parameter("render_offscreen", false) });
+		this->set_parameters_atomically(
+		    { rclcpp::Parameter("headless", true), rclcpp::Parameter("render_offscreen", false) });
 	}
+
+	rclcpp::Parameter render_offscreen_param = this->get_parameter("render_offscreen");
+	rclcpp::Parameter headless_param         = this->get_parameter("headless");
+	rclcpp::Parameter unpause_param          = this->get_parameter("unpause");
+	rclcpp::Parameter num_steps_param        = this->get_parameter("num_steps");
 
 	settings_.render_offscreen = render_offscreen_param.as_bool();
 	settings_.headless         = headless_param.as_bool();
