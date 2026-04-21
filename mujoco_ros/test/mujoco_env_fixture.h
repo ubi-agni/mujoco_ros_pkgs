@@ -111,8 +111,27 @@ public:
 	template <typename T>
 	void setParam(const std::string &name, const T &value)
 	{
+		std::string name_copy = name;
+		std::replace(name_copy.begin(), name_copy.end(), '/',
+		             '.'); // ROS 2 parameters use '.' instead of '/' as nesting does not exist in the same way as ROS 1
 		std::lock_guard<std::mutex> lock(param_mutex_);
-		pending_params_[name] = rclcpp::Parameter(name, value);
+		pending_params_[name_copy] = rclcpp::Parameter(name_copy, value);
+	}
+
+	template <typename T>
+	bool getParam(const std::string &name, T &value) const
+	{
+		std::lock_guard<std::mutex> lock(param_mutex_);
+		auto it = pending_params_.find(name);
+		if (it == pending_params_.end()) {
+			return false;
+		}
+		try {
+			value = it->second.get_value<T>();
+			return true;
+		} catch (...) {
+			return false;
+		}
 	}
 
 	std::string getNamespace() const { return "/mujoco_server"; }
@@ -156,6 +175,41 @@ inline std::string get_test_model_path(const std::string &model_name)
 	return ament_index_cpp::get_package_share_directory("mujoco_ros") + "/test/" + model_name;
 #endif
 }
+
+// Helper struct for topic info abstraction
+struct TopicInfo
+{
+	std::string name;
+};
+
+// Helper function to get available topics
+inline std::vector<TopicInfo> get_available_topics()
+{
+#if MJR_ROS_VERSION == ROS_1
+	ros::master::V_TopicInfo master_topics;
+	ros::master::getTopics(master_topics);
+	std::vector<TopicInfo> topics;
+	for (const auto &t : master_topics) {
+		topics.push_back({ t.name });
+	}
+	return topics;
+#else // MJR_ROS_VERSION == ROS_2
+	// In ROS 2, topic discovery comes from the node graph.
+	std::vector<TopicInfo> topics;
+	return topics;
+#endif
+}
+
+#if MJR_ROS_VERSION == ROS_2
+inline std::vector<TopicInfo> get_available_topics(const rclcpp::Node &node)
+{
+	std::vector<TopicInfo> topics;
+	for (const auto &entry : node.get_topic_names_and_types()) {
+		topics.push_back({ entry.first });
+	}
+	return topics;
+}
+#endif
 
 #pragma diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -374,7 +428,7 @@ public:
 #if MJR_ROS_VERSION == ROS_1
 		return nh_->getNamespace();
 #else // MJR_ROS_VERSION == ROS_2
-		return get_namespace();
+		return std::string(get_namespace()) + std::string(get_name());
 #endif
 	}
 

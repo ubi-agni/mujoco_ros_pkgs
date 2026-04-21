@@ -86,20 +86,19 @@ add_mujoco_ros_integration_test(
   mujoco_ros_plugin_test
   mujoco_ros_plugin_test.cpp
   ROS1_LAUNCH launch/mujoco_ros_plugin.test
-  # ROS2_LAUNCH launch/mujoco_ros_plugin.test
   ROS2_LAUNCH launch/mujoco_ros_plugin.test.py
   EXTRA_LIBS mujoco_testplugin
   TIMEOUT 600
 )
 
-# add_mujoco_ros_integration_test(
-#   mujoco_render_test
-#   mujoco_render_test.cpp
-#   ROS1_LAUNCH launch/mujoco_render.test
-#   ROS2_LAUNCH launch/mujoco_render.test
-#   # ROS2_LAUNCH launch/ros2/mujoco_render.test.py
-#   TIMEOUT 240
-# )
+add_mujoco_ros_integration_test(
+  mujoco_render_test
+  mujoco_render_test.cpp
+  ROS1_LAUNCH launch/mujoco_render.test
+  # ROS2_LAUNCH launch/mujoco_render.test
+  ROS2_LAUNCH launch/mujoco_render.test.py
+  TIMEOUT 240
+)
 
 if(ROS_VERSION EQUAL 1)
   install(FILES
