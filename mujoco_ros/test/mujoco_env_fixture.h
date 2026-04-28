@@ -78,14 +78,8 @@ bool call(const std::string & /*service_name*/, ServiceType & /*srv*/)
 }
 } // namespace service
 
-namespace param {
-inline void del(const std::string & /*param_name*/) {}
-} // namespace param
 } // namespace ros
 
-#ifndef ROS_WARN
-#define ROS_WARN(...) RCLCPP_WARN(rclcpp::get_logger("mujoco_ros_test"), __VA_ARGS__)
-#endif
 #endif
 
 #include <mujoco_ros/mujoco_env.hpp>
@@ -98,34 +92,51 @@ namespace testing {
 #if MJR_ROS_VERSION == ROS_1
 using TestNodeHandle = ros::NodeHandle;
 
-inline void delete_namespace_params(const std::string &ns)
-{
-	ros::param::del(ns);
-}
 #else // MJR_ROS_VERSION == ROS_2
 class TestNodeHandle
 {
 public:
-	explicit TestNodeHandle(const std::string & /*ns*/) {}
+	explicit TestNodeHandle(const std::string &ns = "/mujoco_server") : configured_namespace_(normalize_namespace(ns)) {}
 
 	template <typename T>
 	void setParam(const std::string &name, const T &value)
 	{
-		std::string name_copy = name;
-		std::replace(name_copy.begin(), name_copy.end(), '/',
-		             '.'); // ROS 2 parameters use '.' instead of '/' as nesting does not exist in the same way as ROS 1
+		const std::string ros2_name = normalize_param_name(name);
+		rclcpp::Parameter param(ros2_name, value);
+
 		std::lock_guard<std::mutex> lock(param_mutex_);
-		pending_params_[name_copy] = rclcpp::Parameter(name_copy, value);
+		desired_params_[ros2_name] = param;
+
+		if (node_ != nullptr) {
+			apply_parameters({ param });
+		}
 	}
 
 	template <typename T>
 	bool getParam(const std::string &name, T &value) const
 	{
+		const std::string ros2_name = normalize_param_name(name);
+
 		std::lock_guard<std::mutex> lock(param_mutex_);
-		auto it = pending_params_.find(name);
-		if (it == pending_params_.end()) {
+
+		if (node_ != nullptr) {
+			if (!node_->has_parameter(ros2_name)) {
+				return false;
+			}
+
+			try {
+				value = node_->get_parameter(ros2_name).get_value<T>();
+				return true;
+			} catch (...) {
+				return false;
+			}
+		}
+
+		auto it = desired_params_.find(ros2_name);
+		if (it == desired_params_.end()) {
 			return false;
 		}
+
 		try {
 			value = it->second.get_value<T>();
 			return true;
@@ -134,37 +145,145 @@ public:
 		}
 	}
 
-	std::string getNamespace() const { return "/mujoco_server"; }
-
-	static std::vector<rclcpp::Parameter> GetPendingParams()
+	void deleteParam(const std::string &name)
 	{
+		const std::string ros2_name = normalize_param_name(name);
+
 		std::lock_guard<std::mutex> lock(param_mutex_);
-		std::vector<rclcpp::Parameter> params;
-		params.reserve(pending_params_.size());
-		for (const auto &entry : pending_params_) {
-			params.push_back(entry.second);
+
+		erase_from_desired(ros2_name);
+
+		if (node_ != nullptr) {
+			delete_param_from_node(ros2_name);
 		}
-		return params;
 	}
 
-	static void clearPendingParams()
+	void setNode(rclcpp::Node *node)
+	{
+		if (node == nullptr) {
+			throw std::runtime_error("Node pointer cannot be null");
+		}
+
+		std::lock_guard<std::mutex> lock(param_mutex_);
+		node_ = node;
+
+		std::vector<rclcpp::Parameter> params_to_apply;
+		for (const auto &entry : desired_params_) {
+			params_to_apply.push_back(entry.second);
+		}
+
+		apply_parameters(params_to_apply);
+	}
+
+	void clearNode()
 	{
 		std::lock_guard<std::mutex> lock(param_mutex_);
-		pending_params_.clear();
+		node_ = nullptr;
+	}
+
+	std::string getNamespace() const
+	{
+		std::lock_guard<std::mutex> lock(param_mutex_);
+		if (node_ != nullptr) {
+			return node_->get_namespace();
+		}
+		return configured_namespace_;
+	}
+
+	std::string getFullyQualifiedNodeName() const
+	{
+		std::lock_guard<std::mutex> lock(param_mutex_);
+		if (node_ != nullptr) {
+			return node_->get_fully_qualified_name();
+		}
+		return configured_namespace_;
 	}
 
 private:
-	static std::mutex param_mutex_;
-	static std::map<std::string, rclcpp::Parameter> pending_params_;
+	void apply_parameters(const std::vector<rclcpp::Parameter> &params)
+	{
+		if (node_ == nullptr) {
+			throw std::runtime_error("Node pointer is null. Cannot apply parameters.");
+		}
+
+		for (const auto &param : params) {
+			if (!node_->has_parameter(param.get_name())) {
+				node_->declare_parameter(param.get_name(), param.get_parameter_value());
+			}
+		}
+
+		auto result = node_->set_parameters(params);
+		for (const auto &param_result : result) {
+			if (!param_result.successful) {
+				throw std::runtime_error("Failed to set parameters on node: " + param_result.reason);
+			}
+		}
+		// if (!result.success) {
+		// 	throw std::runtime_error("Failed to set parameters on node: " + result.reason);
+		// }
+	}
+
+	void erase_from_desired(const std::string &ros2_name)
+	{
+		desired_params_.erase(ros2_name);
+
+		auto it = desired_params_.find(ros2_name);
+		if (it != desired_params_.end()) {
+			desired_params_.erase(it);
+		}
+	}
+
+	void delete_param_from_node(const std::string &name)
+	{
+		std::vector<std::string> params_to_delete;
+
+		if (node_->has_parameter(name)) {
+			params_to_delete.push_back(name);
+		}
+
+		const auto listed = node_->list_parameters({ name }, 0);
+		for (const auto &param_name : listed.names) {
+			if (param_name == name || param_name.rfind(name + ".", 0) == 0) {
+				params_to_delete.push_back(param_name);
+			}
+		}
+
+		std::sort(params_to_delete.begin(), params_to_delete.end());
+		// Remove duplicates just in case
+		params_to_delete.erase(std::unique(params_to_delete.begin(), params_to_delete.end()), params_to_delete.end());
+
+		for (const auto &param_name : params_to_delete) {
+			if (node_->has_parameter(param_name)) {
+				node_->undeclare_parameter(param_name);
+			}
+		}
+	}
+
+	static std::string normalize_namespace(const std::string &ns)
+	{
+		if (ns.empty() || ns == "~") {
+			return "/mujoco_server";
+		}
+		if (ns.front() != '/') {
+			return "/" + ns;
+		}
+		return ns;
+	}
+
+	static std::string normalize_param_name(const std::string &name)
+	{
+		std::string name_copy = name;
+		std::replace(name_copy.begin(), name_copy.end(), '/',
+		             '.'); // ROS 2 parameters use '.' instead of '/' as nesting does not exist in the same way as ROS 1
+		return name_copy;
+	}
+
+	std::string configured_namespace_;
+	mutable std::mutex param_mutex_;
+	std::map<std::string, rclcpp::Parameter> desired_params_;
+	rclcpp::Node *node_{ nullptr };
 };
 
-inline std::mutex TestNodeHandle::param_mutex_;
-inline std::map<std::string, rclcpp::Parameter> TestNodeHandle::pending_params_;
-
-inline void delete_namespace_params(const std::string & /*ns*/)
-{
-	TestNodeHandle::clearPendingParams();
-}
 #endif
 
 inline std::string get_test_model_path(const std::string &model_name)
@@ -181,6 +300,26 @@ struct TopicInfo
 {
 	std::string name;
 };
+
+inline bool has_topic(const std::vector<TopicInfo> &topics, const std::string &topic_name)
+{
+	for (const auto &topic : topics) {
+		if (topic.name == topic_name) {
+			return true;
+		}
+	}
+	return false;
+}
+
+inline bool has_all_topics(const std::vector<TopicInfo> &topics, const std::initializer_list<std::string> &topic_names)
+{
+	for (const auto &topic_name : topic_names) {
+		if (!has_topic(topics, topic_name)) {
+			return false;
+		}
+	}
+	return true;
+}
 
 // Helper function to get available topics
 inline std::vector<TopicInfo> get_available_topics()
@@ -211,6 +350,26 @@ inline std::vector<TopicInfo> get_available_topics(const rclcpp::Node &node)
 }
 #endif
 
+template <typename NodeT>
+inline std::vector<TopicInfo> get_available_topics_for_test(NodeT *node_ptr)
+{
+#if MJR_ROS_VERSION == ROS_1
+	(void)node_ptr;
+	return get_available_topics();
+#else // MJR_ROS_VERSION == ROS_2
+	if (node_ptr == nullptr) {
+		return {};
+	}
+	return get_available_topics(*node_ptr);
+#endif
+}
+
+template <typename NodeT>
+inline std::vector<TopicInfo> get_available_topics_for_test(const std::unique_ptr<NodeT> &node_ptr)
+{
+	return get_available_topics_for_test(node_ptr.get());
+}
+
 #pragma diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 inline bool wait_for_service(const std::string &service_name)
@@ -218,10 +377,82 @@ inline bool wait_for_service(const std::string &service_name)
 #if MJR_ROS_VERSION == ROS_1
 	return ros::service::exists(service_name, true);
 #else // MJR_ROS_VERSION == ROS_2
-	return true;
+	auto node           = std::make_shared<rclcpp::Node>("mujoco_test_wait_for_service_probe");
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+	while (std::chrono::steady_clock::now() < deadline) {
+		for (const auto &entry : node->get_service_names_and_types()) {
+			if (entry.first == service_name) {
+				return true;
+			}
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+	return false;
 #endif
 }
 #pragma diagnostic pop
+
+#if MJR_ROS_VERSION == ROS_1
+template <typename ServiceT>
+using ServiceCall = ServiceT;
+#else // MJR_ROS_VERSION == ROS_2
+template <typename ServiceT>
+struct ServiceCall
+{
+	typename ServiceT::Request request;
+	typename ServiceT::Response response;
+};
+#endif
+
+template <typename NodePtrT>
+inline bool service_exists(NodePtrT node_ptr, const std::string &service_name, bool wait_for_discovery = true)
+{
+#if MJR_ROS_VERSION == ROS_1
+	(void)node_ptr;
+	return ros::service::exists(service_name, wait_for_discovery);
+#else // MJR_ROS_VERSION == ROS_2
+	if (node_ptr == nullptr) {
+		return false;
+	}
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(wait_for_discovery ? 1000 : 10);
+	while (std::chrono::steady_clock::now() < deadline) {
+		for (const auto &entry : node_ptr->get_service_names_and_types()) {
+			if (entry.first == service_name) {
+				return true;
+			}
+		}
+		if (!wait_for_discovery) {
+			break;
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+	return false;
+#endif
+}
+
+template <typename NodePtrT, typename ServiceT>
+inline bool call_service(NodePtrT node_ptr, const std::string &service_name, ServiceCall<ServiceT> &service_call)
+{
+#if MJR_ROS_VERSION == ROS_1
+	(void)node_ptr;
+	return ros::service::call(service_name, service_call);
+#else // MJR_ROS_VERSION == ROS_2
+	if (node_ptr == nullptr) {
+		return false;
+	}
+	auto client = node_ptr->template create_client<ServiceT>(service_name);
+	if (!client->wait_for_service(std::chrono::seconds(1))) {
+		return false;
+	}
+	auto request = std::make_shared<typename ServiceT::Request>(service_call.request);
+	auto future  = client->async_send_request(request);
+	if (future.wait_for(std::chrono::seconds(1)) != std::future_status::ready) {
+		return false;
+	}
+	service_call.response = *future.get();
+	return true;
+#endif
+}
 
 } // namespace testing
 
@@ -229,22 +460,17 @@ class MujocoEnvTestWrapper : public MujocoEnv
 {
 public:
 #if MJR_ROS_VERSION == ROS_1
-	MujocoEnvTestWrapper(const std::string &admin_hash = std::string())
+	MujocoEnvTestWrapper(const std::string &admin_hash = std::string(), ros::NodeHandle *test_nh = nullptr)
 	    : MujocoEnv(admin_hash), construction_complete_(true)
 	{
 	}
+	MujocoEnvTestWrapper(ros::NodeHandle * /*test_nh*/) : MujocoEnvTestWrapper("") {}
 #else // MJR_ROS_VERSION == ROS_2
-	MujocoEnvTestWrapper(const std::string &admin_hash = std::string())
+	MujocoEnvTestWrapper(const std::string &admin_hash = std::string(), testing::TestNodeHandle *test_nh = nullptr)
 	    : MujocoEnv(std::make_shared<rclcpp::executors::MultiThreadedExecutor>(), admin_hash, false)
+	    , test_nh_(test_nh)
 	    , construction_complete_(false)
 	{
-		const auto params = testing::TestNodeHandle::GetPendingParams();
-		for (const auto &param : params) {
-			if (!this->has_parameter(param.get_name())) {
-				this->declare_parameter(param.get_name(), param.get_parameter_value());
-			}
-		}
-		this->set_parameters(params);
 		GetExecutorPtr()->add_node(this->get_node_base_interface());
 
 		// Start executor thread BEFORE Configure() so services and callbacks have a spinning executor
@@ -254,6 +480,7 @@ public:
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
 		try {
+			test_nh_->setNode(this);
 			Configure();
 			construction_complete_ = true;
 		} catch (...) {
@@ -267,11 +494,17 @@ public:
 			throw;
 		}
 	}
+	MujocoEnvTestWrapper(testing::TestNodeHandle *test_nh) : MujocoEnvTestWrapper("", test_nh) {}
 
 	~MujocoEnvTestWrapper() override
 	{
 		try {
-			shutdown();
+			// Only perform cleanup if construction completed successfully
+			// If construction failed, base class destructor will handle cleanup
+			if (construction_complete_) {
+				test_nh_->clearNode();
+				shutdown();
+			}
 		} catch (const std::exception &e) {
 			MJR_ERROR_STREAM("Exception during shutdown in destructor: " << e.what());
 		} catch (...) {
@@ -279,6 +512,7 @@ public:
 		}
 	}
 
+	testing::TestNodeHandle *test_nh_{ nullptr };
 #endif
 	std::atomic_bool shutdown_called_{ false };
 	std::atomic_bool construction_complete_{ false };
@@ -296,12 +530,12 @@ public:
 	}
 
 #if MJR_ROS_VERSION == ROS_1
-	dynamic_reconfigure::Server<mujoco_ros::SimParamsConfig> *getParamServer()
+	dynamic_reconfigure::Server<mujoco_ros::SimParamsConfig> *GetParamServer()
 	{
-		return nullptr;
+		return ros_api_->GetParamServerPtr();
 	}
 #else // MJR_ROS_VERSION == ROS_2
-	void *getParamServer()
+	void *GetParamServer()
 	{
 		return nullptr;
 	}
@@ -474,8 +708,12 @@ protected:
 		if (env_ptr != nullptr) {
 			env_ptr->shutdown();
 		}
+#if MJR_ROS_VERSION == ROS_1
 		// clean up all parameters
-		testing::delete_namespace_params(nh->getNamespace());
+		ros::param::del(nh->getNamespace());
+#else // MJR_ROS_VERSION == ROS_2
+		nh->clearNode(); // Clear node reference
+#endif
 	}
 };
 
@@ -493,7 +731,7 @@ protected:
 		nh->setParam("use_sim_time", true);
 		nh->setParam("sim_steps", -1);
 
-		env_ptr = new MujocoEnvTestWrapper();
+		env_ptr = new MujocoEnvTestWrapper("", nh.get());
 
 		std::string xml_path = testing::get_test_model_path("pendulum_world.xml");
 		env_ptr->StartWithXML(xml_path);
@@ -546,7 +784,7 @@ protected:
 		EXPECT_EQ(mjEQ_JOINT, EqualityConstraintType::JOINT) << "Mismatch between joint constraint types";
 		EXPECT_EQ(mjEQ_TENDON, EqualityConstraintType::TENDON) << "Mismatch between tendon constraint types";
 
-		env_ptr = new MujocoEnvTestWrapper();
+		env_ptr = new MujocoEnvTestWrapper("", nh.get());
 
 		std::string xml_path = testing::get_test_model_path("equality_world.xml");
 		env_ptr->StartWithXML(xml_path);

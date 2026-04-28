@@ -96,7 +96,7 @@ TEST_F(BaseEnvFixture, Not_Headless_Warn)
 {
 	nh->setParam("no_render", false);
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -113,7 +113,7 @@ TEST_F(BaseEnvFixture, NoRender_Params_Correct)
 {
 	nh->setParam("no_render", true);
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -136,7 +136,7 @@ TEST_F(BaseEnvFixture, Headless_params_correct)
 	nh->setParam("headless", true);
 	nh->setParam("render_offscreen", true);
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -151,10 +151,11 @@ TEST_F(BaseEnvFixture, RGB_Topics_Available)
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("render_offscreen", true);
+	nh->deleteParam("cam_config"); // ensure no config from other tests is present
 	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::RGB);
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -166,11 +167,7 @@ TEST_F(BaseEnvFixture, RGB_Topics_Available)
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
 	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::StreamType::RGB);
 
-#if MJR_ROS_VERSION == ROS_1
-	auto topics = testing::get_available_topics();
-#else // MJR_ROS_VERSION == ROS_2
-	auto topics = testing::get_available_topics(*env_ptr);
-#endif
+	auto topics = testing::get_available_topics_for_test(env_ptr.get());
 
 	bool img = false, info = false;
 	for (const auto &t : topics) {
@@ -192,10 +189,11 @@ TEST_F(BaseEnvFixture, DEPTH_Topics_Available)
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("render_offscreen", true);
+	nh->deleteParam("cam_config"); // ensure no config from other tests is present
 	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::DEPTH);
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -207,11 +205,7 @@ TEST_F(BaseEnvFixture, DEPTH_Topics_Available)
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
 	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::StreamType::DEPTH);
 
-#if MJR_ROS_VERSION == ROS_1
-	auto topics = testing::get_available_topics();
-#else // MJR_ROS_VERSION == ROS_2
-	auto topics = testing::get_available_topics(*env_ptr);
-#endif
+	auto topics = testing::get_available_topics_for_test(env_ptr.get());
 
 	bool img = false, info = false;
 	for (const auto &t : topics) {
@@ -235,7 +229,7 @@ TEST_F(BaseEnvFixture, SEGMENTATION_Topics_Available)
 	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::SEGMENTED);
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -247,11 +241,7 @@ TEST_F(BaseEnvFixture, SEGMENTATION_Topics_Available)
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
 	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::StreamType::SEGMENTED);
 
-#if MJR_ROS_VERSION == ROS_1
-	auto topics = testing::get_available_topics();
-#else // MJR_ROS_VERSION == ROS_2
-	auto topics = testing::get_available_topics(*env_ptr);
-#endif
+	auto topics = testing::get_available_topics_for_test(env_ptr.get());
 
 	bool img = false, info = false;
 	for (const auto &t : topics) {
@@ -275,7 +265,7 @@ TEST_F(BaseEnvFixture, RGB_DEPTH_Topics_Available)
 	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::RGB_D);
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -287,11 +277,7 @@ TEST_F(BaseEnvFixture, RGB_DEPTH_Topics_Available)
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
 	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::StreamType::RGB_D);
 
-#if MJR_ROS_VERSION == ROS_1
-	auto topics = testing::get_available_topics();
-#else // MJR_ROS_VERSION == ROS_2
-	auto topics = testing::get_available_topics(*env_ptr);
-#endif
+	auto topics = testing::get_available_topics_for_test(env_ptr.get());
 
 	bool found_rgb = false, found_depth = false;
 	bool found_rgb_info = false, found_depth_info = false;
@@ -321,7 +307,7 @@ TEST_F(BaseEnvFixture, RGB_SEGMENTATION_Topics_Available)
 	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::RGB_S);
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -333,11 +319,7 @@ TEST_F(BaseEnvFixture, RGB_SEGMENTATION_Topics_Available)
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
 	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::StreamType::RGB_S);
 
-#if MJR_ROS_VERSION == ROS_1
-	auto topics = testing::get_available_topics();
-#else // MJR_ROS_VERSION == ROS_2
-	auto topics = testing::get_available_topics(*env_ptr);
-#endif
+	auto topics = testing::get_available_topics_for_test(env_ptr.get());
 
 	bool found_rgb = false, found_seg = false;
 	bool found_rgb_info = false, found_seg_info = false;
@@ -367,7 +349,7 @@ TEST_F(BaseEnvFixture, DEPTH_SEGMENTATION_Topics_Available)
 	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::DEPTH_S);
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -379,11 +361,7 @@ TEST_F(BaseEnvFixture, DEPTH_SEGMENTATION_Topics_Available)
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
 	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::StreamType::DEPTH_S);
 
-#if MJR_ROS_VERSION == ROS_1
-	auto topics = testing::get_available_topics();
-#else // MJR_ROS_VERSION == ROS_2
-	auto topics = testing::get_available_topics(*env_ptr);
-#endif
+	auto topics = testing::get_available_topics_for_test(env_ptr.get());
 
 	bool found_depth = false, found_seg = false;
 	bool found_depth_info = false, found_seg_info = false;
@@ -412,7 +390,7 @@ TEST_F(BaseEnvFixture, RGB_DEPTH_SEGMENTATION_Topics_Available)
 	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::RGB_D_S);
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -424,11 +402,7 @@ TEST_F(BaseEnvFixture, RGB_DEPTH_SEGMENTATION_Topics_Available)
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
 	EXPECT_TRUE(offscreen->cams[0]->stream_type_ == rendering::StreamType::RGB_D_S);
 
-#if MJR_ROS_VERSION == ROS_1
-	auto topics = testing::get_available_topics();
-#else // MJR_ROS_VERSION == ROS_2
-	auto topics = testing::get_available_topics(*env_ptr);
-#endif
+	auto topics = testing::get_available_topics_for_test(env_ptr.get());
 
 	bool found_rgb = false, found_depth = false, found_seg = false;
 	bool found_rgb_info = false, found_depth_info = false, found_seg_info = false;
@@ -459,8 +433,9 @@ TEST_F(BaseEnvFixture, Default_Cam_Settings)
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("render_offscreen", true);
+	nh->deleteParam("cam_config"); // ensure no config from other tests is present
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -486,11 +461,12 @@ TEST_F(BaseEnvFixture, Resolution_Settings)
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("render_offscreen", true);
+	nh->deleteParam("cam_config"); // ensure no config from other tests is present
 	nh->setParam("cam_config/test_cam/width", 640);
 	nh->setParam("cam_config/test_cam/height", 480);
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -516,11 +492,12 @@ TEST_F(BaseEnvFixture, Stream_BaseTopic_Relative)
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("render_offscreen", true);
+	nh->deleteParam("cam_config"); // ensure no config from other tests is present
 	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::RGB_D_S);
 	nh->setParam("cam_config/test_cam/topic", "alt_topic");
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -533,11 +510,7 @@ TEST_F(BaseEnvFixture, Stream_BaseTopic_Relative)
 	bool found_rgb = false, found_depth = false, found_seg = false;
 	bool found_rgb_info = false, found_depth_info = false, found_seg_info = false;
 
-#if MJR_ROS_VERSION == ROS_1
-	auto topics = testing::get_available_topics();
-#else // MJR_ROS_VERSION == ROS_2
-	auto topics = testing::get_available_topics(*env_ptr);
-#endif
+	auto topics = testing::get_available_topics_for_test(env_ptr.get());
 
 	for (const auto &t : topics) {
 		if (t.name == env_ptr->GetHandleNamespace() + "/alt_topic/rgb/image_raw") {
@@ -566,11 +539,12 @@ TEST_F(BaseEnvFixture, Stream_BaseTopic_Absolute)
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("render_offscreen", true);
+	nh->deleteParam("cam_config"); // ensure no config from other tests is present
 	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::RGB_D_S);
 	nh->setParam("cam_config/test_cam/topic", "/alt_topic");
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -583,11 +557,7 @@ TEST_F(BaseEnvFixture, Stream_BaseTopic_Absolute)
 	bool found_rgb = false, found_depth = false, found_seg = false;
 	bool found_rgb_info = false, found_depth_info = false, found_seg_info = false;
 
-#if MJR_ROS_VERSION == ROS_1
-	auto topics = testing::get_available_topics();
-#else // MJR_ROS_VERSION == ROS_2
-	auto topics = testing::get_available_topics(*env_ptr);
-#endif
+	auto topics = testing::get_available_topics_for_test(env_ptr.get());
 
 	for (const auto &t : topics) {
 		if (t.name == "/alt_topic/rgb/image_raw") {
@@ -616,11 +586,12 @@ TEST_F(BaseEnvFixture, RGB_Alternative_StreamName)
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("render_offscreen", true);
+	nh->deleteParam("cam_config"); // ensure no config from other tests is present
 	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::RGB);
 	nh->setParam("cam_config/test_cam/name_rgb", "alt_rgb");
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -631,11 +602,7 @@ TEST_F(BaseEnvFixture, RGB_Alternative_StreamName)
 
 	bool img = false, found_info = false;
 
-#if MJR_ROS_VERSION == ROS_1
-	auto topics = testing::get_available_topics();
-#else // MJR_ROS_VERSION == ROS_2
-	auto topics = testing::get_available_topics(*env_ptr);
-#endif
+	auto topics = testing::get_available_topics_for_test(env_ptr.get());
 
 	for (const auto &t : topics) {
 		if (t.name == env_ptr->GetHandleNamespace() + "/cameras/test_cam/alt_rgb/image_raw") {
@@ -656,11 +623,12 @@ TEST_F(BaseEnvFixture, DEPTH_Alternative_StreamName)
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("render_offscreen", true);
+	nh->deleteParam("cam_config"); // ensure no config from other tests is present
 	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::DEPTH);
 	nh->setParam("cam_config/test_cam/name_depth", "alt_depth");
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -671,11 +639,7 @@ TEST_F(BaseEnvFixture, DEPTH_Alternative_StreamName)
 
 	bool img = false, found_info = false;
 
-#if MJR_ROS_VERSION == ROS_1
-	auto topics = testing::get_available_topics();
-#else // MJR_ROS_VERSION == ROS_2
-	auto topics = testing::get_available_topics(*env_ptr);
-#endif
+	auto topics = testing::get_available_topics_for_test(env_ptr.get());
 
 	for (const auto &t : topics) {
 		if (t.name == env_ptr->GetHandleNamespace() + "/cameras/test_cam/alt_depth/image_raw") {
@@ -696,11 +660,12 @@ TEST_F(BaseEnvFixture, SEGMENT_Alternative_StreamName)
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
 	nh->setParam("render_offscreen", true);
+	nh->deleteParam("cam_config"); // ensure no config from other tests is present
 	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::SEGMENTED);
 	nh->setParam("cam_config/test_cam/name_segment", "alt_seg");
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -711,11 +676,7 @@ TEST_F(BaseEnvFixture, SEGMENT_Alternative_StreamName)
 
 	bool img = false, found_info = false;
 
-#if MJR_ROS_VERSION == ROS_1
-	auto topics = testing::get_available_topics();
-#else // MJR_ROS_VERSION == ROS_2
-	auto topics = testing::get_available_topics(*env_ptr);
-#endif
+	auto topics = testing::get_available_topics_for_test(env_ptr.get());
 
 	for (const auto &t : topics) {
 		if (t.name == env_ptr->GetHandleNamespace() + "/cameras/test_cam/alt_seg/image_raw") {
@@ -737,12 +698,13 @@ TEST_F(BaseEnvFixture, RGB_Published_Correctly)
 	nh->setParam("headless", true);
 	nh->setParam("render_offscreen", true);
 	nh->setParam("unpause", false);
+	nh->deleteParam("cam_config"); // ensure no config from other tests is present
 	nh->setParam("cam_config/test_cam/frequency", 30.);
 	nh->setParam("cam_config/test_cam/width", 7);
 	nh->setParam("cam_config/test_cam/height", 4);
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 #if MJR_ROS_VERSION == ROS_1
 	std::vector<sensor_msgs::Image> rgb_images;
@@ -818,12 +780,13 @@ TEST_F(BaseEnvFixture, Cam_Timing_Correct)
 	nh->setParam("headless", true);
 	nh->setParam("render_offscreen", true);
 	nh->setParam("unpause", false);
+	nh->deleteParam("cam_config"); // ensure no config from other tests is present
 	nh->setParam("cam_config/test_cam/frequency", 30.);
 	nh->setParam("cam_config/test_cam/width", 7);
 	nh->setParam("cam_config/test_cam/height", 4);
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 #if MJR_ROS_VERSION == ROS_1
 	std::vector<sensor_msgs::Image> rgb_images;
@@ -939,11 +902,12 @@ TEST_F(BaseEnvFixture, RGB_Image_Dtype)
 	nh->setParam("headless", true);
 	nh->setParam("render_offscreen", true);
 	nh->setParam("unpause", false);
+	nh->deleteParam("cam_config"); // ensure no config from other tests is present
 	nh->setParam("cam_config/test_cam/width", 7);
 	nh->setParam("cam_config/test_cam/height", 4);
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 #if MJR_ROS_VERSION == ROS_1
 	std::vector<sensor_msgs::Image> rgb_images;
@@ -1004,12 +968,13 @@ TEST_F(BaseEnvFixture, DEPTH_Image_Dtype)
 	nh->setParam("headless", true);
 	nh->setParam("render_offscreen", true);
 	nh->setParam("unpause", false);
+	nh->deleteParam("cam_config"); // ensure no config from other tests is present
 	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::DEPTH);
 	nh->setParam("cam_config/test_cam/width", 7);
 	nh->setParam("cam_config/test_cam/height", 4);
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 #if MJR_ROS_VERSION == ROS_1
 	std::vector<sensor_msgs::Image> depth_images;
@@ -1072,12 +1037,13 @@ TEST_F(BaseEnvFixture, SEGMENTED_Image_Dtype)
 	nh->setParam("headless", true);
 	nh->setParam("render_offscreen", true);
 	nh->setParam("unpause", false);
+	nh->deleteParam("cam_config"); // ensure no config from other tests is present
 	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::SEGMENTED);
 	nh->setParam("cam_config/test_cam/width", 7);
 	nh->setParam("cam_config/test_cam/height", 4);
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 #if MJR_ROS_VERSION == ROS_1
 	std::vector<sensor_msgs::Image> seg_images;
@@ -1141,7 +1107,7 @@ TEST_F(BaseEnvFixture, No_Render_Backend_Headless_Warn)
 {
 	nh->setParam("headless", true);
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 

@@ -36,7 +36,7 @@
 
 #pragma once
 
-#include <mujoco_ros/common_types.h>
+#include <mujoco_ros/common_types.hpp>
 using namespace mujoco_ros;
 
 void compare_qpos(mjData *d, int qpos_adr_int, const std::string &joint_name, const std::vector<double> &values,

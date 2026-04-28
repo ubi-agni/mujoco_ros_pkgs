@@ -91,7 +91,7 @@ protected:
 		nh->setParam("headless", true);
 		nh->setParam("use_sim_time", true);
 
-		env_ptr              = new MujocoEnvTestWrapper();
+		env_ptr              = new MujocoEnvTestWrapper(nh.get());
 		std::string xml_path = testing::get_test_model_path("empty_world.xml");
 		env_ptr->StartWithXML(xml_path);
 
@@ -116,7 +116,7 @@ protected:
 	void TearDown() override
 	{
 		// cleanup all parameters
-		testing::delete_namespace_params(nh->getNamespace());
+		nh->deleteParam(nh->getNamespace());
 		test_plugin = nullptr;
 		env_ptr->shutdown();
 		delete env_ptr;
@@ -154,7 +154,7 @@ TEST_F(BaseEnvFixture, RenderCallback)
 	nh->setParam("cam_config/test_cam/height", 4);
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>(nh.get());
 
 	// NOP subscriber to trigger render callback
 	ros::Subscriber rgb_sub = nh->subscribe<sensor_msgs::Image>("cameras/test_cam/rgb/image_raw", 1,
@@ -198,7 +198,7 @@ TEST_F(BaseEnvFixture, RenderCallback_NoRender)
 	nh->setParam("headless", true);
 
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>(nh.get());
 
 	// NOP subscriber to trigger render callback
 	ros::Subscriber rgb_sub = nh->subscribe<sensor_msgs::Image>(
@@ -249,7 +249,7 @@ TEST_F(BaseEnvFixture, LoadPlugin)
 	nh->setParam("no_render", true);
 	nh->setParam("unpause", false);
 	std::string xml_path = testing::get_test_model_path("empty_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>(nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -302,7 +302,7 @@ TEST_F(BaseEnvFixture, FailedLoad)
 	nh->setParam("should_fail", true);
 
 	std::string xml_path = testing::get_test_model_path("empty_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>(nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -344,7 +344,7 @@ TEST_F(BaseEnvFixture, FailedLoadRecoverReload)
 	nh->setParam("should_fail", true);
 
 	std::string xml_path = testing::get_test_model_path("empty_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>(nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
@@ -396,7 +396,7 @@ TEST_F(BaseEnvFixture, FailedLoadReset)
 	nh->setParam("unpause", false);
 
 	std::string xml_path = testing::get_test_model_path("empty_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>(nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
