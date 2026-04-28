@@ -266,7 +266,10 @@ public:
 		uint load_count         = 0;
 	} sim_state_;
 
-	std::vector<MujocoPluginPtr> const &GetPlugins() const { return plugins_; }
+	std::vector<MujocoPluginPtr> const &GetPlugins() const
+	{
+		return plugins_;
+	}
 
 	/**
 	 * @brief Register a custom collision function for collisions between two geom types.
@@ -410,7 +413,7 @@ protected:
 	int num_steps_until_exit_ = -1;
 
 	// VFS for loading models from strings
-	mjVFS vfs_;
+	mjVFS vfs_{};
 
 	// Currently loaded model
 	char filename_[kMaxFilenameLength] = "\0";
