@@ -33,15 +33,18 @@ void MujocoEnv::FetchRosConfiguration()
 	}
 	bool no_render;
 	nh_->param("no_render", no_render, false);
+	nh_->param("render_offscreen", settings_.render_offscreen, true);
+	nh_->param("headless", settings_.headless, true);
 
 	if (no_render) {
 		ROS_INFO("no_render is set. Disabling rendering and setting headless to true");
 		nh_->setParam("headless", true);
 		nh_->setParam("render_offscreen", false);
+
+		settings_.headless         = true;
+		settings_.render_offscreen = false;
 	}
 
-	nh_->param("render_offscreen", settings_.render_offscreen, true);
-	nh_->param("headless", settings_.headless, true);
 	nh_->param("num_steps", num_steps_until_exit_, -1);
 	bool run; // settings_.run is atomic and can't directly be set!
 	nh_->param("unpause", run, true);
@@ -114,9 +117,9 @@ void MujocoEnv::GetCameraConfiguration(const std::string &cam_name, rendering::S
 	height        = nh_->param<int>(cam_config_path + "/" + cam_name + "/height", rendering::kDEFAULT_CAM_HEIGHT);
 	base_topic    = nh_->param<std::string>(cam_config_path + "/" + cam_name + "/topic", "cameras/" + cam_name);
 	rgb_topic     = nh_->param<std::string>(cam_config_path + "/" + cam_name + "/name_rgb",
-	                                        std::string(rendering::kDEFAULT_CAM_RGB_TOPIC));
+                                       std::string(rendering::kDEFAULT_CAM_RGB_TOPIC));
 	depth_topic   = nh_->param<std::string>(cam_config_path + "/" + cam_name + "/name_depth",
-	                                        std::string(rendering::kDEFAULT_CAM_DEPTH_TOPIC));
+                                         std::string(rendering::kDEFAULT_CAM_DEPTH_TOPIC));
 	segment_topic = nh_->param<std::string>(cam_config_path + "/" + cam_name + "/name_segment",
 	                                        std::string(rendering::kDEFAULT_CAM_SEGMENT_TOPIC));
 }
