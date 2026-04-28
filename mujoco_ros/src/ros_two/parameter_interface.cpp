@@ -150,34 +150,37 @@ void MujocoEnv::GetInitialJointPositions(std::map<std::string, std::vector<doubl
 	}
 }
 
-void MujocoEnv::GetInitialJointVelocities(std::map<std::string, std::vector<double>> & /*joint_vel_map*/)
+void MujocoEnv::GetInitialJointVelocities(std::map<std::string, std::vector<double>> &joint_vel_map)
 {
-	MJR_WARN("Initial joint velocities NYI in ROS 2");
-	// std::map<std::string, std::string> joint_map;
-	// nh_->getParam("initial_joint_velocities/joint_map", joint_map);
+	std::string param_name = "initial_joint_velocities";
+	auto result            = this->list_parameters({ param_name }, 2);
 
-	// // This check only assures that there aren't single axis joint values that are non-strings.
-	// // One ill-defined value among correct parameters can't be detected.
-	// if (nh_->hasParam("initial_joint_velocities/joint_map") && joint_map.empty()) {
-	// 	MJR_WARN("Initial joint velocities not recognized by rosparam server. Check your config, "
-	// 	         "especially values for single axis joints should explicitly provided as string!");
-	// 	return;
-	// }
+	if (result.names.size() == 0) {
+		RCLCPP_WARN(this->get_logger(),
+		            "No initial joint velocity specified (failed to get 'initial_joint_velocities' parameter).");
+		return;
+	}
+	std::vector<std::string> joint_names;
 
-	// for (auto const &[name, str_values] : joint_map) {
-	// 	MJR_DEBUG_STREAM("fetched jointvel values of joint " << name << ": " << str_values);
+	for (const auto &joint_name : result.names) {
+		if (joint_name.rfind(param_name + ".", 0) == 0) {
+			joint_names.push_back(joint_name);
+		}
+	}
 
-	// 	std::vector<double> axis_vals;
-	// 	axis_vals.reserve(7);
+	auto parameters = this->get_parameters(joint_names);
 
-	// 	std::stringstream stream_values(str_values);
-	// 	std::string value;
-	// 	while (std::getline(stream_values, value, ' ')) {
-	// 		axis_vals.push_back(std::stod(value));
-	// 	}
-	// 	axis_vals.shrink_to_fit();
-	// 	joint_vel_map[name] = axis_vals;
-	// }
+	for (const auto &joint : parameters) {
+		std::string joint_name = joint.get_name().substr(param_name.length() + 1); // Strip "initial_joint_velocities."
+		if (joint.get_type() == rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY) {
+			joint_vel_map[joint_name] = joint.as_double_array();
+			RCLCPP_INFO_STREAM(this->get_logger(), "Joint " << joint_name << " has initial velocity values: ["
+			                                                << mujoco_ros::util::vector_to_string(joint.as_double_array())
+			                                                << "]");
+		} else {
+			RCLCPP_WARN(this->get_logger(), "Joint %s is not a double array", joint.get_name().c_str());
+		}
+	}
 }
 
 // TODO:
