@@ -33,6 +33,7 @@
  *********************************************************************/
 
 /* Authors: David P. Leins */
+#pragma once
 
 #include <mujoco_ros/ros_version.hpp>
 #include <mujoco_ros/logging.hpp>
@@ -42,16 +43,17 @@
 
 namespace mujoco_ros::util {
 
-
 #if MJR_ROS_VERSION == ROS_1
-static inline ros::Time toRosTime(mjtNum &time) {
-		ros::Time t = ros::Time(time);
-		return t;
+static inline ros::Time toRosTime(mjtNum &time)
+{
+	ros::Time t = ros::Time(time);
+	return t;
 }
 #else // MJR_ROS_VERSION == ROS_2
-static inline rclcpp::Time toRosTime(mjtNum &time) {
-		rclcpp::Time t = rclcpp::Time(static_cast<uint64_t>(time * 1e9)); // convert to nanoseconds
-		return t;
+static inline rclcpp::Time toRosTime(mjtNum &time)
+{
+	rclcpp::Time t = rclcpp::Time(static_cast<uint64_t>(time * 1e9)); // convert to nanoseconds
+	return t;
 }
 #endif
 
