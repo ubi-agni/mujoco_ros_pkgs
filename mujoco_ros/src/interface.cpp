@@ -275,16 +275,17 @@ bool MujocoEnv::SetBodyState(const std::string &body_name, mjtNum *pose, mjtNum 
 			}
 		}
 		if (set_pose) {
-			MJR_DEBUG_STREAM("\tSetting pose of body '" << body_name << "'" << " to " << pose[0] << ", " << pose[1] << ", "
-			                                            << pose[2] << ", " << pose[3] << ", " << pose[4] << ", " << pose[5]
-			                                            << ", " << pose[6]);
+			MJR_DEBUG_STREAM("\tSetting pose of body '" << body_name << "'"
+			                                            << " to " << pose[0] << ", " << pose[1] << ", " << pose[2] << ", "
+			                                            << pose[3] << ", " << pose[4] << ", " << pose[5] << ", "
+			                                            << pose[6]);
 			mju_copy(data_->qpos + jnt_qposadr, pose, 7);
 		}
 
 		if (set_twist) {
-			MJR_DEBUG_STREAM("\tSetting twist of body '" << body_name << "'" << " to " << twist[0] << ", " << twist[1]
-			                                             << ", " << twist[2] << ", " << twist[3] << ", " << twist[4]
-			                                             << ", " << twist[5]);
+			MJR_DEBUG_STREAM("\tSetting twist of body '" << body_name << "'"
+			                                             << " to " << twist[0] << ", " << twist[1] << ", " << twist[2]
+			                                             << ", " << twist[3] << ", " << twist[4] << ", " << twist[5]);
 			mju_copy(data_->qvel + jnt_dofadr, twist, 6);
 		}
 	}
@@ -685,7 +686,8 @@ bool MujocoEnv::SetEqualityConstraintParameters(const std::string &eq_name, cons
 			break;
 
 		default:
-			MJR_ERROR_STREAM("Invalid equality constraint type '" << type << "'" << ". Must be a valid mjEQ type");
+			MJR_ERROR_STREAM("Invalid equality constraint type '" << type << "'"
+			                                                      << ". Must be a valid mjEQ type");
 			break;
 	}
 	mj_freeStack(data_.get());
@@ -784,7 +786,8 @@ bool MujocoEnv::GetEqualityConstraintParameters(const std::string &eq_name, int 
 			break;
 		}
 		default:
-			MJR_ERROR_STREAM("Invalid equality constraint type '" << type << "'" << ". Must be a valid mjEQ type");
+			MJR_ERROR_STREAM("Invalid equality constraint type '" << type << "'"
+			                                                      << ". Must be a valid mjEQ type");
 			break;
 	}
 	return true;

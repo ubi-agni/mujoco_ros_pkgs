@@ -105,11 +105,11 @@ void MujocoRos2ControlPlugin::PassiveCallback(const mjModel * /* model */, mjDat
 	this->dataPtr_->controller_manager_->read(sim_time_mj, sim_period);
 	this->dataPtr_->controller_manager_->update(sim_time_mj, sim_period);
 };
-void MujocoRos2ControlPlugin::RenderCallback(const mjModel * /* model */, mjData * /* data */, mjvScene * /* scene */) {
-};
-void MujocoRos2ControlPlugin::LastStageCallback(const mjModel * /* model */, mjData * /* data */) {};
-void MujocoRos2ControlPlugin::OnGeomChanged(const mjModel * /* model */, mjData * /* data */, const int /* geom_id */) {
-};
+void MujocoRos2ControlPlugin::RenderCallback(const mjModel * /* model */, mjData * /* data */,
+                                             mjvScene * /* scene */){};
+void MujocoRos2ControlPlugin::LastStageCallback(const mjModel * /* model */, mjData * /* data */){};
+void MujocoRos2ControlPlugin::OnGeomChanged(const mjModel * /* model */, mjData * /* data */,
+                                            const int /* geom_id */){};
 
 bool MujocoRos2ControlPlugin::Load(const mjModel *model, mjData *data)
 {
