@@ -179,6 +179,9 @@ private:
 	// }
 	void OnStepGoal(const std::shared_ptr<rclcpp_action::ServerGoalHandle<mujoco_ros_msgs::action::Step>> goal_handle);
 
+	void
+	ExecuteStepGoal(const std::shared_ptr<rclcpp_action::ServerGoalHandle<mujoco_ros_msgs::action::Step>> goal_handle);
+
 	// boost::recursive_mutex sim_params_mutex_;
 	// dynamic_reconfigure::Server<mujoco_ros::SimParamsConfig> *param_server_;
 	// mujoco_ros::SimParamsConfig sim_params_;

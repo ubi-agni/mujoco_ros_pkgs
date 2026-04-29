@@ -119,6 +119,12 @@ void RosAPI::SetupServices()
 void RosAPI::OnStepGoal(
     const std::shared_ptr<rclcpp_action::ServerGoalHandle<mujoco_ros_msgs::action::Step>> goal_handle)
 {
+	std::thread{ std::bind(&RosAPI::ExecuteStepGoal, this, std::placeholders::_1), goal_handle }.detach();
+}
+
+void RosAPI::ExecuteStepGoal(
+    const std::shared_ptr<rclcpp_action::ServerGoalHandle<mujoco_ros_msgs::action::Step>> goal_handle)
+{
 	const auto goal  = goal_handle->get_goal();
 	auto feedback    = std::make_shared<mujoco_ros_msgs::action::Step::Feedback>();
 	auto &steps_left = feedback->steps_left;
@@ -321,10 +327,10 @@ void RosAPI::SetGeomPropertiesCB(const mujoco_ros_msgs::srv::SetGeomProperties::
 {
 	char status_msg[MujocoEnv::kErrorLength] = { 0 };
 	res->success                             = env_ptr_->SetGeomProperties(
-       req->properties.name, req->properties.body_mass, req->properties.friction_slide, req->properties.friction_spin,
-       req->properties.friction_roll, req->properties.size_0, req->properties.size_1, req->properties.size_2,
-       req->properties.type.value, req->set_mass, req->set_friction, req->set_type, req->set_size, req->admin_hash,
-       status_msg, MujocoEnv::kErrorLength);
+	                                req->properties.name, req->properties.body_mass, req->properties.friction_slide, req->properties.friction_spin,
+	                                req->properties.friction_roll, req->properties.size_0, req->properties.size_1, req->properties.size_2,
+	                                req->properties.type.value, req->set_mass, req->set_friction, req->set_type, req->set_size, req->admin_hash,
+	                                status_msg, MujocoEnv::kErrorLength);
 	res->status_message = std::string(status_msg);
 }
 
