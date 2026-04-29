@@ -66,8 +66,24 @@ RosAPI::RosAPI(MujocoEnvPtr env_ptr) : env_ptr_(env_ptr)
 
 void RosAPI::SetupServices()
 {
-	MJR_ERROR_STREAM("Effective namespace: " << env_ptr_->get_namespace());
-	std::string ns = env_ptr_->get_namespace();
+	std::string ns = std::string(env_ptr_->get_effective_namespace()) + "/" + std::string(env_ptr_->get_name());
+
+	// Replace duplicate slashes in namespace
+	std::string::size_type spos = 0;
+	if ((spos = ns.find("//")) != std::string::npos) {
+		MJR_WARN("Namespace contains duplicate slashes. Replacing '//' with '/'.");
+		while ((spos = ns.find("//")) != std::string::npos) {
+			ns.replace(spos, 2, "/");
+		}
+	}
+
+	MJR_INFO_STREAM("Effective namespace: " << ns);
+
+	// Add trailing slash if missing
+	if (ns.back() != '/') {
+		ns += '/';
+	}
+
 	set_pause_srv_ = env_ptr_->create_service<mujoco_ros_msgs::srv::SetPause>(
 	    ns + "set_pause", std::bind(&RosAPI::SetPauseCB, this, std::placeholders::_1, std::placeholders::_2));
 	shutdown_srv_ = env_ptr_->create_service<std_srvs::srv::Empty>(
