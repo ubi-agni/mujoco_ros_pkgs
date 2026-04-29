@@ -287,7 +287,7 @@ void RosAPI::GetBodyStateCB(const mujoco_ros_msgs::srv::GetBodyState::Request::S
                             mujoco_ros_msgs::srv::GetBodyState::Response::SharedPtr res)
 {
 	std::string body_name = req->name;
-	mjtNum state[15]      = { 0 };
+	mjtNum state[14]      = { 0 };
 	mjtNum *pose          = state;
 	mjtNum *twist         = pose + 7;
 	mjtNum *mass          = twist + 6;
@@ -298,7 +298,9 @@ void RosAPI::GetBodyStateCB(const mujoco_ros_msgs::srv::GetBodyState::Request::S
 	    env_ptr_->GetBodyState(body_name, pose, twist, mass, req->admin_hash, status_msg, MujocoEnv::kErrorLength);
 
 	res->status_message = std::string(status_msg);
-	res->state.mass     = static_cast<decltype(res->state.mass)>(*mass);
+
+	res->state.name = body_name;
+	res->state.mass = static_cast<decltype(res->state.mass)>(*mass);
 
 	res->state.pose.header             = std_msgs::msg::Header();
 	res->state.pose.header.frame_id    = "world";
@@ -392,6 +394,29 @@ bool RosAPI::SetEqualityConstraintParameters(const mujoco_ros_msgs::msg::Equalit
 	mjtNum *torquescale                                    = polycoef + mjNEQDATA;
 	mjtNum *solver_params                                  = torquescale + 1;
 
+	anchor[0] = parameters.anchor.x;
+	anchor[1] = parameters.anchor.y;
+	anchor[2] = parameters.anchor.z;
+
+	relpose[0] = parameters.relpose.position.x;
+	relpose[1] = parameters.relpose.position.y;
+	relpose[2] = parameters.relpose.position.z;
+	relpose[3] = parameters.relpose.orientation.w;
+	relpose[4] = parameters.relpose.orientation.x;
+	relpose[5] = parameters.relpose.orientation.y;
+	relpose[6] = parameters.relpose.orientation.z;
+
+	mju_copy(polycoef, parameters.polycoef.data(), parameters.polycoef.size());
+	torquescale[0] = parameters.torquescale;
+
+	solver_params[0] = parameters.solver_parameters.dmin;
+	solver_params[1] = parameters.solver_parameters.dmax;
+	solver_params[2] = parameters.solver_parameters.width;
+	solver_params[3] = parameters.solver_parameters.midpoint;
+	solver_params[4] = parameters.solver_parameters.power;
+	solver_params[5] = parameters.solver_parameters.timeconst;
+	solver_params[6] = parameters.solver_parameters.dampratio;
+
 	return env_ptr_->SetEqualityConstraintParameters(
 	    parameters.name, parameters.type.value, solver_params, parameters.active, parameters.element1,
 	    parameters.element2, *torquescale, anchor, relpose, polycoef, admin_hash, status_message, status_sz);
@@ -426,6 +451,10 @@ void RosAPI::SetEqualityConstraintParametersArrayCB(
 		status_message += "Could not set any constraints";
 		res->status_message = status_message;
 		res->success        = false;
+	} else if (!failed_any && !succeeded_any) {
+		status_message += "No constraints provided in request";
+		res->status_message = status_message;
+		res->success        = false;
 	}
 }
 
@@ -449,6 +478,32 @@ bool RosAPI::GetEqualityConstraintParameters(mujoco_ros_msgs::msg::EqualityConst
 
 	parameters.type.value = static_cast<decltype(parameters.type.value)>(type);
 	parameters.active     = active;
+
+	parameters.anchor.x = anchor[0];
+	parameters.anchor.y = anchor[1];
+	parameters.anchor.z = anchor[2];
+
+	parameters.relpose.position.x    = relpose[0];
+	parameters.relpose.position.y    = relpose[1];
+	parameters.relpose.position.z    = relpose[2];
+	parameters.relpose.orientation.w = relpose[3];
+	parameters.relpose.orientation.x = relpose[4];
+	parameters.relpose.orientation.y = relpose[5];
+	parameters.relpose.orientation.z = relpose[6];
+
+	parameters.polycoef.resize(mjNEQDATA);
+	mju_copy(parameters.polycoef.data(), polycoef, mjNEQDATA);
+
+	parameters.torquescale = torquescale[0];
+
+	parameters.solver_parameters.dmin      = solver_params[0];
+	parameters.solver_parameters.dmax      = solver_params[1];
+	parameters.solver_parameters.width     = solver_params[2];
+	parameters.solver_parameters.midpoint  = solver_params[3];
+	parameters.solver_parameters.power     = solver_params[4];
+	parameters.solver_parameters.timeconst = solver_params[5];
+	parameters.solver_parameters.dampratio = solver_params[6];
+
 	return success;
 }
 
