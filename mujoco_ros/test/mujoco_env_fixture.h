@@ -37,8 +37,10 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <iomanip>
 #include <map>
 #include <mutex>
+#include <sstream>
 #include <vector>
 
 #include <mujoco_ros/ros_version.hpp>
@@ -64,20 +66,6 @@ inline std::string getPath(const std::string &package_name)
 	return ament_index_cpp::get_package_share_directory(package_name);
 }
 } // namespace package
-
-namespace service {
-inline bool exists(const std::string & /*service_name*/, bool /*print_failure_reason*/)
-{
-	return true;
-}
-
-template <typename ServiceType>
-bool call(const std::string & /*service_name*/, ServiceType & /*srv*/)
-{
-	return true;
-}
-} // namespace service
-
 } // namespace ros
 
 #endif
@@ -208,7 +196,9 @@ private:
 
 		for (const auto &param : params) {
 			if (!node_->has_parameter(param.get_name())) {
-				node_->declare_parameter(param.get_name(), param.get_parameter_value());
+				rcl_interfaces::msg::ParameterDescriptor desc;
+				desc.dynamic_typing = true;
+				node_->declare_parameter(param.get_name(), param.get_parameter_value(), desc);
 			}
 		}
 
@@ -452,6 +442,158 @@ inline bool call_service(NodePtrT node_ptr, const std::string &service_name, Ser
 	service_call.response = *future.get();
 	return true;
 #endif
+}
+
+// Templated test-friendly wrappers that mirror the ROS1 `ros::service::exists/call` signatures
+// while delegating to ROS2 node-based implementations when compiled for ROS2.
+template <typename NodePtrT>
+inline bool service_exists_for_test(NodePtrT node_ptr, const std::string &service_name)
+{
+#if MJR_ROS_VERSION == ROS_1
+	(void)node_ptr;
+	// fyi: bool is print_failure_reason
+	return ros::service::exists(service_name, true);
+#else
+	const auto services = node_ptr->get_service_names_and_types();
+	return services.find(service_name) != services.end();
+#endif
+}
+
+template <typename NodePtrT, typename ServiceT>
+inline bool service_call_for_test(NodePtrT node_ptr, const std::string &service_name,
+                                  ServiceCall<ServiceT> &service_call)
+{
+#if MJR_ROS_VERSION == ROS_1
+	(void)node_ptr;
+	return ros::service::call(service_name, service_call);
+#else
+	return call_service(node_ptr, service_name, service_call);
+#endif
+}
+
+inline std::vector<double> parse_joint_state_values(const std::string &values)
+{
+	std::vector<double> parsed_values;
+	std::stringstream stream(values);
+	double value = 0.0;
+	while (stream >> value) {
+		parsed_values.push_back(value);
+	}
+	return parsed_values;
+}
+
+inline std::string format_joint_state_values(const std::vector<double> &values)
+{
+	std::ostringstream stream;
+	stream << std::setprecision(17);
+	for (std::size_t index = 0; index < values.size(); ++index) {
+		if (index > 0) {
+			stream << " ";
+		}
+		stream << values[index];
+	}
+	return stream.str();
+}
+
+inline void set_initial_joint_state_maps(TestNodeHandle *nh, const std::map<std::string, std::string> &pos_map,
+                                         const std::map<std::string, std::string> &vel_map)
+{
+	if (nh == nullptr) {
+		return;
+	}
+#if MJR_ROS_VERSION == ROS_1
+	nh->setParam("initial_joint_positions/joint_map", pos_map);
+	nh->setParam("initial_joint_velocities/joint_map", vel_map);
+#else // MJR_ROS_VERSION == ROS_2
+	nh->deleteParam("initial_joint_states");
+	nh->deleteParam("initial_joint_velocities");
+
+	for (const auto &[joint_name, values] : pos_map) {
+		nh->setParam("initial_joint_states/" + joint_name, parse_joint_state_values(values));
+	}
+
+	for (const auto &[joint_name, values] : vel_map) {
+		nh->setParam("initial_joint_velocities/" + joint_name, parse_joint_state_values(values));
+	}
+#endif
+}
+
+inline void clear_initial_joint_state_maps(TestNodeHandle *nh, bool clear_positions = true,
+                                           bool clear_velocities = true)
+{
+	if (nh == nullptr) {
+		return;
+	}
+#if MJR_ROS_VERSION == ROS_1
+	if (clear_positions) {
+		nh->deleteParam("initial_joint_positions/joint_map");
+	}
+	if (clear_velocities) {
+		nh->deleteParam("initial_joint_velocities/joint_map");
+	}
+#else // MJR_ROS_VERSION == ROS_2
+	if (clear_positions) {
+		nh->deleteParam("initial_joint_states");
+	}
+	if (clear_velocities) {
+		nh->deleteParam("initial_joint_velocities");
+	}
+#endif
+}
+
+template <typename NodePtrT>
+inline void get_initial_joint_state_maps(NodePtrT node_ptr, TestNodeHandle *nh,
+                                         std::map<std::string, std::string> &pos_map,
+                                         std::map<std::string, std::string> &vel_map)
+{
+	pos_map.clear();
+	vel_map.clear();
+
+#if MJR_ROS_VERSION == ROS_1
+	if (nh == nullptr) {
+		return;
+	}
+	nh->getParam("initial_joint_positions/joint_map", pos_map);
+	nh->getParam("initial_joint_velocities/joint_map", vel_map);
+#else // MJR_ROS_VERSION == ROS_2
+	if (node_ptr == nullptr) {
+		return;
+	}
+
+	auto pos_list = node_ptr->list_parameters({ "initial_joint_states" }, 2);
+	if (!pos_list.names.empty()) {
+		auto pos_params = node_ptr->get_parameters(pos_list.names);
+		for (const auto &param : pos_params) {
+			if (param.get_type() == rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY) {
+				const std::string prefix = "initial_joint_states.";
+				if (param.get_name().rfind(prefix, 0) == 0) {
+					pos_map[param.get_name().substr(prefix.length())] = format_joint_state_values(param.as_double_array());
+				}
+			}
+		}
+	}
+
+	auto vel_list = node_ptr->list_parameters({ "initial_joint_velocities" }, 2);
+	if (!vel_list.names.empty()) {
+		auto vel_params = node_ptr->get_parameters(vel_list.names);
+		for (const auto &param : vel_params) {
+			if (param.get_type() == rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY) {
+				const std::string prefix = "initial_joint_velocities.";
+				if (param.get_name().rfind(prefix, 0) == 0) {
+					vel_map[param.get_name().substr(prefix.length())] = format_joint_state_values(param.as_double_array());
+				}
+			}
+		}
+	}
+#endif
+}
+
+template <typename NodeT>
+inline void get_initial_joint_state_maps(const std::unique_ptr<NodeT> &node_ptr, TestNodeHandle *nh,
+                                         std::map<std::string, std::string> &pos_map,
+                                         std::map<std::string, std::string> &vel_map)
+{
+	get_initial_joint_state_maps(node_ptr.get(), nh, pos_map, vel_map);
 }
 
 } // namespace testing
@@ -721,7 +863,7 @@ class PendulumEnvFixture : public ::testing::Test
 {
 protected:
 	std::unique_ptr<testing::TestNodeHandle> nh;
-	MujocoEnvTestWrapper *env_ptr;
+	std::unique_ptr<MujocoEnvTestWrapper> env_ptr = nullptr;
 
 	void SetUp() override
 	{
@@ -731,7 +873,7 @@ protected:
 		nh->setParam("use_sim_time", true);
 		nh->setParam("sim_steps", -1);
 
-		env_ptr = new MujocoEnvTestWrapper("", nh.get());
+		env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 		std::string xml_path = testing::get_test_model_path("pendulum_world.xml");
 		env_ptr->StartWithXML(xml_path);
@@ -753,7 +895,12 @@ protected:
 	void TearDown() override
 	{
 		env_ptr->shutdown();
-		delete env_ptr;
+#if MJR_ROS_VERSION == ROS_1
+		// clean up all parameters
+		ros::param::del(nh->getNamespace());
+#else // MJR_ROS_VERSION == ROS_2
+		nh->clearNode(); // Clear node reference
+#endif
 	}
 };
 
@@ -761,7 +908,7 @@ class EqualityEnvFixture : public ::testing::Test
 {
 protected:
 	std::shared_ptr<testing::TestNodeHandle> nh;
-	MujocoEnvTestWrapper *env_ptr;
+	std::unique_ptr<MujocoEnvTestWrapper> env_ptr;
 	mjModel *m;
 	mjData *d;
 
@@ -784,7 +931,7 @@ protected:
 		EXPECT_EQ(mjEQ_JOINT, EqualityConstraintType::JOINT) << "Mismatch between joint constraint types";
 		EXPECT_EQ(mjEQ_TENDON, EqualityConstraintType::TENDON) << "Mismatch between tendon constraint types";
 
-		env_ptr = new MujocoEnvTestWrapper("", nh.get());
+		env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 		std::string xml_path = testing::get_test_model_path("equality_world.xml");
 		env_ptr->StartWithXML(xml_path);
@@ -804,9 +951,5 @@ protected:
 		    << "Set eq constraints service should be available!";
 	}
 
-	void TearDown() override
-	{
-		env_ptr->shutdown();
-		delete env_ptr;
-	}
+	void TearDown() override { env_ptr->shutdown(); }
 };

@@ -10,17 +10,15 @@ import launch_testing.actions
 import launch_testing.asserts
 import launch_testing.util
 
-
 def generate_test_description():
     test_binary = LaunchConfiguration('test_binary')
     timeout = LaunchConfiguration('timeout')
 
     test_proc = ExecuteProcess(
         cmd=[test_binary],
-        name='mujoco_render_test',
+        name='ros_interface_test',
         output='screen',
     )
-
     return LaunchDescription([
         DeclareLaunchArgument('test_binary'),
         DeclareLaunchArgument('timeout', default_value="10"),

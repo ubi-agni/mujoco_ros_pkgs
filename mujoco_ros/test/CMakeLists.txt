@@ -34,9 +34,6 @@ function(add_mujoco_ros_integration_test TEST_NAME TEST_SOURCE)
     set(TEST_EXECUTABLE ${TEST_NAME})
     set(TEST_LAUNCH_NAME ${TEST_NAME}_launch)
 
-    # ament_add_gtest(${TEST_EXECUTABLE}
-    #   ${TEST_SOURCE}
-    # )
     ament_add_gtest_executable(${TEST_EXECUTABLE}
       ${TEST_SOURCE}
     )
@@ -61,18 +58,16 @@ add_mujoco_ros_integration_test(
   mujoco_env_test
   mujoco_env_test.cpp
   ROS1_LAUNCH launch/mujoco_env.test
-  # ROS2_LAUNCH launch/mujoco_env.test
   ROS2_LAUNCH launch/mujoco_env.test.py
 )
 
-# add_mujoco_ros_integration_test(
-#   ros_interface_test
-#   ros_interface_test.cpp
-#   ROS1_LAUNCH launch/ros_interface.test
-#   ROS2_LAUNCH launch/ros_interface.test
-#   # ROS2_LAUNCH launch/ros2/ros_interface.test.py
-#   TIMEOUT 180
-# )
+add_mujoco_ros_integration_test(
+  ros_interface_test
+  ros_interface_test.cpp
+  ROS1_LAUNCH launch/ros_interface.test
+  ROS2_LAUNCH launch/ros_interface.test.py
+  TIMEOUT 180
+)
 
 add_subdirectory(test_plugin)
 
@@ -95,7 +90,6 @@ add_mujoco_ros_integration_test(
   mujoco_render_test
   mujoco_render_test.cpp
   ROS1_LAUNCH launch/mujoco_render.test
-  # ROS2_LAUNCH launch/mujoco_render.test
   ROS2_LAUNCH launch/mujoco_render.test.py
   TIMEOUT 240
 )

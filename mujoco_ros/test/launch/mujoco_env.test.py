@@ -4,12 +4,16 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import SetParameter
+
 import launch_testing
 import launch_testing.actions
+import launch_testing.asserts
+import launch_testing.util
 
 
 def generate_test_description():
     test_binary = LaunchConfiguration('test_binary')
+    timeout = LaunchConfiguration('timeout')
 
     test_proc = ExecuteProcess(
         cmd=[test_binary],
@@ -19,15 +23,18 @@ def generate_test_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('test_binary'),
+        DeclareLaunchArgument('timeout', default_value="10"),
         SetEnvironmentVariable(
             'ROSCONSOLE_FORMAT',
             '[${severity}] [${time}] [${logger}] [${node}]: ${message}'
         ),
         SetParameter(name='use_sim_time', value=True),
         test_proc,
+        launch_testing.util.KeepAliveProc(),
         launch_testing.actions.ReadyToTest(),
     ]), {
         'test_proc': test_proc,
+        'timeout': timeout,
     }
 
 class TestGTestWaitForCompletion(unittest.TestCase):

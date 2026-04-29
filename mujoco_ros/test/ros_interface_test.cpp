@@ -58,7 +58,10 @@
 #else // MJR_ROS_VERSION == ROS_2
 #include <chrono>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
 #include <std_srvs/srv/empty.hpp>
+
+#include <mujoco_ros_msgs/action/step.hpp>
 
 #include <mujoco_ros_msgs/msg/equality_constraint_parameters.hpp>
 #include <mujoco_ros_msgs/msg/equality_constraint_type.hpp>
@@ -104,9 +107,8 @@ using EqualityConstraintParameters    = mujoco_ros_msgs::msg::EqualityConstraint
 
 int main(int argc, char **argv)
 {
-	testing::InitGoogleTest(&argc, argv);
-
 #if MJR_ROS_VERSION == ROS_1
+	::testing::InitGoogleTest(&argc, argv);
 	ros::init(argc, argv, "mujoco_ros_interface_test");
 
 	// Uncomment to enable debug output (useful for debugging failing tests)
@@ -122,35 +124,32 @@ int main(int argc, char **argv)
 	// Stop spinner and shutdown ROS before returning
 	spinner.stop();
 	ros::shutdown();
-	return ret;
 #else // MJR_ROS_VERSION == ROS_2
 	rclcpp::init(argc, argv);
+	::testing::InitGoogleTest(&argc, argv);
 	int ret = RUN_ALL_TESTS();
 	rclcpp::shutdown();
-	return ret;
 #endif
+	return ret;
 }
 
 using namespace mujoco_ros;
 namespace mju = ::mujoco::sample_util;
 
 #if MJR_ROS_VERSION == ROS_1
-#define MJR_SERVICE_EXISTS(SERVICE_NAME, WAIT_FOR_DISCOVERY) ros::service::exists((SERVICE_NAME), (WAIT_FOR_DISCOVERY))
-#define MJR_SERVICE_CALL(SERVICE_NAME, SERVICE_OBJ) ros::service::call((SERVICE_NAME), (SERVICE_OBJ))
 
-void compare_current_ros_time(double expected, const std::string &msg, double tol = 1e-6)
+void compare_current_ros_time(double expected, const std::string &msg, MujocoEnvTestWrapper * /*env_ptr*/ = nullptr,
+                              double tol = 1e-6)
 {
 	EXPECT_NEAR(ros::Time::now().toSec(), expected, tol) << msg;
 }
 
 #else // MJR_ROS_VERSION == ROS_2
-#define MJR_SERVICE_EXISTS(SERVICE_NAME, WAIT_FOR_DISCOVERY) \
-	testing::service_exists(env_ptr, (SERVICE_NAME), (WAIT_FOR_DISCOVERY))
-#define MJR_SERVICE_CALL(SERVICE_NAME, SERVICE_OBJ) testing::call_service(env_ptr, (SERVICE_NAME), (SERVICE_OBJ))
 
-void compare_current_ros_time(double expected, const std::string &msg, double tol = 1e-6)
+void compare_current_ros_time(double expected, const std::string &msg, MujocoEnvTestWrapper *env_ptr = nullptr,
+                              double tol = 1e-6)
 {
-	EXPECT_NEAR(rclcpp::Clock().now().seconds(), expected, tol) << msg;
+	EXPECT_NEAR(env_ptr->get_clock()->now().seconds(), expected, tol) << msg;
 }
 
 #endif
@@ -158,34 +157,37 @@ void compare_current_ros_time(double expected, const std::string &msg, double to
 TEST_F(PendulumEnvFixture, Clock)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
-	compare_current_ros_time(0., std::string("Simulation time should be 0.0!"));
+	compare_current_ros_time(0., std::string("Simulation time should be 0.0!"), env_ptr.get());
 	int total_steps = 0;
 
 	EXPECT_TRUE(env_ptr->step()) << "Step did not succeed!";
 	total_steps = 1;
 	compare_current_ros_time(env_ptr->getModelPtr()->opt.timestep,
-	                         std::string("Simulation time should have increased by 1 step!"));
+	                         std::string("Simulation time should have increased by 1 step!"), env_ptr.get());
 
 	EXPECT_TRUE(env_ptr->step(10)) << "Stepping did not succeed!";
 	total_steps += 10;
 	std::this_thread::sleep_for(std::chrono::milliseconds(100)); // wait for time messages to be sent
 	compare_current_ros_time(env_ptr->getModelPtr()->opt.timestep * total_steps,
-	                         std::string("Simulation time should have increased by 10 steps!"));
+	                         std::string("Simulation time should have increased by 10 steps!"), env_ptr.get());
 
 	EXPECT_FALSE(env_ptr->step(-10)) << "Stepping with negative steps should not succeed!";
 	compare_current_ros_time(env_ptr->getModelPtr()->opt.timestep * total_steps,
-	                         std::string("Simulation time should have increased by 10 steps!"));
+	                         std::string("Simulation time should have increased by 10 steps!"), env_ptr.get());
 }
 
 TEST_F(PendulumEnvFixture, ShutdownCallback)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/shutdown", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/shutdown"))
 	    << "Shutdown service should be available!";
 
 	std_srvs::Empty srv;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/shutdown", srv)) << "Shutdown service call failed!";
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/shutdown", srv))
+	    << "Shutdown service call failed!";
+	MJR_WARN_STREAM("Called shutdown service on topic "
+	                << env_ptr->GetHandleNamespace() + "/shutdown, waiting for shutdown to complete...");
 	float seconds = 0;
 	while ((env_ptr->isEventRunning() || env_ptr->isPhysicsRunning()) && seconds < 2) { // wait for shutdown
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -199,12 +201,13 @@ TEST_F(PendulumEnvFixture, PauseCallback)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_pause", true))
-	    << "Reset service should be available!";
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_pause"))
+	    << "Pause service should be available!";
 	mujoco_ros_msgs::SetPause srv;
 
 	srv.request.paused = false;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_pause", srv)) << "unpause service call failed!";
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_pause", srv))
+	    << "unpause service call failed!";
 
 	float seconds = 0;
 	while (seconds < 2 && !env_ptr->settings_.run) { // wait for unpause
@@ -214,7 +217,8 @@ TEST_F(PendulumEnvFixture, PauseCallback)
 	EXPECT_TRUE(env_ptr->settings_.run) << "Simulation should be running!";
 
 	srv.request.paused = true;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_pause", srv)) << "pause service call failed!";
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_pause", srv))
+	    << "pause service call failed!";
 	seconds = 0;
 	while (seconds < 2 && env_ptr->settings_.run) { // wait for pause
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -227,12 +231,13 @@ TEST_F(PendulumEnvFixture, ReloadStringTooLong)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/reload", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/reload"))
 	    << "Reload service should be available!";
 
 	mujoco_ros_msgs::Reload srv;
 	srv.request.model = std::string(env_ptr->kMaxFilenameLength + 1, 'a');
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/reload", srv)) << "Reload service call failed!";
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/reload", srv))
+	    << "Reload service call failed!";
 	EXPECT_FALSE(srv.response.success) << "Reload service should fail!";
 }
 
@@ -240,12 +245,13 @@ TEST_F(PendulumEnvFixture, ReloadSameModelCallback)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/reload", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/reload"))
 	    << "Reload service should be available!";
 
 	mujoco_ros_msgs::Reload srv;
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/reload", srv)) << "Reload service call failed!";
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/reload", srv))
+	    << "Reload service call failed!";
 	EXPECT_TRUE(srv.response.success) << "Reload service should succeed!";
 	float seconds = 0;
 	while (seconds < 2 && env_ptr->GetOperationalStatus() > 0) { // wait for reload to finish
@@ -259,14 +265,15 @@ TEST_F(PendulumEnvFixture, ReloadNewModelCallback)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/reload", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/reload"))
 	    << "Reload service should be available!";
 
 	mujoco_ros_msgs::Reload srv;
 	std::string model_xml = testing::get_test_model_path("empty_world.xml");
 	srv.request.model     = model_xml;
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/reload", srv)) << "Reload service call failed!";
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/reload", srv))
+	    << "Reload service call failed!";
 	float seconds = 0;
 	while (seconds < 2 && env_ptr->GetOperationalStatus() > 0) { // wait for reload to finish
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -285,10 +292,11 @@ TEST_F(PendulumEnvFixture, ResetCallback)
 	env_ptr->settings_.run = 0;
 
 	// Make sure reset service is available
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/reset", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/reset"))
 	    << "Reset service should be available!";
 	std_srvs::Empty srv;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/reset", srv)) << "Reset service call failed!";
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/reset", srv))
+	    << "Reset service call failed!";
 
 	float seconds = 0;
 	while (seconds < 2 && env_ptr->GetOperationalStatus() > 0) { // wait for reset to finish
@@ -330,23 +338,36 @@ TEST_F(PendulumEnvFixture, StepGoalSingle)
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, time + env_ptr->getModelPtr()->opt.timestep, 1e-6)
 	    << "Simulation time should have changed by timestep!";
 #else // MJR_ROS_VERSION == ROS_2
-	auto topics      = testing::get_available_topics_for_test(env_ptr);
-	const bool found = testing::has_topic(topics, env_ptr->GetHandleNamespace() + "/step/result");
-	EXPECT_TRUE(found) << "Step action should be available!";
+
+	auto ac = rclcpp_action::create_client<mujoco_ros_msgs::action::Step>(env_ptr.get(),
+	                                                                      env_ptr->GetHandleNamespace() + "/step");
+
+	EXPECT_TRUE(ac->wait_for_action_server(std::chrono::seconds(1))) << "Step action server should be available!";
 #endif
 }
 
 TEST_F(PendulumEnvFixture, StepGoalMultiple)
 {
-#if MJR_ROS_VERSION == ROS_1
 	auto topics = testing::get_available_topics_for_test(env_ptr);
 
+#if MJR_ROS_VERSION == ROS_1
 	const bool found = testing::has_topic(topics, env_ptr->GetHandleNamespace() + "/step/result");
+#else // MJR_ROS_VERSION == ROS_2
+	auto ac          = rclcpp_action::create_client<mujoco_ros_msgs::action::Step>(env_ptr.get(),
+                                                                         env_ptr->GetHandleNamespace() + "/step");
+	const bool found = ac->wait_for_action_server(std::chrono::seconds(1));
+#endif
 	// Workaround to connect to action server, this is only needed in cpp
 	env_ptr->settings_.run = 1;
 	EXPECT_TRUE(found) << "Step action should be available!";
+
+#if MJR_ROS_VERSION == ROS_1
 	ros::spinOnce();
 	actionlib::SimpleActionClient<mujoco_ros_msgs::StepAction> ac(env_ptr->GetHandleNamespace() + "/step", true);
+	mujoco_ros_msgs::StepGoal goal;
+#else // MJR_ROS_VERSION == ROS_2
+	mujoco_ros_msgs::action::Step::Goal goal;
+#endif
 	env_ptr->settings_.run = 0;
 
 	// Wait for paused state to be applied
@@ -354,20 +375,24 @@ TEST_F(PendulumEnvFixture, StepGoalMultiple)
 
 	mjtNum time = env_ptr->getDataPtr()->time;
 
-	mujoco_ros_msgs::StepGoal goal;
 	goal.num_steps = 100;
+#if MJR_ROS_VERSION == ROS_1
 	ac.sendGoal(goal);
-
 	EXPECT_TRUE(ac.waitForResult(ros::Duration(1.0))) << "Step action did not finish in time!";
 	EXPECT_EQ(ac.getState(), actionlib::SimpleClientGoalState::SUCCEEDED) << "Step action did not succeed!";
 	EXPECT_TRUE(ac.getResult()->success) << "Step action did not succeed!";
+#else // MJR_ROS_VERSION == ROS_2
+	auto goal_future   = ac->async_send_goal(goal);
+	auto result_future = ac->async_get_result(goal_future.get());
+	EXPECT_NE(result_future.wait_for(std::chrono::seconds(1)), std::future_status::timeout)
+	    << "Step action did not finish in time!";
+	auto result = result_future.get();
+	EXPECT_EQ(result.code, rclcpp_action::ResultCode::SUCCEEDED) << "Step action did not succeed!";
+	EXPECT_TRUE(result.result->success) << "Step action did not succeed!";
+#endif
+
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, time + env_ptr->getModelPtr()->opt.timestep * 100, 1e-6)
 	    << "Simulation time should have changed by timestep * 100!";
-#else // MJR_ROS_VERSION == ROS_2
-	auto topics      = testing::get_available_topics_for_test(env_ptr);
-	const bool found = testing::has_topic(topics, env_ptr->GetHandleNamespace() + "/step/result");
-	EXPECT_TRUE(found) << "Step action should be available!";
-#endif
 }
 
 TEST_F(PendulumEnvFixture, StepGoalPreemptUnpaused)
@@ -376,9 +401,15 @@ TEST_F(PendulumEnvFixture, StepGoalPreemptUnpaused)
 	auto topics = testing::get_available_topics_for_test(env_ptr);
 
 	const bool found = testing::has_topic(topics, env_ptr->GetHandleNamespace() + "/step/result");
+#else // MJR_ROS_VERSION == ROS_2
+	auto ac            = rclcpp_action::create_client<mujoco_ros_msgs::action::Step>(env_ptr.get(),
+                                                                         env_ptr->GetHandleNamespace() + "/step");
+	const bool found   = ac->wait_for_action_server(std::chrono::seconds(1));
+#endif
 	// Workaround to connect to action server, this is only needed in cpp
 	env_ptr->settings_.run = 1;
 	EXPECT_TRUE(found) << "Step action should be available!";
+#if MJR_ROS_VERSION == ROS_1
 	ros::spinOnce();
 	actionlib::SimpleActionClient<mujoco_ros_msgs::StepAction> ac(env_ptr->GetHandleNamespace() + "/step", true);
 
@@ -390,9 +421,14 @@ TEST_F(PendulumEnvFixture, StepGoalPreemptUnpaused)
 	    << "Step action must be preempted when unpaused!";
 	EXPECT_FALSE(ac.getResult()->success) << "Step action should have failed!";
 #else // MJR_ROS_VERSION == ROS_2
-	auto topics      = testing::get_available_topics_for_test(env_ptr);
-	const bool found = testing::has_topic(topics, env_ptr->GetHandleNamespace() + "/step/result");
-	EXPECT_TRUE(found) << "Step action should be available!";
+	auto goal          = mujoco_ros_msgs::action::Step::Goal();
+	auto goal_future   = ac->async_send_goal(goal);
+	auto result_future = ac->async_get_result(goal_future.get());
+	EXPECT_NE(result_future.wait_for(std::chrono::seconds(1)), std::future_status::timeout)
+	    << "Step action did not finish in time!";
+	auto result = result_future.get();
+	EXPECT_EQ(result.code, rclcpp_action::ResultCode::ABORTED) << "Step action should be aborted when unpaused!";
+	EXPECT_FALSE(result.result->success) << "Step action should have failed!";
 #endif
 }
 
@@ -402,27 +438,57 @@ TEST_F(PendulumEnvFixture, StepGoalCancelPreempt)
 	auto topics = testing::get_available_topics_for_test(env_ptr);
 
 	const bool found = testing::has_topic(topics, env_ptr->GetHandleNamespace() + "/step/result");
+#else // MJR_ROS_VERSION == ROS_2
+	auto ac                 = rclcpp_action::create_client<mujoco_ros_msgs::action::Step>(env_ptr.get(),
+                                                                         env_ptr->GetHandleNamespace() + "/step");
+	bool found              = ac->wait_for_action_server(std::chrono::seconds(1));
+#endif
 	// Workaround to connect to action server, this is only needed in cpp
 	env_ptr->settings_.run = 1;
 	EXPECT_TRUE(found) << "Step action should be available!";
+
+#if MJR_ROS_VERSION == ROS_1
 	ros::spinOnce();
 	actionlib::SimpleActionClient<mujoco_ros_msgs::StepAction> ac(env_ptr->GetHandleNamespace() + "/step", true);
+#endif
+
 	env_ptr->settings_.run = 0;
 
 	// Wait for paused state to be applied
 	std::this_thread::sleep_for(std::chrono::milliseconds(5));
 
+#if MJR_ROS_VERSION == ROS_1
 	mujoco_ros_msgs::StepGoal goal;
-	goal.num_steps = 1000;
+	goal.num_steps = 10000;
 	ac.sendGoal(goal);
 	ac.cancelGoal();
 	ac.waitForResult();
 	EXPECT_EQ(ac.getState(), actionlib::SimpleClientGoalState::PREEMPTED);
 	EXPECT_FALSE(ac.getResult()->success) << "Step action should have failed!";
 #else // MJR_ROS_VERSION == ROS_2
-	auto topics      = testing::get_available_topics_for_test(env_ptr);
-	const bool found = testing::has_topic(topics, env_ptr->GetHandleNamespace() + "/step/result");
-	EXPECT_TRUE(found) << "Step action should be available!";
+	auto goal               = mujoco_ros_msgs::action::Step::Goal();
+	goal.num_steps          = 10000;
+	auto goal_handle_future = ac->async_send_goal(goal);
+	ASSERT_NE(goal_handle_future.wait_for(std::chrono::seconds(1)), std::future_status::timeout)
+	    << "Step action did not start in time!";
+
+	auto goal_handle = goal_handle_future.get();
+	ASSERT_TRUE(goal_handle) << "Goal was not accepted!";
+
+	auto cancel_future = ac->async_cancel_goal(goal_handle);
+	ASSERT_NE(cancel_future.wait_for(std::chrono::seconds(1)), std::future_status::timeout)
+	    << "Step action cancel did not finish in time!";
+
+	auto cancel_response = cancel_future.get();
+	EXPECT_TRUE(cancel_response) << "Goal cancel was not accepted!";
+	EXPECT_FALSE(cancel_response->goals_canceling.empty()) << "No goals were canceled!";
+
+	auto result_future = ac->async_get_result(goal_handle);
+	EXPECT_NE(result_future.wait_for(std::chrono::seconds(1)), std::future_status::timeout)
+	    << "Step action did not finish in time!";
+	auto result = result_future.get();
+	EXPECT_EQ(result.code, rclcpp_action::ResultCode::CANCELED) << "Step action should be canceled!";
+	EXPECT_FALSE(result.result->success) << "Step action should have failed!";
 #endif
 }
 
@@ -432,8 +498,7 @@ TEST_F(PendulumEnvFixture, DefaultInitialJointStates)
 	mjData *d  = env_ptr->getDataPtr();
 
 	std::map<std::string, std::string> pos_map, vel_map;
-	nh->getParam("initial_joint_positions/joint_map", pos_map);
-	nh->getParam("initial_joint_velocities/joint_map", vel_map);
+	testing::get_initial_joint_state_maps(env_ptr, nh.get(), pos_map, vel_map);
 
 	EXPECT_EQ(pos_map.size(), 0) << "No initial joint positions should be set!";
 	EXPECT_EQ(vel_map.size(), 0) << "No initial joint velocities should be set!";
@@ -480,8 +545,7 @@ TEST_F(BaseEnvFixture, CustomInitialJointStates)
 	vel_map.insert({ "joint2", "1.05" });
 	vel_map.insert({ "ball_freejoint", "1.0 2.0 3.0 10 20 30" });
 
-	nh->setParam("initial_joint_positions/joint_map", pos_map);
-	nh->setParam("initial_joint_velocities/joint_map", vel_map);
+	testing::set_initial_joint_state_maps(nh.get(), pos_map, vel_map);
 
 	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 	env_ptr->StartWithXML(xml_path);
@@ -557,14 +621,14 @@ TEST_F(PendulumEnvFixture, CustomInitialJointStatesOnReset)
 	compare_qvel(d, m->jnt_dofadr[id2], "joint2", { 0.0 });
 	compare_qvel(d, m->jnt_dofadr[id_free], "ball_freejoint", { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 });
 
-	nh->setParam("initial_joint_positions/joint_map", pos_map);
-	nh->setParam("initial_joint_velocities/joint_map", vel_map);
+	testing::set_initial_joint_state_maps(nh.get(), pos_map, vel_map);
 
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/reset", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/reset"))
 	    << "Reset service should be available!";
 
 	std_srvs::Empty srv;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/reset", srv)) << "Reset service call failed!";
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/reset", srv))
+	    << "Reset service call failed!";
 
 	while (env_ptr->GetOperationalStatus() > 0) { // wait for reset to be done
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -581,15 +645,17 @@ TEST_F(PendulumEnvFixture, CustomInitialJointStatesOnReset)
 	compare_qvel(d, m->jnt_dofadr[id2], "joint2", { 1.05 });
 	compare_qvel(d, m->jnt_dofadr[id_free], "ball_freejoint", { 1.0, 2.0, 3.0, 10.0, 20.0, 30.0 });
 
+#if MJR_ROS_VERSION == ROS_1
 	nh->deleteParam("initial_joint_positions/joint_map");
 	nh->deleteParam("initial_joint_velocities/joint_map");
+#endif
 }
 
 TEST_F(PendulumEnvFixture, SetBodyStateNotAllowed)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state"))
 	    << "Set body state service should be available!";
 
 	// Set eval mode and hash
@@ -598,97 +664,97 @@ TEST_F(PendulumEnvFixture, SetBodyStateNotAllowed)
 
 	mujoco_ros_msgs::SetBodyState srv;
 	srv.request.admin_hash = "wrong_hash";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_body_state", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state", srv))
 	    << "set body state service call failed!";
 	EXPECT_FALSE(srv.response.success);
 }
 
 TEST_F(PendulumEnvFixture, SetBodyStateEmptyBodyName)
 {
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state"))
 	    << "Set body state service should be available!";
 
 	mujoco_ros_msgs::SetBodyState srv;
 
 	// Invalid body_name
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_body_state", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state", srv))
 	    << "set body state service call failed!";
 	EXPECT_FALSE(srv.response.success);
 }
 
 TEST_F(PendulumEnvFixture, SetBodyStateInvalidBodyName)
 {
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state"))
 	    << "Set body state service should be available!";
 
 	mujoco_ros_msgs::SetBodyState srv;
 	srv.request.state.name = "unknown";
 
 	// Invalid body_name
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_body_state", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state", srv))
 	    << "set body state service call failed!";
 	EXPECT_FALSE(srv.response.success);
 }
 
 TEST_F(PendulumEnvFixture, SetBodyStateResolveBody)
 {
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state"))
 	    << "Set body state service should be available!";
 
 	mujoco_ros_msgs::SetBodyState srv;
 
 	// Resolve body
 	srv.request.state.name = "middle_link";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_body_state", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state", srv))
 	    << "set body state service call failed!";
 	EXPECT_TRUE(srv.response.success);
 }
 
 TEST_F(PendulumEnvFixture, SetBodyStateResolveBodyFromGeom)
 {
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state"))
 	    << "Set body state service should be available!";
 
 	mujoco_ros_msgs::SetBodyState srv;
 
 	// Resolve body from child geom
 	srv.request.state.name = "EE";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_body_state", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state", srv))
 	    << "set body state service call failed!";
 	EXPECT_TRUE(srv.response.success);
 }
 
 TEST_F(PendulumEnvFixture, SetBodyStatePosNonFreejointError)
 {
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state"))
 	    << "Set body state service should be available!";
 
 	mujoco_ros_msgs::SetBodyState srv;
 	srv.request.set_pose = true;
 
 	//   Not a freejoint
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_body_state", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state", srv))
 	    << "set body state service call failed!";
 	EXPECT_FALSE(srv.response.success);
 }
 
 TEST_F(PendulumEnvFixture, SetBodyStatePosNoJointError)
 {
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state"))
 	    << "Set body state service should be available!";
 
 	mujoco_ros_msgs::SetBodyState srv;
 	srv.request.set_pose = true;
 
 	srv.request.state.name = "immovable";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_body_state", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state", srv))
 	    << "set body state service call failed!";
 	EXPECT_FALSE(srv.response.success);
 }
 
 TEST_F(PendulumEnvFixture, SetBodyStatePosUnknownFrameID)
 {
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state"))
 	    << "Set body state service should be available!";
 
 	mujoco_ros_msgs::SetBodyState srv;
@@ -696,14 +762,14 @@ TEST_F(PendulumEnvFixture, SetBodyStatePosUnknownFrameID)
 
 	srv.request.state.name                 = "ball";
 	srv.request.state.pose.header.frame_id = "unknown";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_body_state", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state", srv))
 	    << "set body state service call failed!";
 	EXPECT_FALSE(srv.response.success);
 }
 
 TEST_F(PendulumEnvFixture, SetBodyStateTwistNotWorldFrame)
 {
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state"))
 	    << "Set body state service should be available!";
 
 	mujoco_ros_msgs::SetBodyState srv;
@@ -711,7 +777,7 @@ TEST_F(PendulumEnvFixture, SetBodyStateTwistNotWorldFrame)
 
 	//   other frame_id than world
 	srv.request.state.twist.header.frame_id = "not-world";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_body_state", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state", srv))
 	    << "set body state service call failed!";
 	EXPECT_FALSE(srv.response.success);
 }
@@ -720,7 +786,7 @@ TEST_F(PendulumEnvFixture, SetBodyStatePosAndTwist)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state"))
 	    << "Set body state service should be available!";
 
 	mjModel *m = env_ptr->getModelPtr();
@@ -750,7 +816,7 @@ TEST_F(PendulumEnvFixture, SetBodyStatePosAndTwist)
 	srv.request.state.twist.twist.angular.x = 0.1;
 	srv.request.state.twist.twist.angular.y = 0;
 	srv.request.state.twist.twist.angular.z = 0;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_body_state", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state", srv))
 	    << "set body state service call failed!";
 	EXPECT_TRUE(srv.response.success);
 
@@ -763,7 +829,7 @@ TEST_F(PendulumEnvFixture, SetBodyStateMass)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state"))
 	    << "Set body state service should be available!";
 
 	mjModel *m = env_ptr->getModelPtr();
@@ -775,7 +841,7 @@ TEST_F(PendulumEnvFixture, SetBodyStateMass)
 	srv.request.state.mass = 0.299f;
 	EXPECT_NE(m->body_mass[mj_name2id(m, mjOBJ_BODY, "body_ball")], srv.request.state.mass)
 	    << "Mass already has the requested value!"; // Check that mass is different beforehand
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_body_state", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state", srv))
 	    << "set body state service call failed!";
 	EXPECT_TRUE(srv.response.success);
 
@@ -787,7 +853,7 @@ TEST_F(PendulumEnvFixture, SetBodyStateResetQPos)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state"))
 	    << "Set body state service should be available!";
 
 	mjModel *m = env_ptr->getModelPtr();
@@ -799,7 +865,7 @@ TEST_F(PendulumEnvFixture, SetBodyStateResetQPos)
 	srv.request.state.name = "ball";
 	// reset
 	srv.request.reset_qpos = true;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_body_state", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state", srv))
 	    << "set body state service call failed!";
 	EXPECT_TRUE(srv.response.success);
 
@@ -811,7 +877,7 @@ TEST_F(PendulumEnvFixture, GetBodyStateNotAllowed)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/get_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_body_state"))
 	    << "Get body state service should be available!";
 
 	// set eval mode and hash
@@ -821,7 +887,7 @@ TEST_F(PendulumEnvFixture, GetBodyStateNotAllowed)
 	mujoco_ros_msgs::GetBodyState g_srv;
 	g_srv.request.admin_hash = "wrong_hash";
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_body_state", g_srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_body_state", g_srv))
 	    << "get body state service call failed!";
 	EXPECT_FALSE(g_srv.response.success);
 }
@@ -830,13 +896,13 @@ TEST_F(PendulumEnvFixture, GetBodyStateNameEmpty)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state"))
 	    << "Set body state service should be available!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/get_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_body_state"))
 	    << "Get body state service should be available!";
 
 	mujoco_ros_msgs::GetBodyState g_srv;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_body_state", g_srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_body_state", g_srv))
 	    << "get body state service call failed!";
 	EXPECT_FALSE(g_srv.response.success);
 }
@@ -845,15 +911,15 @@ TEST_F(PendulumEnvFixture, GetBodyStateInvalidName)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state"))
 	    << "Set body state service should be available!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/get_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_body_state"))
 	    << "Get body state service should be available!";
 
 	mujoco_ros_msgs::GetBodyState g_srv;
 	// wrong body name
 	g_srv.request.name = "unknown";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_body_state", g_srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_body_state", g_srv))
 	    << "get body state service call failed!";
 	EXPECT_FALSE(g_srv.response.success);
 }
@@ -862,12 +928,12 @@ TEST_F(PendulumEnvFixture, GetBodyStateResolveBodyFromGeom)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/get_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_body_state"))
 	    << "Get body state service should be available!";
 
 	mujoco_ros_msgs::GetBodyState g_srv;
 	g_srv.request.name = "EE";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_body_state", g_srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_body_state", g_srv))
 	    << "get body state service call failed!";
 	EXPECT_TRUE(g_srv.response.success);
 	EXPECT_EQ(g_srv.response.state.name, "end_link");
@@ -877,14 +943,14 @@ TEST_F(PendulumEnvFixture, GetBodyStateStaticBody)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state"))
 	    << "Set body state service should be available!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/get_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_body_state"))
 	    << "Get body state service should be available!";
 
 	mujoco_ros_msgs::GetBodyState g_srv;
 	g_srv.request.name = "immovable";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_body_state", g_srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_body_state", g_srv))
 	    << "get body state service call failed!";
 	EXPECT_TRUE(g_srv.response.success);
 	EXPECT_EQ(g_srv.response.state.name, "immovable");
@@ -908,14 +974,14 @@ TEST_F(PendulumEnvFixture, GetBodyStateMultijoint)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state"))
 	    << "Set body state service should be available!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/get_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_body_state"))
 	    << "Get body state service should be available!";
 
 	mujoco_ros_msgs::GetBodyState g_srv;
 	g_srv.request.name = "multijoint";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_body_state", g_srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_body_state", g_srv))
 	    << "get body state service call failed!";
 	EXPECT_TRUE(g_srv.response.success);
 	EXPECT_EQ(g_srv.response.state.name, "multijoint");
@@ -939,9 +1005,9 @@ TEST_F(PendulumEnvFixture, GetBodyStateFreejoint)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state"))
 	    << "Set body state service should be available!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/get_body_state", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_body_state"))
 	    << "Get body state service should be available!";
 
 	mujoco_ros_msgs::SetBodyState srv;
@@ -964,7 +1030,8 @@ TEST_F(PendulumEnvFixture, GetBodyStateFreejoint)
 	srv.request.state.twist.twist.angular.x   = 0.1;
 	srv.request.state.twist.twist.angular.y   = 0.1;
 	srv.request.state.twist.twist.angular.z   = -0.1;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_body_state", srv))
+
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_body_state", srv))
 	    << "set body state service call failed!";
 	EXPECT_TRUE(srv.response.success);
 
@@ -972,7 +1039,7 @@ TEST_F(PendulumEnvFixture, GetBodyStateFreejoint)
 
 	// correct request
 	g_srv.request.name = "body_ball";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_body_state", g_srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_body_state", g_srv))
 	    << "get body state service call failed!";
 	EXPECT_TRUE(g_srv.response.success);
 	EXPECT_EQ(g_srv.response.state.mass, srv.request.state.mass);
@@ -986,12 +1053,14 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesNameEmpty)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_geom_properties", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties"))
 	    << "Set geom properties service should be available!";
 
 	mujoco_ros_msgs::SetGeomProperties srv;
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
 	    << "Set geom properties service call failed!";
 	EXPECT_FALSE(srv.response.success);
 }
@@ -1000,14 +1069,16 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesInvalidGeomName)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_geom_properties", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties"))
 	    << "Set geom properties service should be available!";
 
 	mujoco_ros_msgs::SetGeomProperties srv;
 
 	// Invalid geom_name
 	srv.request.properties.name = "unknown";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
 	    << "Set geom properties service call failed!";
 	EXPECT_FALSE(srv.response.success);
 }
@@ -1016,14 +1087,16 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesValidGeomName)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_geom_properties", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties"))
 	    << "Set geom properties service should be available!";
 
 	mujoco_ros_msgs::SetGeomProperties srv;
 
 	// Resolve geom
 	srv.request.properties.name = "ball";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
 	    << "Set geom properties service call failed!";
 	EXPECT_TRUE(srv.response.success);
 }
@@ -1032,7 +1105,8 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesMass)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_geom_properties", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties"))
 	    << "Set geom properties service should be available!";
 
 	mjModel *m = env_ptr->getModelPtr();
@@ -1046,7 +1120,8 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesMass)
 	srv.request.set_mass             = true;
 	srv.request.properties.body_mass = 0.299f;
 	EXPECT_NE(m->body_mass[ball_body_id], srv.request.properties.body_mass) << "Mass already has requested value!";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
 	    << "Set geom properties service call failed!";
 	EXPECT_TRUE(srv.response.success);
 	EXPECT_EQ(m->body_mass[ball_body_id], srv.request.properties.body_mass)
@@ -1057,7 +1132,8 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesFriction)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_geom_properties", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties"))
 	    << "Set geom properties service should be available!";
 
 	mjModel *m = env_ptr->getModelPtr();
@@ -1075,7 +1151,8 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesFriction)
 	EXPECT_TRUE(m->geom_friction[ball_geom_id * 3] != 0 && m->geom_friction[ball_geom_id * 3 + 1] != 0 &&
 	            m->geom_friction[ball_geom_id * 3 + 2] != 0)
 	    << "Some friction values already at 0!";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
 	    << "Set geom properties service call failed!";
 	EXPECT_TRUE(srv.response.success);
 	EXPECT_TRUE(m->geom_friction[ball_geom_id * 3] == 0) << "Slide friction unchanged!";
@@ -1088,7 +1165,8 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesTypeBox)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_geom_properties", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties"))
 	    << "Set geom properties service should be available!";
 
 	mjModel *m = env_ptr->getModelPtr();
@@ -1102,7 +1180,8 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesTypeBox)
 	//   BOX
 	srv.request.properties.type.value = mujoco_ros_msgs::GeomType::BOX;
 	EXPECT_NE(m->geom_type[ball_geom_id], mjGEOM_BOX) << "Geom already is of type BOX";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
 	    << "Set geom properties service call failed!";
 	EXPECT_TRUE(srv.response.success);
 	EXPECT_EQ(m->geom_type[ball_geom_id], mjGEOM_BOX) << "Geom unchanged";
@@ -1112,7 +1191,8 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesTypeCylinder)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_geom_properties", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties"))
 	    << "Set geom properties service should be available!";
 
 	mjModel *m = env_ptr->getModelPtr();
@@ -1125,7 +1205,8 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesTypeCylinder)
 	srv.request.set_type        = true;
 	//   CYLINDER
 	srv.request.properties.type.value = mujoco_ros_msgs::GeomType::CYLINDER;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
 	    << "Set geom properties service call failed!";
 	EXPECT_TRUE(srv.response.success);
 	EXPECT_EQ(m->geom_type[ball_geom_id], mjGEOM_CYLINDER) << "Geom unchanged";
@@ -1135,7 +1216,8 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesTypeEllipsoid)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_geom_properties", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties"))
 	    << "Set geom properties service should be available!";
 
 	mjModel *m = env_ptr->getModelPtr();
@@ -1148,7 +1230,8 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesTypeEllipsoid)
 	srv.request.set_type        = true;
 	//  ELLIPSOID
 	srv.request.properties.type.value = mujoco_ros_msgs::GeomType::ELLIPSOID;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
 	    << "Set geom properties service call failed!";
 	EXPECT_TRUE(srv.response.success);
 	EXPECT_EQ(m->geom_type[ball_geom_id], mjGEOM_ELLIPSOID) << "Geom unchanged";
@@ -1158,7 +1241,8 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesTypeCapsule)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_geom_properties", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties"))
 	    << "Set geom properties service should be available!";
 
 	mjModel *m = env_ptr->getModelPtr();
@@ -1171,7 +1255,8 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesTypeCapsule)
 	srv.request.properties.name = "ball";
 	//  CAPSULE
 	srv.request.properties.type.value = mujoco_ros_msgs::GeomType::CAPSULE;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
 	    << "Set geom properties service call failed!";
 	EXPECT_TRUE(srv.response.success);
 	EXPECT_EQ(m->geom_type[ball_geom_id], mjGEOM_CAPSULE) << "Geom unchanged";
@@ -1181,7 +1266,8 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesTypeSphere)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_geom_properties", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties"))
 	    << "Set geom properties service should be available!";
 
 	mjModel *m = env_ptr->getModelPtr();
@@ -1194,7 +1280,8 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesTypeSphere)
 	srv.request.set_type        = true;
 	//  SPHERE
 	srv.request.properties.type.value = mujoco_ros_msgs::GeomType::SPHERE;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
 	    << "Set geom properties service call failed!";
 	EXPECT_TRUE(srv.response.success);
 	EXPECT_EQ(m->geom_type[ball_geom_id], mjGEOM_SPHERE) << "Geom unchanged";
@@ -1204,7 +1291,8 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesSize)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_geom_properties", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties"))
 	    << "Set geom properties service should be available!";
 
 	mjModel *m = env_ptr->getModelPtr();
@@ -1224,7 +1312,8 @@ TEST_F(PendulumEnvFixture, SetGeomPropertiesSize)
 	EXPECT_TRUE(m->geom_size[ball_geom_id * 3] != 0.01 && m->geom_size[ball_geom_id * 3 + 1] != 0.01 &&
 	            m->geom_size[ball_geom_id * 3 + 2] != 0.01)
 	    << "Geom size is already 0.01 0.01 0.01!";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
 	    << "Set geom properties service call failed!";
 	EXPECT_NEAR(m->geom_size[ball_geom_id * 3], 0.01, 9e-4) << "Size 0 unchanged";
 	EXPECT_NEAR(m->geom_size[ball_geom_id * 3 + 1], 0.01, 9e-4) << "Size 1 unchanged";
@@ -1235,7 +1324,8 @@ TEST_F(PendulumEnvFixture, GetGeomPropertiesNotAllowed)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/get_geom_properties", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_geom_properties"))
 	    << "Get geom properties service should be available!";
 
 	// set eval mode and hash
@@ -1245,7 +1335,8 @@ TEST_F(PendulumEnvFixture, GetGeomPropertiesNotAllowed)
 	mujoco_ros_msgs::GetGeomProperties g_srv;
 	g_srv.request.admin_hash = "wrong_hash";
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_geom_properties", g_srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_geom_properties", g_srv))
 	    << "Get geom properties service call failed!";
 	EXPECT_FALSE(g_srv.response.success);
 }
@@ -1254,12 +1345,14 @@ TEST_F(PendulumEnvFixture, GetGeomPropertiesNameEmpty)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/get_geom_properties", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_geom_properties"))
 	    << "Get geom properties service should be available!";
 
 	mujoco_ros_msgs::GetGeomProperties g_srv;
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_geom_properties", g_srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_geom_properties", g_srv))
 	    << "Get geom properties service call failed!";
 	EXPECT_FALSE(g_srv.response.success);
 }
@@ -1268,13 +1361,15 @@ TEST_F(PendulumEnvFixture, GetGeomPropertiesInvalidGeomName)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/get_geom_properties", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_geom_properties"))
 	    << "Get geom properties service should be available!";
 
 	mujoco_ros_msgs::GetGeomProperties g_srv;
 	g_srv.request.geom_name = "unknown";
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_geom_properties", g_srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_geom_properties", g_srv))
 	    << "Get geom properties service call failed!";
 	EXPECT_FALSE(g_srv.response.success);
 }
@@ -1283,9 +1378,11 @@ TEST_F(PendulumEnvFixture, GetGeomPropertiesValidGeomName)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_geom_properties", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties"))
 	    << "Set geom properties service should be available!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/get_geom_properties", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_geom_properties"))
 	    << "Get geom properties service should be available!";
 
 	mujoco_ros_msgs::SetGeomProperties srv;
@@ -1302,14 +1399,16 @@ TEST_F(PendulumEnvFixture, GetGeomPropertiesValidGeomName)
 	srv.request.properties.friction_slide = 1.;
 	srv.request.properties.friction_spin  = 1.;
 	srv.request.properties.friction_roll  = 1.;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_geom_properties", srv))
 	    << "Set geom properties service call failed!";
 	EXPECT_TRUE(srv.response.success);
 
 	mujoco_ros_msgs::GetGeomProperties g_srv;
 
 	g_srv.request.geom_name = "ball";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_geom_properties", g_srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_geom_properties", g_srv))
 	    << "Get geom properties service call failed!";
 	EXPECT_TRUE(g_srv.response.success);
 
@@ -1545,7 +1644,8 @@ TEST_F(EqualityEnvFixture, SetEqConstraintNotAllowed)
 	mujoco_ros_msgs::EqualityConstraintParameters some_eqc;
 	srv.request.parameters = { some_eqc };
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(),
+	                                             env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters", srv))
 	    << "Set eq constraint service call failed!";
 	EXPECT_FALSE(srv.response.success);
 }
@@ -1554,14 +1654,16 @@ TEST_F(EqualityEnvFixture, SetEqConstraintNotProvided)
 {
 	mujoco_ros_msgs::SetEqualityConstraintParameters srv;
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(),
+	                                             env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters", srv))
 	    << "Set eq constraint service call failed!";
 	EXPECT_FALSE(srv.response.success);
 }
 
 TEST_F(EqualityEnvFixture, SetEqConstraintInvalidName)
 {
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(),
+	                                               env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters"))
 	    << "Set eq constraint service should be available!";
 
 	mujoco_ros_msgs::EqualityConstraintParameters unknown_eqc;
@@ -1569,7 +1671,8 @@ TEST_F(EqualityEnvFixture, SetEqConstraintInvalidName)
 	mujoco_ros_msgs::SetEqualityConstraintParameters srv;
 	srv.request.parameters = { unknown_eqc };
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(),
+	                                             env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters", srv))
 	    << "Set eq constraint service call failed!";
 	EXPECT_FALSE(srv.response.success);
 }
@@ -1604,7 +1707,8 @@ TEST_F(EqualityEnvFixture, SetEqConstraintConnect)
 
 	srv.request.parameters = { connect_eqc };
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(),
+	                                             env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters", srv))
 	    << "Set eq constraint service call failed!";
 	EXPECT_TRUE(srv.response.success);
 
@@ -1650,7 +1754,8 @@ TEST_F(EqualityEnvFixture, SetEqConstraintWeld)
 
 	srv.request.parameters = { weld_eqc };
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(),
+	                                             env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters", srv))
 	    << "Set eq constraint service call failed!";
 	EXPECT_TRUE(srv.response.success);
 
@@ -1684,7 +1789,8 @@ TEST_F(EqualityEnvFixture, SetEqConstraintJoint)
 
 	srv.request.parameters = { joint_eqc };
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(),
+	                                             env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters", srv))
 	    << "Set eq constraint service call failed!";
 	EXPECT_TRUE(srv.response.success);
 
@@ -1718,7 +1824,8 @@ TEST_F(EqualityEnvFixture, SetEqConstraintTendon)
 
 	srv.request.parameters = { tendon_eqc };
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(),
+	                                             env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters", srv))
 	    << "Set eq constraint service call failed!";
 	EXPECT_TRUE(srv.response.success);
 
@@ -1754,7 +1861,8 @@ TEST_F(EqualityEnvFixture, SetEqConstraintPartialSuccess)
 	unknown_eqc.name       = "unknown_eqc";
 	srv.request.parameters = { unknown_eqc, joint_eqc };
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(),
+	                                             env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters", srv))
 	    << "Set eq constraint service call failed!";
 	EXPECT_FALSE(srv.response.success);
 
@@ -1769,14 +1877,17 @@ TEST_F(EqualityEnvFixture, GetEqConstraint)
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(d->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(),
+	                                               env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters"))
 	    << "Set geom properties service should be available!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/get_eq_constraint_parameters", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(),
+	                                               env_ptr->GetHandleNamespace() + "/get_eq_constraint_parameters"))
 	    << "Ret geom properties service should be available!";
 
 	mujoco_ros_msgs::GetEqualityConstraintParameters srv;
 	srv.request.names = { "weld_eq", "tendon_eq", "joint_eq", "connect_eq" };
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_eq_constraint_parameters", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(),
+	                                             env_ptr->GetHandleNamespace() + "/get_eq_constraint_parameters", srv))
 	    << "Get eq constraints service call failed!";
 	EXPECT_TRUE(srv.response.success);
 
@@ -1799,7 +1910,7 @@ TEST_F(PendulumEnvFixture, SetGravityNotAllowed)
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(d->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_gravity", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_gravity"))
 	    << "Set gravity service should be available!";
 
 	// set eval mode and admin hash
@@ -1809,7 +1920,7 @@ TEST_F(PendulumEnvFixture, SetGravityNotAllowed)
 	mujoco_ros_msgs::SetGravity srv;
 	srv.request.admin_hash = "wrong_hash";
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_gravity", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_gravity", srv))
 	    << "Set gravity service call failed!";
 	EXPECT_FALSE(srv.response.success);
 }
@@ -1821,13 +1932,13 @@ TEST_F(PendulumEnvFixture, SetGravity)
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(d->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_gravity", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_gravity"))
 	    << "Set gravity service should be available!";
 
 	mujoco_ros_msgs::SetGravity srv;
 	srv.request.gravity = { .0, -10.0, .0 };
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_gravity", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_gravity", srv))
 	    << "Set gravity service call failed!";
 	EXPECT_TRUE(srv.response.success);
 	EXPECT_DOUBLE_EQ(m->opt.gravity[0], srv.request.gravity[0]) << "Gravity x mismatch";
@@ -1841,7 +1952,7 @@ TEST_F(PendulumEnvFixture, GetGravityNotAllowed)
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(d->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/get_gravity", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_gravity"))
 	    << "Get gravity service should be available!";
 
 	// set eval mode and admin hash
@@ -1851,7 +1962,7 @@ TEST_F(PendulumEnvFixture, GetGravityNotAllowed)
 	mujoco_ros_msgs::GetGravity srv;
 	srv.request.admin_hash = "wrong_hash";
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_gravity", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_gravity", srv))
 	    << "Get gravity service call failed!";
 	EXPECT_FALSE(srv.response.success);
 }
@@ -1863,12 +1974,12 @@ TEST_F(PendulumEnvFixture, GetGravity)
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(d->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/get_gravity", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_gravity"))
 	    << "Get gravity service should be available!";
 
 	mujoco_ros_msgs::GetGravity srv;
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_gravity", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_gravity", srv))
 	    << "Get gravity service call failed!";
 	EXPECT_TRUE(srv.response.success);
 	EXPECT_DOUBLE_EQ(m->opt.gravity[0], srv.response.gravity[0]) << "Gravity x mismatch";
@@ -1878,12 +1989,14 @@ TEST_F(PendulumEnvFixture, GetGravity)
 
 TEST_F(PendulumEnvFixture, GetStateUintReady)
 {
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/get_loading_request_state", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_loading_request_state"))
 	    << "Get state service should be available!";
 
 	mujoco_ros_msgs::GetStateUint srv;
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_loading_request_state", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(),
+	                                             env_ptr->GetHandleNamespace() + "/get_loading_request_state", srv))
 	    << "Get state service call failed!";
 	EXPECT_EQ(srv.response.state.value, 0) << "State should be ready (0)!";
 }
@@ -1938,7 +2051,8 @@ TEST_F(PendulumEnvFixture, LoadInitialJointPositions_Valid)
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(d->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/load_initial_joint_states", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/load_initial_joint_states"))
 	    << "Load initial joint states service should be available!";
 
 	std::map<std::string, std::string> joint_states;
@@ -1964,14 +2078,21 @@ TEST_F(PendulumEnvFixture, LoadInitialJointPositions_Valid)
 	compare_qpos(d, m->jnt_qposadr[ids[2]], "joint2", { 0.0 });
 	compare_qpos(d, m->jnt_qposadr[ids[3]], "ball_freejoint", { 1.0, 0.0, 0.06, 1.0, 0.0, 0.0, 0.0 });
 
+#if MJR_ROS_VERSION == ROS_1
 	nh->setParam(env_ptr->GetHandleNamespace() + "/initial_joint_positions/joint_map", joint_states);
+#elif MJR_ROS_VERSION == ROS_2
+	testing::set_initial_joint_state_maps(nh.get(), joint_states, {});
+#endif
 
 	std_srvs::Empty srv;
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/load_initial_joint_states", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(),
+	                                             env_ptr->GetHandleNamespace() + "/load_initial_joint_states", srv))
 	    << "Load initial joint states service call failed!";
 
+#if MJR_ROS_VERSION == ROS_1
 	nh->deleteParam(env_ptr->GetHandleNamespace() + "/initial_joint_positions/joint_map");
+#endif
 
 	compare_qpos(d, m->jnt_qposadr[ids[0]], "balljoint", { 0.0, 1.0, 0.0, 0.0 });
 	compare_qpos(d, m->jnt_qposadr[ids[1]], "joint1", { 0.3 });
@@ -1986,11 +2107,13 @@ TEST_F(PendulumEnvFixture, LoadInitialJointPositions_NoParams)
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(d->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/load_initial_joint_states", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/load_initial_joint_states"))
 	    << "Load initial joint states service should be available!";
 
 	std_srvs::Empty srv;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/load_initial_joint_states", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(),
+	                                             env_ptr->GetHandleNamespace() + "/load_initial_joint_states", srv))
 	    << "Load initial joint states service call failed!";
 
 	int ids[4];
@@ -2017,7 +2140,8 @@ TEST_F(PendulumEnvFixture, LoadInitialJointPositions_InvalidJointName)
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(d->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/load_initial_joint_states", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/load_initial_joint_states"))
 	    << "Load initial joint states service should be available!";
 
 	int ids[4];
@@ -2034,12 +2158,21 @@ TEST_F(PendulumEnvFixture, LoadInitialJointPositions_InvalidJointName)
 	std::map<std::string, std::string> joint_states;
 	joint_states.insert({ "invalid_joint", "0.3" });
 
+#if MJR_ROS_VERSION == ROS_1
 	nh->setParam(env_ptr->GetHandleNamespace() + "/initial_joint_positions/joint_map", joint_states);
+#elif MJR_ROS_VERSION == ROS_2
+	testing::set_initial_joint_state_maps(nh.get(), joint_states, {});
+#endif
 
 	std_srvs::Empty srv;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/load_initial_joint_states", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(),
+	                                             env_ptr->GetHandleNamespace() + "/load_initial_joint_states", srv))
 	    << "Load initial joint states service call failed!";
+#if MJR_ROS_VERSION == ROS_1
 	nh->deleteParam(env_ptr->GetHandleNamespace() + "/initial_joint_positions/joint_map");
+#elif MJR_ROS_VERSION == ROS_2
+	testing::clear_initial_joint_state_maps(nh.get(), true, false);
+#endif
 
 	compare_qpos(d, m->jnt_qposadr[ids[0]], "balljoint", { 1.0, 0.0, 0.0, 0.0 });
 	compare_qpos(d, m->jnt_qposadr[ids[1]], "joint1", { 0.0 });
@@ -2054,7 +2187,8 @@ TEST_F(PendulumEnvFixture, LoadInitialJointPositions_InvalidDOFs)
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(d->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/load_initial_joint_states", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/load_initial_joint_states"))
 	    << "Load initial joint states service should be available!";
 
 	int ids[4];
@@ -2073,12 +2207,21 @@ TEST_F(PendulumEnvFixture, LoadInitialJointPositions_InvalidDOFs)
 	joint_states.insert({ "joint1", "0.3 0.4" }); // Invalid DOFs for hinge joint
 	joint_states.insert({ "ball_freejoint", "0.6" }); // Invalid DOFs for freejoint
 
+#if MJR_ROS_VERSION == ROS_1
 	nh->setParam(env_ptr->GetHandleNamespace() + "/initial_joint_positions/joint_map", joint_states);
+#elif MJR_ROS_VERSION == ROS_2
+	testing::set_initial_joint_state_maps(nh.get(), joint_states, {});
+#endif
 
 	std_srvs::Empty srv;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/load_initial_joint_states", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(),
+	                                             env_ptr->GetHandleNamespace() + "/load_initial_joint_states", srv))
 	    << "Load initial joint states service call failed!";
+#if MJR_ROS_VERSION == ROS_1
 	nh->deleteParam(env_ptr->GetHandleNamespace() + "/initial_joint_positions/joint_map");
+#elif MJR_ROS_VERSION == ROS_2
+	testing::clear_initial_joint_state_maps(nh.get(), true, false);
+#endif
 
 	compare_qpos(d, m->jnt_qposadr[ids[0]], "balljoint", { 1.0, 0.0, 0.0, 0.0 });
 	compare_qpos(d, m->jnt_qposadr[ids[1]], "joint1", { 0.0 });
@@ -2093,7 +2236,8 @@ TEST_F(PendulumEnvFixture, LoadInitialJointVels_Valid)
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(d->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/load_initial_joint_states", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/load_initial_joint_states"))
 	    << "Load initial joint states service should be available!";
 
 	std::map<std::string, std::string> joint_states;
@@ -2118,13 +2262,22 @@ TEST_F(PendulumEnvFixture, LoadInitialJointVels_Valid)
 	compare_qvel(d, m->jnt_dofadr[ids[2]], "joint2", { 0.0 });
 	compare_qvel(d, m->jnt_dofadr[ids[3]], "ball_freejoint", { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 });
 
+#if MJR_ROS_VERSION == ROS_1
 	nh->setParam(env_ptr->GetHandleNamespace() + "/initial_joint_velocities/joint_map", joint_states);
+#elif MJR_ROS_VERSION == ROS_2
+	testing::set_initial_joint_state_maps(nh.get(), {}, joint_states);
+#endif
 
 	std_srvs::Empty srv;
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/load_initial_joint_states", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(),
+	                                             env_ptr->GetHandleNamespace() + "/load_initial_joint_states", srv))
 	    << "Load initial joint states service call failed!";
+#if MJR_ROS_VERSION == ROS_1
 	nh->deleteParam(env_ptr->GetHandleNamespace() + "/initial_joint_velocities/joint_map");
+#elif MJR_ROS_VERSION == ROS_2
+	testing::clear_initial_joint_state_maps(nh.get(), false, true);
+#endif
 
 	compare_qvel(d, m->jnt_dofadr[ids[0]], "balljoint", { 0.2, 1.0, 0.1 });
 	compare_qvel(d, m->jnt_dofadr[ids[1]], "joint1", { 0.3 });
@@ -2139,11 +2292,13 @@ TEST_F(PendulumEnvFixture, LoadInitialJointVels_NoParams)
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(d->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/load_initial_joint_states", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/load_initial_joint_states"))
 	    << "Load initial joint states service should be available!";
 
 	std_srvs::Empty srv;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/load_initial_joint_states", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(),
+	                                             env_ptr->GetHandleNamespace() + "/load_initial_joint_states", srv))
 	    << "Load initial joint states service call failed!";
 
 	int ids[4];
@@ -2170,7 +2325,8 @@ TEST_F(PendulumEnvFixture, LoadInitialJointVels_InvalidJointName)
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(d->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/load_initial_joint_states", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/load_initial_joint_states"))
 	    << "Load initial joint states service should be available!";
 
 	int ids[4];
@@ -2187,12 +2343,21 @@ TEST_F(PendulumEnvFixture, LoadInitialJointVels_InvalidJointName)
 	std::map<std::string, std::string> joint_states;
 	joint_states.insert({ "invalid_joint", "0.3" });
 
+#if MJR_ROS_VERSION == ROS_1
 	nh->setParam(env_ptr->GetHandleNamespace() + "/initial_joint_velocities/joint_map", joint_states);
+#elif MJR_ROS_VERSION == ROS_2
+	testing::set_initial_joint_state_maps(nh.get(), {}, joint_states);
+#endif
 
 	std_srvs::Empty srv;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/load_initial_joint_states", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(),
+	                                             env_ptr->GetHandleNamespace() + "/load_initial_joint_states", srv))
 	    << "Load initial joint states service call failed!";
+#if MJR_ROS_VERSION == ROS_1
 	nh->deleteParam(env_ptr->GetHandleNamespace() + "/initial_joint_velocities/joint_map");
+#elif MJR_ROS_VERSION == ROS_2
+	testing::clear_initial_joint_state_maps(nh.get(), false, true);
+#endif
 
 	compare_qvel(d, m->jnt_dofadr[ids[0]], "balljoint", { 0.0, 0.0, 0.0 });
 	compare_qvel(d, m->jnt_dofadr[ids[1]], "joint1", { 0.0 });
@@ -2207,7 +2372,8 @@ TEST_F(PendulumEnvFixture, LoadInitialJointVels_InvalidDOFs)
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
 	EXPECT_NEAR(d->time, 0, 1e-6) << "Simulation time should be 0.0!";
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/load_initial_joint_states", true))
+	EXPECT_TRUE(
+	    ::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/load_initial_joint_states"))
 	    << "Load initial joint states service should be available!";
 
 	int ids[4];
@@ -2226,12 +2392,21 @@ TEST_F(PendulumEnvFixture, LoadInitialJointVels_InvalidDOFs)
 	joint_states.insert({ "joint1", "0.3 0.4" }); // Invalid DOFs for hinge joint
 	joint_states.insert({ "ball_freejoint", "0.6" }); // Invalid DOFs for freejoint
 
+#if MJR_ROS_VERSION == ROS_1
 	nh->setParam(env_ptr->GetHandleNamespace() + "/initial_joint_velocities/joint_map", joint_states);
+#elif MJR_ROS_VERSION == ROS_2
+	testing::set_initial_joint_state_maps(nh.get(), {}, joint_states);
+#endif
 
 	std_srvs::Empty srv;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/load_initial_joint_states", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(),
+	                                             env_ptr->GetHandleNamespace() + "/load_initial_joint_states", srv))
 	    << "Load initial joint states service call failed!";
+#if MJR_ROS_VERSION == ROS_1
 	nh->deleteParam(env_ptr->GetHandleNamespace() + "/initial_joint_velocities/joint_map");
+#elif MJR_ROS_VERSION == ROS_2
+	testing::clear_initial_joint_state_maps(nh.get(), false, true);
+#endif
 
 	compare_qvel(d, m->jnt_dofadr[ids[0]], "balljoint", { 0.0, 0.0, 0.0 });
 	compare_qvel(d, m->jnt_dofadr[ids[1]], "joint1", { 0.0 });
@@ -2251,10 +2426,10 @@ TEST_F(PendulumEnvFixture, SetRTFactor_NotAllowed)
 	srv.request.value      = 1.5; // Increase real-time factor
 	srv.request.admin_hash = "wrong_hash";
 
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_rt_factor", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_rt_factor"))
 	    << "Set RT factor service call failed!";
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
 	    << "Set RT factor service call failed!";
 	EXPECT_FALSE(srv.response.success) << "Service call should not be successful!";
 
@@ -2265,10 +2440,10 @@ TEST_F(PendulumEnvFixture, SetRTFactor_Increase)
 {
 	mujoco_ros_msgs::SetFloat srv;
 	srv.request.value = 1.5; // Increase real-time factor
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_rt_factor", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_rt_factor"))
 	    << "Set RT factor service call failed!";
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
 	    << "Set RT factor service call failed!";
 	EXPECT_TRUE(srv.response.success) << "Service call was not successful!";
 
@@ -2281,9 +2456,9 @@ TEST_F(PendulumEnvFixture, SetRTFactor_Decrease)
 	mujoco_ros_msgs::SetFloat srv;
 	srv.request.value = 0.5; // Decrease real-time factor
 
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_rt_factor", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_rt_factor"))
 	    << "Set RT factor service call failed!";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
 	    << "Set RT factor service call failed!";
 	EXPECT_TRUE(srv.response.success) << "Service call was not successful!";
 	EXPECT_FLOAT_EQ(env_ptr->percentRealTime[env_ptr->settings_.real_time_index], 50.f)
@@ -2295,9 +2470,9 @@ TEST_F(PendulumEnvFixture, SetRTFactor_UnboundMode)
 	mujoco_ros_msgs::SetFloat srv;
 	srv.request.value = -1; // Set to unbound mode
 
-	EXPECT_TRUE(ros::service::exists(env_ptr->GetHandleNamespace() + "/set_rt_factor", true))
+	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_rt_factor"))
 	    << "Set RT factor service call failed!";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
 	    << "Set RT factor service call failed!";
 	EXPECT_TRUE(srv.response.success) << "Service call was not successful!";
 	EXPECT_EQ(env_ptr->settings_.real_time_index, 0) << "Real-time factor should be set to unbound mode!";
@@ -2308,7 +2483,7 @@ TEST_F(PendulumEnvFixture, SetRTFactor_OutOfBounds)
 	mujoco_ros_msgs::SetFloat srv;
 	srv.request.value = 1000; // Set to a value outside the boundaries
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
 	    << "Set RT factor service call failed!";
 	EXPECT_TRUE(srv.response.success) << "Service call was not successful!";
 	EXPECT_FLOAT_EQ(env_ptr->percentRealTime[env_ptr->settings_.real_time_index], 2000.0f)
@@ -2320,7 +2495,7 @@ TEST_F(PendulumEnvFixture, SetRTFactor_RoundUpClosest)
 	mujoco_ros_msgs::SetFloat srv;
 	srv.request.value = 0.45; // Set to a value outside the boundaries
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
 	    << "Set RT factor service call failed!";
 	EXPECT_TRUE(srv.response.success) << "Service call was not successful!";
 	EXPECT_FLOAT_EQ(env_ptr->percentRealTime[env_ptr->settings_.real_time_index], 50.0f)
@@ -2332,7 +2507,7 @@ TEST_F(PendulumEnvFixture, SetRTFactor_RoundDownClosest)
 	mujoco_ros_msgs::SetFloat srv;
 	srv.request.value = 0.44; // Set to a value outside the boundaries
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
 	    << "Set RT factor service call failed!";
 	EXPECT_TRUE(srv.response.success) << "Service call was not successful!";
 	EXPECT_FLOAT_EQ(env_ptr->percentRealTime[env_ptr->settings_.real_time_index], 40.0f)
@@ -2343,7 +2518,7 @@ TEST_F(PendulumEnvFixture, GetSimInfo_ModelPath)
 {
 	mujoco_ros_msgs::GetSimInfo srv;
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_sim_info", srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_sim_info", srv))
 	    << "Get sim info service call failed!";
 	EXPECT_TRUE(srv.response.state.model_path.find("pendulum_world.xml") != std::string::npos)
 	    << "Model path should contain 'pendulum_world.xml'!";
@@ -2355,13 +2530,15 @@ TEST_F(PendulumEnvFixture, GetSimInfo_LoadCountIncreases)
 	mujoco_ros_msgs::Reload reload_srv;
 	mujoco_ros_msgs::GetSimInfo sim_info_srv;
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_sim_info", sim_info_srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_sim_info", sim_info_srv))
 	    << "Get sim info service call failed!";
 	int initial_load_count = sim_info_srv.response.state.load_count;
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/reload", reload_srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/reload", reload_srv))
 	    << "Reload service call failed!";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_sim_info", sim_info_srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_sim_info", sim_info_srv))
 	    << "Get sim info service call failed!";
 	EXPECT_GT(sim_info_srv.response.state.load_count, initial_load_count) << "Load count should increase after reload!";
 }
@@ -2372,16 +2549,18 @@ TEST_F(PendulumEnvFixture, GetSimInfo_PauseStateChanges)
 	mujoco_ros_msgs::GetSimInfo sim_info_srv;
 
 	pause_srv.request.paused = true;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_pause", pause_srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_pause", pause_srv))
 	    << "Set pause service call failed!";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_sim_info", sim_info_srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_sim_info", sim_info_srv))
 	    << "Get sim info service call failed!";
 	EXPECT_TRUE(sim_info_srv.response.state.paused) << "Simulation should be paused!";
 
 	pause_srv.request.paused = false;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_pause", pause_srv))
+	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_pause", pause_srv))
 	    << "Set pause service call failed!";
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_sim_info", sim_info_srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_sim_info", sim_info_srv))
 	    << "Get sim info service call failed!";
 	EXPECT_FALSE(sim_info_srv.response.state.paused) << "Simulation should be unpaused!";
 }
@@ -2391,17 +2570,21 @@ TEST_F(PendulumEnvFixture, GetSimInfo_RTSettingChanges)
 	mujoco_ros_msgs::SetFloat rt_factor_srv;
 	rt_factor_srv.request.value = 1.5; // Change real-time factor
 
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_rt_factor", rt_factor_srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_rt_factor", rt_factor_srv))
 	    << "Set RT factor service call failed!";
 	EXPECT_TRUE(rt_factor_srv.response.success) << "Service call was not successful!";
 
 	mujoco_ros_msgs::GetSimInfo sim_info_srv;
-	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/get_sim_info", sim_info_srv))
+	EXPECT_TRUE(
+	    ::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/get_sim_info", sim_info_srv))
 	    << "Get sim info service call failed!";
 	EXPECT_FLOAT_EQ(sim_info_srv.response.state.rt_setting, 1.5f)
 	    << "RT setting should change when RT factor is changed!";
 }
 
+// Dynamic reconfigure only exists in ROS1
+#if MJR_ROS_VERSION == ROS_1
 TEST_F(BaseEnvFixture, DynParamEnumsMatchMJEnums)
 {
 	// Integrators
@@ -2427,20 +2610,13 @@ TEST_F(BaseEnvFixture, DynParamEnumsMatchMJEnums)
 
 TEST_F(PendulumEnvFixture, DynamicReconfigureServiceExists)
 {
-#if MJR_ROS_VERSION == ROS_1
 	EXPECT_NE(env_ptr->GetParamServer(), nullptr) << "Parameter server should be initialized!";
 	EXPECT_TRUE(ros::service::waitForService(env_ptr->GetHandleNamespace() + "/set_parameters", 1000))
 	    << "Service should be available!";
-#else // MJR_ROS_VERSION == ROS_2
-	EXPECT_EQ(env_ptr->GetParamServer(), nullptr);
-	EXPECT_TRUE(ros::service::waitForService(env_ptr->GetHandleNamespace() + "/set_parameters", 1000))
-	    << "Parameter service should be available!";
-#endif
 }
 
 TEST_F(PendulumEnvFixture, DynamicReconfigureSingleParam)
 {
-#if MJR_ROS_VERSION == ROS_1
 	// Test dynamic reconfigure
 	dynamic_reconfigure::ReconfigureRequest req;
 	dynamic_reconfigure::ReconfigureResponse res;
@@ -2455,14 +2631,10 @@ TEST_F(PendulumEnvFixture, DynamicReconfigureSingleParam)
 	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_parameters", req, res))
 	    << "Service call should not fail!";
 	EXPECT_DOUBLE_EQ(env_ptr->getModelPtr()->opt.timestep, 0.002) << "Timestep should have been updated!";
-#else // MJR_ROS_VERSION == ROS_2
-	GTEST_SKIP() << "Dynamic reconfigure is ROS1-only; ROS2 uses parameter services instead.";
-#endif
 }
 
 TEST_F(PendulumEnvFixture, DynamicReconfigureAllParams)
 {
-#if MJR_ROS_VERSION == ROS_1
 	// Test dynamic reconfigure with all parameters
 	dynamic_reconfigure::ReconfigureRequest req;
 	dynamic_reconfigure::ReconfigureResponse res;
@@ -2812,7 +2984,5 @@ TEST_F(PendulumEnvFixture, DynamicReconfigureAllParams)
 	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_friction[1], 0.5) << "Friction should have been updated!";
 	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_friction[2], 0.1) << "Friction should have been updated!";
 	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_friction[3], 0.1) << "Friction should have been updated!";
-#else // MJR_ROS_VERSION == ROS_2
-	GTEST_SKIP() << "Dynamic reconfigure is ROS1-only; ROS2 uses parameter services instead.";
-#endif
 }
+#endif

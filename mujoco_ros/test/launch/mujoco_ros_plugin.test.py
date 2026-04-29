@@ -4,11 +4,17 @@ from pathlib import Path
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration
+
+import launch_testing
 import launch_testing.actions
+import launch_testing.asserts
+import launch_testing.util
 
 
 def generate_test_description():
     test_binary = LaunchConfiguration('test_binary')
+    timeout = LaunchConfiguration('timeout')
+
     params_file = str(Path(__file__).resolve().with_name('mujoco_ros_plugin.params.yaml'))
 
     test_proc = ExecuteProcess(
@@ -19,14 +25,17 @@ def generate_test_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('test_binary'),
+        DeclareLaunchArgument('timeout', default_value="10"),
         SetEnvironmentVariable(
             'ROSCONSOLE_FORMAT',
             '[${severity}] [${time}] [${logger}] [${node}]: ${message}'
         ),
         test_proc,
+        launch_testing.util.KeepAliveProc(),
         launch_testing.actions.ReadyToTest(),
     ]), {
         'test_proc': test_proc,
+        'timeout': timeout,
     }
 
 class TestGTestWaitForCompletion(unittest.TestCase):
