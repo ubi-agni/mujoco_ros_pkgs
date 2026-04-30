@@ -32,7 +32,7 @@ concurrency: # cancel any previous workflow(s) from the same PR or branch/tag
   cancel-in-progress: true
 
 jobs:
-  ci:
+  ci_ros2:
     strategy:
       fail-fast: false
       matrix:

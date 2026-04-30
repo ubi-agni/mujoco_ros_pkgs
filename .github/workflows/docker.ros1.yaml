@@ -31,11 +31,11 @@ concurrency: # cancel any previous workflow(s) from the same PR or branch/tag
   cancel-in-progress: true
 
 jobs:
-  ci:
+  ci_ros1:
     strategy:
       fail-fast: false
       matrix:
-        ROS_DISTRO: [noetic, one]
+        ROS_DISTRO: [one]
     runs-on: ubuntu-latest
     permissions:
       packages: write
