@@ -173,6 +173,6 @@ private:
 	static rclcpp::Logger getLogger() { return rclcpp::get_logger("MujocoRos2SensorPlugin"); };
 };
 
-const char *SENSOR_STRING[37];
+const char *SENSOR_STRING[49];
 
 } // namespace mujoco_ros::sensors
