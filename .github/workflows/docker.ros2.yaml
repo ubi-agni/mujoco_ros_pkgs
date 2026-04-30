@@ -1,4 +1,4 @@
-name: Docker
+name: Docker ROS 2
 
 on:
   schedule:

@@ -1,4 +1,4 @@
-name: CI
+name: CI ROS 1
 
 on:
   workflow_dispatch:
