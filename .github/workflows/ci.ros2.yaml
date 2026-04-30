@@ -23,17 +23,7 @@ jobs:
         distro: [humble] #, jazzy # Jazzy needs another control implementation (the hardware_interfaces differs), skipping build without specific branch for now
         render_backend: [GLFW, OSMESA, DISABLE] # EGL currently removed due to issues with the local CI runners
         mujoco: [3.3.5]
-        check: [clang_tidy, ccov_catkin_lint]
-        # include:
-        #   - distro: humble
-        #     mujoco: 3.3.5
-        #     env:
-        #       CATKIN_LINT: true
-        #       CCOV: true
-        #   - distro: humble
-        #     mujoco: 3.3.5
-        #     env:
-        #       CLANG_TIDY: pedantic
+        check: [clang_tidy, ccov]
 
     env:
       BUILDER: colcon
@@ -58,8 +48,8 @@ jobs:
       AFTER_BUILD_DOWNSTREAM_WORKSPACE: ccache --show-stats
       # Compile CCOV with Debug. Enable -Werror.
       TARGET_CMAKE_ARGS: >
-        -DCMAKE_BUILD_TYPE=${{ matrix.check == 'ccov_catkin_lint' && 'Debug' || 'Release'}}
-        -DCMAKE_CXX_FLAGS="-Werror $CXXFLAGS${{ (matrix.check == 'ccov_catkin_lint' && ' --coverage -O2 -fno-omit-frame-pointer') || '' }}"
+        -DCMAKE_BUILD_TYPE=${{ matrix.check == 'ccov' && 'Debug' || 'Release'}}
+        -DCMAKE_CXX_FLAGS="-Werror $CXXFLAGS${{ (matrix.check == 'ccov' && ' --coverage -O2 -fno-omit-frame-pointer') || '' }}"
         -DRENDER_BACKEND=${{ matrix.render_backend }}
       # UPSTREAM_CMAKE_ARGS: -DCMAKE_CXX_FLAGS= -DCMAKE_CXX_STANDARD=17
 
@@ -72,10 +62,9 @@ jobs:
       CC: ${{ (matrix.check == 'clang_tidy' && 'clang') || '' }}
       CXX: ${{ (matrix.check == 'clang_tidy' && 'clang++') || '' }}
       CLANG_TIDY: ${{ matrix.check == 'clang_tidy' }}
-      CATKIN_LINT: ${{ matrix.check == 'ccov_catkin_lint' }}
-      CCOV: ${{ matrix.check == 'ccov_catkin_lint' }}
+      CCOV: ${{ matrix.check == 'ccov' }}
 
-    name: "${{ matrix.distro }} mj-${{ matrix.mujoco }} ${{ matrix.render_backend }} ${{ matrix.check == 'ccov_catkin_lint' && ' + catkin_lint + ccov' || ''}}${{ matrix.check == 'clang_tidy' && (github.event_name != 'workflow_dispatch' && ' + clang-tidy (delta)' || ' + clang-tidy (all)') || '' }}"
+    name: "${{ matrix.distro }} mj-${{ matrix.mujoco }} ${{ matrix.render_backend }} ${{ matrix.check == 'ccov' && ' + ccov' || ''}}${{ matrix.check == 'clang_tidy' && (github.event_name != 'workflow_dispatch' && ' + clang-tidy (delta)' || ' + clang-tidy (all)') || '' }}"
     runs-on: ${{ matrix.render_backend == 'EGL' && matrix.distro || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5
@@ -91,7 +80,7 @@ jobs:
       # The target directory cache doesn't include the source directory because
       # that comes from the checkout.  See "prepare target_ws for cache" task below
       - name: Cache target workspace
-        if: matrix.check != 'ccov_catkin_lint'
+        if: matrix.check != 'ccov'
         uses: rhaschke/cache@main
         with:
           path: ${{ env.BASEDIR }}/target_ws
@@ -99,7 +88,7 @@ jobs:
           restore-keys: ${{ env.CACHE_PREFIX }}
         env:
           GHA_CACHE_SAVE: always
-          CACHE_PREFIX: target_ws${{ matrix.check == 'ccov_catkin_lint' && '-ccov' || '' }}-${{ matrix.distro }}-${{ hashFiles('**/CMakeLists.txt', '**/package.xml', '.github/workflows/ci.ros2.yaml') }}
+          CACHE_PREFIX: target_ws${{ matrix.check == 'ccov' && '-ccov' || '' }}-${{ matrix.distro }}-${{ hashFiles('**/CMakeLists.txt', '**/package.xml', '.github/workflows/ci.ros2.yaml') }}
       - name: Cache ccache
         uses: rhaschke/cache@main
         with:
@@ -110,7 +99,7 @@ jobs:
             ${{ env.CACHE_PREFIX }}
         env:
           GHA_CACHE_SAVE: always
-          CACHE_PREFIX: ccache-${{ matrix.distro }}${{ matrix.check == 'ccov_catkin_lint' && '-ccov' || '' }}
+          CACHE_PREFIX: ccache-${{ matrix.distro }}${{ matrix.check == 'ccov' && '-ccov' || '' }}
 
       - id: ici
         name: Run industrial_ci
@@ -124,7 +113,7 @@ jobs:
           path: ${{ env.BASEDIR }}/target_ws/**/test_results/**/*.xml
       - name: Generate codecov report
         uses: rhaschke/lcov-action@main
-        if: always() && matrix.check == 'ccov_catkin_lint' && steps.ici.outputs.target_test_results == '0'
+        if: always() && matrix.check == 'ccov' && steps.ici.outputs.target_test_results == '0'
         with:
           docker: ${{ matrix.render_backend != 'EGL' && '$DOCKER_IMAGE' || '' }}
           workdir: ${{ env.BASEDIR }}/target_ws
@@ -132,7 +121,7 @@ jobs:
           output: ${{ env.BASEDIR }}/target_ws/coverage-${{ matrix.distro }}-${{ matrix.render_backend }}.info
       - name: Upload codecov report
         uses: codecov/codecov-action@v5
-        if: always() && matrix.check == 'ccov_catkin_lint' && steps.ici.outputs.target_test_results == '0'
+        if: always() && matrix.check == 'ccov' && steps.ici.outputs.target_test_results == '0'
         with:
           files: ${{ env.BASEDIR }}/target_ws/coverage-${{ matrix.distro }}-${{ matrix.render_backend }}.info
       - name: Upload clang-tidy changes
@@ -142,7 +131,7 @@ jobs:
           name: clang-tidy
           path: ${{ env.BASEDIR }}/target_ws/src/$(basename $(pwd))
       - name: Prepare target_ws for cache
-        if: always() && matrix.check != 'ccov_catkin_lint'
+        if: always() && matrix.check != 'ccov'
         run: |
           du -sh ${{ env.BASEDIR }}/target_ws
           sudo find ${{ env.BASEDIR }}/target_ws -wholename '*/test_results/*' -delete
