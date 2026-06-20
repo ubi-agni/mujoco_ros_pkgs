@@ -19,7 +19,7 @@
   <arg name="profile"              default="false" description="Whether mujoco_ros should be profiled." />
   <arg name="num_sim_steps"        default="-1" />
   <arg name="mujoco_plugin_config" default=""      description="Optionally provide the path to a yaml with plugin configurations to load." />
-  <arg name="mujoco_threads"       default="1"     description="Number of threads to use in the MuJoCo simulation." />
+  <arg name="mujoco_threads"       default="1"     description="Deprecated. Number of threads to use in the MuJoCo simulation. Values greater than 1 can increase CPU usage because MuJoCo worker threads busy-wait." />
   <arg name="gdb_term_cmd"         default="gnome-terminal -- " description="Command to open gdb in a new terminal. Common alternative: 'xterm -e '" />
 
   <arg name="modelfile"            default="$(find-pkg-share mujoco_ros)/assets/pendulum_world.xml"        description="MuJoCo xml file to load. Should define robot model and world." />

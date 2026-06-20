@@ -46,6 +46,7 @@ void MujocoEnv::FetchRosConfiguration()
 	}
 
 	nh_->param("num_steps", num_steps_until_exit_, -1);
+	nh_->param("num_mj_threads", settings_.num_mj_threads, settings_.num_mj_threads);
 	bool run; // settings_.run is atomic and can't directly be set!
 	nh_->param("unpause", run, true);
 	settings_.run = run;
@@ -87,8 +88,6 @@ void MujocoEnv::FetchRosConfiguration()
 		mju::strcpy_arr(queued_filename_, filename.c_str());
 		settings_.load_request = 2;
 	}
-	// TODO: after python bindings merge
-	// nh_->param<int>("num_mj_threads", settings_.num_threads, 4);
 }
 
 void MujocoEnv::InitTFBroadcasting()

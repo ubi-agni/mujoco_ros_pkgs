@@ -44,11 +44,13 @@ void MujocoEnv::FetchRosConfiguration()
 	rclcpp::Parameter headless_param         = this->get_parameter("headless");
 	rclcpp::Parameter unpause_param          = this->get_parameter("unpause");
 	rclcpp::Parameter num_steps_param        = this->get_parameter("num_steps");
+	rclcpp::Parameter num_mj_threads_param   = this->get_parameter("num_mj_threads");
 
 	settings_.render_offscreen = render_offscreen_param.as_bool();
 	settings_.headless         = headless_param.as_bool();
 	settings_.run              = unpause_param.as_bool();
 	num_steps_until_exit_      = num_steps_param.as_int();
+	settings_.num_mj_threads   = num_mj_threads_param.as_int();
 
 	std::string filename = "";
 
@@ -80,9 +82,6 @@ void MujocoEnv::FetchRosConfiguration()
 	} else {
 		RCLCPP_WARN(this->get_logger(), "No modelfile was provided, launching empty simulation!");
 	}
-
-	// TODO: after python bindings merge
-	// nh_->param<int>("num_mj_threads", settings_.num_threads, 4);
 }
 
 void MujocoEnv::InitTFBroadcasting()

@@ -55,6 +55,7 @@ RosAPI::RosAPI(MujocoEnvPtr env_ptr) : env_ptr_(env_ptr)
 	declare_parameter_if_not_declared(env_ptr_, "headless", rclcpp::ParameterValue(false));
 	declare_parameter_if_not_declared(env_ptr_, "unpause", rclcpp::ParameterValue(true));
 	declare_parameter_if_not_declared(env_ptr_, "num_steps", rclcpp::ParameterValue(-1));
+	declare_parameter_if_not_declared(env_ptr_, "num_mj_threads", rclcpp::ParameterValue(1));
 	declare_parameter_if_not_declared(env_ptr_, "modelfile", rclcpp::ParameterValue(std::string("")));
 	declare_parameter_if_not_declared(env_ptr_, "realtime", rclcpp::ParameterValue(1.0));
 	declare_parameter_if_not_declared(env_ptr_, plugin_utils::MUJOCO_PLUGIN_PARAM_NAME + ".names",

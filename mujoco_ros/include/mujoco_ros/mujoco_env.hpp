@@ -233,6 +233,7 @@ public:
 		// Sim speed
 		int real_time_index = 9;
 		int busywait        = 0;
+		int num_mj_threads  = 1;
 
 		// Mode
 		bool eval_mode      = false;

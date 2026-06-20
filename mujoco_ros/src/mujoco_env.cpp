@@ -255,7 +255,13 @@ void MujocoEnv::Configure()
 	MJR_INFO_STREAM_COND(num_steps_until_exit_ > 0, "Sim will terminate after " << num_steps_until_exit_ << " steps");
 
 	int available_threads = std::thread::hardware_concurrency() - 1;
-	int num_threads       = 1;
+	int num_threads       = settings_.num_mj_threads;
+	MJR_WARN_STREAM("The 'num_mj_threads' parameter, exposed by the 'mujoco_threads' launch argument, is deprecated. "
+	                "MuJoCo upstream is changing the public threading API to internal-only usage, so this behavior "
+	                "will change in the future.");
+	MJR_WARN_STREAM_COND(num_threads > 1,
+	                     "Using more than one MuJoCo thread can increase CPU usage because MuJoCo worker threads "
+	                         << "busy-wait. See https://github.com/google-deepmind/mujoco/pull/2746");
 	num_threads           = std::min(num_threads, available_threads);
 	if (num_threads > 1) {
 		threadpool_ = mju_threadPoolCreate(num_threads);
