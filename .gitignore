@@ -6,7 +6,13 @@
 
 # Data files
 *.dat
-*.csv
+*.csvo
+
+# virtual env
+.venv
+
+# Sphinxdoc build
+docs/build
 
 # Emacs temp files
 .#*

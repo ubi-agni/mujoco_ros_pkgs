@@ -1,0 +1,61 @@
+name: Documentation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - hybrid-devel
+    paths:
+      - docs/**
+      - CHANGELOG.md
+      - README.md
+      - .github/workflows/sphinxdoc.yaml
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: hybrid-devel
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install dependencies
+        run: python -m pip install -r docs/requirements.txt
+
+      - name: Build versioned documentation
+        run: make -C docs versioned
+
+      - name: Stage documentation artifact
+        run: |
+          mkdir -p public
+          cp -a docs/build/html/. public/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-24.04
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

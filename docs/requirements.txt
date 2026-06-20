@@ -1,0 +1,6 @@
+sphinx
+sphinx_rtd_theme
+sphinx-copybutton
+sphinx-multiversion
+sphinxcontrib-doxylink
+sphinx-tabs
