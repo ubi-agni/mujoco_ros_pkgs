@@ -1,5 +1,6 @@
 <?xml version="1.0"?>
-<package format="2">
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
   <name>mujoco_ros_sensors</name>
   <version>0.10.0</version>
   <description>Sensor plugin for mujoco_ros</description>
@@ -11,16 +12,28 @@
   <url type="bugtracker">https://github.com/DavidPL1/mujoco_ros_pkgs/issues</url>
   <author>David P. Leins</author>
 
-  <buildtool_depend>catkin</buildtool_depend>
+  <buildtool_depend condition="$ROS_VERSION == 1">catkin</buildtool_depend>
+  <buildtool_depend condition="$ROS_VERSION == 2">ament_cmake</buildtool_depend>
+
   <depend>mujoco_ros</depend>
   <depend>mujoco_ros_msgs</depend>
+  <depend>pluginlib</depend>
+  <depend>geometry_msgs</depend>
   <depend>tf2</depend>
   <depend>tf2_geometry_msgs</depend>
   <depend>tf2_ros</depend>
+  <depend condition="$ROS_VERSION == 2">rclcpp</depend>
+  <depend condition="$ROS_VERSION == 2">rclcpp_lifecycle</depend>
 
-  <test_depend>rostest</test_depend>
+  <test_depend condition="$ROS_VERSION == 1">rostest</test_depend>
+  <test_depend condition="$ROS_VERSION == 2">ament_cmake_gtest</test_depend>
+  <test_depend condition="$ROS_VERSION == 2">ament_index_cpp</test_depend>
+  <test_depend condition="$ROS_VERSION == 2">launch_testing_ament_cmake</test_depend>
+  <test_depend>mujoco_ros_testing_utils</test_depend>
 
   <export>
     <mujoco_ros plugin="${prefix}/mujoco_ros_sensors_plugin.xml" />
+    <build_type condition="$ROS_VERSION == 1">catkin</build_type>
+    <build_type condition="$ROS_VERSION == 2">ament_cmake</build_type>
   </export>
 </package>

@@ -3,70 +3,94 @@
  *
  *  Copyright (c) 2022-2025, Bielefeld University
  *  All rights reserved.
- *
- *  Redistribution and use in source and binary forms, with or without
- *  modification, are permitted provided that the following conditions
- *  are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *   * Neither the name of Bielefeld University nor the names of its
- *     contributors may be used to endorse or promote products derived
- *     from this software without specific prior written permission.
- *
- *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- *  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- *  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
- *  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
- *  COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
- *  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
- *  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- *  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- *  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
- *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- *  POSSIBILITY OF SUCH DAMAGE.
  */
 
 /* Authors: David P. Leins */
 
-#include <mujoco_ros_sensors/mujoco_sensor_handler_plugin.h>
+#include <mujoco_ros_sensors/mujoco_sensor_handler_plugin.hpp>
 
+#if MJR_ROS_VERSION == ROS_1
 #include <pluginlib/class_list_macros.h>
 
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/QuaternionStamped.h>
 #include <geometry_msgs/Vector3Stamped.h>
 #include <mujoco_ros_msgs/ScalarStamped.h>
-
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
+#else
+#include <pluginlib/class_list_macros.hpp>
+
+#include <geometry_msgs/msg/point_stamped.hpp>
+#include <geometry_msgs/msg/quaternion_stamped.hpp>
+#include <geometry_msgs/msg/vector3_stamped.hpp>
+#include <mujoco_ros_msgs/msg/scalar_stamped.hpp>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#endif
+
+#include <mujoco_ros/logging.hpp>
 #include <mujoco_ros/mujoco_env.hpp>
+
+#include <any>
+#include <functional>
 
 namespace mujoco_ros::sensors {
 
-MujocoRosSensorsPlugin::~MujocoRosSensorsPlugin()
+static constexpr std::size_t SENSOR_PUBLISHER_QUEUE_SIZE = 1000;
+
+#if MJR_ROS_VERSION == ROS_1
+using PointStamped      = geometry_msgs::PointStamped;
+using QuaternionStamped = geometry_msgs::QuaternionStamped;
+using ScalarStamped     = mujoco_ros_msgs::ScalarStamped;
+using Vector3Stamped    = geometry_msgs::Vector3Stamped;
+
+template <typename MessageT>
+ros::Publisher CreatePublisher(ros::NodeHandle &node, const std::string &topic, const std::string & /*ros2_type*/)
 {
-	sensor_map_.clear();
-	ROS_DEBUG_STREAM_NAMED("sensors", "Shutting down service " << register_noise_model_server_.getService());
-	register_noise_model_server_.shutdown();
+	return node.advertise<MessageT>(topic, SENSOR_PUBLISHER_QUEUE_SIZE, true);
 }
 
-bool MujocoRosSensorsPlugin::Load(const mjModel *model, mjData *data)
+template <typename MessageT>
+void Publish(const ros::Publisher &publisher, const SensorConfig & /*config*/, const MessageT &message)
 {
-	ROS_INFO_NAMED("sensors", "Loading sensors plugin ...");
-	if (env_ptr_->settings_.eval_mode) {
-		ROS_WARN_NAMED("sensors", "Evalutaion mode is active, ground truth topics won't be available!");
-	} else {
-		ROS_WARN_NAMED("sensors", "Train mode is active, ground truth topics will be available!");
-	}
+	publisher.publish(message);
+}
 
+ros::Time Now(ros::NodeHandle & /*node*/)
+{
+	return ros::Time::now();
+}
+
+#else
+using PointStamped      = geometry_msgs::msg::PointStamped;
+using QuaternionStamped = geometry_msgs::msg::QuaternionStamped;
+using ScalarStamped     = mujoco_ros_msgs::msg::ScalarStamped;
+using Vector3Stamped    = geometry_msgs::msg::Vector3Stamped;
+
+template <typename MessageT>
+typename rclcpp::Publisher<MessageT>::SharedPtr CreatePublisher(rclcpp_lifecycle::LifecycleNode::SharedPtr &node,
+                                                                const std::string &topic,
+                                                                const std::string & /*ros2_type*/)
+{
+	return node->create_publisher<MessageT>(topic, rclcpp::QoS(SENSOR_PUBLISHER_QUEUE_SIZE));
+}
+
+template <typename MessageT>
+void Publish(const std::any &publisher, const SensorConfig & /*config*/, const MessageT &message)
+{
+	std::any_cast<typename rclcpp::Publisher<MessageT>::SharedPtr>(publisher)->publish(message);
+}
+
+rclcpp::Time Now(rclcpp_lifecycle::LifecycleNode::SharedPtr &node)
+{
+	return node->now();
+}
+
+#endif
+
+namespace {
+void InitSensorStrings()
+{
 	SENSOR_STRING[mjSENS_TOUCH]          = "touch";
 	SENSOR_STRING[mjSENS_ACCELEROMETER]  = "accelerometer";
 	SENSOR_STRING[mjSENS_VELOCIMETER]    = "velocimeter";
@@ -115,51 +139,103 @@ bool MujocoRosSensorsPlugin::Load(const mjModel *model, mjData *data)
 	SENSOR_STRING[mjSENS_TACTILE]        = "tactile";
 	SENSOR_STRING[mjSENS_PLUGIN]         = "plugin";
 	SENSOR_STRING[mjSENS_USER]           = "user";
+}
+} // namespace
 
+MujocoRosSensorsPlugin::~MujocoRosSensorsPlugin()
+{
+	sensor_map_.clear();
+#if MJR_ROS_VERSION == ROS_1
+	MJR_DEBUG_STREAM_NAMED("sensors", "Shutting down service " << register_noise_model_server_.getService());
+	register_noise_model_server_.shutdown();
+#else
+	MJR_DEBUG_STREAM_NAMED("sensors", "Shutting down noise model server service");
+#endif
+}
+
+bool MujocoRosSensorsPlugin::Load(const mjModel *model, mjData *data)
+{
+	MJR_INFO_NAMED("sensors", "Loading sensors plugin ...");
+	if (env_ptr_->settings_.eval_mode) {
+		MJR_WARN_NAMED("sensors", "Evaluation mode is active, ground truth topics won't be available!");
+	} else {
+		MJR_WARN_NAMED("sensors", "Train mode is active, ground truth topics will be available!");
+	}
+
+	InitSensorStrings();
+
+#if MJR_ROS_VERSION == ROS_1
 	std::string sensors_namespace;
 	if (rosparam_config_.hasMember("namespace")) {
 		sensors_namespace = static_cast<std::string>(rosparam_config_["namespace"]);
 	}
 	sensors_nh_ = ros::NodeHandle("/" + sensors_namespace);
+#else
+	sensors_nh_ = get_node();
+#endif
 
 	noise_dist = std::normal_distribution<double>(0.0, 1.0);
 	InitSensors(model, data);
-	ROS_INFO_NAMED("sensors", "All sensors initialized");
+	MJR_INFO_NAMED("sensors", "All sensors initialized");
 
+#if MJR_ROS_VERSION == ROS_1
 	register_noise_model_server_ = sensors_nh_.advertiseService("sensors/register_noise_models",
 	                                                            &MujocoRosSensorsPlugin::RegisterNoiseModelsCB, this);
+#else
+	register_noise_model_server_ = sensors_nh_->create_service<mujoco_ros_msgs::srv::RegisterSensorNoiseModels>(
+	    "~/sensors/register_noise_models",
+	    std::bind(&MujocoRosSensorsPlugin::RegisterNoiseModelsCB, this, std::placeholders::_1, std::placeholders::_2));
+#endif
 
 	return true;
 }
 
+#if MJR_ROS_VERSION == ROS_1
 bool MujocoRosSensorsPlugin::RegisterNoiseModelsCB(mujoco_ros_msgs::RegisterSensorNoiseModels::Request &req,
                                                    mujoco_ros_msgs::RegisterSensorNoiseModels::Response &resp)
+#else
+void MujocoRosSensorsPlugin::RegisterNoiseModelsCB(
+    const mujoco_ros_msgs::srv::RegisterSensorNoiseModels::Request::SharedPtr &req,
+    const mujoco_ros_msgs::srv::RegisterSensorNoiseModels::Response::SharedPtr &resp)
+#endif
 {
 	if (env_ptr_->settings_.eval_mode) {
-		ROS_DEBUG_NAMED("mujoco", "Evaluation mode is active. Checking hash validity");
-		if (env_ptr_->settings_.admin_hash != req.admin_hash) {
-			ROS_ERROR_NAMED("mujoco", "Hash mismatch, no permission to change noise model!");
+#if MJR_ROS_VERSION == ROS_1
+		const auto &admin_hash = req.admin_hash;
+#else
+		const auto &admin_hash = req->admin_hash;
+#endif
+		if (env_ptr_->settings_.admin_hash != admin_hash) {
+			MJR_ERROR_STREAM_NAMED("sensors", "Hash mismatch, no permission to change noise model!");
+#if MJR_ROS_VERSION == ROS_1
 			resp.success = false;
 			return true;
+#else
+			resp->success = false;
+			return;
+#endif
 		}
-		ROS_DEBUG_NAMED("mujoco", "Hash valid, request authorized.");
 	}
 
-	int noise_idx;
-	for (const mujoco_ros_msgs::SensorNoiseModel &noise_model : req.noise_models) {
-		ROS_WARN_STREAM_NAMED("sensors", "registering noise model for " << noise_model.sensor_name);
-		noise_idx = 0;
+#if MJR_ROS_VERSION == ROS_1
+	auto &noise_models = req.noise_models;
+#else
+	auto &noise_models = req->noise_models;
+#endif
 
-		const std::map<std::string, SensorConfigPtr>::const_iterator &pos = sensor_map_.find(noise_model.sensor_name);
+	for (const auto &noise_model : noise_models) {
+		MJR_WARN_STREAM_NAMED("sensors", "registering noise model for " << noise_model.sensor_name);
+		int noise_idx = 0;
+
+		const auto pos = sensor_map_.find(noise_model.sensor_name);
 		if (pos == sensor_map_.end()) {
-			ROS_WARN_STREAM_NAMED("sensors", "No sensor with name '"
+			MJR_WARN_STREAM_NAMED("sensors", "No sensor with name '"
 			                                     << noise_model.sensor_name
 			                                     << "' was registered on init. Can not apply noise model");
 			continue;
 		}
 
 		const SensorConfigPtr &config = pos->second;
-		ROS_DEBUG_STREAM_COND_NAMED(config->is_set > 0, "sensors", "Overriding current noise model with newly provided");
 
 		if (noise_model.set_flag & 0x01) {
 			config->mean[noise_idx]  = noise_model.mean[noise_idx];
@@ -179,276 +255,187 @@ bool MujocoRosSensorsPlugin::RegisterNoiseModelsCB(mujoco_ros_msgs::RegisterSens
 		config->is_set = config->is_set | noise_model.set_flag;
 	}
 
+#if MJR_ROS_VERSION == ROS_1
 	resp.success = true;
-
 	return true;
+#else
+	resp->success = true;
+#endif
 }
 
 void MujocoRosSensorsPlugin::LastStageCallback(const mjModel *model, mjData *data)
 {
-	std::string sensor_name;
-
-	int adr, type, noise_idx;
-	mjtNum cutoff;
-	double noise = 0.0;
-
 	for (int n = 0; n < model->nsensor; n++) {
-		adr       = model->sensor_adr[n];
-		type      = model->sensor_type[n];
-		cutoff    = (model->sensor_cutoff[n] > 0 ? model->sensor_cutoff[n] : 1);
-		noise_idx = 0;
+		const int adr     = model->sensor_adr[n];
+		const int type    = model->sensor_type[n];
+		const auto cutoff = (model->sensor_cutoff[n] > 0 ? model->sensor_cutoff[n] : 1);
 
-		if (model->names[model->name_sensoradr[n]]) {
-			sensor_name = mj_id2name(const_cast<mjModel *>(model), mjOBJ_SENSOR, n);
-		} else {
+		if (!model->names[model->name_sensoradr[n]]) {
 			continue;
 		}
 
-		if (sensor_map_.find(sensor_name) == sensor_map_.end())
+		std::string sensor_name = mj_id2name(const_cast<mjModel *>(model), mjOBJ_SENSOR, n);
+		auto config_it          = sensor_map_.find(sensor_name);
+		if (config_it == sensor_map_.end()) {
 			continue;
+		}
 
-		SensorConfigPtr &config = sensor_map_[sensor_name];
+		SensorConfig &config = *config_it->second;
+		int noise_idx        = 0;
+		double noise         = 0.0;
 
 		switch (type) {
-			{
-				case mjSENS_FRAMELINVEL:
-				case mjSENS_FRAMELINACC:
-				case mjSENS_FRAMEANGACC:
-				case mjSENS_SUBTREECOM:
-				case mjSENS_SUBTREELINVEL:
-				case mjSENS_SUBTREEANGMOM:
-				case mjSENS_ACCELEROMETER:
-				case mjSENS_VELOCIMETER:
-				case mjSENS_GYRO:
-				case mjSENS_FORCE:
-				case mjSENS_TORQUE:
-				case mjSENS_MAGNETOMETER:
-				case mjSENS_BALLANGVEL:
-				case mjSENS_FRAMEXAXIS:
-				case mjSENS_FRAMEYAXIS:
-				case mjSENS_FRAMEZAXIS:
-					geometry_msgs::Vector3Stamped msg;
-					msg.header.frame_id = config->frame_id;
-					msg.header.stamp    = ros::Time::now();
+			case mjSENS_FRAMELINVEL:
+			case mjSENS_FRAMELINACC:
+			case mjSENS_FRAMEANGACC:
+			case mjSENS_SUBTREECOM:
+			case mjSENS_SUBTREELINVEL:
+			case mjSENS_SUBTREEANGMOM:
+			case mjSENS_ACCELEROMETER:
+			case mjSENS_VELOCIMETER:
+			case mjSENS_GYRO:
+			case mjSENS_FORCE:
+			case mjSENS_TORQUE:
+			case mjSENS_MAGNETOMETER:
+			case mjSENS_BALLANGVEL:
+			case mjSENS_FRAMEXAXIS:
+			case mjSENS_FRAMEYAXIS:
+			case mjSENS_FRAMEZAXIS: {
+				Vector3Stamped msg;
+				msg.header.frame_id = config.frame_id;
+				msg.header.stamp    = Now(sensors_nh_);
 
-					// No noise configured
-					if (config->is_set == 0) {
-						msg.vector.x = static_cast<float>(data->sensordata[adr] / cutoff);
-						msg.vector.y = static_cast<float>(data->sensordata[adr + 1] / cutoff);
-						msg.vector.z = static_cast<float>(data->sensordata[adr + 2] / cutoff);
-
-						config->value_pub.publish(msg);
-
-						if (!env_ptr_->settings_.eval_mode) {
-							config->gt_pub.publish(msg);
-						}
-					} else { // Noise at least in one dim
-						if (config->is_set & 0x01) {
-							// shift and scale standard normal to desired distribution
-							noise = noise_dist(rand_generator) * config->sigma[noise_idx] + config->mean[noise_idx];
-							noise_idx += 1;
-						} else {
-							noise = 0;
-						}
-						msg.vector.x = static_cast<float>(data->sensordata[adr] + noise / cutoff);
-
-						if (config->is_set & 0x02) {
-							// shift and scale standard normal to desired distribution
-							noise = noise_dist(rand_generator) * config->sigma[noise_idx] + config->mean[noise_idx];
-							noise_idx += 1;
-						} else {
-							noise = 0;
-						}
-						msg.vector.y = (float)(data->sensordata[adr + 1] + noise / cutoff);
-
-						if (config->is_set & 0x04) {
-							// shift and scale standard normal to desired distribution
-							noise = noise_dist(rand_generator) * config->sigma[noise_idx] + config->mean[noise_idx];
-						} else {
-							noise = 0;
-						}
-						msg.vector.z = (float)(data->sensordata[adr + 2] + noise / cutoff);
-
-						config->value_pub.publish(msg);
-
-						if (!env_ptr_->settings_.eval_mode) {
-							msg.vector.x = static_cast<float>(data->sensordata[adr] / cutoff);
-							msg.vector.y = static_cast<float>(data->sensordata[adr + 1] / cutoff);
-							msg.vector.z = static_cast<float>(data->sensordata[adr + 2] / cutoff);
-
-							config->gt_pub.publish(msg);
-						}
-					}
-					break;
-			}
-
-			case mjSENS_FRAMEPOS: {
-				geometry_msgs::PointStamped msg;
-				msg.header.frame_id = config->frame_id;
-				msg.header.stamp    = ros::Time::now();
-
-				// No noise configured
-				if (config->is_set == 0) {
-					msg.point.x = static_cast<float>(data->sensordata[adr] / cutoff);
-					msg.point.y = static_cast<float>(data->sensordata[adr + 1] / cutoff);
-					msg.point.z = static_cast<float>(data->sensordata[adr + 2] / cutoff);
-
-					config->value_pub.publish(msg);
-
-					if (!env_ptr_->settings_.eval_mode) {
-						config->gt_pub.publish(msg);
-					}
-				} else { // Noise at least in one dim
-					if (config->is_set & 0x01) {
-						// shift and scale standard normal to desired distribution
-						noise = noise_dist(rand_generator) * config->sigma[noise_idx] + config->mean[noise_idx];
+				for (int i = 0; i < 3; i++) {
+					noise = 0.0;
+					if (config.is_set & (1 << i)) {
+						noise = noise_dist(rand_generator) * config.sigma[noise_idx] + config.mean[noise_idx];
 						noise_idx += 1;
-					} else {
-						noise = 0;
 					}
-					msg.point.x = static_cast<float>(data->sensordata[adr] + noise / cutoff);
+					msg.vector.x = static_cast<float>((i == 0 ? data->sensordata[adr + i] + noise : msg.vector.x));
+					msg.vector.y = static_cast<float>((i == 1 ? data->sensordata[adr + i] + noise : msg.vector.y));
+					msg.vector.z = static_cast<float>((i == 2 ? data->sensordata[adr + i] + noise : msg.vector.z));
+				}
+				msg.vector.x /= cutoff;
+				msg.vector.y /= cutoff;
+				msg.vector.z /= cutoff;
+				Publish(config.value_pub, config, msg);
 
-					if (config->is_set & 0x02) {
-						// shift and scale standard normal to desired distribution
-						noise = noise_dist(rand_generator) * config->sigma[noise_idx] + config->mean[noise_idx];
-						noise_idx += 1;
-					} else {
-						noise = 0;
-					}
-					msg.point.y = static_cast<float>(data->sensordata[adr + 1] + noise / cutoff);
-
-					if (config->is_set & 0x04) {
-						// shift and scale standard normal to desired distribution
-						noise = noise_dist(rand_generator) * config->sigma[noise_idx] + config->mean[noise_idx];
-					} else {
-						noise = 0;
-					}
-					msg.point.z = static_cast<float>(data->sensordata[adr + 2] + noise / cutoff);
-
-					config->value_pub.publish(msg);
-
-					if (!env_ptr_->settings_.eval_mode) {
-						msg.point.x = static_cast<float>(data->sensordata[adr] / cutoff);
-						msg.point.y = static_cast<float>(data->sensordata[adr + 1] / cutoff);
-						msg.point.z = static_cast<float>(data->sensordata[adr + 2] / cutoff);
-
-						config->gt_pub.publish(msg);
-					}
+				if (!env_ptr_->settings_.eval_mode) {
+					msg.vector.x = static_cast<float>(data->sensordata[adr] / cutoff);
+					msg.vector.y = static_cast<float>(data->sensordata[adr + 1] / cutoff);
+					msg.vector.z = static_cast<float>(data->sensordata[adr + 2] / cutoff);
+					Publish(config.gt_pub, config, msg);
 				}
 				break;
 			}
+			case mjSENS_FRAMEPOS: {
+				PointStamped msg;
+				msg.header.frame_id = config.frame_id;
+				msg.header.stamp    = Now(sensors_nh_);
+				for (int i = 0; i < 3; i++) {
+					noise = 0.0;
+					if (config.is_set & (1 << i)) {
+						noise = noise_dist(rand_generator) * config.sigma[noise_idx] + config.mean[noise_idx];
+						noise_idx += 1;
+					}
+					msg.point.x = static_cast<float>((i == 0 ? data->sensordata[adr + i] + noise : msg.point.x));
+					msg.point.y = static_cast<float>((i == 1 ? data->sensordata[adr + i] + noise : msg.point.y));
+					msg.point.z = static_cast<float>((i == 2 ? data->sensordata[adr + i] + noise : msg.point.z));
+				}
+				msg.point.x /= cutoff;
+				msg.point.y /= cutoff;
+				msg.point.z /= cutoff;
+				Publish(config.value_pub, config, msg);
 
-				{
-					case mjSENS_TOUCH:
-					case mjSENS_RANGEFINDER:
-					case mjSENS_JOINTPOS:
-					case mjSENS_JOINTVEL:
-					case mjSENS_TENDONPOS:
-					case mjSENS_TENDONVEL:
-					case mjSENS_ACTUATORPOS:
-					case mjSENS_ACTUATORVEL:
-					case mjSENS_ACTUATORFRC:
-					case mjSENS_JOINTACTFRC:
-					case mjSENS_JOINTLIMITPOS:
-					case mjSENS_JOINTLIMITVEL:
-					case mjSENS_JOINTLIMITFRC:
-					case mjSENS_TENDONLIMITPOS:
-					case mjSENS_TENDONLIMITVEL:
-					case mjSENS_TENDONLIMITFRC:
-						mujoco_ros_msgs::ScalarStamped msg;
-						msg.header.frame_id = config->frame_id;
-						msg.header.stamp    = ros::Time::now();
+				if (!env_ptr_->settings_.eval_mode) {
+					msg.point.x = static_cast<float>(data->sensordata[adr] / cutoff);
+					msg.point.y = static_cast<float>(data->sensordata[adr + 1] / cutoff);
+					msg.point.z = static_cast<float>(data->sensordata[adr + 2] / cutoff);
+					Publish(config.gt_pub, config, msg);
+				}
+				break;
+			}
+			case mjSENS_TOUCH:
+			case mjSENS_RANGEFINDER:
+			case mjSENS_JOINTPOS:
+			case mjSENS_JOINTVEL:
+			case mjSENS_TENDONPOS:
+			case mjSENS_TENDONVEL:
+			case mjSENS_ACTUATORPOS:
+			case mjSENS_ACTUATORVEL:
+			case mjSENS_ACTUATORFRC:
+			case mjSENS_JOINTACTFRC:
+			case mjSENS_JOINTLIMITPOS:
+			case mjSENS_JOINTLIMITVEL:
+			case mjSENS_JOINTLIMITFRC:
+			case mjSENS_TENDONLIMITPOS:
+			case mjSENS_TENDONLIMITVEL:
+			case mjSENS_TENDONLIMITFRC: {
+				ScalarStamped msg;
+				msg.header.frame_id = config.frame_id;
+				msg.header.stamp    = Now(sensors_nh_);
+				if (config.is_set & 0x01) {
+					noise = noise_dist(rand_generator) * config.sigma[0] + config.mean[0];
+				}
+				msg.value = data->sensordata[adr] + noise / cutoff;
+				Publish(config.value_pub, config, msg);
 
-						// No noise configured
-						if (config->is_set == 0) {
-							msg.value = static_cast<float>(data->sensordata[adr] / cutoff);
+				if (!env_ptr_->settings_.eval_mode) {
+					msg.value = data->sensordata[adr] / cutoff;
+					Publish(config.gt_pub, config, msg);
+				}
+				break;
+			}
+			case mjSENS_BALLQUAT:
+			case mjSENS_FRAMEQUAT: {
+				QuaternionStamped msg;
+				msg.header.frame_id = config.frame_id;
+				msg.header.stamp    = Now(sensors_nh_);
+				msg.quaternion.w    = data->sensordata[adr] / cutoff;
+				msg.quaternion.x    = data->sensordata[adr + 1] / cutoff;
+				msg.quaternion.y    = data->sensordata[adr + 2] / cutoff;
+				msg.quaternion.z    = data->sensordata[adr + 3] / cutoff;
 
-							config->value_pub.publish(msg);
-
-							if (!env_ptr_->settings_.eval_mode) {
-								config->gt_pub.publish(msg);
-							}
-						} else { // Noise set
-							// shift and scale standard normal to desired distribution
-							noise     = noise_dist(rand_generator) * config->sigma[0] + config->mean[0];
-							msg.value = static_cast<float>(data->sensordata[adr] + noise / cutoff);
-
-							config->value_pub.publish(msg);
-
-							if (!env_ptr_->settings_.eval_mode) {
-								msg.value = static_cast<float>(data->sensordata[adr] / cutoff);
-
-								config->gt_pub.publish(msg);
-							}
-						}
-						break;
+				if (!env_ptr_->settings_.eval_mode) {
+					Publish(config.gt_pub, config, msg);
 				}
 
-			case mjSENS_BALLQUAT: {
-				case mjSENS_FRAMEQUAT:
-					geometry_msgs::QuaternionStamped msg;
-					tf2::Quaternion q_orig, q_rot;
-					msg.header.frame_id = config->frame_id;
-					msg.header.stamp    = ros::Time::now();
+				if (config.is_set != 0) {
+					tf2::Quaternion q_orig;
+					tf2::Quaternion q_rot;
+					tf2::fromMsg(msg.quaternion, q_orig);
+					q_orig.normalize();
 
-					msg.quaternion.w = static_cast<float>(data->sensordata[adr] / cutoff);
-					msg.quaternion.x = static_cast<float>(data->sensordata[adr + 1] / cutoff);
-					msg.quaternion.y = static_cast<float>(data->sensordata[adr + 2] / cutoff);
-					msg.quaternion.z = static_cast<float>(data->sensordata[adr + 3] / cutoff);
-
-					if (!env_ptr_->settings_.eval_mode) {
-						config->gt_pub.publish(msg);
+					double r = 0.0, p = 0.0, y = 0.0;
+					if (config.is_set & 0x01) {
+						r = noise_dist(rand_generator) * config.sigma[noise_idx] + config.mean[noise_idx];
+						noise_idx += 1;
 					}
-
-					if (config->is_set == 0) {
-						config->value_pub.publish(msg);
-					} else {
-						tf2::fromMsg(msg.quaternion, q_orig);
-						q_orig.normalize();
-
-						double r, p, y;
-
-						if (config->is_set & 0x01) {
-							// shift and scale standard normal to desired distribution
-							r = noise_dist(rand_generator) * config->sigma[noise_idx] + config->mean[noise_idx];
-							noise_idx += 1;
-						} else {
-							r = 0;
-						}
-						if (config->is_set & 0x02) {
-							// shift and scale standard normal to desired distribution
-							p = noise_dist(rand_generator) * config->sigma[noise_idx] + config->mean[noise_idx];
-							noise_idx += 1;
-						} else {
-							p = 0;
-						}
-						if (config->is_set & 0x04) {
-							// shift and scale standard normal to desired distribution
-							y = noise_dist(rand_generator) * config->sigma[noise_idx] + config->mean[noise_idx];
-						} else {
-							y = 0;
-						}
-
-						q_rot.setRPY(r, p, y);
-						q_rot.normalize();
-
-						msg.quaternion = tf2::toMsg((q_rot * q_orig).normalize());
-						config->value_pub.publish(msg);
+					if (config.is_set & 0x02) {
+						p = noise_dist(rand_generator) * config.sigma[noise_idx] + config.mean[noise_idx];
+						noise_idx += 1;
 					}
-					break;
+					if (config.is_set & 0x04) {
+						y = noise_dist(rand_generator) * config.sigma[noise_idx] + config.mean[noise_idx];
+					}
+					q_rot.setRPY(r, p, y);
+					q_rot.normalize();
+					msg.quaternion = tf2::toMsg((q_rot * q_orig).normalize());
+				}
+				Publish(config.value_pub, config, msg);
+				break;
 			}
-
 			default:
-				ROS_ERROR_STREAM_NAMED(
-				    "sensors",
-				    "Sensor publisher and frame_id defined but type can't be serialized. This shouldn't happen! ("
-				        << sensor_name << " of type " << type << ")");
+				MJR_ERROR_STREAM_NAMED("sensors",
+				                       "Sensor publisher and frame_id defined but type is unsupported. This shouldn't "
+				                       "happen! ("
+				                           << sensor_name << " of type " << type << ")");
 				break;
 		}
 	}
 }
 
-void MujocoRosSensorsPlugin::InitSensors(const mjModel *model, mjData *data)
+void MujocoRosSensorsPlugin::InitSensors(const mjModel *model, mjData * /*data*/)
 {
 	std::string sensor_name, site, frame_id;
 	for (int n = 0; n < model->nsensor; n++) {
@@ -456,9 +443,8 @@ void MujocoRosSensorsPlugin::InitSensors(const mjModel *model, mjData *data)
 		int parent_id = model->site_bodyid[site_id];
 		int type      = model->sensor_type[n];
 
-		// Skip user sensors because handling is unknown and should be done in extra plugin
 		if (type == mjSENS_USER) {
-			ROS_INFO_STREAM_NAMED("sensors", "Skipping USER sensor");
+			MJR_DEBUG_STREAM_NAMED("sensors", "Skipping USER sensor");
 			continue;
 		}
 
@@ -467,103 +453,97 @@ void MujocoRosSensorsPlugin::InitSensors(const mjModel *model, mjData *data)
 		if (model->names[model->name_sensoradr[n]]) {
 			sensor_name = mj_id2name(const_cast<mjModel *>(model), mjOBJ_SENSOR, n);
 		} else {
-			ROS_WARN_STREAM_NAMED("sensors",
+			MJR_WARN_STREAM_NAMED("sensors",
 			                      "Sensor name resolution error. Skipping sensor of type " << type << " on site " << site);
 			continue;
 		}
 
-		// Global frame sensors
 		bool global_frame = false;
 		frame_id          = "world";
 		SensorConfigPtr config;
+
 		switch (type) {
-			{
-				case mjSENS_FRAMEXAXIS:
-				case mjSENS_FRAMEYAXIS:
-				case mjSENS_FRAMEZAXIS:
-				case mjSENS_FRAMELINVEL:
-				case mjSENS_FRAMELINACC:
-				case mjSENS_FRAMEANGACC:
-					int refid = model->sensor_refid[n];
-					if (refid != -1) {
-						int reftype = model->sensor_reftype[n];
-						if (reftype == mjOBJ_SITE) {
-							refid   = model->site_bodyid[refid];
-							reftype = mjOBJ_BODY;
-						}
-						frame_id = mj_id2name(const_cast<mjModel *>(model), reftype, refid);
-						ROS_DEBUG_STREAM_NAMED("sensors", "Sensor has relative frame with id " << refid << " and type "
-						                                                                       << reftype << " and ref_frame "
-						                                                                       << frame_id);
+			case mjSENS_FRAMEXAXIS:
+			case mjSENS_FRAMEYAXIS:
+			case mjSENS_FRAMEZAXIS:
+			case mjSENS_FRAMELINVEL:
+			case mjSENS_FRAMELINACC:
+			case mjSENS_FRAMEANGACC: {
+				int refid = model->sensor_refid[n];
+				if (refid != -1) {
+					int reftype = model->sensor_reftype[n];
+					if (reftype == mjOBJ_SITE) {
+						refid   = model->site_bodyid[refid];
+						reftype = mjOBJ_BODY;
 					}
-					config = std::make_unique<SensorConfig>(frame_id);
-					config->RegisterPub(sensors_nh_.advertise<geometry_msgs::Vector3Stamped>(sensor_name, 1, true));
-					if (!env_ptr_->settings_.eval_mode) {
-						config->RegisterGTPub(
-						    sensors_nh_.advertise<geometry_msgs::Vector3Stamped>(sensor_name + "_GT", 1, true));
-					}
-					sensor_map_[sensor_name] = std::move(config);
-					break;
+					frame_id = mj_id2name(const_cast<mjModel *>(model), reftype, refid);
+				}
+				config = std::make_unique<SensorConfig>(frame_id);
+				config->RegisterPub(
+				    CreatePublisher<Vector3Stamped>(sensors_nh_, sensor_name, "geometry_msgs/msg/Vector3Stamped"));
+				if (!env_ptr_->settings_.eval_mode) {
+					config->RegisterGTPub(CreatePublisher<Vector3Stamped>(sensors_nh_, sensor_name + "_GT",
+					                                                      "geometry_msgs/msg/Vector3Stamped"));
+				}
+				sensor_map_[sensor_name] = std::move(config);
+				break;
 			}
 			case mjSENS_SUBTREECOM:
 			case mjSENS_SUBTREELINVEL:
 			case mjSENS_SUBTREEANGMOM:
 				config = std::make_unique<SensorConfig>(frame_id);
-				config->RegisterPub(sensors_nh_.advertise<geometry_msgs::Vector3Stamped>(sensor_name, 1, true));
+				config->RegisterPub(
+				    CreatePublisher<Vector3Stamped>(sensors_nh_, sensor_name, "geometry_msgs/msg/Vector3Stamped"));
 				if (!env_ptr_->settings_.eval_mode) {
-					config->RegisterGTPub(
-					    sensors_nh_.advertise<geometry_msgs::Vector3Stamped>(sensor_name + "_GT", 1, true));
+					config->RegisterGTPub(CreatePublisher<Vector3Stamped>(sensors_nh_, sensor_name + "_GT",
+					                                                      "geometry_msgs/msg/Vector3Stamped"));
 				}
 				sensor_map_[sensor_name] = std::move(config);
 				global_frame             = true;
 				break;
-				{
-					case mjSENS_FRAMEPOS:
-						int refid = model->sensor_refid[n];
-						if (refid != -1) {
-							int reftype = model->sensor_reftype[n];
-							if (reftype == mjOBJ_SITE) {
-								refid   = model->site_bodyid[refid];
-								reftype = mjOBJ_BODY;
-							}
-							frame_id = mj_id2name(const_cast<mjModel *>(model), reftype, refid);
-							ROS_DEBUG_STREAM_NAMED("sensors", "Sensor has relative frame with id "
-							                                      << refid << " and type " << reftype << " and ref_frame "
-							                                      << frame_id);
-						}
-						config = std::make_unique<SensorConfig>(frame_id);
-						config->RegisterPub(sensors_nh_.advertise<geometry_msgs::PointStamped>(sensor_name, 1, true));
-						if (!env_ptr_->settings_.eval_mode) {
-							config->RegisterGTPub(
-							    sensors_nh_.advertise<geometry_msgs::PointStamped>(sensor_name + "_GT", 1, true));
-						}
-						sensor_map_[sensor_name] = std::move(config);
-						global_frame             = true;
-						break;
+			case mjSENS_FRAMEPOS: {
+				int refid = model->sensor_refid[n];
+				if (refid != -1) {
+					int reftype = model->sensor_reftype[n];
+					if (reftype == mjOBJ_SITE) {
+						refid   = model->site_bodyid[refid];
+						reftype = mjOBJ_BODY;
+					}
+					frame_id = mj_id2name(const_cast<mjModel *>(model), reftype, refid);
 				}
-
+				config = std::make_unique<SensorConfig>(frame_id);
+				config->RegisterPub(
+				    CreatePublisher<PointStamped>(sensors_nh_, sensor_name, "geometry_msgs/msg/PointStamped"));
+				if (!env_ptr_->settings_.eval_mode) {
+					config->RegisterGTPub(
+					    CreatePublisher<PointStamped>(sensors_nh_, sensor_name + "_GT", "geometry_msgs/msg/PointStamped"));
+				}
+				sensor_map_[sensor_name] = std::move(config);
+				global_frame             = true;
+				break;
+			}
 			case mjSENS_BALLQUAT:
 			case mjSENS_FRAMEQUAT:
 				config = std::make_unique<SensorConfig>(frame_id);
-				config->RegisterPub(sensors_nh_.advertise<geometry_msgs::QuaternionStamped>(sensor_name, 1, true));
+				config->RegisterPub(
+				    CreatePublisher<QuaternionStamped>(sensors_nh_, sensor_name, "geometry_msgs/msg/QuaternionStamped"));
 				if (!env_ptr_->settings_.eval_mode) {
-					config->RegisterGTPub(
-					    sensors_nh_.advertise<geometry_msgs::QuaternionStamped>(sensor_name + "_GT", 1, true));
+					config->RegisterGTPub(CreatePublisher<QuaternionStamped>(sensors_nh_, sensor_name + "_GT",
+					                                                         "geometry_msgs/msg/QuaternionStamped"));
 				}
 				sensor_map_[sensor_name] = std::move(config);
 				global_frame             = true;
 				break;
 		}
 
-		// Check if sensor is in global frame and already setup
 		if (global_frame || frame_id != "world") {
-			ROS_DEBUG_STREAM_NAMED("sensors", "Setting up sensor " << sensor_name << " on site " << site << " (frame_id: "
+			MJR_DEBUG_STREAM_NAMED("sensors", "Setting up sensor " << sensor_name << " on site " << site << " (frame_id: "
 			                                                       << frame_id << ") of type " << SENSOR_STRING[type]);
 			continue;
 		}
 
 		frame_id = mj_id2name(const_cast<mjModel *>(model), mjOBJ_BODY, parent_id);
-		ROS_DEBUG_STREAM_NAMED("sensors", "Setting up sensor " << sensor_name << " on site " << site << " (frame_id: "
+		MJR_DEBUG_STREAM_NAMED("sensors", "Setting up sensor " << sensor_name << " on site " << site << " (frame_id: "
 		                                                       << frame_id << ") of type " << SENSOR_STRING[type]);
 
 		switch (type) {
@@ -575,14 +555,14 @@ void MujocoRosSensorsPlugin::InitSensors(const mjModel *model, mjData *data)
 			case mjSENS_MAGNETOMETER:
 			case mjSENS_BALLANGVEL:
 				config = std::make_unique<SensorConfig>(frame_id);
-				config->RegisterPub(sensors_nh_.advertise<geometry_msgs::Vector3Stamped>(sensor_name, 1, true));
+				config->RegisterPub(
+				    CreatePublisher<Vector3Stamped>(sensors_nh_, sensor_name, "geometry_msgs/msg/Vector3Stamped"));
 				if (!env_ptr_->settings_.eval_mode) {
-					config->RegisterGTPub(
-					    sensors_nh_.advertise<geometry_msgs::Vector3Stamped>(sensor_name + "_GT", 1, true));
+					config->RegisterGTPub(CreatePublisher<Vector3Stamped>(sensors_nh_, sensor_name + "_GT",
+					                                                      "geometry_msgs/msg/Vector3Stamped"));
 				}
 				sensor_map_[sensor_name] = std::move(config);
 				break;
-
 			case mjSENS_TOUCH:
 			case mjSENS_RANGEFINDER:
 			case mjSENS_JOINTPOS:
@@ -600,24 +580,23 @@ void MujocoRosSensorsPlugin::InitSensors(const mjModel *model, mjData *data)
 			case mjSENS_TENDONLIMITVEL:
 			case mjSENS_TENDONLIMITFRC:
 				config = std::make_unique<SensorConfig>(frame_id);
-				config->RegisterPub(sensors_nh_.advertise<mujoco_ros_msgs::ScalarStamped>(sensor_name, 1, true));
+				config->RegisterPub(
+				    CreatePublisher<ScalarStamped>(sensors_nh_, sensor_name, "mujoco_ros_msgs/msg/ScalarStamped"));
 				if (!env_ptr_->settings_.eval_mode) {
-					config->RegisterGTPub(
-					    sensors_nh_.advertise<mujoco_ros_msgs::ScalarStamped>(sensor_name + "_GT", 1, true));
+					config->RegisterGTPub(CreatePublisher<ScalarStamped>(sensors_nh_, sensor_name + "_GT",
+					                                                     "mujoco_ros_msgs/msg/ScalarStamped"));
 				}
 				sensor_map_[sensor_name] = std::move(config);
 				break;
-
 			default:
-				ROS_WARN_STREAM_NAMED("sensors", "Sensor of type '" << type << "' (" << sensor_name
+				MJR_WARN_STREAM_NAMED("sensors", "Sensor of type '" << type << "' (" << sensor_name
 				                                                    << ") is unknown! Cannot publish to ROS");
 				break;
 		}
 	}
 }
 
-// Nothing to do on reset
-void MujocoRosSensorsPlugin::Reset(){};
+void MujocoRosSensorsPlugin::Reset() {}
 
 } // namespace mujoco_ros::sensors
 

@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="modelfile" default="$(find mujoco_ros_sensors)/assets/sensors_world.xml" />
+  <arg name="mujoco_plugin_config" default="$(find mujoco_ros_sensors)/config/example_sensors.yaml" />
+  <arg name="verbose" default="false" />
+
+  <include file="$(find mujoco_ros)/launch/launch_server.launch" pass_all_args="true">
+    <arg name="use_sim_time" value="true" />
+  </include>
+</launch>

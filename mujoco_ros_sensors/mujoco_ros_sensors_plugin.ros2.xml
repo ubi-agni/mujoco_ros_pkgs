@@ -1,4 +1,4 @@
-<library path="lib/libmujoco_ros_sensors">
+<library path="mujoco_ros_sensors">
   <class
     name="mujoco_ros_sensors/MujocoRosSensorsPlugin"
     type="mujoco_ros::sensors::MujocoRosSensorsPlugin"
