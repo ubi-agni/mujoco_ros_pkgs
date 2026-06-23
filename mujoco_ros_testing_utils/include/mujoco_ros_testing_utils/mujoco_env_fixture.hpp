@@ -279,9 +279,9 @@ private:
 inline std::string get_test_model_path(const std::string &model_name)
 {
 #if MJR_ROS_VERSION == ROS_1
-	return ros::package::getPath("mujoco_ros") + "/test/" + model_name;
+	return ros::package::getPath("mujoco_ros_testing_utils") + "/assets/" + model_name;
 #else // MJR_ROS_VERSION == ROS_2
-	return ament_index_cpp::get_package_share_directory("mujoco_ros") + "/test/" + model_name;
+	return ament_index_cpp::get_package_share_directory("mujoco_ros_testing_utils") + "/assets/" + model_name;
 #endif
 }
 
@@ -658,104 +658,43 @@ public:
 #endif
 	std::atomic_bool shutdown_called_{ false };
 	std::atomic_bool construction_complete_{ false };
-	mjModel *getModelPtr()
-	{
-		return model_.get();
-	}
-	mjData *getDataPtr()
-	{
-		return data_.get();
-	}
-	MujocoEnvMutex *getMutexPtr()
-	{
-		return &physics_thread_mutex_;
-	}
+	mjModel *getModelPtr() { return model_.get(); }
+	mjData *getDataPtr() { return data_.get(); }
+	MujocoEnvMutex *getMutexPtr() { return &physics_thread_mutex_; }
 
 #if MJR_ROS_VERSION == ROS_1
-	dynamic_reconfigure::Server<mujoco_ros::SimParamsConfig> *GetParamServer()
-	{
-		return ros_api_->GetParamServerPtr();
-	}
+	dynamic_reconfigure::Server<mujoco_ros::SimParamsConfig> *GetParamServer() { return ros_api_->GetParamServerPtr(); }
 #else // MJR_ROS_VERSION == ROS_2
-	void *GetParamServer()
-	{
-		return nullptr;
-	}
+	void *GetParamServer() { return nullptr; }
 #endif
 
-	int getPendingSteps()
-	{
-		return num_steps_until_exit_;
-	}
+	int getPendingSteps() { return num_steps_until_exit_; }
 
-	void setEvalMode(bool eval_mode)
-	{
-		settings_.eval_mode = eval_mode;
-	}
-	void setAdminHash(const std::string &hash)
-	{
-		mju::strcpy_arr(settings_.admin_hash, hash.c_str());
-	}
+	void setEvalMode(bool eval_mode) { settings_.eval_mode = eval_mode; }
+	void setAdminHash(const std::string &hash) { mju::strcpy_arr(settings_.admin_hash, hash.c_str()); }
 
-	std::string getFilename()
-	{
-		return { filename_ };
-	}
-	int isPhysicsRunning()
-	{
-		return is_physics_running_;
-	}
-	int isEventRunning()
-	{
-		return is_event_running_;
-	}
-	int isRenderingRunning()
-	{
-		return is_rendering_running_;
-	}
+	std::string getFilename() { return { filename_ }; }
+	int isPhysicsRunning() { return is_physics_running_; }
+	int isEventRunning() { return is_event_running_; }
+	int isRenderingRunning() { return is_rendering_running_; }
 
-	OffscreenRenderContext *getOffscreenContext()
-	{
-		return &offscreen_;
-	}
+	OffscreenRenderContext *getOffscreenContext() { return &offscreen_; }
 
-	int GetNumCBReadyPlugins()
-	{
-		return cb_ready_plugins_.size();
-	}
-	void NotifyGeomChange()
-	{
-		NotifyGeomChanged(0);
-	}
+	std::vector<MujocoPluginPtr> const &GetPlugins() const { return MujocoEnv::GetPlugins(); }
 
-	bool step(int num_steps = 1, bool blocking = true)
-	{
-		return MujocoEnv::Step(num_steps, blocking);
-	}
+	int GetNumCBReadyPlugins() { return cb_ready_plugins_.size(); }
+	void NotifyGeomChange() { NotifyGeomChanged(0); }
+
+	bool step(int num_steps = 1, bool blocking = true) { return MujocoEnv::Step(num_steps, blocking); }
 	bool togglePaused(bool paused, const std::string &admin_hash = std::string())
 	{
 		return TogglePaused(paused, admin_hash);
 	}
-	int GetOperationalStatus()
-	{
-		return MujocoEnv::GetOperationalStatus();
-	}
-	void StartPhysicsLoop()
-	{
-		MujocoEnv::StartPhysicsLoop();
-	}
-	void StartEventLoop()
-	{
-		MujocoEnv::StartEventLoop();
-	}
-	void WaitForPhysicsJoin()
-	{
-		MujocoEnv::WaitForPhysicsJoin();
-	}
-	void WaitForEventsJoin()
-	{
-		MujocoEnv::WaitForEventsJoin();
-	}
+	int GetOperationalStatus() { return MujocoEnv::GetOperationalStatus(); }
+	void StartPhysicsLoop() { MujocoEnv::StartPhysicsLoop(); }
+	void StartEventLoop() { MujocoEnv::StartEventLoop(); }
+	void WaitForPhysicsJoin() { MujocoEnv::WaitForPhysicsJoin(); }
+	void WaitForEventsJoin() { MujocoEnv::WaitForEventsJoin(); }
 
 	void load_queued_model()
 	{

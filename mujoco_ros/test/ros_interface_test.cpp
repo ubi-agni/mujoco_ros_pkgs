@@ -36,8 +36,8 @@
 
 #include <gtest/gtest.h>
 
-#include "mujoco_env_fixture.h"
-#include "test_util.h"
+#include <mujoco_ros_testing_utils/mujoco_env_fixture.hpp>
+#include <mujoco_ros_testing_utils/test_util.hpp>
 #include <mujoco_ros/util.hpp>
 
 #if MJR_ROS_VERSION == ROS_1

@@ -1,9 +1,11 @@
 
 if(ROS_VERSION EQUAL 1)
   find_package(rostest REQUIRED)
+  find_package(mujoco_ros_testing_utils REQUIRED)
 elseif(ROS_VERSION EQUAL 2)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(launch_testing_ament_cmake REQUIRED)
+  find_package(mujoco_ros_testing_utils REQUIRED)
 endif()
 
 # Helper function handling ROS 1/2 specific setup
@@ -26,9 +28,15 @@ function(add_mujoco_ros_integration_test TEST_NAME TEST_SOURCE)
 
     target_link_libraries(${TEST_NAME}
       mujoco_ros
+      ${mujoco_ros_testing_utils_LIBRARIES}
       project_option
       project_warning
       ${TEST_EXTRA_LIBS}
+    )
+
+    target_include_directories(${TEST_NAME}
+      PRIVATE
+        ${mujoco_ros_testing_utils_INCLUDE_DIRS}
     )
   elseif(ROS_VERSION EQUAL 2)
     set(TEST_EXECUTABLE ${TEST_NAME})
@@ -43,6 +51,10 @@ function(add_mujoco_ros_integration_test TEST_NAME TEST_SOURCE)
       project_option
       project_warning
       ${TEST_EXTRA_LIBS}
+    )
+
+    ament_target_dependencies(${TEST_EXECUTABLE}
+      mujoco_ros_testing_utils
     )
 
     # Register ROS 2 test launch file
@@ -93,21 +105,3 @@ add_mujoco_ros_integration_test(
   ROS2_LAUNCH launch/mujoco_render.test.py
   TIMEOUT 240
 )
-
-if(ROS_VERSION EQUAL 1)
-  install(FILES
-    empty_world.xml
-    equality_world.xml
-    camera_world.xml
-    pendulum_world.xml
-    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/test
-  )
-elseif(ROS_VERSION EQUAL 2)
-  install(FILES
-    empty_world.xml
-    equality_world.xml
-    camera_world.xml
-    pendulum_world.xml
-    DESTINATION share/${PROJECT_NAME}/test
-  )
-endif()

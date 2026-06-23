@@ -45,7 +45,7 @@
 #include <rclcpp/rclcpp.hpp>
 #endif
 
-#include "mujoco_env_fixture.h"
+#include <mujoco_ros_testing_utils/mujoco_env_fixture.hpp>
 #include "test_plugin/test_plugin.hpp"
 
 #include <mujoco_ros/render_backend.hpp>

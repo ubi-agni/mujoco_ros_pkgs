@@ -36,7 +36,7 @@
 
 #include <gtest/gtest.h>
 
-#include "mujoco_env_fixture.h"
+#include <mujoco_ros_testing_utils/mujoco_env_fixture.hpp>
 
 #include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros/common_types.hpp>
@@ -86,7 +86,7 @@ TEST_F(BaseEnvFixture, EvalModeWithoutHashThrow)
 {
 	MJR_WARN("###### [START] EvalModeWithoutHashThrow ######");
 	nh->setParam("eval_mode", true);
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
 	EXPECT_THROW(env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get()), std::runtime_error);
 	MJR_WARN("###### [END] EvalModeWithoutHashThrow ######");
 }
@@ -94,7 +94,7 @@ TEST_F(BaseEnvFixture, EvalModeWithoutHashThrow)
 TEST_F(BaseEnvFixture, RunEvalMode)
 {
 	nh->setParam("eval_mode", true);
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("some_hash", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
@@ -108,7 +108,7 @@ TEST_F(BaseEnvFixture, RunEvalMode)
 TEST_F(BaseEnvFixture, EvalPauseWithHash)
 {
 	nh->setParam("eval_mode", true);
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("some_hash", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
@@ -124,7 +124,7 @@ TEST_F(BaseEnvFixture, EvalPauseWithHash)
 TEST_F(BaseEnvFixture, EvalUnpauseWithHash)
 {
 	nh->setParam("eval_mode", true);
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("some_hash", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
@@ -152,7 +152,7 @@ TEST_F(BaseEnvFixture, StepAfterShutdown)
 
 TEST_F(BaseEnvFixture, StepWhileUnpaused)
 {
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
@@ -164,7 +164,7 @@ TEST_F(BaseEnvFixture, StepWhileUnpaused)
 TEST_F(BaseEnvFixture, StepSingleWhilePaused)
 {
 	nh->setParam("unpause", false);
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
@@ -178,7 +178,7 @@ TEST_F(BaseEnvFixture, StepSingleWhilePaused)
 TEST_F(BaseEnvFixture, StepMultiWhilePaused)
 {
 	nh->setParam("unpause", false);
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
@@ -192,7 +192,7 @@ TEST_F(BaseEnvFixture, StepMultiWhilePaused)
 TEST_F(BaseEnvFixture, StepUnblocked)
 {
 	nh->setParam("unpause", false);
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
@@ -213,7 +213,7 @@ TEST_F(BaseEnvFixture, StepUnblocked)
 TEST_F(BaseEnvFixture, StepNegativeFail)
 {
 	nh->setParam("unpause", false);
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
@@ -262,7 +262,7 @@ TEST_F(BaseEnvFixture, Shutdown)
 
 TEST_F(BaseEnvFixture, InitWithModel)
 {
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
+	std::string xml_path = testing::get_test_model_path("pendulum_world.xml");
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
@@ -286,7 +286,7 @@ TEST_F(BaseEnvFixture, InitWithModel)
 
 TEST_F(BaseEnvFixture, EvalUnpauseWithoutHash)
 {
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("some_hash", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
@@ -304,7 +304,7 @@ TEST_F(BaseEnvFixture, PauseUnpause)
 	nh->setParam("unpause", false);
 	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
 	env_ptr->StartWithXML(xml_path);
 
 	EXPECT_FALSE(env_ptr->settings_.run) << "Model should not be running!";
@@ -331,7 +331,7 @@ TEST_F(BaseEnvFixture, StepsTerminate)
 	nh->setParam("num_steps", 100);
 
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
+	std::string xml_path = testing::get_test_model_path("pendulum_world.xml");
 	env_ptr->StartWithXML(xml_path);
 
 	float seconds = 0;
@@ -364,7 +364,7 @@ TEST_F(BaseEnvFixture, ManualSteps)
 
 	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
+	std::string xml_path = testing::get_test_model_path("pendulum_world.xml");
 	env_ptr->StartWithXML(xml_path);
 
 	EXPECT_FALSE(env_ptr->settings_.env_steps_request) << "pending manual steps should be 0 after initialization!";
@@ -413,7 +413,7 @@ TEST_F(BaseEnvFixture, Reset)
 {
 	nh->setParam("unpause", false);
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
+	std::string xml_path = testing::get_test_model_path("pendulum_world.xml");
 	env_ptr->StartWithXML(xml_path);
 
 	EXPECT_TRUE(env_ptr->step(100)) << "Stepping failed!";
@@ -461,7 +461,7 @@ TEST_F(BaseEnvFixture, Reload)
 	nh->setParam("unpause", false);
 
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
-	std::string xml_path = ros::package::getPath("mujoco_ros") + "/test/empty_world.xml";
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
 	env_ptr->StartWithXML(xml_path);
 
 	// Load same model again in unpaused state
@@ -472,7 +472,7 @@ TEST_F(BaseEnvFixture, Reload)
 	EXPECT_EQ(env_ptr->settings_.run, 0) << "Model should stay paused after reset!";
 
 	// Load new model in paused state
-	std::string xml_path2 = ros::package::getPath("mujoco_ros") + "/test/pendulum_world.xml";
+	std::string xml_path2 = testing::get_test_model_path("pendulum_world.xml");
 	env_ptr->load_filename(xml_path2);
 	EXPECT_EQ(env_ptr->getFilename(), xml_path2) << "Wrong content in filename_!";
 

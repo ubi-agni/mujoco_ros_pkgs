@@ -51,7 +51,7 @@
 #include <sensor_msgs/image_encodings.hpp>
 #endif
 
-#include "mujoco_env_fixture.h"
+#include <mujoco_ros_testing_utils/mujoco_env_fixture.hpp>
 
 #include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros/common_types.hpp>
