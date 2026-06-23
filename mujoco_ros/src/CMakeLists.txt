@@ -5,7 +5,7 @@ add_library(lodepng OBJECT
 set_property(TARGET lodepng PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(lodepng PRIVATE
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
+  $<INSTALL_INTERFACE:include>
 )
 target_link_libraries(lodepng PRIVATE project_option)
 add_library(mujoco_ros::lodepng ALIAS lodepng)
@@ -20,7 +20,7 @@ if(RENDERING_BACKEND STREQUAL "GLFW")
   set_property(TARGET platform_ui_adapter PROPERTY POSITION_INDEPENDENT_CODE ON)
   target_include_directories(platform_ui_adapter PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
+    $<INSTALL_INTERFACE:include>
     ${GLFW_INTERFACE_INCLUDE_DIRECTORIES}
   )
   target_link_libraries(platform_ui_adapter
@@ -86,7 +86,7 @@ target_include_directories(${PROJECT_NAME}
     ${GLFW_INCLUDE_DIRS}
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${GENERATED_HEADERS_DIR}>
-    $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
+    $<INSTALL_INTERFACE:include>
   PRIVATE
     ${catkin_INCLUDE_DIRS}
 )
