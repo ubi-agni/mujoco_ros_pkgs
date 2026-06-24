@@ -2,6 +2,7 @@ MujocoPlugins:
   - type: mujoco_ros_laser/LaserPlugin
     sensors:
     - site_attached: laser_site
+      name: scan
       frame_id: scan
       visualize: true
       update_rate: 10.

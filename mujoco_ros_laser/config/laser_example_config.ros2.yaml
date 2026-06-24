@@ -1,0 +1,17 @@
+/mujoco_server:
+  ros__parameters:
+    MujocoPlugins.names:
+      - mujoco_ros_laser
+    MujocoPlugins.mujoco_ros_laser.type: mujoco_ros_laser/LaserPlugin
+    MujocoPlugins.mujoco_ros_laser.sensors:
+      - scan
+    MujocoPlugins.mujoco_ros_laser.scan.site_attached: laser_site
+    MujocoPlugins.mujoco_ros_laser.scan.frame_id: scan
+    MujocoPlugins.mujoco_ros_laser.scan.visualize: true
+    MujocoPlugins.mujoco_ros_laser.scan.update_rate: 10.0
+    MujocoPlugins.mujoco_ros_laser.scan.min_range: 0.1
+    MujocoPlugins.mujoco_ros_laser.scan.max_range: 30.0
+    MujocoPlugins.mujoco_ros_laser.scan.range_resolution: 0.01
+    MujocoPlugins.mujoco_ros_laser.scan.angular_resolution: 0.02
+    MujocoPlugins.mujoco_ros_laser.scan.min_angle: -1.57
+    MujocoPlugins.mujoco_ros_laser.scan.max_angle: 1.57

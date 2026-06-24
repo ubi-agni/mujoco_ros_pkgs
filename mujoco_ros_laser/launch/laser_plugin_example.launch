@@ -1,12 +1,12 @@
 <?xml version="1.0"?>
-  <launch>
+<launch>
   <arg name="modelfile"            default="$(find mujoco_ros_laser)/assets/laser_world.xml" doc="MuJoCo xml file to load. Should define robot model and world." />
   <arg name="mujoco_plugin_config" default="$(find mujoco_ros_laser)/config/laser_example_config.yaml"                                        doc="Optionally provide the path to a yaml with plugin configurations to load" />
   <arg name="verbose" default="false" />
 
   <env name="ROSCONSOLE_FORMAT" value="[${severity}] [${time}] [${logger}] [${node}]: ${message}"/>
   <env if="$(arg verbose)" name="ROSCONSOLE_CONFIG_FILE"
-       value="$(find mujoco_ros)/rosconsole.config"/>
+       value="$(find mujoco_ros)/config/rosconsole.config"/>
 
   <include file="$(find mujoco_ros)/launch/launch_server.launch" pass_all_args="true">
     <arg name="use_sim_time" value="true" />

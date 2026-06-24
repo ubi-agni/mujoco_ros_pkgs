@@ -1,0 +1,10 @@
+<library path="mujoco_ros_laser">
+  <class
+    name="mujoco_ros_laser/LaserPlugin"
+    type="mujoco_ros::sensors::laser::LaserPlugin"
+    base_class_type="mujoco_ros::MujocoPlugin">
+    <description>
+      MuJoCo ROS Laser Plugin
+    </description>
+  </class>
+</library>
