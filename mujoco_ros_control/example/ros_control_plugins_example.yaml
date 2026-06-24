@@ -1,0 +1,27 @@
+MujocoPlugins:
+  - type: mujoco_ros_control/MujocoRosControlPlugin
+    hardware:
+      type: mujoco_ros_control/DefaultRobotHWSim
+      control_period: 0.02
+      robot_description: robot_description
+      ignore_actuators: false
+
+joint_state_controller:
+  type: joint_state_controller/JointStateController
+  publish_rate: 50
+
+fallback_effort_controller:
+  type: effort_controllers/JointEffortController
+  joint: fallback_hinge
+
+motor_effort_controller:
+  type: effort_controllers/JointEffortController
+  joint: motor_hinge
+
+velocity_controller:
+  type: velocity_controllers/JointVelocityController
+  joint: velocity_hinge
+
+position_controller:
+  type: position_controllers/JointPositionController
+  joint: position_hinge

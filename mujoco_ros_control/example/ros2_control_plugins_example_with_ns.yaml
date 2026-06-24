@@ -1,0 +1,49 @@
+/mujoco_server:
+  ros__parameters:
+    MujocoPlugins.names:
+      - mujoco_ros_control
+    MujocoPlugins.mujoco_ros_control.type: mujoco_ros_control/MujocoRosControlPlugin
+
+/mujoco_server/mujoco_ros_control:
+  ros__parameters:
+    namespace: test
+    robot_description_node: robot_state_publisher
+    robot_description: robot_description
+
+/test/controller_manager:
+  ros__parameters:
+    update_rate: 50
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    fallback_effort_controller:
+      type: forward_command_controller/ForwardCommandController
+    motor_effort_controller:
+      type: forward_command_controller/ForwardCommandController
+    velocity_controller:
+      type: forward_command_controller/ForwardCommandController
+    position_controller:
+      type: forward_command_controller/ForwardCommandController
+
+/test/fallback_effort_controller:
+  ros__parameters:
+    joints:
+      - fallback_hinge
+    interface_name: effort
+
+/test/motor_effort_controller:
+  ros__parameters:
+    joints:
+      - motor_hinge
+    interface_name: effort
+
+/test/velocity_controller:
+  ros__parameters:
+    joints:
+      - velocity_hinge
+    interface_name: velocity
+
+/test/position_controller:
+  ros__parameters:
+    joints:
+      - position_hinge
+    interface_name: position

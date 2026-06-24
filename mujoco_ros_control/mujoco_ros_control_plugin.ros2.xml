@@ -1,0 +1,10 @@
+<library path="mujoco_ros_control">
+  <class
+    name="mujoco_ros_control/MujocoRosControlPlugin"
+    type="mujoco_ros::control::MujocoRosControlPlugin"
+    base_class_type="mujoco_ros::MujocoPlugin">
+    <description>
+      Mujoco plugin that connects ros2_control controllers to MuJoCo.
+    </description>
+  </class>
+</library>

@@ -1,0 +1,64 @@
+<mujoco model="control_showcase">
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" rgb1=".1 .2 .3" rgb2=".2 .3 .4" width="300" height="300" mark="edge" markrgb=".2 .3 .4"/>
+    <material name="grid" texture="grid" texrepeat="1 1" texuniform="true" reflectance=".2"/>
+    <material name="fallback" rgba="0.1 0.6 0.9 1"/>
+    <material name="motor" rgba="0.9 0.2 0.2 1"/>
+    <material name="velocity" rgba="0.2 0.8 0.35 1"/>
+    <material name="position" rgba="0.95 0.75 0.15 1"/>
+    <material name="independent" rgba="0.95 0.95 0.95 1"/>
+  </asset>
+
+  <option timestep="0.01">
+    <flag contact="disable" energy="enable"/>
+  </option>
+
+  <worldbody>
+    <light name="light" pos="0 0 3"/>
+    <geom name="floor" size="3 2 .2" type="plane" material="grid"/>
+    <camera name="fixed" pos="0.5 -5 4.2" xyaxes="1 0 0 0 0.65 0.76"/>
+    <camera name="lookat" mode="targetbodycom" target="velocity_pole" pos="0.5 -5 1.6"/>
+
+    <body name="fallback_pole" pos="-1.5 0 .8">
+      <joint name="fallback_hinge" type="hinge" axis="0 1 0" damping="0.1" limited="true" range="-90 90"/>
+      <geom name="fallback_base" type="cylinder" fromto="0 -.03 0 0 .03 0" size="0.021" mass="0" material="fallback"/>
+      <geom name="fallback_rod" type="capsule" fromto="0 0 0 0 0 0.5" size="0.02" mass="0" material="fallback"/>
+      <geom name="fallback_mass" type="sphere" pos="0 0 0.5" size="0.05" mass="1" material="fallback"/>
+    </body>
+
+    <body name="motor_pole" pos="-0.5 0 .8">
+      <joint name="motor_hinge" type="hinge" axis="0 1 0" damping="0.1" limited="true" range="-90 90"/>
+      <geom name="motor_base" type="cylinder" fromto="0 -.03 0 0 .03 0" size="0.021" mass="0" material="motor"/>
+      <geom name="motor_rod" type="capsule" fromto="0 0 0 0 0 0.5" size="0.02" mass="0" material="motor"/>
+      <geom name="motor_mass" type="sphere" pos="0 0 0.5" size="0.05" mass="1" material="motor"/>
+    </body>
+
+    <body name="velocity_pole" pos="0.5 0 .8">
+      <joint name="velocity_hinge" type="hinge" axis="0 1 0" damping="0.1" limited="true" range="-90 90"/>
+      <geom name="velocity_base" type="cylinder" fromto="0 -.03 0 0 .03 0" size="0.021" mass="0" material="velocity"/>
+      <geom name="velocity_rod" type="capsule" fromto="0 0 0 0 0 0.5" size="0.02" mass="0" material="velocity"/>
+      <geom name="velocity_mass" type="sphere" pos="0 0 0.5" size="0.05" mass="1" material="velocity"/>
+    </body>
+
+    <body name="position_pole" pos="1.5 0 .8">
+      <joint name="position_hinge" type="hinge" axis="0 1 0" damping="0.1" limited="true" range="-90 90"/>
+      <geom name="position_base" type="cylinder" fromto="0 -.03 0 0 .03 0" size="0.021" mass="0" material="position"/>
+      <geom name="position_rod" type="capsule" fromto="0 0 0 0 0 0.5" size="0.02" mass="0" material="position"/>
+      <geom name="position_mass" type="sphere" pos="0 0 0.5" size="0.05" mass="1" material="position"/>
+    </body>
+
+    <body name="non_ros_pole" pos="2.5 0 .8">
+      <joint name="non_ros_hinge" type="hinge" axis="0 1 0" damping="0.1" limited="true" range="-90 90"/>
+      <geom name="non_ros_base" type="cylinder" fromto="0 -.03 0 0 .03 0" size="0.021" mass="0" material="independent"/>
+      <geom name="non_ros_rod" type="capsule" fromto="0 0 0 0 0 0.5" size="0.02" mass="0" material="independent"/>
+      <geom name="non_ros_mass" type="sphere" pos="0 0 0.5" size="0.05" mass="1" material="independent"/>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <motor name="motor_hinge_act_eff" joint="motor_hinge" gear="1" ctrlrange="-5 5" ctrllimited="true"/>
+    <velocity name="velocity_hinge_act_vel" joint="velocity_hinge" kv="4" ctrlrange="-3 3" ctrllimited="true"/>
+    <position name="position_hinge_act_pos" joint="position_hinge" kp="6" ctrlrange="-1.2 1.2" ctrllimited="true"/>
+    <position name="independent_hinge_act" joint="non_ros_hinge" kp="6" ctrlrange="-1.2 1.2" ctrllimited="true"/>
+  </actuator>
+</mujoco>

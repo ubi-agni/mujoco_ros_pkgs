@@ -1,0 +1,309 @@
+<?xml version="1.0" ?>
+<robot name="control_showcase">
+  <material name="fallback">
+    <color rgba="0.1 0.6 0.9 1"/>
+  </material>
+  <material name="motor">
+    <color rgba="0.9 0.2 0.2 1"/>
+  </material>
+  <material name="velocity">
+    <color rgba="0.2 0.8 0.35 1"/>
+  </material>
+  <material name="position">
+    <color rgba="0.95 0.75 0.15 1"/>
+  </material>
+
+  <link name="world"/>
+
+  <link name="fallback_base">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder length="0.06" radius="0.021"/>
+      </geometry>
+      <material name="fallback"/>
+    </visual>
+  </link>
+  <joint type="fixed" name="world_to_fallback_base">
+    <parent link="world"/>
+    <child link="fallback_base"/>
+    <origin xyz="-1.5 0 0.8" rpy="0 0 0"/>
+  </joint>
+  <joint type="revolute" name="fallback_hinge">
+    <parent link="fallback_base"/>
+    <child link="fallback_pole"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="5" velocity="10"/>
+  </joint>
+  <link name="fallback_pole">
+    <inertial>
+      <origin xyz="0 0 0.25" rpy="0 0 0"/>
+      <mass value="1.0"/>
+      <inertia ixx="0.001" iyy="0.001" izz="0.001" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.25" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="fallback"/>
+    </visual>
+  </link>
+  <joint type="fixed" name="fallback_pole_to_mass">
+    <parent link="fallback_pole"/>
+    <child link="fallback_mass"/>
+    <origin xyz="0 0 0.5" rpy="0 0 0"/>
+  </joint>
+  <link name="fallback_mass">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1.0"/>
+      <inertia ixx="0.001" iyy="0.001" izz="0.001" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.05"/>
+      </geometry>
+      <material name="fallback"/>
+    </visual>
+  </link>
+
+  <link name="motor_base">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder length="0.06" radius="0.021"/>
+      </geometry>
+      <material name="motor"/>
+    </visual>
+  </link>
+  <joint type="fixed" name="world_to_motor_base">
+    <parent link="world"/>
+    <child link="motor_base"/>
+    <origin xyz="-0.5 0 0.8" rpy="0 0 0"/>
+  </joint>
+  <joint type="revolute" name="motor_hinge">
+    <parent link="motor_base"/>
+    <child link="motor_pole"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="5" velocity="10"/>
+  </joint>
+  <link name="motor_pole">
+    <inertial>
+      <origin xyz="0 0 0.25" rpy="0 0 0"/>
+      <mass value="1.0"/>
+      <inertia ixx="0.001" iyy="0.001" izz="0.001" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.25" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="motor"/>
+    </visual>
+  </link>
+  <joint type="fixed" name="motor_pole_to_mass">
+    <parent link="motor_pole"/>
+    <child link="motor_mass"/>
+    <origin xyz="0 0 0.5" rpy="0 0 0"/>
+  </joint>
+  <link name="motor_mass">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1.0"/>
+      <inertia ixx="0.001" iyy="0.001" izz="0.001" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.05"/>
+      </geometry>
+      <material name="motor"/>
+    </visual>
+  </link>
+
+  <link name="velocity_base">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder length="0.06" radius="0.021"/>
+      </geometry>
+      <material name="velocity"/>
+    </visual>
+  </link>
+  <joint type="fixed" name="world_to_velocity_base">
+    <parent link="world"/>
+    <child link="velocity_base"/>
+    <origin xyz="0.5 0 0.8" rpy="0 0 0"/>
+  </joint>
+  <joint type="revolute" name="velocity_hinge">
+    <parent link="velocity_base"/>
+    <child link="velocity_pole"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="5" velocity="10"/>
+  </joint>
+  <link name="velocity_pole">
+    <inertial>
+      <origin xyz="0 0 0.25" rpy="0 0 0"/>
+      <mass value="1.0"/>
+      <inertia ixx="0.001" iyy="0.001" izz="0.001" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.25" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="velocity"/>
+    </visual>
+  </link>
+  <joint type="fixed" name="velocity_pole_to_mass">
+    <parent link="velocity_pole"/>
+    <child link="velocity_mass"/>
+    <origin xyz="0 0 0.5" rpy="0 0 0"/>
+  </joint>
+  <link name="velocity_mass">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1.0"/>
+      <inertia ixx="0.001" iyy="0.001" izz="0.001" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.05"/>
+      </geometry>
+      <material name="velocity"/>
+    </visual>
+  </link>
+
+  <link name="position_base">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder length="0.06" radius="0.021"/>
+      </geometry>
+      <material name="position"/>
+    </visual>
+  </link>
+  <joint type="fixed" name="world_to_position_base">
+    <parent link="world"/>
+    <child link="position_base"/>
+    <origin xyz="1.5 0 0.8" rpy="0 0 0"/>
+  </joint>
+  <joint type="revolute" name="position_hinge">
+    <parent link="position_base"/>
+    <child link="position_pole"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="5" velocity="10"/>
+  </joint>
+  <link name="position_pole">
+    <inertial>
+      <origin xyz="0 0 0.25" rpy="0 0 0"/>
+      <mass value="1.0"/>
+      <inertia ixx="0.001" iyy="0.001" izz="0.001" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.25" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="position"/>
+    </visual>
+  </link>
+  <joint type="fixed" name="position_pole_to_mass">
+    <parent link="position_pole"/>
+    <child link="position_mass"/>
+    <origin xyz="0 0 0.5" rpy="0 0 0"/>
+  </joint>
+  <link name="position_mass">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1.0"/>
+      <inertia ixx="0.001" iyy="0.001" izz="0.001" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.05"/>
+      </geometry>
+      <material name="position"/>
+    </visual>
+  </link>
+
+  <ros2_control name="MujocoRosSystem" type="system">
+    <hardware>
+      <plugin>mujoco_ros_control/MujocoRosSystem</plugin>
+      <param name="ignore_actuators">false</param>
+    </hardware>
+    <joint name="fallback_hinge">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="motor_hinge">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="velocity_hinge">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="position_hinge">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </ros2_control>
+
+  <transmission name="fallback_hinge_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="fallback_hinge">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="fallback_hinge_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="motor_hinge_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="motor_hinge">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="motor_hinge_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="velocity_hinge_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="velocity_hinge">
+      <hardwareInterface>hardware_interface/VelocityJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="velocity_hinge_motor">
+      <hardwareInterface>hardware_interface/VelocityJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="position_hinge_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="position_hinge">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="position_hinge_motor">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+</robot>

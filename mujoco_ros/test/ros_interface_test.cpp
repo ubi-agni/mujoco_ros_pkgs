@@ -36,6 +36,10 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
+#include <chrono>
+#include <thread>
+
 #include <mujoco_ros_testing_utils/mujoco_env_fixture.hpp>
 #include <mujoco_ros_testing_utils/test_util.hpp>
 #include <mujoco_ros/util.hpp>
@@ -56,7 +60,6 @@
 #include <mujoco_ros_msgs/StepGoal.h>
 #include <ros/ros.h>
 #else // MJR_ROS_VERSION == ROS_2
-#include <chrono>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <std_srvs/srv/empty.hpp>
@@ -138,26 +141,36 @@ namespace mju = ::mujoco::sample_util;
 
 #if MJR_ROS_VERSION == ROS_1
 
-void compare_current_ros_time(double expected, const std::string &msg, MujocoEnvTestWrapper * /*env_ptr*/ = nullptr,
-                              double tol = 1e-6)
+double current_ros_time(MujocoEnvTestWrapper * /*env_ptr*/ = nullptr)
 {
-	EXPECT_NEAR(ros::Time::now().toSec(), expected, tol) << msg;
+	return ros::Time::now().toSec();
 }
 
 #else // MJR_ROS_VERSION == ROS_2
 
-void compare_current_ros_time(double expected, const std::string &msg, MujocoEnvTestWrapper *env_ptr = nullptr,
-                              double tol = 1e-6)
+double current_ros_time(MujocoEnvTestWrapper *env_ptr = nullptr)
 {
-	EXPECT_NEAR(env_ptr->get_clock()->now().seconds(), expected, tol) << msg;
+	return env_ptr->get_clock()->now().seconds();
 }
 
 #endif
 
+void compare_current_ros_time(double expected, const std::string &msg, MujocoEnvTestWrapper *env_ptr = nullptr,
+                              double tol = 1e-6)
+{
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+	double actual       = current_ros_time(env_ptr);
+	while (std::abs(actual - expected) > tol && std::chrono::steady_clock::now() < deadline) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		actual = current_ros_time(env_ptr);
+	}
+	EXPECT_NEAR(actual, expected, tol) << msg;
+}
+
 TEST_F(PendulumEnvFixture, Clock)
 {
 	EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
-	compare_current_ros_time(0., std::string("Simulation time should be 0.0!"), env_ptr.get());
+	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0., 1e-6) << "Simulation time should be 0.0!";
 	int total_steps = 0;
 
 	EXPECT_TRUE(env_ptr->step()) << "Step did not succeed!";
@@ -167,7 +180,6 @@ TEST_F(PendulumEnvFixture, Clock)
 
 	EXPECT_TRUE(env_ptr->step(10)) << "Stepping did not succeed!";
 	total_steps += 10;
-	std::this_thread::sleep_for(std::chrono::milliseconds(100)); // wait for time messages to be sent
 	compare_current_ros_time(env_ptr->getModelPtr()->opt.timestep * total_steps,
 	                         std::string("Simulation time should have increased by 10 steps!"), env_ptr.get());
 

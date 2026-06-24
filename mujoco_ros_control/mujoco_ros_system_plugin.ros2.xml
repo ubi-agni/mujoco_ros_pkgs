@@ -1,0 +1,10 @@
+<library path="mujoco_ros_system">
+  <class
+    name="mujoco_ros_control/MujocoRosSystem"
+    type="mujoco_ros::control::MujocoRosSystem"
+    base_class_type="mujoco_ros::control::MujocoRosSystemInterface">
+    <description>
+      Generic ros2_control system interface for MuJoCo.
+    </description>
+  </class>
+</library>

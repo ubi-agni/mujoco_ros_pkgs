@@ -1,0 +1,101 @@
+<?xml version="1.0" ?>
+<robot name="control_showcase_ignore_actuators">
+  <link name="world"/>
+
+  <link name="fallback_base"/>
+  <joint type="fixed" name="world_to_fallback_base">
+    <parent link="world"/>
+    <child link="fallback_base"/>
+    <origin xyz="-1.5 0 0.8" rpy="0 0 0"/>
+  </joint>
+  <joint type="revolute" name="fallback_hinge">
+    <parent link="fallback_base"/>
+    <child link="fallback_pole"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="5" velocity="10"/>
+  </joint>
+  <link name="fallback_pole"/>
+
+  <link name="motor_base"/>
+  <joint type="fixed" name="world_to_motor_base">
+    <parent link="world"/>
+    <child link="motor_base"/>
+    <origin xyz="-0.5 0 0.8" rpy="0 0 0"/>
+  </joint>
+  <joint type="revolute" name="motor_hinge">
+    <parent link="motor_base"/>
+    <child link="motor_pole"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="5" velocity="10"/>
+  </joint>
+  <link name="motor_pole"/>
+
+  <link name="velocity_base"/>
+  <joint type="fixed" name="world_to_velocity_base">
+    <parent link="world"/>
+    <child link="velocity_base"/>
+    <origin xyz="0.5 0 0.8" rpy="0 0 0"/>
+  </joint>
+  <joint type="revolute" name="velocity_hinge">
+    <parent link="velocity_base"/>
+    <child link="velocity_pole"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="5" velocity="10"/>
+  </joint>
+  <link name="velocity_pole"/>
+
+  <link name="position_base"/>
+  <joint type="fixed" name="world_to_position_base">
+    <parent link="world"/>
+    <child link="position_base"/>
+    <origin xyz="1.5 0 0.8" rpy="0 0 0"/>
+  </joint>
+  <joint type="revolute" name="position_hinge">
+    <parent link="position_base"/>
+    <child link="position_pole"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="5" velocity="10"/>
+  </joint>
+  <link name="position_pole"/>
+
+  <ros2_control name="MujocoRosSystem" type="system">
+    <hardware>
+      <plugin>mujoco_ros_control/MujocoRosSystem</plugin>
+      <param name="ignore_actuators">true</param>
+    </hardware>
+    <joint name="fallback_hinge">
+      <param name="effort_limit">5</param>
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="motor_hinge">
+      <param name="effort_limit">5</param>
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="velocity_hinge">
+      <param name="kv">2.0</param>
+      <param name="effort_limit">5</param>
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="position_hinge">
+      <param name="kp">4.0</param>
+      <param name="effort_limit">5</param>
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </ros2_control>
+</robot>

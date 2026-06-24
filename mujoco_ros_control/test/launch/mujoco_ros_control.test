@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<launch>
+  <test test-name="mujoco_ros_control_test"
+        pkg="mujoco_ros_control"
+        type="mujoco_ros_control_test"
+        time-limit="60.0"/>
+</launch>
