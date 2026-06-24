@@ -34,7 +34,7 @@
 
 /* Authors: David P. Leins */
 
-#include "test_plugin.h"
+#include "test_plugin.hpp"
 
 #include <algorithm>
 

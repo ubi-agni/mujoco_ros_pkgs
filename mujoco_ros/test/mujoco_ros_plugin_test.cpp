@@ -46,7 +46,7 @@
 #endif
 
 #include "mujoco_env_fixture.h"
-#include "test_plugin/test_plugin.h"
+#include "test_plugin/test_plugin.hpp"
 
 #include <mujoco_ros/render_backend.hpp>
 #include <mujoco_ros/mujoco_env.hpp>
