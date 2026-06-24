@@ -67,17 +67,11 @@ endif()
 
 message(STATUS "configured RENDERING_BACKEND: ${RENDERING_BACKEND}")
 
-add_custom_command(
-  OUTPUT ${GENERATED_HEADERS_DIR}/${PROJECT_NAME}/render_backend.hpp always_rebuild_backend
-  COMMAND ${CMAKE_COMMAND}
-  -DRENDER_BACKEND=${RENDERING_BACKEND}
-  -DGENERATED_HEADERS_DIR=${GENERATED_HEADERS_DIR}/${PROJECT_NAME}
-  -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateBackendHeader.cmake
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-)
-add_custom_target(render_backend_h
- DEPENDS always_rebuild_backend
- COMMENT "Generating render backend header"
+file(MAKE_DIRECTORY ${GENERATED_HEADERS_DIR}/${PROJECT_NAME})
+set(RENDER_BACKEND ${RENDERING_BACKEND})
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/header_templates/render_backend.hpp.in
+  ${GENERATED_HEADERS_DIR}/${PROJECT_NAME}/render_backend.hpp
 )
 
 list(APPEND ${PROJECT_NAME}_INCLUDE_DIRS

@@ -172,26 +172,16 @@ include(ConfigureRenderBackend)
 add_subdirectory(src)
 
 ### Generate ROS version header
-add_custom_command(
-  OUTPUT ${GENERATED_HEADERS_DIR}/${PROJECT_NAME}/ros_version.hpp always_rebuild_ros
-  COMMAND ${CMAKE_COMMAND}
-  -DROS_VERSION=${ROS_VERSION}
-  -DGENERATED_HEADERS_DIR=${GENERATED_HEADERS_DIR}/${PROJECT_NAME}
-  -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateRosVersionHeader.cmake
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+file(MAKE_DIRECTORY ${GENERATED_HEADERS_DIR}/${PROJECT_NAME})
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/header_templates/ros_version.hpp.in
+  ${GENERATED_HEADERS_DIR}/${PROJECT_NAME}/ros_version.hpp
 )
-add_custom_target(ros_version_h
-  DEPENDS always_rebuild_ros
-  COMMENT "Generating ROS version header"
-)
-add_dependencies(${PROJECT_NAME} ros_version_h)
 
 if (ROS_VERSION EQUAL "1")
   # Depend on gencfg to ensure build before lib
   add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_gencfg)
 endif()
-# Depend on render_backend_h to ensure build before lib
-add_dependencies(${PROJECT_NAME} render_backend_h)
 
 #############
 ## Install ##
