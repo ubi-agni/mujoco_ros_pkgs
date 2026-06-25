@@ -203,7 +203,11 @@ if (ROS_VERSION EQUAL "1")
     ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   )
 
-  install(DIRECTORY launch/ros1/launch config assets
+  install(FILES launch/launch_server.launch
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
+  )
+
+  install(DIRECTORY config assets
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
   )
 
