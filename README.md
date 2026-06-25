@@ -1,105 +1,146 @@
 # MuJoCo ROS
 
-Tools that combine the MuJoCo simulator with ROS. Meant to recreate a base port of [gazebo\_ros\_pkgs](https://github.com/ros-simulation/gazebo_ros_pkgs) for MuJoCo.
+MuJoCo ROS wraps the [MuJoCo physics engine](https://mujoco.org/) with ROS
+interfaces for launching, controlling, observing, and extending simulations.
+The project uses a hybrid ROS 1 / ROS 2 layout where shared MuJoCo behavior
+lives in one implementation and ROS-version-specific code is isolated at the
+boundary.
 
-This is a ROS software Project that wraps the [MuJoCo physics engine](https://mujoco.org/) into a ROS package.
-  It is an extension of the MuJoCo [simulate](https://github.com/google-deepmind/mujoco/tree/3.3.5/simulate) program, with ROS integration and the possibility to load plugins via pluginlib.
-
-### ROS Versions
-
-This project is mainly built for Ubuntu Focal with ROS Noetic. But we are working on adaptations for more recent Ubuntu systems with ROS One and Humble (ROS 2).
-
-#### ROS2 Humble Development
-This branch is for porting the project into ROS2 Humble.
-
-In the current state, ros2_control has been implemented as a plugin to the latest humble port of the source repository.
-There are still some kinks to be fixed, mainly the way nodes are being created in the plugin and the resulting namespace errors, but it still works.
-To test it out, you can do `colcon build --packages-up-to mujoco_ros2_control_system`. Then source the workspace, and run `ros2 launch mujoco_ros2_control mujoco_ros2_control.launch.py`. You will see a GUI with a basic pendulum. Open up RVIZ and add a robot model, then press Shift-Tab to open up the control GUI and nudge the pendulum. You should see the model in RVIZ also moving.
-
-This fork adds two packages:
-- `mujoco_ros2_control` plugin package that implements a `ros2_control` plugin using `MujocoPlugin` class, mainly taken from gazebo's ros2_control, and provides an interface class for the SystemInterfaces.
-- `mujoco_ros2_control_system` package that implements a very basic SystemInterface using the interface class from above, and is loaded in by `mujoco_ros2_control`. It has a working initialization, `read` and `write` functions. An example controller much in the style of Gazebo's demos is in the works.
-
-In the current structure, `mujoco_ros` loads `mujoco_ros2_control` loads `mujoco_ros2_control_system`.
-
-Currently, we use MuJoCo's simulation time (`mjData* d_->time`) to synchronize the controller's read/write loops. This means the main loop's `sleep` function needs to be adjusted, if you want the simulation to run faster.
-This is mainly to give users more control over how the simulation and control are executed, and to not be bound by the computer's resources should super short timesteps be required.
-This will, of course, cause some issues when using it with other nodes that run dependent on ROS' own time. A feature for changing the source of the clock is planned.
-
-There is currently a bug where the names of the nodes created inside the ros2_control plugin are always fixed to `mujoco_server`, when the main MuJoCo server is launched via `mujoco_ros/launch/ros2/launch_server.launch`. This is due to the `name='mujoco_server` parameter. As such, the `mujoco_ros2_control` package provides a copy of the launch file without the `name` parameter. This issue is unfortunately not fixable with the Humble version of `ros2_control`.
+The 1.0.0 release line supports ROS 1 Noetic/One-style builds and ROS 2
+Humble-style builds from the same repository.
 
 ### Continuous Integration
 
-service    | Noetic / One | Humble (coming soon)
----------- | :-----: | :----:
-GitHub | [![Format](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/format.yaml/badge.svg?branch=noetic-devel)](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/format.yaml?query=branch%3Anoetic-devel) [![CI](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/ci.yaml/badge.svg?branch=noetic-devel)](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/ci.yaml?query=branch%3Anoetic-devel) | - |
-CodeCov | [![codecov](https://codecov.io/gh/ubi-agni/mujoco_ros_pkgs/branch/noetic-devel/graph/badge.svg?token=W7uHKcY0ly)](https://codecov.io/gh/ubi-agni/mujoco_ros_pkgs) | - |
+Check | Status
+----- | ----:
+ROS One | [![CI ROS 1](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/ci.ros1.yaml/badge.svg?branch=hybrid-devel)](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/ci.ros1.yaml?query=branch%3Ahybrid-devel) |
+ROS Humble | [![CI ROS 2](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/ci.ros2.yaml/badge.svg?branch=hybrid-devel)](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/ci.ros2.yaml?query=branch%3Ahybrid-devel) |
+Format | [![Format](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/format.yaml/badge.svg?branch=hybrid-devel)](https://github.com/ubi-agni/mujoco_ros_pkgs/actions/workflows/format.yaml?query=branch%3Ahybrid-devel) |
+CodeCov | [![codecov](https://codecov.io/gh/ubi-agni/mujoco_ros_pkgs/branch/hybrid-devel/graph/badge.svg?token=W7uHKcY0ly)](https://codecov.io/gh/ubi-agni/mujoco_ros_pkgs) |
 
-# Features at a Glance
+Pushes and pull requests for `dev/**` branches run a reduced CI matrix by
+default: one GLFW build/test job per ROS version. The ROS 1 and ROS 2 CI
+workflows can be started manually with `full_matrix` and `coverage` enabled
+when a development branch needs the full render-backend matrix and Codecov
+upload before integration. The ROS 2 workflow also has an optional Humble GLFW
+clang-tidy job for development branches.
 
-Feature | Noetic / One | Humble
-------- | :----------: | :-----:
-Interactive GUI  | ✔️ | ✔️ |
-Headless Mode (OSMESA\EGL) | ✔️ | ✔️ |
-Virtual Camera Streams (RGB, Depth, Segmentation Masks) | ✔️ | ✔️ |
-Loading Custom PluginLib Plugins | ✔️ | ✔️ |
-Simulation Controls Through Services/Actions | ✔️ | ✔️ |
-ROS Control |️ ✔️ | ✖️ ([WIP](https://github.com/tenfoldpaper/mujoco_ros_pkgs/tree/wip_ros_control_humble))|
-MuJoCo Sensor Streams  | ✔️ | ✖️ |
-Laser Sensors | ✔️ | ✖️ |
-Mocap Body Control Topic/Service | ✔️ | ✖️ |
-Python Bindings          | (✔️) WIP | ✖️ |
-Spawning Objects via ROS | ✖️ | ✖️ |
 
-# Build Instructions
-1. Make sure MuJoCo is installed (the current build uses version 3.3.5) and runs on your machine.
-2. Create a new ROS workspace or include this repository into an existing workspace.
-3. Before building, make sure that your compiler knows where to find the MuJoCo library, e.g. by running
+## Package Status
+
+Active hybrid packages:
+
+| Package | Purpose |
+| --- | --- |
+| `mujoco_ros` | Core simulator wrapper, server, rendering, plugin loading, ROS API |
+| `mujoco_ros_msgs` | Shared ROS 1 / ROS 2 messages, services, and actions |
+| `mujoco_ros_testing_utils` | Shared test fixtures and test assets |
+| `mujoco_ros_sensors` | MuJoCo native sensor publisher plugin |
+| `mujoco_ros_laser` | Raycast-based laser scan plugin |
+| `mujoco_ros_mocap` | Mocap body topic/service plugin |
+| `mujoco_ros_control` | ROS 1 `ros_control` and ROS 2 `ros2_control` integration |
+
+## Features
+
+| Feature | ROS 1 | ROS 2 |
+| --- | :---: | :---: |
+| Core MuJoCo server | yes | yes |
+| GUI and headless rendering | yes | yes |
+| Camera streams | yes | yes |
+| Pluginlib-based MuJoCo plugins | yes | yes |
+| Services/actions for simulation control | yes | yes |
+| MuJoCo sensor plugin | yes | yes |
+| Laser plugin | yes | yes |
+| Mocap plugin | yes | yes |
+| Control plugin | yes | yes |
+| Python bindings | yes | yes |
+
+## Build
+
+Install MuJoCo first. If MuJoCo is installed from a tarball, make sure the
+environment points at it:
+
 ```bash
-export MUJOCO_DIR=PATH/TO/MUJOCO/DIR
+export MUJOCO_DIR=$HOME/.mujoco/mujoco-3.3.5
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$MUJOCO_DIR/lib
 export LIBRARY_PATH=$LIBRARY_PATH:$MUJOCO_DIR/lib
 ```
-where `PATH/TO/MUJOCO/DIR` is `~/.mujoco/mujoco-3.3.5` if you used the recommended location to install mujoco (if downloaded as tarball). If you built MuJoCo from source and the install path is known to catkin, you can skip this step.
 
-> **Warning**
-> Due to incompabilities between tinyxml2 built by MuJoCo and tinyxml2 linked against Rospack, building MuJoCo from source requires adding `-DMUJOCO_DEP_VERSION_tinyxml2=9a89766acc42ddfa9e7133c7d81a5bda108a0ade` to the cmake call. Otherwise MuJoCo ROS will segfault at runtime.
+For ROS 1:
 
-4. Build with `catkin_build`, `catkin b` or `colcon build`.
-5. Install the dependencies with (ROS2) `rosdep install --from-paths src -y --ignore-src`
-6. Source your workspace and try `ros2 launch mujoco_ros launch_server.launch use_sim_time:=true` to test if it runs. If it starts up and you see a basic pendulum floating in the air, that means it's working.
-7. To test the `ros2_control` plugin, try `ros2 launch mujoco_ros2_control mujoco_ros2_control.launch.py`. You should see a pendulum with a mass at the tip. Now do `Shift-Tab` and try to change the control value. If it resets back to 0, that's expected behavior, as the actuator is now being managed by `ros2_control` and needs to be controlled by a proper `Controller` class.
+```bash
+catkin build --verbose
+catkin test --verbose
+catkin_test_results --verbose
+```
 
+For ROS 2:
 
+```bash
+colcon build --event-handlers console_direct+
+colcon test --event-handlers console_direct+
+colcon test-result --verbose
+```
 
-> **Warning**
-> To prevent action servers ignoring actions for a limited time after resetting the simulation, until https://github.com/ros/actionlib/pull/203 is merged, you need to build the PR branch and any packages implementing action servers (like MoveIt) yourself.
+Install-space builds should also be checked before release because header
+install regressions have previously only appeared there.
 
+The `mujoco_node` startup log reports the package version and configured Git
+description. C++ code can also include `mujoco_ros/version.hpp` for the generated
+`MJR_PROJECT_VERSION`, `MJR_GIT_DESCRIBE`, `MJR_GIT_COMMIT`, `MJR_GIT_BRANCH`,
+and `MJR_GIT_DIRTY` macros.
 
-### Plugin Examples
-A `mujoco_ros2_control` integration of the Franka Emika Panda robot is available at [multipanda_ros2](https://github.com/tenfoldpaper/multipanda_ros2/).
+## Examples
 
----
-(Only relevant for ROS1-Noetic)
-As an example for extended functionality through plugins, take a look at [mujoco_ros_control](https://github.com/ubi-agni/mujoco_ros_pkgs/tree/noetic-devel/mujoco_ros_control), [mujoco_screw_plugin](https://github.com/ubi-agni/mujoco_screw_plugin), [mujoco_contact_surfaces](https://github.com/ubi-agni/mujoco_contact_surfaces) or [mujoco_ros_sensors](https://github.com/ubi-agni/mujoco_ros_pkgs/tree/noetic-devel/mujoco_ros_sensors).
+Core server:
 
-We provide some code examples in our [demo repository](https://github.com/ubi-agni/mujoco_ros_demos)
+```bash
+roslaunch mujoco_ros launch_server.launch
+ros2 launch mujoco_ros launch_server.launch.xml
+```
 
+Plugin examples:
 
-### Documentation
+```bash
+roslaunch mujoco_ros_sensors sensors_plugin_example.launch
+ros2 launch mujoco_ros_sensors sensors_plugin_example.launch.py
 
-We are currently working on setting up more detailed documentation including tutorials and guides. The current prototype can be found [here](https://davidpl1.github.io/mujoco_ros_pkgs) (though note that this will migrate once its ready for an initial proper release).
+roslaunch mujoco_ros_laser laser_plugin_example.launch
+ros2 launch mujoco_ros_laser laser_plugin_example.launch.py
 
-Some more structural and configuration info, which is not yet included in the documentation, can be found [here](./mujoco_ros/README.md).
+roslaunch mujoco_ros_mocap mocap_example.launch
+ros2 launch mujoco_ros_mocap mocap_example.launch.py
+```
 
-# Licensing
+Control examples:
 
-This work is licensed under the BSD 3-Clause License (see LICENSE).
-It is built on top of MuJoCo, which was released under an Apache 2.0 License. For the original MuJoCo and further third party licenses, see [THIRD_PARTY_NOTICES](./THIRD_PARTY_NOTICES).
+```bash
+roslaunch mujoco_ros_control mujoco_ros_control.launch
+ros2 launch mujoco_ros_control mujoco_ros_control.launch.py
 
-# Cite
+roslaunch mujoco_ros_control mujoco_ros_control_ignore_actuators.launch
+ros2 launch mujoco_ros_control mujoco_ros_control_ignore_actuators.launch.py
+```
 
-If you are using this framework in your research, please cite the following work in your publications:
+The control examples use four pendulums to demonstrate effort fallback,
+effort-motor routing, velocity-actuator routing, position-actuator routing, and
+the `ignore_actuators` generalized-force fallback mode.
+
+## Documentation
+
+The documentation is published at
+[ubi-agni.github.io/mujoco_ros_pkgs](https://ubi-agni.github.io/mujoco_ros_pkgs/).
+The Sphinx sources live under `docs/`.
+
+## Licensing
+
+This work is licensed under the BSD 3-Clause License, see `LICENSE`.
+It is built on top of MuJoCo, which is released under the Apache 2.0 License.
+For MuJoCo and third-party notices, see `THIRD_PARTY_NOTICES`.
+
+## Cite
+
+If you use this framework in research, please cite:
 
 ```bibtex
 @inproceedings{leinsMuJoCoROSIntegrating2025,
