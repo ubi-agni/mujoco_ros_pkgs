@@ -346,10 +346,10 @@ void RosAPI::SetGeomPropertiesCB(const mujoco_ros_msgs::srv::SetGeomProperties::
 {
 	char status_msg[MujocoEnv::kErrorLength] = { 0 };
 	res->success                             = env_ptr_->SetGeomProperties(
-	                                req->properties.name, req->properties.body_mass, req->properties.friction_slide, req->properties.friction_spin,
-	                                req->properties.friction_roll, req->properties.size_0, req->properties.size_1, req->properties.size_2,
-	                                req->properties.type.value, req->set_mass, req->set_friction, req->set_type, req->set_size, req->admin_hash,
-	                                status_msg, MujocoEnv::kErrorLength);
+       req->properties.name, req->properties.body_mass, req->properties.friction_slide, req->properties.friction_spin,
+       req->properties.friction_roll, req->properties.size_0, req->properties.size_1, req->properties.size_2,
+       req->properties.type.value, req->set_mass, req->set_friction, req->set_type, req->set_size, req->admin_hash,
+       status_msg, MujocoEnv::kErrorLength);
 	res->status_message = std::string(status_msg);
 }
 

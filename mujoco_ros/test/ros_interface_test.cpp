@@ -354,7 +354,7 @@ TEST_F(PendulumEnvFixture, StepGoalMultiple)
 	const bool found = testing::has_topic(topics, env_ptr->GetHandleNamespace() + "/step/result");
 #else // MJR_ROS_VERSION == ROS_2
 	auto ac          = rclcpp_action::create_client<mujoco_ros_msgs::action::Step>(env_ptr.get(),
-                                                                         env_ptr->GetHandleNamespace() + "/step");
+	                                                                               env_ptr->GetHandleNamespace() + "/step");
 	const bool found = ac->wait_for_action_server(std::chrono::seconds(1));
 #endif
 	// Workaround to connect to action server, this is only needed in cpp
@@ -402,9 +402,9 @@ TEST_F(PendulumEnvFixture, StepGoalPreemptUnpaused)
 
 	const bool found = testing::has_topic(topics, env_ptr->GetHandleNamespace() + "/step/result");
 #else // MJR_ROS_VERSION == ROS_2
-	auto ac            = rclcpp_action::create_client<mujoco_ros_msgs::action::Step>(env_ptr.get(),
-                                                                         env_ptr->GetHandleNamespace() + "/step");
-	const bool found   = ac->wait_for_action_server(std::chrono::seconds(1));
+	auto ac          = rclcpp_action::create_client<mujoco_ros_msgs::action::Step>(env_ptr.get(),
+	                                                                               env_ptr->GetHandleNamespace() + "/step");
+	const bool found = ac->wait_for_action_server(std::chrono::seconds(1));
 #endif
 	// Workaround to connect to action server, this is only needed in cpp
 	env_ptr->settings_.run = 1;
@@ -439,9 +439,9 @@ TEST_F(PendulumEnvFixture, StepGoalCancelPreempt)
 
 	const bool found = testing::has_topic(topics, env_ptr->GetHandleNamespace() + "/step/result");
 #else // MJR_ROS_VERSION == ROS_2
-	auto ac                 = rclcpp_action::create_client<mujoco_ros_msgs::action::Step>(env_ptr.get(),
-                                                                         env_ptr->GetHandleNamespace() + "/step");
-	bool found              = ac->wait_for_action_server(std::chrono::seconds(1));
+	auto ac    = rclcpp_action::create_client<mujoco_ros_msgs::action::Step>(env_ptr.get(),
+	                                                                         env_ptr->GetHandleNamespace() + "/step");
+	bool found = ac->wait_for_action_server(std::chrono::seconds(1));
 #endif
 	// Workaround to connect to action server, this is only needed in cpp
 	env_ptr->settings_.run = 1;

@@ -413,7 +413,7 @@ void OffscreenCamera::RenderAndPublish(mujoco_ros::OffscreenRenderContext *offsc
 	             (depth_pub_.getNumSubscribers() > 0 || depth_camera_info_pub_->getNumSubscribers() > 0);
 
 #else // MJR_ROS_VERSION == ROS_2
-	bool segment  = (stream_type_ & StreamType::SEGMENTED) &&
+	bool segment = (stream_type_ & StreamType::SEGMENTED) &&
 	               (segment_pub_.getNumSubscribers() > 0 || segment_camera_info_pub_->get_subscription_count() > 0);
 	bool rgb = (stream_type_ & StreamType::RGB) &&
 	           (rgb_pub_.getNumSubscribers() > 0 || rgb_camera_info_pub_->get_subscription_count() > 0);

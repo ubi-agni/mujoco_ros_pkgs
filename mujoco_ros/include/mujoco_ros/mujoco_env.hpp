@@ -267,10 +267,7 @@ public:
 		uint load_count         = 0;
 	} sim_state_;
 
-	std::vector<MujocoPluginPtr> const &GetPlugins() const
-	{
-		return plugins_;
-	}
+	std::vector<MujocoPluginPtr> const &GetPlugins() const { return plugins_; }
 
 	/**
 	 * @brief Register a custom collision function for collisions between two geom types.

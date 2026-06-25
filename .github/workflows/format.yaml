@@ -11,11 +11,9 @@ permissions:
 jobs:
   pre-commit:
     name: pre-commit
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-      - name: Install clang-format
-        run: sudo apt-get update && sudo apt-get install clang-format -y
       # Catkin lint is installed but not included in pre-commit
       # - name: Install catkin_lint
       #   uses: DavidPL1/install-catkin_lint-action@ros2

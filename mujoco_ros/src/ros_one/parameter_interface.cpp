@@ -116,9 +116,9 @@ void MujocoEnv::GetCameraConfiguration(const std::string &cam_name, rendering::S
 	height        = nh_->param<int>(cam_config_path + "/" + cam_name + "/height", rendering::kDEFAULT_CAM_HEIGHT);
 	base_topic    = nh_->param<std::string>(cam_config_path + "/" + cam_name + "/topic", "cameras/" + cam_name);
 	rgb_topic     = nh_->param<std::string>(cam_config_path + "/" + cam_name + "/name_rgb",
-                                       std::string(rendering::kDEFAULT_CAM_RGB_TOPIC));
+	                                        std::string(rendering::kDEFAULT_CAM_RGB_TOPIC));
 	depth_topic   = nh_->param<std::string>(cam_config_path + "/" + cam_name + "/name_depth",
-                                         std::string(rendering::kDEFAULT_CAM_DEPTH_TOPIC));
+	                                        std::string(rendering::kDEFAULT_CAM_DEPTH_TOPIC));
 	segment_topic = nh_->param<std::string>(cam_config_path + "/" + cam_name + "/name_segment",
 	                                        std::string(rendering::kDEFAULT_CAM_SEGMENT_TOPIC));
 }

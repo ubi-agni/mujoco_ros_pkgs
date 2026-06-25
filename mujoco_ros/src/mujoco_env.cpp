@@ -65,7 +65,7 @@ namespace roscpp = ros;
 #include <geometry_msgs/msg/transform_stamped.hpp>
 using TransformStamped = geometry_msgs::msg::TransformStamped;
 
-namespace roscpp                  = rclcpp;
+namespace roscpp = rclcpp;
 #endif
 
 #if RENDER_BACKEND == GLFW_BACKEND
@@ -262,7 +262,7 @@ void MujocoEnv::Configure()
 	MJR_WARN_STREAM_COND(num_threads > 1,
 	                     "Using more than one MuJoCo thread can increase CPU usage because MuJoCo worker threads "
 	                         << "busy-wait. See https://github.com/google-deepmind/mujoco/pull/2746");
-	num_threads           = std::min(num_threads, available_threads);
+	num_threads = std::min(num_threads, available_threads);
 	if (num_threads > 1) {
 		threadpool_ = mju_threadPoolCreate(num_threads);
 		MJR_INFO_STREAM("Using MuJoCo threadpool size of " << num_threads << " (max available: " << available_threads
