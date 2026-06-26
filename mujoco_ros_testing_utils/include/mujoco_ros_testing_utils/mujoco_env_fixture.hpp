@@ -781,6 +781,8 @@ protected:
 		nh = std::make_unique<testing::TestNodeHandle>("~");
 		nh->setParam("unpause", true);
 		nh->setParam("no_render", true);
+		nh->setParam("headless", true);
+		nh->setParam("render_offscreen", true);
 		nh->setParam("use_sim_time", true);
 	}
 
