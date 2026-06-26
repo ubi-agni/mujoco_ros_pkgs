@@ -105,7 +105,7 @@ jobs:
 
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       BASEDIR: ${{ github.workspace }}/.work
-      CLANG_TIDY_BASE_REF: ${{ github.event_name != 'workflow_dispatch' && (github.base_ref || github.ref) || '' }}
+      CLANG_TIDY_BASE_REF: ${{ github.event_name == 'workflow_dispatch' && 'refs/heads/hybrid-devel' || github.event_name == 'pull_request' && format('refs/heads/{0}', github.base_ref) || startsWith(github.ref_name, 'dev/') && 'refs/heads/hybrid-devel' || github.event.before }}
       BEFORE_CLANG_TIDY_CHECKS: |
         # Show list of applied checks
         (cd $TARGET_REPO_PATH; clang-tidy --list-checks)
@@ -114,7 +114,7 @@ jobs:
       CLANG_TIDY: ${{ matrix.check == 'clang_tidy' }}
       CCOV: ${{ matrix.check == 'ccov' }}
 
-    name: "${{ matrix.distro }} mj-${{ matrix.mujoco }} ${{ matrix.render_backend }}${{ matrix.check == 'plain' && ' + test' || '' }}${{ matrix.check == 'ccov' && ' + ccov' || ''}}${{ matrix.check == 'clang_tidy' && (github.event_name != 'workflow_dispatch' && ' + clang-tidy (delta)' || ' + clang-tidy (all)') || '' }}"
+    name: "${{ matrix.distro }} mj-${{ matrix.mujoco }} ${{ matrix.render_backend }}${{ matrix.check == 'plain' && ' + test' || '' }}${{ matrix.check == 'ccov' && ' + ccov' || ''}}${{ matrix.check == 'clang_tidy' && ' + clang-tidy (delta)' || '' }}"
     runs-on: ${{ matrix.render_backend == 'EGL' && matrix.distro || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5
