@@ -121,6 +121,23 @@ TEST_F(BaseEnvFixture, EvalPauseWithHash)
 	env_ptr->shutdown();
 }
 
+TEST_F(BaseEnvFixture, EvalPauseWithoutHashFails)
+{
+	nh->setParam("eval_mode", true);
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("some_hash", nh.get());
+
+	env_ptr->StartWithXML(xml_path);
+
+	EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
+	EXPECT_TRUE(env_ptr->settings_.run) << "Model should start running!";
+
+	EXPECT_FALSE(env_ptr->togglePaused(true)) << "Pause without admin hash should fail in eval mode!";
+	EXPECT_TRUE(env_ptr->settings_.run) << "Model should keep running!";
+
+	env_ptr->shutdown();
+}
+
 TEST_F(BaseEnvFixture, EvalUnpauseWithHash)
 {
 	nh->setParam("eval_mode", true);
@@ -132,6 +149,24 @@ TEST_F(BaseEnvFixture, EvalUnpauseWithHash)
 	EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
 
 	env_ptr->togglePaused(false, "some_hash");
+	EXPECT_TRUE(env_ptr->settings_.run) << "Model should be running!";
+
+	env_ptr->shutdown();
+}
+
+TEST_F(BaseEnvFixture, EvalUnpauseWithoutHash)
+{
+	nh->setParam("eval_mode", true);
+	nh->setParam("unpause", false);
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("some_hash", nh.get());
+
+	env_ptr->StartWithXML(xml_path);
+
+	EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
+	EXPECT_FALSE(env_ptr->settings_.run) << "Model should start paused!";
+
+	EXPECT_TRUE(env_ptr->togglePaused(false)) << "Unpause without admin hash should succeed in eval mode!";
 	EXPECT_TRUE(env_ptr->settings_.run) << "Model should be running!";
 
 	env_ptr->shutdown();
@@ -280,21 +315,6 @@ TEST_F(BaseEnvFixture, InitWithModel)
 		seconds += 0.005;
 	}
 	EXPECT_LT(seconds, 2) << "Time did not pass in simulation, ran into 2 second timeout!";
-
-	env_ptr->shutdown();
-}
-
-TEST_F(BaseEnvFixture, EvalUnpauseWithoutHash)
-{
-	std::string xml_path = testing::get_test_model_path("empty_world.xml");
-	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("some_hash", nh.get());
-
-	env_ptr->StartWithXML(xml_path);
-
-	EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
-
-	env_ptr->togglePaused(false);
-	EXPECT_TRUE(env_ptr->settings_.run) << "Model should be running!";
 
 	env_ptr->shutdown();
 }

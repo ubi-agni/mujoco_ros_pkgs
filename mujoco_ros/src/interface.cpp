@@ -52,7 +52,7 @@ namespace mju = ::mujoco::sample_util;
 bool MujocoEnv::TogglePaused(bool paused, const std::string &admin_hash /*= std::string*/)
 {
 	MJR_DEBUG("Trying to toggle pause");
-	if (!VerifyAdminHash(admin_hash)) {
+	if (paused && !VerifyAdminHash(admin_hash)) {
 		MJR_ERROR("Unauthorized pause request detected. Ignoring request");
 		return false;
 	}
