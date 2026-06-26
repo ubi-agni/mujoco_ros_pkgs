@@ -2601,7 +2601,7 @@ TEST_F(PendulumEnvFixture, GetSimInfo_RTSettingChanges)
 	    << "RT setting should change when RT factor is changed!";
 }
 
-// Dynamic reconfigure only exists in ROS1
+// ROS 1 uses dynamic reconfigure; ROS 2 mirrors the same runtime knobs as node parameters.
 #if MJR_ROS_VERSION == ROS_1
 TEST_F(BaseEnvFixture, DynParamEnumsMatchMJEnums)
 {
@@ -3002,5 +3002,230 @@ TEST_F(PendulumEnvFixture, DynamicReconfigureAllParams)
 	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_friction[1], 0.5) << "Friction should have been updated!";
 	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_friction[2], 0.1) << "Friction should have been updated!";
 	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_friction[3], 0.1) << "Friction should have been updated!";
+}
+#else // MJR_ROS_VERSION == ROS_2
+TEST_F(PendulumEnvFixture, RuntimeParametersExistAndSyncFromModel)
+{
+	ASSERT_TRUE(env_ptr->has_parameter("running"));
+	ASSERT_TRUE(env_ptr->has_parameter("admin_hash"));
+	ASSERT_TRUE(env_ptr->has_parameter("timestep"));
+	ASSERT_TRUE(env_ptr->has_parameter("gravity"));
+	ASSERT_TRUE(env_ptr->has_parameter("constraint_disabled"));
+	ASSERT_TRUE(env_ptr->has_parameter("override_contacts"));
+	ASSERT_TRUE(env_ptr->has_parameter("solimp"));
+
+	EXPECT_EQ(env_ptr->get_parameter("running").as_bool(), static_cast<bool>(env_ptr->settings_.run.load()));
+	EXPECT_DOUBLE_EQ(env_ptr->get_parameter("timestep").as_double(), env_ptr->getModelPtr()->opt.timestep);
+	EXPECT_EQ(env_ptr->get_parameter("integrator").as_int(), env_ptr->getModelPtr()->opt.integrator);
+}
+
+TEST_F(PendulumEnvFixture, RuntimeParameterDescriptors)
+{
+	const auto integrator_descriptor = env_ptr->describe_parameter("integrator");
+	ASSERT_EQ(integrator_descriptor.integer_range.size(), 1u);
+	EXPECT_EQ(integrator_descriptor.integer_range.front().from_value, 0);
+	EXPECT_EQ(integrator_descriptor.integer_range.front().to_value, 3);
+	EXPECT_NE(integrator_descriptor.additional_constraints.find("Euler"), std::string::npos);
+	EXPECT_NE(integrator_descriptor.additional_constraints.find("Implicitfast"), std::string::npos);
+	EXPECT_FALSE(integrator_descriptor.read_only);
+
+	const auto cone_descriptor = env_ptr->describe_parameter("cone");
+	ASSERT_EQ(cone_descriptor.integer_range.size(), 1u);
+	EXPECT_EQ(cone_descriptor.integer_range.front().from_value, 0);
+	EXPECT_EQ(cone_descriptor.integer_range.front().to_value, 1);
+	EXPECT_NE(cone_descriptor.additional_constraints.find("Pyramidal"), std::string::npos);
+	EXPECT_NE(cone_descriptor.additional_constraints.find("Elliptic"), std::string::npos);
+
+	const auto jacobian_descriptor = env_ptr->describe_parameter("jacobian");
+	ASSERT_EQ(jacobian_descriptor.integer_range.size(), 1u);
+	EXPECT_EQ(jacobian_descriptor.integer_range.front().from_value, 0);
+	EXPECT_EQ(jacobian_descriptor.integer_range.front().to_value, 2);
+	EXPECT_NE(jacobian_descriptor.additional_constraints.find("Dense"), std::string::npos);
+	EXPECT_NE(jacobian_descriptor.additional_constraints.find("Auto"), std::string::npos);
+
+	const auto solver_descriptor = env_ptr->describe_parameter("solver");
+	ASSERT_EQ(solver_descriptor.integer_range.size(), 1u);
+	EXPECT_EQ(solver_descriptor.integer_range.front().from_value, 0);
+	EXPECT_EQ(solver_descriptor.integer_range.front().to_value, 2);
+	EXPECT_NE(solver_descriptor.additional_constraints.find("PGS"), std::string::npos);
+	EXPECT_NE(solver_descriptor.additional_constraints.find("Newton"), std::string::npos);
+}
+
+TEST_F(PendulumEnvFixture, RuntimeParameterSingleParam)
+{
+	const auto result = env_ptr->set_parameters_atomically({ rclcpp::Parameter("timestep", 0.002) });
+
+	ASSERT_TRUE(result.successful) << result.reason;
+	EXPECT_DOUBLE_EQ(env_ptr->getModelPtr()->opt.timestep, 0.002) << "Timestep should have been updated!";
+}
+
+TEST_F(PendulumEnvFixture, RuntimeParameterSyncsModelSideChanges)
+{
+	mjtNum gravity[3] = { 1.0, 2.0, 3.0 };
+	ASSERT_TRUE(env_ptr->SetGravity(gravity));
+
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+	while (env_ptr->get_parameter("gravity").as_string() != "1.000000 2.000000 3.000000" &&
+	       std::chrono::steady_clock::now() < deadline) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	EXPECT_EQ(env_ptr->get_parameter("gravity").as_string(), "1.000000 2.000000 3.000000");
+}
+
+TEST_F(PendulumEnvFixture, RuntimeEnumParametersUpdateAndRejectInvalidValues)
+{
+	auto result =
+	    env_ptr->set_parameters_atomically({ rclcpp::Parameter("integrator", 1), rclcpp::Parameter("cone", 0),
+	                                         rclcpp::Parameter("jacobian", 1), rclcpp::Parameter("solver", 1) });
+	ASSERT_TRUE(result.successful) << result.reason;
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.integrator, 1);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.cone, 0);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.jacobian, 1);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.solver, 1);
+
+	const auto old_integrator = env_ptr->getModelPtr()->opt.integrator;
+	result                    = env_ptr->set_parameters_atomically({ rclcpp::Parameter("integrator", 99) });
+	EXPECT_FALSE(result.successful);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.integrator, old_integrator);
+
+	const auto old_solver = env_ptr->getModelPtr()->opt.solver;
+	result                = env_ptr->set_parameters_atomically({ rclcpp::Parameter("solver", -1) });
+	EXPECT_FALSE(result.successful);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.solver, old_solver);
+}
+
+TEST_F(PendulumEnvFixture, RuntimeParameterAllParams)
+{
+	const auto result = env_ptr->set_parameters_atomically({
+	    rclcpp::Parameter("admin_hash", std::string("new_hash")),
+	    rclcpp::Parameter("running", false),
+	    rclcpp::Parameter("integrator", 2),
+	    rclcpp::Parameter("cone", 0),
+	    rclcpp::Parameter("jacobian", 1),
+	    rclcpp::Parameter("solver", 1),
+	    rclcpp::Parameter("timestep", 0.002),
+	    rclcpp::Parameter("iterations", 200),
+	    rclcpp::Parameter("tolerance", 1e-7),
+	    rclcpp::Parameter("ls_iter", 60),
+	    rclcpp::Parameter("ls_tol", 0.02),
+	    rclcpp::Parameter("noslip_iter", 10),
+	    rclcpp::Parameter("noslip_tol", 1e-5),
+	    rclcpp::Parameter("ccd_iter", 60),
+	    rclcpp::Parameter("ccd_tol", 1e-5),
+	    rclcpp::Parameter("sdf_iter", 15),
+	    rclcpp::Parameter("sdf_init", 50),
+	    rclcpp::Parameter("gravity", std::string("9.81 1 2")),
+	    rclcpp::Parameter("wind", std::string("1 1 1")),
+	    rclcpp::Parameter("magnetic", std::string("0.1 0.1 0.1")),
+	    rclcpp::Parameter("density", 1.2),
+	    rclcpp::Parameter("viscosity", 0.00003),
+	    rclcpp::Parameter("impratio", 1.5),
+	    rclcpp::Parameter("constraint_disabled", true),
+	    rclcpp::Parameter("equality_disabled", true),
+	    rclcpp::Parameter("frictionloss_disabled", true),
+	    rclcpp::Parameter("limit_disabled", true),
+	    rclcpp::Parameter("contact_disabled", true),
+	    rclcpp::Parameter("passive_disabled", true),
+	    rclcpp::Parameter("gravity_disabled", true),
+	    rclcpp::Parameter("clampctrl_disabled", true),
+	    rclcpp::Parameter("warmstart_disabled", true),
+	    rclcpp::Parameter("filterparent_disabled", true),
+	    rclcpp::Parameter("actuation_disabled", true),
+	    rclcpp::Parameter("refsafe_disabled", true),
+	    rclcpp::Parameter("sensor_disabled", true),
+	    rclcpp::Parameter("midphase_disabled", true),
+	    rclcpp::Parameter("eulerdamp_disabled", true),
+	    rclcpp::Parameter("override_contacts", true),
+	    rclcpp::Parameter("energy", true),
+	    rclcpp::Parameter("fwd_inv", true),
+	    rclcpp::Parameter("inv_discrete", true),
+	    rclcpp::Parameter("multiccd", true),
+	    rclcpp::Parameter("island", true),
+	    rclcpp::Parameter("margin", 0.5),
+	    rclcpp::Parameter("solimp", std::string("0.8 0.9 0.1")),
+	    rclcpp::Parameter("solref", std::string("0.03 1.1")),
+	    rclcpp::Parameter("friction", std::string("0.5 0.5 0.1 0.1")),
+	});
+
+	ASSERT_TRUE(result.successful) << result.reason;
+	std::lock_guard<std::recursive_mutex> lock(env_ptr->physics_thread_mutex_);
+
+	EXPECT_STREQ(env_ptr->settings_.admin_hash, std::string("new_hash").c_str());
+	EXPECT_FALSE(env_ptr->settings_.run.load());
+
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.integrator, 2);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.cone, 0);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.jacobian, 1);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.solver, 1);
+	EXPECT_DOUBLE_EQ(env_ptr->getModelPtr()->opt.timestep, 0.002);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.iterations, 200);
+	EXPECT_DOUBLE_EQ(env_ptr->getModelPtr()->opt.tolerance, 1e-7);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.ls_iterations, 60);
+	EXPECT_DOUBLE_EQ(env_ptr->getModelPtr()->opt.ls_tolerance, 0.02);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.noslip_iterations, 10);
+	EXPECT_DOUBLE_EQ(env_ptr->getModelPtr()->opt.noslip_tolerance, 1e-5);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.ccd_iterations, 60);
+	EXPECT_DOUBLE_EQ(env_ptr->getModelPtr()->opt.ccd_tolerance, 1e-5);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.sdf_iterations, 15);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.sdf_initpoints, 50);
+
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.gravity[0], 9.81);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.gravity[1], 1);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.gravity[2], 2);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.wind[0], 1);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.wind[1], 1);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.wind[2], 1);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.magnetic[0], 0.1);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.magnetic[1], 0.1);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.magnetic[2], 0.1);
+	EXPECT_DOUBLE_EQ(env_ptr->getModelPtr()->opt.density, 1.2);
+	EXPECT_DOUBLE_EQ(env_ptr->getModelPtr()->opt.viscosity, 0.00003);
+	EXPECT_DOUBLE_EQ(env_ptr->getModelPtr()->opt.impratio, 1.5);
+
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_CONSTRAINT);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_EQUALITY);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_FRICTIONLOSS);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_LIMIT);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_CONTACT);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_PASSIVE);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_GRAVITY);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_CLAMPCTRL);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_WARMSTART);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_FILTERPARENT);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_ACTUATION);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_REFSAFE);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_SENSOR);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_MIDPHASE);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_EULERDAMP);
+
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_OVERRIDE);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_ENERGY);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_FWDINV);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_INVDISCRETE);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_MULTICCD);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_ISLAND);
+
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_margin, 0.5);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_solimp[0], 0.8);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_solimp[1], 0.9);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_solimp[2], 0.1);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_solref[0], 0.03);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_solref[1], 1.1);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_friction[0], 0.5);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_friction[1], 0.5);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_friction[2], 0.1);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_friction[3], 0.1);
+}
+
+TEST_F(PendulumEnvFixture, RuntimeParameterRejectsInvalidValues)
+{
+	const double old_gravity = env_ptr->getModelPtr()->opt.gravity[0];
+
+	auto result = env_ptr->set_parameters_atomically({ rclcpp::Parameter("gravity", std::string("1 invalid 3")) });
+	EXPECT_FALSE(result.successful);
+	EXPECT_DOUBLE_EQ(env_ptr->getModelPtr()->opt.gravity[0], old_gravity);
+
+	result = env_ptr->set_parameters_atomically({ rclcpp::Parameter("timestep", std::string("not_a_double")) });
+	EXPECT_FALSE(result.successful);
 }
 #endif

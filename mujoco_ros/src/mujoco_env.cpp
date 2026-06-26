@@ -329,12 +329,10 @@ void MujocoEnv::EventLoop()
 			RecursiveLock lock(physics_thread_mutex_);
 			now = Clock::now();
 
-#if MJR_ROS_VERSION == ROS_1
 			if (settings_.settings_changed.load()) {
 				settings_.settings_changed.store(0);
 				ros_api_->UpdateDynamicParams();
 			}
-#endif
 
 			if (settings_.load_request.load() == 1) {
 				MJR_DEBUG("Load request received");

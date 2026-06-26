@@ -37,6 +37,7 @@
 #include <mujoco_ros/ros_version.hpp>
 #include <mujoco_ros/logging.hpp>
 
+#include <mujoco_ros/array_safety.h>
 #include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros/ros_two/plugin_utils.hpp>
 #include <mujoco_ros/ros_two/ros_api.hpp>
@@ -44,7 +45,114 @@
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
+#include <functional>
+#include <sstream>
+#include <unordered_set>
+#include <vector>
+
 namespace mujoco_ros {
+namespace mju = ::mujoco::sample_util;
+
+namespace {
+
+rcl_interfaces::msg::ParameterDescriptor MakeParameterDescriptor(const std::string &description = "")
+{
+	rcl_interfaces::msg::ParameterDescriptor descriptor;
+	descriptor.dynamic_typing = false;
+	descriptor.description    = description;
+	return descriptor;
+}
+
+rcl_interfaces::msg::ParameterDescriptor MakeEnumDescriptor(const std::string &description, int64_t lower_bound,
+                                                            int64_t upper_bound,
+                                                            const std::string &additional_constraints)
+{
+	auto descriptor = MakeParameterDescriptor(description);
+	rcl_interfaces::msg::IntegerRange range;
+	range.from_value = lower_bound;
+	range.to_value   = upper_bound;
+	range.step       = 1;
+	descriptor.integer_range.emplace_back(range);
+	descriptor.additional_constraints = additional_constraints;
+	return descriptor;
+}
+
+template <typename T>
+void DeclareRuntimeParameter(MujocoEnvPtr env_ptr, const std::string &name, const T &value,
+                             const std::string &description = "")
+{
+	declare_parameter_if_not_declared(env_ptr, name, rclcpp::ParameterValue(value),
+	                                  MakeParameterDescriptor(description));
+}
+
+template <typename T>
+void DeclareRuntimeParameter(MujocoEnvPtr env_ptr, const std::string &name, const T &value,
+                             const rcl_interfaces::msg::ParameterDescriptor &descriptor)
+{
+	declare_parameter_if_not_declared(env_ptr, name, rclcpp::ParameterValue(value), descriptor);
+}
+
+void ValidateIntegerRange(const rclcpp::Parameter &parameter, int64_t lower_bound, int64_t upper_bound)
+{
+	if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_INTEGER) {
+		throw std::runtime_error("'" + parameter.get_name() + "' must be an integer parameter");
+	}
+
+	const auto value = parameter.as_int();
+	if (value < lower_bound || value > upper_bound) {
+		throw std::runtime_error("'" + parameter.get_name() + "' must be between " + std::to_string(lower_bound) +
+		                         " and " + std::to_string(upper_bound));
+	}
+}
+
+std::string ArrayToString(const mjtNum *array, int size)
+{
+	std::string value;
+	util::arr_to_string(array, size, value);
+	return value;
+}
+
+bool ParseMjtNumArray(const std::string &value, mjtNum *array, uint8_t size, std::string &reason)
+{
+	std::istringstream stream(value);
+	std::string token;
+	uint8_t count = 0;
+	std::vector<mjtNum> parsed_values(size, 0);
+	while (stream >> token) {
+		if (count >= size) {
+			MJR_WARN_STREAM("Too many values in string '" << value << "' expected " << static_cast<int>(size)
+			                                              << ". Ignoring the rest.");
+			continue;
+		}
+
+		try {
+			size_t parsed        = 0;
+			parsed_values[count] = std::stod(token, &parsed);
+			if (parsed != token.size()) {
+				reason = "Invalid numeric token '" + token + "' in '" + value + "'";
+				return false;
+			}
+		} catch (const std::exception &) {
+			reason = "Invalid numeric token '" + token + "' in '" + value + "'";
+			return false;
+		}
+		++count;
+	}
+
+	if (count < size - 1) {
+		MJR_WARN_STREAM("Too few values in string '" << value << "' expected " << static_cast<int>(size)
+		                                             << ". Filling with zeros.");
+		for (uint8_t i = count; i < size; i++) {
+			parsed_values[i] = 0;
+		}
+	}
+	for (uint8_t i = 0; i < size; ++i) {
+		array[i] = parsed_values[i];
+	}
+	return true;
+}
+
+} // namespace
 
 RosAPI::RosAPI(MujocoEnvPtr env_ptr) : env_ptr_(env_ptr)
 {
@@ -63,6 +171,69 @@ RosAPI::RosAPI(MujocoEnvPtr env_ptr) : env_ptr_(env_ptr)
 	declare_parameter_if_not_declared(env_ptr_, "wait_for_xml", rclcpp::ParameterValue(false));
 	declare_parameter_if_not_declared(env_ptr_, "mujoco_xml", rclcpp::ParameterValue(std::string("")));
 	declare_parameter_if_not_declared(env_ptr_, "use_sim_time", rclcpp::ParameterValue(true));
+
+	DeclareRuntimeParameter(env_ptr_, "running", true, "Runtime pause state.");
+	DeclareRuntimeParameter(env_ptr_, "admin_hash", std::string(""),
+	                        "Admin hash used for protected runtime operations.");
+
+	DeclareRuntimeParameter(
+	    env_ptr_, "integrator", mjINT_EULER,
+	    MakeEnumDescriptor("MuJoCo integrator.", 0, 3, "0: Euler, 1: RK4, 2: Implicit, 3: Implicitfast"));
+	DeclareRuntimeParameter(env_ptr_, "cone", mjCONE_ELLIPTIC,
+	                        MakeEnumDescriptor("MuJoCo cone type.", 0, 1, "0: Pyramidal, 1: Elliptic"));
+	DeclareRuntimeParameter(env_ptr_, "jacobian", mjJAC_AUTO,
+	                        MakeEnumDescriptor("MuJoCo Jacobian type.", 0, 2, "0: Dense, 1: Sparse, 2: Auto"));
+	DeclareRuntimeParameter(env_ptr_, "solver", mjSOL_NEWTON,
+	                        MakeEnumDescriptor("MuJoCo solver type.", 0, 2, "0: PGS, 1: CG, 2: Newton"));
+	DeclareRuntimeParameter(env_ptr_, "timestep", 1e-3);
+	DeclareRuntimeParameter(env_ptr_, "iterations", 100);
+	DeclareRuntimeParameter(env_ptr_, "tolerance", 1e-8);
+	DeclareRuntimeParameter(env_ptr_, "ls_iter", 50);
+	DeclareRuntimeParameter(env_ptr_, "ls_tol", 0.01);
+	DeclareRuntimeParameter(env_ptr_, "noslip_iter", 0);
+	DeclareRuntimeParameter(env_ptr_, "noslip_tol", 1e-6);
+	DeclareRuntimeParameter(env_ptr_, "ccd_iter", 50);
+	DeclareRuntimeParameter(env_ptr_, "ccd_tol", 1e-6);
+	DeclareRuntimeParameter(env_ptr_, "sdf_iter", 10);
+	DeclareRuntimeParameter(env_ptr_, "sdf_init", 40);
+
+	DeclareRuntimeParameter(env_ptr_, "gravity", std::string("0 0 -9.81"));
+	DeclareRuntimeParameter(env_ptr_, "wind", std::string("0 0 0"));
+	DeclareRuntimeParameter(env_ptr_, "magnetic", std::string("0 -0.5 0"));
+	DeclareRuntimeParameter(env_ptr_, "density", 0.0);
+	DeclareRuntimeParameter(env_ptr_, "viscosity", 0.0);
+	DeclareRuntimeParameter(env_ptr_, "impratio", 1.0);
+
+	DeclareRuntimeParameter(env_ptr_, "constraint_disabled", false);
+	DeclareRuntimeParameter(env_ptr_, "equality_disabled", false);
+	DeclareRuntimeParameter(env_ptr_, "frictionloss_disabled", false);
+	DeclareRuntimeParameter(env_ptr_, "limit_disabled", false);
+	DeclareRuntimeParameter(env_ptr_, "contact_disabled", false);
+	DeclareRuntimeParameter(env_ptr_, "passive_disabled", false);
+	DeclareRuntimeParameter(env_ptr_, "gravity_disabled", false);
+	DeclareRuntimeParameter(env_ptr_, "clampctrl_disabled", false);
+	DeclareRuntimeParameter(env_ptr_, "warmstart_disabled", false);
+	DeclareRuntimeParameter(env_ptr_, "filterparent_disabled", false);
+	DeclareRuntimeParameter(env_ptr_, "actuation_disabled", false);
+	DeclareRuntimeParameter(env_ptr_, "refsafe_disabled", false);
+	DeclareRuntimeParameter(env_ptr_, "sensor_disabled", false);
+	DeclareRuntimeParameter(env_ptr_, "midphase_disabled", false);
+	DeclareRuntimeParameter(env_ptr_, "eulerdamp_disabled", false);
+
+	DeclareRuntimeParameter(env_ptr_, "override_contacts", false);
+	DeclareRuntimeParameter(env_ptr_, "energy", false);
+	DeclareRuntimeParameter(env_ptr_, "fwd_inv", false);
+	DeclareRuntimeParameter(env_ptr_, "inv_discrete", false);
+	DeclareRuntimeParameter(env_ptr_, "multiccd", false);
+	DeclareRuntimeParameter(env_ptr_, "island", false);
+
+	DeclareRuntimeParameter(env_ptr_, "margin", 0.0);
+	DeclareRuntimeParameter(env_ptr_, "solimp", std::string("0.9 0.95 0.00"));
+	DeclareRuntimeParameter(env_ptr_, "solref", std::string("0.02 1.0"));
+	DeclareRuntimeParameter(env_ptr_, "friction", std::string("1 1 0.05 0."));
+
+	dynamic_params_callback_handle_ =
+	    env_ptr_->add_on_set_parameters_callback(std::bind(&RosAPI::DynamicParamsCallback, this, std::placeholders::_1));
 }
 
 void RosAPI::SetupServices()
@@ -131,6 +302,299 @@ void RosAPI::SetupServices()
 	    env_ptr_, ns + "step", std::bind(&RosAPI::HandleGoal, this, std::placeholders::_1, std::placeholders::_2),
 	    std::bind(&RosAPI::HandleCancel, this, std::placeholders::_1),
 	    std::bind(&RosAPI::OnStepGoal, this, std::placeholders::_1));
+}
+
+void RosAPI::UpdateDynamicParams()
+{
+	std::vector<rclcpp::Parameter> parameters;
+	{
+		RecursiveLock lock(env_ptr_->physics_thread_mutex_);
+		if (env_ptr_->model_ == nullptr) {
+			return;
+		}
+
+		const auto &opt = env_ptr_->model_->opt;
+		parameters.emplace_back("running", static_cast<bool>(env_ptr_->settings_.run.load()));
+		parameters.emplace_back("admin_hash", std::string(env_ptr_->settings_.admin_hash));
+
+		parameters.emplace_back("integrator", opt.integrator);
+		parameters.emplace_back("cone", opt.cone);
+		parameters.emplace_back("jacobian", opt.jacobian);
+		parameters.emplace_back("solver", opt.solver);
+		parameters.emplace_back("timestep", opt.timestep);
+		parameters.emplace_back("iterations", opt.iterations);
+		parameters.emplace_back("tolerance", opt.tolerance);
+		parameters.emplace_back("ls_iter", opt.ls_iterations);
+		parameters.emplace_back("ls_tol", opt.ls_tolerance);
+		parameters.emplace_back("noslip_iter", opt.noslip_iterations);
+		parameters.emplace_back("noslip_tol", opt.noslip_tolerance);
+		parameters.emplace_back("ccd_iter", opt.ccd_iterations);
+		parameters.emplace_back("ccd_tol", opt.ccd_tolerance);
+		parameters.emplace_back("sdf_iter", opt.sdf_iterations);
+		parameters.emplace_back("sdf_init", opt.sdf_initpoints);
+
+		parameters.emplace_back("gravity", ArrayToString(opt.gravity, 3));
+		parameters.emplace_back("wind", ArrayToString(opt.wind, 3));
+		parameters.emplace_back("magnetic", ArrayToString(opt.magnetic, 3));
+		parameters.emplace_back("density", opt.density);
+		parameters.emplace_back("viscosity", opt.viscosity);
+		parameters.emplace_back("impratio", opt.impratio);
+
+		parameters.emplace_back("constraint_disabled", static_cast<bool>(opt.disableflags & mjDSBL_CONSTRAINT));
+		parameters.emplace_back("equality_disabled", static_cast<bool>(opt.disableflags & mjDSBL_EQUALITY));
+		parameters.emplace_back("frictionloss_disabled", static_cast<bool>(opt.disableflags & mjDSBL_FRICTIONLOSS));
+		parameters.emplace_back("limit_disabled", static_cast<bool>(opt.disableflags & mjDSBL_LIMIT));
+		parameters.emplace_back("contact_disabled", static_cast<bool>(opt.disableflags & mjDSBL_CONTACT));
+		parameters.emplace_back("passive_disabled", static_cast<bool>(opt.disableflags & mjDSBL_PASSIVE));
+		parameters.emplace_back("gravity_disabled", static_cast<bool>(opt.disableflags & mjDSBL_GRAVITY));
+		parameters.emplace_back("clampctrl_disabled", static_cast<bool>(opt.disableflags & mjDSBL_CLAMPCTRL));
+		parameters.emplace_back("warmstart_disabled", static_cast<bool>(opt.disableflags & mjDSBL_WARMSTART));
+		parameters.emplace_back("filterparent_disabled", static_cast<bool>(opt.disableflags & mjDSBL_FILTERPARENT));
+		parameters.emplace_back("actuation_disabled", static_cast<bool>(opt.disableflags & mjDSBL_ACTUATION));
+		parameters.emplace_back("refsafe_disabled", static_cast<bool>(opt.disableflags & mjDSBL_REFSAFE));
+		parameters.emplace_back("sensor_disabled", static_cast<bool>(opt.disableflags & mjDSBL_SENSOR));
+		parameters.emplace_back("midphase_disabled", static_cast<bool>(opt.disableflags & mjDSBL_MIDPHASE));
+		parameters.emplace_back("eulerdamp_disabled", static_cast<bool>(opt.disableflags & mjDSBL_EULERDAMP));
+
+		parameters.emplace_back("override_contacts", static_cast<bool>(opt.enableflags & mjENBL_OVERRIDE));
+		parameters.emplace_back("energy", static_cast<bool>(opt.enableflags & mjENBL_ENERGY));
+		parameters.emplace_back("fwd_inv", static_cast<bool>(opt.enableflags & mjENBL_FWDINV));
+		parameters.emplace_back("inv_discrete", static_cast<bool>(opt.enableflags & mjENBL_INVDISCRETE));
+		parameters.emplace_back("multiccd", static_cast<bool>(opt.enableflags & mjENBL_MULTICCD));
+		parameters.emplace_back("island", static_cast<bool>(opt.enableflags & mjENBL_ISLAND));
+
+		parameters.emplace_back("margin", opt.o_margin);
+		parameters.emplace_back("solimp", ArrayToString(opt.o_solimp, mjNIMP));
+		parameters.emplace_back("solref", ArrayToString(opt.o_solref, mjNREF));
+		parameters.emplace_back("friction", ArrayToString(opt.o_friction, 5));
+	}
+
+	auto results = env_ptr_->set_parameters(parameters);
+	for (const auto &result : results) {
+		if (!result.successful) {
+			MJR_WARN_STREAM("Failed to sync runtime parameter from model: " << result.reason);
+		}
+	}
+}
+
+rcl_interfaces::msg::SetParametersResult RosAPI::DynamicParamsCallback(const std::vector<rclcpp::Parameter> &parameters)
+{
+	rcl_interfaces::msg::SetParametersResult result;
+	result.successful = true;
+
+	static const std::unordered_set<std::string> model_backed_parameters = { "integrator",
+		                                                                      "cone",
+		                                                                      "jacobian",
+		                                                                      "solver",
+		                                                                      "timestep",
+		                                                                      "iterations",
+		                                                                      "tolerance",
+		                                                                      "ls_iter",
+		                                                                      "ls_tol",
+		                                                                      "noslip_iter",
+		                                                                      "noslip_tol",
+		                                                                      "ccd_iter",
+		                                                                      "ccd_tol",
+		                                                                      "sdf_iter",
+		                                                                      "sdf_init",
+		                                                                      "gravity",
+		                                                                      "wind",
+		                                                                      "magnetic",
+		                                                                      "density",
+		                                                                      "viscosity",
+		                                                                      "impratio",
+		                                                                      "constraint_disabled",
+		                                                                      "equality_disabled",
+		                                                                      "frictionloss_disabled",
+		                                                                      "limit_disabled",
+		                                                                      "contact_disabled",
+		                                                                      "passive_disabled",
+		                                                                      "gravity_disabled",
+		                                                                      "clampctrl_disabled",
+		                                                                      "warmstart_disabled",
+		                                                                      "filterparent_disabled",
+		                                                                      "actuation_disabled",
+		                                                                      "refsafe_disabled",
+		                                                                      "sensor_disabled",
+		                                                                      "midphase_disabled",
+		                                                                      "eulerdamp_disabled",
+		                                                                      "override_contacts",
+		                                                                      "energy",
+		                                                                      "fwd_inv",
+		                                                                      "inv_discrete",
+		                                                                      "multiccd",
+		                                                                      "island",
+		                                                                      "margin",
+		                                                                      "solimp",
+		                                                                      "solref",
+		                                                                      "friction" };
+
+	bool handles_runtime = false;
+	bool touches_model   = false;
+	for (const auto &parameter : parameters) {
+		const auto &name = parameter.get_name();
+		if (name == "running" || name == "admin_hash") {
+			handles_runtime = true;
+		} else if (model_backed_parameters.find(name) != model_backed_parameters.end()) {
+			handles_runtime = true;
+			touches_model   = true;
+		}
+	}
+
+	if (!handles_runtime) {
+		// Parameters such as cam_config.* may be declared from the offscreen render thread while model loading
+		// waits for render initialization. Avoid taking the physics mutex for parameters this callback does not own.
+		return result;
+	}
+
+	if (touches_model && env_ptr_->model_ == nullptr) {
+		result.successful = false;
+		result.reason     = "Cannot update MuJoCo model parameter before a model is loaded.";
+		return result;
+	}
+
+	RecursiveLock lock(env_ptr_->physics_thread_mutex_);
+
+	for (const auto &parameter : parameters) {
+		const auto &name = parameter.get_name();
+
+		try {
+			if (name == "running") {
+				if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_BOOL) {
+					throw std::runtime_error("'running' must be a boolean parameter");
+				}
+				env_ptr_->settings_.run.store(parameter.as_bool());
+				if (parameter.as_bool()) {
+					env_ptr_->settings_.env_steps_request.store(0);
+				}
+			} else if (name == "admin_hash") {
+				if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_STRING) {
+					throw std::runtime_error("'admin_hash' must be a string parameter");
+				}
+				mju::strcpy_arr(env_ptr_->settings_.admin_hash, parameter.as_string().c_str());
+			} else if (name == "integrator") {
+				ValidateIntegerRange(parameter, 0, 3);
+				env_ptr_->model_->opt.integrator = parameter.as_int();
+			} else if (name == "cone") {
+				ValidateIntegerRange(parameter, 0, 1);
+				env_ptr_->model_->opt.cone = parameter.as_int();
+			} else if (name == "jacobian") {
+				ValidateIntegerRange(parameter, 0, 2);
+				env_ptr_->model_->opt.jacobian = parameter.as_int();
+			} else if (name == "solver") {
+				ValidateIntegerRange(parameter, 0, 2);
+				env_ptr_->model_->opt.solver = parameter.as_int();
+			} else if (name == "timestep") {
+				env_ptr_->model_->opt.timestep = parameter.as_double();
+			} else if (name == "iterations") {
+				env_ptr_->model_->opt.iterations = parameter.as_int();
+			} else if (name == "tolerance") {
+				env_ptr_->model_->opt.tolerance = parameter.as_double();
+			} else if (name == "ls_iter") {
+				env_ptr_->model_->opt.ls_iterations = parameter.as_int();
+			} else if (name == "ls_tol") {
+				env_ptr_->model_->opt.ls_tolerance = parameter.as_double();
+			} else if (name == "noslip_iter") {
+				env_ptr_->model_->opt.noslip_iterations = parameter.as_int();
+			} else if (name == "noslip_tol") {
+				env_ptr_->model_->opt.noslip_tolerance = parameter.as_double();
+			} else if (name == "ccd_iter") {
+				env_ptr_->model_->opt.ccd_iterations = parameter.as_int();
+			} else if (name == "ccd_tol") {
+				env_ptr_->model_->opt.ccd_tolerance = parameter.as_double();
+			} else if (name == "sdf_iter") {
+				env_ptr_->model_->opt.sdf_iterations = parameter.as_int();
+			} else if (name == "sdf_init") {
+				env_ptr_->model_->opt.sdf_initpoints = parameter.as_int();
+			} else if (name == "gravity") {
+				if (!ParseMjtNumArray(parameter.as_string(), env_ptr_->model_->opt.gravity, 3, result.reason)) {
+					result.successful = false;
+					return result;
+				}
+			} else if (name == "wind") {
+				if (!ParseMjtNumArray(parameter.as_string(), env_ptr_->model_->opt.wind, 3, result.reason)) {
+					result.successful = false;
+					return result;
+				}
+			} else if (name == "magnetic") {
+				if (!ParseMjtNumArray(parameter.as_string(), env_ptr_->model_->opt.magnetic, 3, result.reason)) {
+					result.successful = false;
+					return result;
+				}
+			} else if (name == "density") {
+				env_ptr_->model_->opt.density = parameter.as_double();
+			} else if (name == "viscosity") {
+				env_ptr_->model_->opt.viscosity = parameter.as_double();
+			} else if (name == "impratio") {
+				env_ptr_->model_->opt.impratio = parameter.as_double();
+			} else if (name == "constraint_disabled") {
+				util::bit_set_to(env_ptr_->model_->opt.disableflags, 0, parameter.as_bool());
+			} else if (name == "equality_disabled") {
+				util::bit_set_to(env_ptr_->model_->opt.disableflags, 1, parameter.as_bool());
+			} else if (name == "frictionloss_disabled") {
+				util::bit_set_to(env_ptr_->model_->opt.disableflags, 2, parameter.as_bool());
+			} else if (name == "limit_disabled") {
+				util::bit_set_to(env_ptr_->model_->opt.disableflags, 3, parameter.as_bool());
+			} else if (name == "contact_disabled") {
+				util::bit_set_to(env_ptr_->model_->opt.disableflags, 4, parameter.as_bool());
+			} else if (name == "passive_disabled") {
+				util::bit_set_to(env_ptr_->model_->opt.disableflags, 5, parameter.as_bool());
+			} else if (name == "gravity_disabled") {
+				util::bit_set_to(env_ptr_->model_->opt.disableflags, 6, parameter.as_bool());
+			} else if (name == "clampctrl_disabled") {
+				util::bit_set_to(env_ptr_->model_->opt.disableflags, 7, parameter.as_bool());
+			} else if (name == "warmstart_disabled") {
+				util::bit_set_to(env_ptr_->model_->opt.disableflags, 8, parameter.as_bool());
+			} else if (name == "filterparent_disabled") {
+				util::bit_set_to(env_ptr_->model_->opt.disableflags, 9, parameter.as_bool());
+			} else if (name == "actuation_disabled") {
+				util::bit_set_to(env_ptr_->model_->opt.disableflags, 10, parameter.as_bool());
+			} else if (name == "refsafe_disabled") {
+				util::bit_set_to(env_ptr_->model_->opt.disableflags, 11, parameter.as_bool());
+			} else if (name == "sensor_disabled") {
+				util::bit_set_to(env_ptr_->model_->opt.disableflags, 12, parameter.as_bool());
+			} else if (name == "midphase_disabled") {
+				util::bit_set_to(env_ptr_->model_->opt.disableflags, 13, parameter.as_bool());
+			} else if (name == "eulerdamp_disabled") {
+				util::bit_set_to(env_ptr_->model_->opt.disableflags, 14, parameter.as_bool());
+			} else if (name == "override_contacts") {
+				util::bit_set_to(env_ptr_->model_->opt.enableflags, 0, parameter.as_bool());
+			} else if (name == "energy") {
+				util::bit_set_to(env_ptr_->model_->opt.enableflags, 1, parameter.as_bool());
+			} else if (name == "fwd_inv") {
+				util::bit_set_to(env_ptr_->model_->opt.enableflags, 2, parameter.as_bool());
+			} else if (name == "inv_discrete") {
+				util::bit_set_to(env_ptr_->model_->opt.enableflags, 3, parameter.as_bool());
+			} else if (name == "multiccd") {
+				util::bit_set_to(env_ptr_->model_->opt.enableflags, 4, parameter.as_bool());
+			} else if (name == "island") {
+				util::bit_set_to(env_ptr_->model_->opt.enableflags, 5, parameter.as_bool());
+			} else if (name == "margin") {
+				env_ptr_->model_->opt.o_margin = parameter.as_double();
+			} else if (name == "solimp") {
+				if (!ParseMjtNumArray(parameter.as_string(), env_ptr_->model_->opt.o_solimp, mjNIMP, result.reason)) {
+					result.successful = false;
+					return result;
+				}
+			} else if (name == "solref") {
+				if (!ParseMjtNumArray(parameter.as_string(), env_ptr_->model_->opt.o_solref, mjNREF, result.reason)) {
+					result.successful = false;
+					return result;
+				}
+			} else if (name == "friction") {
+				if (!ParseMjtNumArray(parameter.as_string(), env_ptr_->model_->opt.o_friction, 5, result.reason)) {
+					result.successful = false;
+					return result;
+				}
+			}
+		} catch (const std::exception &e) {
+			result.successful = false;
+			result.reason     = "Failed to set parameter '" + name + "': " + e.what();
+			return result;
+		}
+	}
+
+	return result;
 }
 
 void RosAPI::OnStepGoal(

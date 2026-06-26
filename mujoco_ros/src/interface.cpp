@@ -116,6 +116,7 @@ void MujocoEnv::UpdateModelFlags(const mjOption *opt)
 
 	// Enabled actuator groups
 	model_->opt.disableactuator = opt->disableactuator;
+	settings_.settings_changed.store(1);
 }
 
 void MujocoEnv::SetJointPosition(const double &pos, const int &joint_id, const int &jnt_axis /*= 0*/)
@@ -371,6 +372,7 @@ bool MujocoEnv::SetGravity(const mjtNum *gravity, const std::string &admin_hash,
 	// Lock mutex to prevent updating gravity during a step
 	RecursiveLock sim_lock(physics_thread_mutex_);
 	mju_copy(model_->opt.gravity, gravity, 3);
+	settings_.settings_changed.store(1);
 	return true;
 }
 

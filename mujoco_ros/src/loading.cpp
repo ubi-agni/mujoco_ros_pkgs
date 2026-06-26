@@ -92,9 +92,7 @@ void MujocoEnv::CompleteEnvSetup()
 	mju_zero(ctrlnoise_, model_->nu);
 
 	LoadPlugins();
-#if MJR_ROS_VERSION == ROS_1
 	ros_api_->UpdateDynamicParams();
-#endif
 	MJR_DEBUG("Env setup complete");
 }
 

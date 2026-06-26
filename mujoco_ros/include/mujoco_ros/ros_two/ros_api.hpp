@@ -39,6 +39,7 @@
 #include <mujoco_ros/ros_version.hpp>
 #include <mujoco_ros/logging.hpp>
 
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 
@@ -113,6 +114,7 @@ public:
 	void SetupServices();
 	void SetupClockPublisher();
 	void PublishSimTime(mjtNum sim_time);
+	void UpdateDynamicParams();
 
 private:
 	MujocoEnvPtr env_ptr_;
@@ -152,6 +154,7 @@ private:
 	                  mujoco_ros_msgs::srv::GetGravity::Response::SharedPtr res);
 	void LoadInitialJointStatesCB(const std_srvs::srv::Empty::Request::SharedPtr req,
 	                              std_srvs::srv::Empty::Response::SharedPtr res);
+	rcl_interfaces::msg::SetParametersResult DynamicParamsCallback(const std::vector<rclcpp::Parameter> &parameters);
 
 	bool SetEqualityConstraintParameters(const mujoco_ros_msgs::msg::EqualityConstraintParameters &parameters,
 	                                     const std::string &admin_hash, char *error_msg = nullptr,
@@ -182,11 +185,7 @@ private:
 	void
 	ExecuteStepGoal(const std::shared_ptr<rclcpp_action::ServerGoalHandle<mujoco_ros_msgs::action::Step>> goal_handle);
 
-	// boost::recursive_mutex sim_params_mutex_;
-	// dynamic_reconfigure::Server<mujoco_ros::SimParamsConfig> *param_server_;
-	// mujoco_ros::SimParamsConfig sim_params_;
-	// void dynparamCallback(mujoco_ros::SimParamsConfig &config, uint32_t level);
-	// void updateDynamicParams();
+	rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr dynamic_params_callback_handle_;
 
 	rclcpp_action::Server<mujoco_ros_msgs::action::Step>::SharedPtr action_step_;
 
