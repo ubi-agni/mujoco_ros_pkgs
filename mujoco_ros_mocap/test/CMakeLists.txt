@@ -42,7 +42,6 @@ elseif(ROS_VERSION EQUAL 2)
 
   add_launch_test(launch/mocap_test.test.py
     TARGET mocap_test_launch
-    TIMEOUT 45
     ARGS "test_binary:=$<TARGET_FILE:mocap_test>"
   )
 endif()

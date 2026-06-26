@@ -11,7 +11,7 @@ endif()
 # Helper function handling ROS 1/2 specific setup
 function(add_mujoco_ros_integration_test TEST_NAME TEST_SOURCE)
   set(options)
-  set(oneValueArgs ROS1_LAUNCH ROS2_LAUNCH TIMEOUT)
+  set(oneValueArgs ROS1_LAUNCH ROS2_LAUNCH)
   set(multiValueArgs EXTRA_LIBS)
   cmake_parse_arguments(TEST "${options}" "${oneValueArgs}" "${multiValueArgs}" "${ARGN}")
 
@@ -60,7 +60,6 @@ function(add_mujoco_ros_integration_test TEST_NAME TEST_SOURCE)
     # Register ROS 2 test launch file
     add_launch_test(${TEST_ROS2_LAUNCH}
       TARGET ${TEST_LAUNCH_NAME}
-      TIMEOUT "${TEST_TIMEOUT}"
       ARGS "test_binary:=$<TARGET_FILE:${TEST_EXECUTABLE}>"
     )
   endif()
@@ -78,7 +77,6 @@ add_mujoco_ros_integration_test(
   ros_interface_test.cpp
   ROS1_LAUNCH launch/ros_interface.test
   ROS2_LAUNCH launch/ros_interface.test.py
-  TIMEOUT 180
 )
 
 add_subdirectory(test_plugin)
@@ -95,7 +93,6 @@ add_mujoco_ros_integration_test(
   ROS1_LAUNCH launch/mujoco_ros_plugin.test
   ROS2_LAUNCH launch/mujoco_ros_plugin.test.py
   EXTRA_LIBS mujoco_testplugin
-  TIMEOUT 600
 )
 
 add_mujoco_ros_integration_test(
@@ -103,5 +100,4 @@ add_mujoco_ros_integration_test(
   mujoco_render_test.cpp
   ROS1_LAUNCH launch/mujoco_render.test
   ROS2_LAUNCH launch/mujoco_render.test.py
-  TIMEOUT 240
 )

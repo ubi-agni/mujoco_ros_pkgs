@@ -41,7 +41,6 @@ elseif(ROS_VERSION EQUAL 2)
 
   add_launch_test(launch/mujoco_ros_laser.test.py
     TARGET mujoco_ros_laser_test_launch
-    TIMEOUT 45
     ARGS "test_binary:=$<TARGET_FILE:mujoco_ros_laser_test>"
   )
 endif()

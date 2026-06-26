@@ -10,6 +10,8 @@ import launch_testing.actions
 import launch_testing.asserts
 import launch_testing.util
 
+TEST_TIMEOUT = 45
+
 
 def generate_test_description():
     test_binary = LaunchConfiguration('test_binary')
@@ -23,7 +25,7 @@ def generate_test_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('test_binary'),
-        DeclareLaunchArgument('timeout', default_value='45'),
+        DeclareLaunchArgument('timeout', default_value=str(TEST_TIMEOUT)),
         SetEnvironmentVariable(
             'ROSCONSOLE_FORMAT',
             '[${severity}] [${time}] [${logger}] [${node}]: ${message}'
@@ -40,7 +42,7 @@ def generate_test_description():
 
 class TestGTestWaitForCompletion(unittest.TestCase):
     def test_gtest_run_complete(self, proc_info, test_proc):
-        proc_info.assertWaitForShutdown(test_proc)
+        proc_info.assertWaitForShutdown(test_proc, timeout=TEST_TIMEOUT)
 
 
 @launch_testing.post_shutdown_test()

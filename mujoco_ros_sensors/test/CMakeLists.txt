@@ -47,7 +47,6 @@ elseif(ROS_VERSION EQUAL 2)
 
   add_launch_test(launch/mujoco_sensors.test.py
     TARGET mujoco_sensors_test_launch
-    TIMEOUT 90
     ARGS "test_binary:=$<TARGET_FILE:mujoco_sensors_test>"
   )
 endif()
