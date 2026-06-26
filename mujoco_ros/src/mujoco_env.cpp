@@ -41,6 +41,7 @@
 
 #include <mujoco_ros/ros_version.hpp>
 #include <mujoco_ros/render_backend.hpp>
+#include <mujoco_ros/version.hpp>
 #include <mujoco_ros/logging.hpp>
 
 #include <mujoco_ros/array_safety.h>
@@ -211,12 +212,12 @@ void MujocoEnv::Configure()
 
 	MJR_DEBUG_COND(!settings_.use_sim_time, "use_sim_time is set to false. Not publishing sim time to /clock!");
 
-	MJR_INFO_STREAM("Using MuJoCo library version " << mj_versionString());
+	MJR_INFO_STREAM("MuJoCo ROS " << MJR_PROJECT_VERSION << " (" << MJR_GIT_DESCRIBE << (MJR_GIT_DIRTY ? ", dirty" : "")
+	                              << "), MuJoCo " << mj_versionString() << ", render backend " << render_backend);
 	if (mjVERSION_HEADER != mj_version()) {
 		MJR_WARN_STREAM("Headers and library have different versions (headers: " << mjVERSION_HEADER
 		                                                                         << ", library: " << mj_version() << ")");
 	}
-	MJR_INFO_STREAM("Compiled with render backend: " << render_backend);
 
 	if (!settings_.headless) {
 #if RENDER_BACKEND == GLFW_BACKEND

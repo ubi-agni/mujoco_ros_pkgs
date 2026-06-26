@@ -171,11 +171,59 @@ include(ConfigureRenderBackend)
 
 add_subdirectory(src)
 
-### Generate ROS version header
+### Generate configured headers
 file(MAKE_DIRECTORY ${GENERATED_HEADERS_DIR}/${PROJECT_NAME})
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/cmake/header_templates/ros_version.hpp.in
   ${GENERATED_HEADERS_DIR}/${PROJECT_NAME}/ros_version.hpp
+)
+
+find_package(Git QUIET)
+set(MJR_GIT_DESCRIBE "unknown")
+set(MJR_GIT_COMMIT "unknown")
+set(MJR_GIT_BRANCH "unknown")
+set(MJR_GIT_DIRTY 0)
+if(Git_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../.git")
+  execute_process(
+    COMMAND ${GIT_EXECUTABLE} describe --tags --always
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    OUTPUT_VARIABLE MJR_GIT_DESCRIBE
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+  execute_process(
+    COMMAND ${GIT_EXECUTABLE} rev-parse --short=12 HEAD
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    OUTPUT_VARIABLE MJR_GIT_COMMIT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+  execute_process(
+    COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    OUTPUT_VARIABLE MJR_GIT_BRANCH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+  execute_process(
+    COMMAND ${GIT_EXECUTABLE} diff --quiet
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    RESULT_VARIABLE MJR_GIT_DIFF_RESULT
+    ERROR_QUIET
+  )
+  execute_process(
+    COMMAND ${GIT_EXECUTABLE} diff --cached --quiet
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    RESULT_VARIABLE MJR_GIT_DIFF_CACHED_RESULT
+    ERROR_QUIET
+  )
+  if(MJR_GIT_DIFF_RESULT OR MJR_GIT_DIFF_CACHED_RESULT)
+    set(MJR_GIT_DIRTY 1)
+  endif()
+endif()
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/header_templates/version.hpp.in
+  ${GENERATED_HEADERS_DIR}/${PROJECT_NAME}/version.hpp
 )
 
 if (ROS_VERSION EQUAL "1")
@@ -189,6 +237,7 @@ endif()
 
 install(FILES
   ${GENERATED_HEADERS_DIR}/${PROJECT_NAME}/ros_version.hpp
+  ${GENERATED_HEADERS_DIR}/${PROJECT_NAME}/version.hpp
   DESTINATION ${GENERATED_HEADERS_INSTALL_DIR}
 )
 
@@ -272,6 +321,7 @@ else()
   install(FILES
     ${GENERATED_HEADERS_DIR}/${PROJECT_NAME}/ros_version.hpp
     ${GENERATED_HEADERS_DIR}/${PROJECT_NAME}/render_backend.hpp
+    ${GENERATED_HEADERS_DIR}/${PROJECT_NAME}/version.hpp
     DESTINATION include/${PROJECT_NAME}
   )
 

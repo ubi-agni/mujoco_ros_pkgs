@@ -109,7 +109,6 @@ int main(int argc, char **argv)
 		exit(-1);
 	}
 
-	std::printf("MuJoCo version %s\n", mj_versionString());
 	if (mjVERSION_HEADER != mj_version()) {
 		MJR_ERROR_STREAM("Headers (" << mjVERSION_HEADER << ") and library (" << mj_versionString()
 		                             << ") have different versions");
