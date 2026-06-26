@@ -85,7 +85,7 @@ jobs:
       # I'll fix this once I find some time to do it
       # CXXFLAGS: -Wall -Wextra -Wwrite-strings -Wunreachable-code -Wpointer-arith -Wredundant-decls
       CXXFLAGS: -Wwrite-strings -Wunreachable-code -Wpointer-arith -Wredundant-decls
-      CLANG_TIDY_ARGS: --fix --fix-errors --format-style=file
+      CLANG_TIDY_ARGS: --fix --format-style=file
       UPSTREAM_WORKSPACE: .github/workflows/upstream.ros1.rosinstall
       # Install and start xvfb for GLFW
       AFTER_INIT: ${{ matrix.render_backend == 'GLFW' && 'apt-get install -qy xvfb; Xvfb :99 &' || '' }}
@@ -99,7 +99,7 @@ jobs:
       # Compile CCOV with Debug. Enable -Werror.
       TARGET_CMAKE_ARGS: >
         -DCMAKE_BUILD_TYPE=${{ matrix.check == 'ccov' && 'Debug' || 'Release'}}
-        -DCMAKE_CXX_FLAGS="-Werror $CXXFLAGS${{ (matrix.check == 'ccov' && ' --coverage -O2 -fno-omit-frame-pointer') || '' }}"
+        -DCMAKE_CXX_FLAGS="-Werror $CXXFLAGS${{ (matrix.check == 'clang_tidy' && ' -Wno-unknown-warning-option') || '' }}${{ (matrix.check == 'ccov' && ' --coverage -O2 -fno-omit-frame-pointer') || '' }}"
         -DRENDER_BACKEND=${{ matrix.render_backend }}
       UPSTREAM_CMAKE_ARGS: -DCMAKE_CXX_FLAGS= -DCMAKE_CXX_STANDARD=17
 

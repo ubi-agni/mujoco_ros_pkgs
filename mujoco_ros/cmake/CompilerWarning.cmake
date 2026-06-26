@@ -55,7 +55,10 @@ endfunction ()
 
 function (_get_clang_warnings WARNING)
   _get_gcc_clang_common_warnings(COMMON_WARNING)
-  set(${WARNING} ${COMMON_WARNING} PARENT_SCOPE)
+  set(${WARNING}
+      ${COMMON_WARNING}
+      -Wno-unknown-warning-option # clang-tidy may inspect compile databases containing GCC-only warning flags
+      PARENT_SCOPE)
 endfunction ()
 
 function (_get_gcc_warnings WARNING)

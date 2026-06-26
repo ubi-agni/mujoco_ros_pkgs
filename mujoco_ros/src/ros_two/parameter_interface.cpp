@@ -121,7 +121,7 @@ void MujocoEnv::GetInitialJointPositions(std::map<std::string, std::vector<doubl
 	std::string param_name = "initial_joint_states";
 	auto result            = this->list_parameters({ param_name }, 2);
 
-	if (result.names.size() == 0) {
+	if (result.names.empty()) {
 		RCLCPP_WARN(this->get_logger(),
 		            "No initial joint position specified (failed to get 'initial_joint_states' parameter).");
 		return;
@@ -154,7 +154,7 @@ void MujocoEnv::GetInitialJointVelocities(std::map<std::string, std::vector<doub
 	std::string param_name = "initial_joint_velocities";
 	auto result            = this->list_parameters({ param_name }, 2);
 
-	if (result.names.size() == 0) {
+	if (result.names.empty()) {
 		RCLCPP_WARN(this->get_logger(),
 		            "No initial joint velocity specified (failed to get 'initial_joint_velocities' parameter).");
 		return;

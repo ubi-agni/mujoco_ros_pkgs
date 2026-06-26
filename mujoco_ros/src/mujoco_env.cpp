@@ -127,7 +127,7 @@ void MujocoEnv::RunRenderCbs(mjvScene *scene)
 	}
 }
 
-void UpdateModelFlags(const mjOption *) {}
+void UpdateModelFlags(const mjOption * /*unused*/) {}
 
 void MujocoEnv::RunLastStageCbs()
 {
@@ -158,7 +158,7 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 MujocoEnv::MujocoEnv(rclcpp::Executor::SharedPtr executor, const std::string &admin_hash /* = std::string()*/,
                      bool auto_configure /* = true */)
     : rclcpp::Node("mujoco_server", "", rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true))
-    , executor_(executor)
+    , executor_(std::move(executor))
 {
 	if (!admin_hash.empty()) {
 		mju::strcpy_arr(settings_.admin_hash, admin_hash.c_str());
