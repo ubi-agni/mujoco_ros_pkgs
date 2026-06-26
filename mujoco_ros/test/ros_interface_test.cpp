@@ -562,9 +562,12 @@ TEST_F(BaseEnvFixture, CustomInitialJointStates)
 	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 	env_ptr->StartWithXML(xml_path);
 
-	while (env_ptr->GetOperationalStatus() > 0) { // wait for reset to be done
+	float seconds = 0;
+	while (env_ptr->GetOperationalStatus() > 0 && seconds < 2) { // wait for reset to be done
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		seconds += 0.001;
 	}
+	ASSERT_LT(seconds, 2) << "Initial joint state reset did not finish before timeout!";
 
 	mjData *d  = env_ptr->getDataPtr();
 	mjModel *m = env_ptr->getModelPtr();
@@ -642,9 +645,12 @@ TEST_F(PendulumEnvFixture, CustomInitialJointStatesOnReset)
 	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/reset", srv))
 	    << "Reset service call failed!";
 
-	while (env_ptr->GetOperationalStatus() > 0) { // wait for reset to be done
+	float seconds = 0;
+	while (env_ptr->GetOperationalStatus() > 0 && seconds < 2) { // wait for reset to be done
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		seconds += 0.001;
 	}
+	ASSERT_LT(seconds, 2) << "Initial joint state reset did not finish before timeout!";
 
 	compare_qpos(d, m->jnt_qposadr[id_balljoint], "balljoint", { 0.0, 0.707, 0.0, 0.707 }, { 0.0, 9e-4, 0.0, 9e-4 });
 	compare_qpos(d, m->jnt_qposadr[id1], "joint1", { -1.57 });

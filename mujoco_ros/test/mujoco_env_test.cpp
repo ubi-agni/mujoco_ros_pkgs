@@ -455,9 +455,12 @@ TEST_F(BaseEnvFixture, Reset)
 
 	env_ptr->settings_.run = 1;
 	env_ptr->settings_.reset_request.store(1);
-	while (env_ptr->settings_.reset_request != 0) { // wait for model to be loaded
+	seconds = 0;
+	while (env_ptr->settings_.reset_request != 0 && seconds < 2) { // wait for reset
 		std::this_thread::sleep_for(std::chrono::milliseconds(2));
+		seconds += 0.002;
 	}
+	EXPECT_LT(seconds, 2) << "Reset should have been executed but ran into 2 seconds timeout!";
 	EXPECT_TRUE(env_ptr->settings_.run) << "Model should keep running after reset!";
 
 	env_ptr->settings_.run = 0;
@@ -466,9 +469,12 @@ TEST_F(BaseEnvFixture, Reset)
 	env_ptr->getDataPtr()->qpos[env_ptr->getModelPtr()->jnt_qposadr[id2]] = 0.5;
 	env_ptr->getDataPtr()->qvel[env_ptr->getModelPtr()->jnt_dofadr[id2]]  = 0.1;
 	env_ptr->settings_.reset_request.store(1);
-	while (env_ptr->settings_.reset_request != 0) { // wait for model to be loaded
+	seconds = 0;
+	while (env_ptr->settings_.reset_request != 0 && seconds < 2) { // wait for reset
 		std::this_thread::sleep_for(std::chrono::milliseconds(2));
+		seconds += 0.002;
 	}
+	EXPECT_LT(seconds, 2) << "Reset should have been executed but ran into 2 seconds timeout!";
 	EXPECT_NE(env_ptr->getDataPtr()->qpos[id2], 0.5) << "joint2 position should have been reset!";
 	EXPECT_NE(env_ptr->getDataPtr()->qvel[id2], 0.1) << "joint2 velocity should have been reset!";
 
@@ -499,18 +505,24 @@ TEST_F(BaseEnvFixture, Reload)
 	env_ptr->settings_.run.store(1);
 
 	// Let some time pass
-	while (env_ptr->getDataPtr()->time < 0.01) {
+	float seconds = 0;
+	while (env_ptr->getDataPtr()->time < 0.01 && seconds < 2) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		seconds += 0.001;
 	}
+	EXPECT_LT(seconds, 2) << "Simulation time did not advance before timeout!";
 
 	// Load same model in unpaused state
 	env_ptr->load_queued_model();
 	EXPECT_EQ(env_ptr->getFilename(), xml_path2) << "Wrong content in filename_!";
 
 	// Let some time pass
-	while (env_ptr->getDataPtr()->time < 0.01) {
+	seconds = 0;
+	while (env_ptr->getDataPtr()->time < 0.01 && seconds < 2) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		seconds += 0.001;
 	}
+	EXPECT_LT(seconds, 2) << "Simulation time did not advance before timeout!";
 
 	env_ptr->shutdown();
 }
@@ -549,9 +561,12 @@ TEST_F(BaseEnvFixture, InitModelFromInvalidQueuedBuffer)
 	std::string invalid = "<mujoco>";
 	env_ptr->load_filename(invalid);
 
-	while (env_ptr->GetOperationalStatus() != 0) { // wait for model to be loaded
+	float seconds = 0;
+	while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) { // wait for model load attempt
 		std::this_thread::sleep_for(std::chrono::milliseconds(3));
+		seconds += 0.003;
 	}
+	EXPECT_LT(seconds, 2) << "Invalid model load did not finish before timeout!";
 
 	// Check the result
 	ASSERT_TRUE(env_ptr->getModelPtr());

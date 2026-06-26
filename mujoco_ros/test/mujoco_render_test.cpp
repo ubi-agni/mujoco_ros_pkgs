@@ -95,14 +95,13 @@ namespace mju = ::mujoco::sample_util;
 TEST_F(BaseEnvFixture, Not_Headless_Warn)
 {
 	nh->setParam("no_render", false);
+
 	std::string xml_path = testing::get_test_model_path("camera_world.xml");
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 	env_ptr->StartWithXML(xml_path);
 
-	while (env_ptr->GetOperationalStatus() != 0) { // wait for model to be loaded
-		std::this_thread::sleep_for(std::chrono::milliseconds(3));
-	}
+	EXPECT_EQ(env_ptr->GetOperationalStatus(), 0) << "Model did not become operational before timeout!";
 
 	env_ptr->shutdown();
 }
@@ -1111,9 +1110,7 @@ TEST_F(BaseEnvFixture, No_Render_Backend_Headless_Warn)
 
 	env_ptr->StartWithXML(xml_path);
 
-	while (env_ptr->GetOperationalStatus() != 0) { // wait for model to be loaded
-		std::this_thread::sleep_for(std::chrono::milliseconds(3));
-	}
+	EXPECT_EQ(env_ptr->GetOperationalStatus(), 0) << "Model did not become operational before timeout!";
 
 	EXPECT_TRUE(env_ptr->settings_.headless);
 	EXPECT_FALSE(env_ptr->settings_.render_offscreen);
