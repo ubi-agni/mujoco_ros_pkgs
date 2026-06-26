@@ -2,11 +2,23 @@ name: CI ROS 2
 
 on:
   workflow_dispatch:
+    inputs:
+      full_matrix:
+        description: Run the full render/backend matrix instead of the reduced dev matrix.
+        required: false
+        default: false
+        type: boolean
+      coverage:
+        description: Include coverage jobs and upload Codecov reports. Implies full_matrix.
+        required: false
+        default: false
+        type: boolean
   pull_request:
   push:
     branches:
       - wip-ros-humble
       - hybrid-devel
+      - dev/**
 
 permissions:
   contents: read
@@ -16,14 +28,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  ci-policy:
+    name: Select CI matrix
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.policy.outputs.matrix }}
+    steps:
+      - id: policy
+        name: Build matrix
+        run: |
+          full_matrix=false
+          coverage=false
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            full_matrix="${{ inputs.full_matrix }}"
+            coverage="${{ inputs.coverage }}"
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            if [[ "${{ github.ref_name }}" != dev/* ]]; then
+              full_matrix=true
+              coverage=true
+            fi
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            if [[ "${{ github.head_ref }}" != dev/* ]]; then
+              full_matrix=true
+              coverage=true
+            fi
+          fi
+
+          if [[ "${coverage}" == "true" ]]; then
+            full_matrix=true
+          fi
+
+          if [[ "${full_matrix}" != "true" ]]; then
+            matrix='{"include":[{"distro":"humble","render_backend":"DISABLE","mujoco":"3.3.5","check":"plain"}]}'
+          elif [[ "${coverage}" == "true" ]]; then
+            matrix='{"include":[{"distro":"humble","render_backend":"GLFW","mujoco":"3.3.5","check":"clang_tidy"},{"distro":"humble","render_backend":"OSMESA","mujoco":"3.3.5","check":"clang_tidy"},{"distro":"humble","render_backend":"DISABLE","mujoco":"3.3.5","check":"clang_tidy"},{"distro":"humble","render_backend":"GLFW","mujoco":"3.3.5","check":"ccov"},{"distro":"humble","render_backend":"OSMESA","mujoco":"3.3.5","check":"ccov"},{"distro":"humble","render_backend":"DISABLE","mujoco":"3.3.5","check":"ccov"}]}'
+          else
+            matrix='{"include":[{"distro":"humble","render_backend":"GLFW","mujoco":"3.3.5","check":"plain"},{"distro":"humble","render_backend":"OSMESA","mujoco":"3.3.5","check":"plain"},{"distro":"humble","render_backend":"DISABLE","mujoco":"3.3.5","check":"plain"},{"distro":"humble","render_backend":"GLFW","mujoco":"3.3.5","check":"clang_tidy"},{"distro":"humble","render_backend":"OSMESA","mujoco":"3.3.5","check":"clang_tidy"},{"distro":"humble","render_backend":"DISABLE","mujoco":"3.3.5","check":"clang_tidy"}]}'
+          fi
+
+          echo "matrix=${matrix}" >> "${GITHUB_OUTPUT}"
+
   default:
+    needs: ci-policy
     strategy:
       fail-fast: false
-      matrix:
-        distro: [humble] #, jazzy # Jazzy needs another control implementation (the hardware_interfaces differs), skipping build without specific branch for now
-        render_backend: [GLFW, OSMESA, DISABLE] # EGL currently removed due to issues with the local CI runners
-        mujoco: [3.3.5]
-        check: [clang_tidy, ccov]
+      matrix: ${{ fromJSON(needs.ci-policy.outputs.matrix) }}
 
     env:
       BUILDER: colcon
@@ -64,7 +114,7 @@ jobs:
       CLANG_TIDY: ${{ matrix.check == 'clang_tidy' }}
       CCOV: ${{ matrix.check == 'ccov' }}
 
-    name: "${{ matrix.distro }} mj-${{ matrix.mujoco }} ${{ matrix.render_backend }} ${{ matrix.check == 'ccov' && ' + ccov' || ''}}${{ matrix.check == 'clang_tidy' && (github.event_name != 'workflow_dispatch' && ' + clang-tidy (delta)' || ' + clang-tidy (all)') || '' }}"
+    name: "${{ matrix.distro }} mj-${{ matrix.mujoco }} ${{ matrix.render_backend }}${{ matrix.check == 'plain' && ' + test' || '' }}${{ matrix.check == 'ccov' && ' + ccov' || ''}}${{ matrix.check == 'clang_tidy' && (github.event_name != 'workflow_dispatch' && ' + clang-tidy (delta)' || ' + clang-tidy (all)') || '' }}"
     runs-on: ${{ matrix.render_backend == 'EGL' && matrix.distro || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5
