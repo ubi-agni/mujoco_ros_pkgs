@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>mujoco_ros_control</name>
-  <version>0.10.0</version>
+  <version>1.0.0</version>
   <description>ros_control and ros2_control integration for mujoco_ros</description>
 
   <url type="repository">https://github.com/DavidPL1/mujoco_ros_pkgs</url>

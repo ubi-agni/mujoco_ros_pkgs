@@ -1,18 +1,43 @@
 <a name="unreleased"></a>
 ## Unreleased
 
+No unreleased changes yet.
+
+<a name="1.0.0"></a>
+## [1.0.0] - 2026-06-27
+
 ### Added
-* Unnamed cameras don't cause crashes anymore, instead they are named `unnamed_cam_X` where is is a counting variable.
-* ROS 2 (target release Humble) support!
+* Hybrid ROS 1 / ROS 2 package structure with a shared MuJoCo core and ROS-specific adapter layers.
+* ROS 2 Humble support for the core server, ROS API, rendering, services/actions, and bundled plugins.
+* Shared `mujoco_ros_testing_utils` package for reusable hybrid test fixtures and assets.
+* Hybrid sensors, laser, mocap, and control plugin packages with ROS 1 and ROS 2 examples. (thanks to @tenfoldpaper for preliminary ROS 2 control integration work)
+* Python bindings for the core `MujocoEnv` wrapper, runtime status structures, plugin stats, viewer attachment, offscreen camera buffers, and Python-owned model/data loading.
+* Python plugin bindings for sensors, laser, mocap, and control plugin packages.
+* ROS 2 runtime parameter callbacks mirroring ROS 1 dynamic reconfigure names.
+* Version reporting with package version, Git description, dirty state, MuJoCo version, and render backend.
+* Versioned Sphinx documentation workflow for publishing.
 
 ### Fixed
+* Unnamed cameras don't cause crashes anymore, instead they are named `unnamed_cam_X` where `X` is a counting variable.
 * Fixed segfault when changing settings in the option panel of the GUI (caused by a wrong conditional assignment).
 * Fixed deadlock when reloading viewers from outside the viewer (not clicking Ctrl-L but using the ROS service).
 * Fixed offcam rendering after reset.
 * Occasional startup hiccups with GUI mode where the rendered environment would remain empty have been fixed (race condition with loading on separate threads).
+* Fixed ROS 1 devel/install launch-file ambiguity between ROS 1 and ROS 2 launch files.
+* Fixed header install layout issues in core and testing utility packages.
+* Hardened flaky render, sensor noise, control, and Python binding tests.
+* Fixed ROS 2 render/offscreen shutdown races and Python binding shutdown behavior.
 
 ### Changed
 * Enforced codestyle naming convention for functions (CamelCase) with exception of accessors.
+* Updated all active packages to version `1.0.0`.
+* Renamed public headers to `.hpp` where practical for hybrid consistency.
+* Merged ROS 2 control functionality into the active `mujoco_ros_control` package and retired separate active ROS 2 control packages.
+* Clarified control actuator semantics: ROS controllers own commands, matching MuJoCo actuators are used by default, and generalized-force fallback is available through missing actuators or `ignore_actuators`.
+* CI now supports reduced `dev/**` branch matrices and manual full matrix / coverage runs.
+* Documentation now describes the hybrid release state rather than the early Humble migration state.
+
+Contributors: @DavidPL1
 
 <a name="0.10.0"></a>
 ## [0.10.0] - 2025-07-13
@@ -317,7 +342,8 @@ Contributors: @DavidPL1, @balandbal
 
 Contributors: @DavidPL1
 
-[unreleased]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.10.0...HEAD
+[unreleased]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/1.0.0...HEAD
+[1.0.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.10.0...1.0.0
 [0.10.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.9.0...0.10.0
 [0.9.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.8.0...0.9.0
 [0.8.0]: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/0.7.0...0.8.0

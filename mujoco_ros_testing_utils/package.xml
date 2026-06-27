@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>mujoco_ros_testing_utils</name>
-  <version>0.10.0</version>
+  <version>1.0.0</version>
   <description>Shared test utilities and assets for mujoco_ros packages.</description>
 
   <maintainer email="dleins@techfak.uni-bielefeld.de">David P. Leins</maintainer>

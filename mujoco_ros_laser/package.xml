@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>mujoco_ros_laser</name>
-  <version>0.10.0</version>
+  <version>1.0.0</version>
   <description>MuJoCo ROS Laser Plugin</description>
 
   <maintainer email="dleins@techfak.uni-bielefeld.de">David Leins</maintainer>

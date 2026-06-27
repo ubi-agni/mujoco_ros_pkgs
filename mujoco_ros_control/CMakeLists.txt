@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
-project(mujoco_ros_control VERSION 0.10.0 LANGUAGES CXX)
+project(mujoco_ros_control VERSION 1.0.0 LANGUAGES CXX)
 
 if(DEFINED ENV{ROS_VERSION})
   set(ROS_VERSION $ENV{ROS_VERSION})
