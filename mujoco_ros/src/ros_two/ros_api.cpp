@@ -159,8 +159,8 @@ RosAPI::RosAPI(MujocoEnvPtr env_ptr) : env_ptr_(env_ptr)
 	RCLCPP_DEBUG(env_ptr_->get_logger(), "Declaring default ros parameters");
 	declare_parameter_if_not_declared(env_ptr_, "eval_mode", rclcpp::ParameterValue(false));
 	declare_parameter_if_not_declared(env_ptr_, "no_render", rclcpp::ParameterValue(false));
-	declare_parameter_if_not_declared(env_ptr_, "render_offscreen", rclcpp::ParameterValue(false));
-	declare_parameter_if_not_declared(env_ptr_, "headless", rclcpp::ParameterValue(false));
+	declare_parameter_if_not_declared(env_ptr_, "render_offscreen", rclcpp::ParameterValue(true));
+	declare_parameter_if_not_declared(env_ptr_, "headless", rclcpp::ParameterValue(true));
 	declare_parameter_if_not_declared(env_ptr_, "unpause", rclcpp::ParameterValue(true));
 	declare_parameter_if_not_declared(env_ptr_, "num_steps", rclcpp::ParameterValue(-1));
 	declare_parameter_if_not_declared(env_ptr_, "num_mj_threads", rclcpp::ParameterValue(1));
