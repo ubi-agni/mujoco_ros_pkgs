@@ -15,7 +15,7 @@
 repos:
   # Standard hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       # - id: check-added-large-files
       - id: check-case-conflict
@@ -26,6 +26,7 @@ repos:
       - id: end-of-file-fixer
       - id: mixed-line-ending
       - id: trailing-whitespace
+        exclude_types: [rst]
 
   - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
     rev: v9.18.0
@@ -43,6 +44,18 @@ repos:
         files: \.(c|cc|cxx|cpp|frag|glsl|h|hpp|hxx|ih|ispc|ipp|java|m|proto|vert)$
         args: ["-fallback-style=none", "-i"]
 
+  - repo: https://github.com/psf/black
+    rev: 26.5.1
+    hooks:
+      - id: black
+        args: ["--line-length=99", "--skip-string-normalization"]
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.3.0
+    hooks:
+    - id: flake8
+      args: ["--extend-ignore=E501"]
+
   - repo: local
     hooks:
       - id: packages-version-check
@@ -50,16 +63,3 @@ repos:
         description: Check if package.xml versions are consistent
         entry: ./.housekeeping/check_unique_version
         language: system
-
-  # - repo: local
-  #   hooks:
-  #     - id: catkin-lint
-  #       name: catkin-lint
-  #       description: Check package.xml and CMake files
-  #       entry: catkin_lint .
-  #       language: system
-  #       stages:
-  #         - pre-commit
-  #       always_run: true
-  #       pass_filenames: false
-  #       exclude: '^mujoco_ros2.*'
