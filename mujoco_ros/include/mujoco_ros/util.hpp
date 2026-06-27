@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2022-2024, Bielefeld University
+ *  Copyright (c) 2022-2026, Bielefeld University
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -33,6 +33,7 @@
  *********************************************************************/
 
 /* Authors: David P. Leins */
+
 #pragma once
 
 #include <mujoco_ros/ros_version.hpp>
