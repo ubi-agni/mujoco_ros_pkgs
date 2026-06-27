@@ -42,6 +42,10 @@ namespace mujoco_ros {
 
 void MujocoEnv::StartPhysicsLoop()
 {
+	if (physics_thread_handle_.joinable()) {
+		MJR_WARN("Physics loop already has a joinable thread. Ignoring duplicate start request.");
+		return;
+	}
 	MJR_DEBUG("Starting physics loop");
 	physics_thread_handle_ = std::thread(std::bind(&MujocoEnv::PhysicsLoop, this));
 }
@@ -57,6 +61,10 @@ void MujocoEnv::WaitForPhysicsJoin()
 
 void MujocoEnv::StartEventLoop()
 {
+	if (event_thread_handle_.joinable()) {
+		MJR_WARN("Event loop already has a joinable thread. Ignoring duplicate start request.");
+		return;
+	}
 	MJR_DEBUG("Starting event loop");
 	event_thread_handle_ = std::thread(std::bind(&MujocoEnv::EventLoop, this));
 }

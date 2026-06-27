@@ -137,20 +137,26 @@ int main(int argc, char **argv)
 	std::thread executor_thread([&executor]() { executor->spin(); });
 #endif
 
+	bool viewer_launched = false;
 #if RENDER_BACKEND == GLFW_BACKEND
 	if (!env->settings_.headless) {
 		MJR_INFO("Launching viewer");
-		auto viewer = std::make_unique<mujoco_ros::Viewer>(
-		    std::unique_ptr<mujoco_ros::PlatformUIAdapter>(env->gui_adapter_), env.get(), false);
+		viewer_launched = true;
+		auto viewer     = std::make_unique<mujoco_ros::Viewer>(
+          std::unique_ptr<mujoco_ros::PlatformUIAdapter>(env->gui_adapter_), env.get(), false);
 
 		// Main thread blocks here for GUI
 		viewer->RenderLoop();
 		MJR_INFO("Viewer terminated");
 	}
+#else
+	if (!env->settings_.headless) {
+		MJR_WARN("No interactive viewer is available for the compiled render backend. Running without viewer.");
+	}
 #endif
 
-	if (env->settings_.headless) {
-		MJR_INFO("Running headless. Main thread waiting for shutdown request...");
+	if (!viewer_launched) {
+		MJR_INFO("Running without interactive viewer. Main thread waiting for shutdown request...");
 		env->WaitForPhysicsJoin();
 	}
 

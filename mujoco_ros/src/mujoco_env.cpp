@@ -565,6 +565,35 @@ void MujocoEnv::RunPassiveCbs()
 MujocoEnv::~MujocoEnv()
 {
 	MJR_DEBUG("Destructor called");
+	settings_.exit_request.store(1);
+	offscreen_.request_pending.store(true);
+	offscreen_.cond_render_request.notify_one();
+
+	if (physics_thread_handle_.joinable()) {
+		if (physics_thread_handle_.get_id() == std::this_thread::get_id()) {
+			physics_thread_handle_.detach();
+		} else {
+			MJR_DEBUG("Joining physics thread from destructor");
+			physics_thread_handle_.join();
+		}
+	}
+	if (offscreen_.render_thread_handle.joinable()) {
+		if (offscreen_.render_thread_handle.get_id() == std::this_thread::get_id()) {
+			offscreen_.render_thread_handle.detach();
+		} else {
+			MJR_DEBUG("Joining offscreen render thread from destructor");
+			offscreen_.render_thread_handle.join();
+		}
+	}
+	if (event_thread_handle_.joinable()) {
+		if (event_thread_handle_.get_id() == std::this_thread::get_id()) {
+			event_thread_handle_.detach();
+		} else {
+			MJR_DEBUG("Joining event thread from destructor");
+			event_thread_handle_.join();
+		}
+	}
+
 	model_.reset();
 	data_.reset();
 	connected_viewers_.clear();
