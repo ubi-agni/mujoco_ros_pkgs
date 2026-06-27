@@ -79,11 +79,15 @@ using SensorConfigPtr = std::unique_ptr<SensorConfig>;
 class MujocoRosSensorsPlugin : public mujoco_ros::MujocoPlugin
 {
 public:
+	MujocoRosSensorsPlugin()                                          = default;
+	MujocoRosSensorsPlugin(const MujocoRosSensorsPlugin &)            = delete;
+	MujocoRosSensorsPlugin &operator=(const MujocoRosSensorsPlugin &) = delete;
 	~MujocoRosSensorsPlugin() override;
 
 	bool Load(const mjModel *m, mjData *d) override;
 	void Reset() override;
 	void LastStageCallback(const mjModel *model, mjData *data) override;
+	const std::map<std::string, SensorConfigPtr> &GetSensorConfigs() const { return sensor_map_; }
 
 #if MJR_ROS_VERSION == ROS_2
 	mujoco_ros::CallbackReturn on_configure(const rclcpp_lifecycle::State & /*previous_state*/) override
@@ -94,7 +98,7 @@ public:
 	}
 #endif
 
-private:
+protected:
 #if MJR_ROS_VERSION == ROS_1
 	ros::NodeHandle sensors_nh_;
 	void InitSensors(const mjModel *model, mjData *data);

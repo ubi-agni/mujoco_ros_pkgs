@@ -23,18 +23,19 @@ def generate_test_description():
         output='screen',
     )
 
-    return LaunchDescription([
-        DeclareLaunchArgument('test_binary'),
-        DeclareLaunchArgument('timeout', default_value=str(TEST_TIMEOUT)),
-        SetEnvironmentVariable(
-            'ROSCONSOLE_FORMAT',
-            '[${severity}] [${time}] [${logger}] [${node}]: ${message}'
-        ),
-        SetParameter(name='use_sim_time', value=True),
-        test_proc,
-        launch_testing.util.KeepAliveProc(),
-        launch_testing.actions.ReadyToTest(),
-    ]), {
+    return LaunchDescription(
+        [
+            DeclareLaunchArgument('test_binary'),
+            DeclareLaunchArgument('timeout', default_value=str(TEST_TIMEOUT)),
+            SetEnvironmentVariable(
+                'ROSCONSOLE_FORMAT', '[${severity}] [${time}] [${logger}] [${node}]: ${message}'
+            ),
+            SetParameter(name='use_sim_time', value=True),
+            test_proc,
+            launch_testing.util.KeepAliveProc(),
+            launch_testing.actions.ReadyToTest(),
+        ]
+    ), {
         'test_proc': test_proc,
         'timeout': timeout,
     }

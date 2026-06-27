@@ -115,9 +115,16 @@ void MujocoEnv::PrepareReload()
 void MujocoEnv::LoadWithModelAndData()
 {
 	{
-		// Wrap the new model and data in shared pointers
-		std::shared_ptr<mjModel> mold(mnew, mj_deleteModel);
-		std::shared_ptr<mjData> dold(dnew, mj_deleteData);
+		std::shared_ptr<mjModel> mold;
+		std::shared_ptr<mjData> dold;
+		if (settings_.is_python_request.load()) {
+			mold = std::shared_ptr<mjModel>(mnew, [](mjModel *) {});
+			dold = std::shared_ptr<mjData>(dnew, [](mjData *) {});
+			settings_.is_python_request.store(0);
+		} else {
+			mold = std::shared_ptr<mjModel>(mnew, mj_deleteModel);
+			dold = std::shared_ptr<mjData>(dnew, mj_deleteData);
+		}
 
 		// Swap the new model and data with the old ones
 		std::atomic_store(&model_, mold);

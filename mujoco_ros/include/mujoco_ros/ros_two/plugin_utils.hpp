@@ -125,6 +125,7 @@ public:
 	double get_ema_steptime_passive() const { return ema_steptime_passive_; }
 	double get_ema_steptime_render() const { return ema_steptime_render_; }
 	double get_ema_steptime_last_stage() const { return ema_steptime_last_stage_; }
+	bool is_loaded() const { return loading_successful_; }
 
 	/**
 	 * @brief Wrapper method that evaluates if loading the plugin is successful

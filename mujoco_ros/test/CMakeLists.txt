@@ -101,3 +101,40 @@ add_mujoco_ros_integration_test(
   ROS1_LAUNCH launch/mujoco_render.test
   ROS2_LAUNCH launch/mujoco_render.test.py
 )
+
+if(ROS_VERSION EQUAL 1)
+  add_rostest(launch/python_bindings.test)
+  add_rostest(launch/python_bindings_config.test)
+  add_rostest(launch/python_bindings_plugin.test)
+elseif(ROS_VERSION EQUAL 2)
+  add_launch_test(launch/python_bindings.test.py
+    TARGET python_bindings_test
+    ARGS
+      "test_script:=${CMAKE_CURRENT_SOURCE_DIR}/python/python_bindings_test.py"
+      "python_module_path:=$<TARGET_FILE_DIR:pymujoco_ros>"
+      "python_package_path:=${PROJECT_SOURCE_DIR}/python/src"
+  )
+  if(TARGET python_bindings_test)
+    add_dependencies(python_bindings_test pymujoco_ros)
+  endif()
+  add_launch_test(launch/python_bindings_config.test.py
+    TARGET python_bindings_config_test
+    ARGS
+      "test_script:=${CMAKE_CURRENT_SOURCE_DIR}/python/python_bindings_config_test.py"
+      "python_module_path:=$<TARGET_FILE_DIR:pymujoco_ros>"
+      "python_package_path:=${PROJECT_SOURCE_DIR}/python/src"
+  )
+  if(TARGET python_bindings_config_test)
+    add_dependencies(python_bindings_config_test pymujoco_ros mujoco_testplugin)
+  endif()
+  add_launch_test(launch/python_bindings_plugin.test.py
+    TARGET python_bindings_plugin_test
+    ARGS
+      "test_script:=${CMAKE_CURRENT_SOURCE_DIR}/python/python_bindings_plugin_test.py"
+      "python_module_path:=$<TARGET_FILE_DIR:pymujoco_ros>"
+      "python_package_path:=${PROJECT_SOURCE_DIR}/python/src"
+  )
+  if(TARGET python_bindings_plugin_test)
+    add_dependencies(python_bindings_plugin_test pymujoco_ros mujoco_testplugin)
+  endif()
+endif()

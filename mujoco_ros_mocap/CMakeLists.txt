@@ -22,15 +22,20 @@ if(ROS_VERSION EQUAL 1)
   find_package(catkin REQUIRED COMPONENTS
     mujoco_ros
     mujoco_ros_msgs
+    py_binding_tools
+    pybind11_catkin
     pluginlib
     roscpp
   )
+
+  catkin_python_setup()
 
   catkin_package(
     INCLUDE_DIRS include
     CATKIN_DEPENDS
       mujoco_ros
       mujoco_ros_msgs
+      py_binding_tools
       pluginlib
       roscpp
     LIBRARIES ${PROJECT_NAME}
@@ -67,16 +72,30 @@ if(ROS_VERSION EQUAL 1)
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
   )
 
+  add_subdirectory(python/bindings)
+
   if(CATKIN_ENABLE_TESTING)
     add_subdirectory(test)
   endif()
 elseif(ROS_VERSION EQUAL 2)
   find_package(ament_cmake REQUIRED)
+  find_package(ament_cmake_python REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_index_cpp REQUIRED)
   find_package(launch_testing_ament_cmake REQUIRED)
   find_package(mujoco_ros REQUIRED)
   find_package(mujoco_ros_msgs REQUIRED)
+  find_package(py_binding_tools REQUIRED)
+  find_package(pybind11_vendor REQUIRED)
+  find_package(pybind11 REQUIRED)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+  if(NOT PYTHON_INSTALL_DIR)
+    execute_process(
+      COMMAND ${Python3_EXECUTABLE} -c "import os, sysconfig; print(sysconfig.get_path('platlib', vars={'base': '', 'platbase': ''}).lstrip(os.sep))"
+      OUTPUT_VARIABLE PYTHON_INSTALL_DIR
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+  endif()
   find_package(pluginlib REQUIRED)
   find_package(rclcpp REQUIRED)
   find_package(rclcpp_lifecycle REQUIRED)
@@ -119,6 +138,9 @@ elseif(ROS_VERSION EQUAL 2)
     DESTINATION share/${PROJECT_NAME}
   )
 
+  add_subdirectory(python/bindings)
+  ament_python_install_package(${PROJECT_NAME} PACKAGE_DIR python/src/${PROJECT_NAME})
+
   if(BUILD_TESTING)
     add_subdirectory(test)
   endif()
@@ -128,6 +150,8 @@ elseif(ROS_VERSION EQUAL 2)
   ament_export_dependencies(
     mujoco_ros
     mujoco_ros_msgs
+    py_binding_tools
+    pybind11_vendor
     pluginlib
     rclcpp
     rclcpp_lifecycle

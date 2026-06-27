@@ -106,8 +106,13 @@ jobs:
       CXXFLAGS: -Wwrite-strings -Wunreachable-code -Wpointer-arith # rosidl triggers this in non-user code, so let's leave it out for now -Wredundant-decls
       CLANG_TIDY_ARGS: -fix -format -style=file
       # UPSTREAM_WORKSPACE: .github/workflows/upstream.ros2.rosinstall
-      # Install and start xvfb for GLFW
-      AFTER_INIT: ${{ matrix.render_backend == 'GLFW' && 'apt-get install -qy xvfb; Xvfb :99 &' || '' }}
+      # Install Python MuJoCo matching the C++ MuJoCo version under test.
+      # GLFW jobs additionally need xvfb.
+      AFTER_INIT: >
+        apt-get update -q;
+        apt-get install -qy python3-pip${{ matrix.render_backend == 'GLFW' && ' xvfb' || '' }};
+        python3 -m pip install mujoco==${{ matrix.mujoco }};
+        ${{ matrix.render_backend == 'GLFW' && 'Xvfb :99 &' || '' }}
       # Pull any updates to the upstream workspace
       # AFTER_SETUP_UPSTREAM_WORKSPACE: vcs pull $BASEDIR/upstream_ws/src
       AFTER_SETUP_DOWNSTREAM_WORKSPACE: vcs pull $BASEDIR/downstream_ws/src

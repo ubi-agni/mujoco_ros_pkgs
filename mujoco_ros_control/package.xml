@@ -15,10 +15,14 @@
 
   <buildtool_depend condition="$ROS_VERSION == 1">catkin</buildtool_depend>
   <buildtool_depend condition="$ROS_VERSION == 2">ament_cmake</buildtool_depend>
+  <buildtool_depend condition="$ROS_VERSION == 2">ament_cmake_python</buildtool_depend>
 
   <depend>controller_manager</depend>
   <depend>hardware_interface</depend>
   <depend>mujoco_ros</depend>
+  <depend>py_binding_tools</depend>
+  <depend condition="$ROS_VERSION == 1">pybind11_catkin</depend>
+  <depend condition="$ROS_VERSION == 2">pybind11_vendor</depend>
   <depend>pluginlib</depend>
 
   <depend condition="$ROS_VERSION == 1">angles</depend>

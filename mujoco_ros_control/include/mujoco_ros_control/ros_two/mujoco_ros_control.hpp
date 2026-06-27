@@ -53,7 +53,7 @@ public:
 	rclcpp::Time last_update_sim_time_mj_ = rclcpp::Time((int64_t)0, RCL_STEADY_TIME);
 
 	/// \brief controller update rate
-	unsigned int update_rate;
+	unsigned int update_rate{ 0 };
 
 	/// \brief Interface loader
 	std::shared_ptr<pluginlib::ClassLoader<mujoco_ros::control::MujocoRosSystemInterface>> robot_hw_sim_loader_{
@@ -74,6 +74,11 @@ public:
 	void RenderCallback(const mjModel *model, mjData *data, mjvScene *scene) override;
 	void LastStageCallback(const mjModel *model, mjData *data) override;
 	void OnGeomChanged(const mjModel *model, mjData *data, const int geom_id) override;
+	std::string GetRobotDescriptionParam() const { return dataPtr_ ? dataPtr_->robot_description_ : ""; }
+	std::string GetRobotDescriptionNode() const { return dataPtr_ ? dataPtr_->robot_description_node_ : ""; }
+	double GetControlPeriodSec() const { return dataPtr_ ? dataPtr_->control_period_.seconds() : 0.0; }
+	unsigned int GetUpdateRate() const { return dataPtr_ ? dataPtr_->update_rate : 0; }
+	bool HasControllerManager() const { return dataPtr_ && static_cast<bool>(dataPtr_->controller_manager_); }
 
 protected:
 	/**

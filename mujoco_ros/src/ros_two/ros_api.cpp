@@ -260,8 +260,10 @@ void RosAPI::SetupServices()
 	    ns + "set_pause", std::bind(&RosAPI::SetPauseCB, this, std::placeholders::_1, std::placeholders::_2));
 	shutdown_srv_ = env_ptr_->create_service<std_srvs::srv::Empty>(
 	    ns + "shutdown", std::bind(&RosAPI::ShutdownCB, this, std::placeholders::_1, std::placeholders::_2));
-	reload_srv_ = env_ptr_->create_service<mujoco_ros_msgs::srv::Reload>(
-	    ns + "reload", std::bind(&RosAPI::ReloadCB, this, std::placeholders::_1, std::placeholders::_2));
+	if (!env_ptr_->UsesPythonReloadService()) {
+		reload_srv_ = env_ptr_->create_service<mujoco_ros_msgs::srv::Reload>(
+		    ns + "reload", std::bind(&RosAPI::ReloadCB, this, std::placeholders::_1, std::placeholders::_2));
+	}
 	reset_srv_ = env_ptr_->create_service<std_srvs::srv::Empty>(
 	    ns + "reset", std::bind(&RosAPI::ResetCB, this, std::placeholders::_1, std::placeholders::_2));
 	set_body_state_srv_ = env_ptr_->create_service<mujoco_ros_msgs::srv::SetBodyState>(
@@ -1039,28 +1041,16 @@ void RosAPI::SetRTFactorCB(const mujoco_ros_msgs::srv::SetFloat::Request::Shared
 void RosAPI::GetPluginStatsCB(const mujoco_ros_msgs::srv::GetPluginStats::Request::SharedPtr /*req*/,
                               mujoco_ros_msgs::srv::GetPluginStats::Response::SharedPtr res)
 {
-	std::vector<std::string> plugin_names;
-	std::vector<std::string> types;
-	std::vector<double> load_times;
-	std::vector<double> reset_times;
-	std::vector<double> ema_steptimes_control;
-	std::vector<double> ema_steptimes_passive;
-	std::vector<double> ema_steptimes_render;
-	std::vector<double> ema_steptimes_last_stage;
-
-	int num_plugins = env_ptr_->GetPluginStats(plugin_names, types, load_times, reset_times, ema_steptimes_control,
-	                                           ema_steptimes_passive, ema_steptimes_render, ema_steptimes_last_stage);
-
-	for (int i = 0; i < num_plugins; ++i) {
+	for (const auto &plugin_stat : env_ptr_->GetPluginStats()) {
 		mujoco_ros_msgs::msg::PluginStats stats;
-		// plugin.name = plugin_names[i]; // TODO: add plugin name to message
-		stats.plugin_type             = types[i];
-		stats.load_time               = load_times[i];
-		stats.reset_time              = reset_times[i];
-		stats.ema_steptime_control    = ema_steptimes_control[i];
-		stats.ema_steptime_passive    = ema_steptimes_passive[i];
-		stats.ema_steptime_render     = ema_steptimes_render[i];
-		stats.ema_steptime_last_stage = ema_steptimes_last_stage[i];
+		// stats.plugin_name             = plugin_stat.name; // TODO: add plugin name to message
+		stats.plugin_type             = plugin_stat.type;
+		stats.load_time               = plugin_stat.load_time;
+		stats.reset_time              = plugin_stat.reset_time;
+		stats.ema_steptime_control    = plugin_stat.ema_steptime_control;
+		stats.ema_steptime_passive    = plugin_stat.ema_steptime_passive;
+		stats.ema_steptime_render     = plugin_stat.ema_steptime_render;
+		stats.ema_steptime_last_stage = plugin_stat.ema_steptime_last_stage;
 		res->stats.emplace_back(stats);
 	}
 }

@@ -77,6 +77,14 @@ public:
 	bool ParseTransmissionsFromURDF(const std::string &urdf_string);
 
 	void ControlCallback(const mjModel *model, mjData *data) override;
+	const std::string &GetRobotDescriptionParam() const { return robot_description_; }
+	const std::string &GetRobotNamespace() const { return robot_namespace_; }
+	const std::string &GetRobotHWSimType() const { return robot_hw_sim_type_str_; }
+	std::size_t GetTransmissionCount() const { return transmissions_.size(); }
+	double GetControlPeriodSec() const { return control_period_.toSec(); }
+	bool HasRobotHWSim() const { return static_cast<bool>(robot_hw_sim_); }
+	bool HasControllerManager() const { return static_cast<bool>(controller_manager_); }
+	bool IsEStopActive() const { return e_stop_active_; }
 
 protected:
 	void EStopCB(const std_msgs::BoolConstPtr &e_stop_active);

@@ -138,8 +138,9 @@ void MujocoEnv::RunLastStageCbs()
 
 #if MJR_ROS_VERSION == ROS_1
 
-MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
+MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/, bool python_reload_service /* = false */)
 {
+	python_reload_service_ = python_reload_service;
 	if (!admin_hash.empty()) {
 		mju::strcpy_arr(settings_.admin_hash, admin_hash.c_str());
 	} else {
@@ -156,10 +157,11 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/)
 #else // MJR_ROS_VERSION == ROS_2
 
 MujocoEnv::MujocoEnv(rclcpp::Executor::SharedPtr executor, const std::string &admin_hash /* = std::string()*/,
-                     bool auto_configure /* = true */)
+                     bool auto_configure /* = true */, bool python_reload_service /* = false */)
     : rclcpp::Node("mujoco_server", "", rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true))
     , executor_(std::move(executor))
 {
+	python_reload_service_ = python_reload_service;
 	if (!admin_hash.empty()) {
 		mju::strcpy_arr(settings_.admin_hash, admin_hash.c_str());
 	} else {

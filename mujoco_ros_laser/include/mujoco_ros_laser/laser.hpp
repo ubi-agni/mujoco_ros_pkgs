@@ -119,8 +119,11 @@ public:
 
 	void RenderCallback(const mjModel *model, mjData *data, mjvScene *scene) override;
 	void LastStageCallback(const mjModel *model, mjData *data) override;
+	const std::vector<LaserConfig> &GetLaserConfigs() const { return laser_configs_; }
+	bool HasRenderData() const { return has_render_data_; }
+	int GetRenderGeomCount() const { return ngeom_; }
 
-private:
+protected:
 	const mjModel *m_{ nullptr };
 	mjData *d_{ nullptr };
 

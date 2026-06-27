@@ -53,7 +53,9 @@ void RosAPI::SetupServices()
 {
 	service_servers_.emplace_back(nh_->advertiseService("set_pause", &RosAPI::SetPauseCB, this));
 	service_servers_.emplace_back(nh_->advertiseService("shutdown", &RosAPI::ShutdownCB, this));
-	service_servers_.emplace_back(nh_->advertiseService("reload", &RosAPI::ReloadCB, this));
+	if (!env_ptr_->UsesPythonReloadService()) {
+		service_servers_.emplace_back(nh_->advertiseService("reload", &RosAPI::ReloadCB, this));
+	}
 	service_servers_.emplace_back(nh_->advertiseService("reset", &RosAPI::ResetCB, this));
 	service_servers_.emplace_back(nh_->advertiseService("set_body_state", &RosAPI::SetBodyStateCB, this));
 	service_servers_.emplace_back(nh_->advertiseService("get_body_state", &RosAPI::GetBodyStateCB, this));
@@ -92,13 +94,11 @@ void arr_to_string(const mjtNum *arr, int size, std::string &str)
 	}
 }
 
-// TODO(dleins): once changes from python bindings are merged, use RosAPISettings struct instead of passing all these
-// arguments
-void ReadSimParams(SimParamsConfig &config, mjModel *model_, bool is_running, const std::string &admin_hash)
+void ReadSimParams(SimParamsConfig &config, mjModel *model_, const RosAPISettings &api_settings)
 {
 	if (model_ != nullptr) {
-		config.running    = is_running;
-		config.admin_hash = admin_hash;
+		config.running    = api_settings.running;
+		config.admin_hash = api_settings.admin_hash;
 
 		config.integrator = model_->opt.integrator;
 		config.cone       = model_->opt.cone;
@@ -176,8 +176,8 @@ void RosAPI::UpdateDynamicParams()
 {
 	boost::recursive_mutex::scoped_lock lk(sim_params_mutex_);
 	SimParamsConfig config;
-	ReadSimParams(config, env_ptr_->model_.get(), env_ptr_->settings_.run.load(),
-	              std::string(env_ptr_->settings_.admin_hash));
+	ReadSimParams(config, env_ptr_->model_.get(),
+	              RosAPISettings{ env_ptr_->settings_.run.load() != 0, env_ptr_->settings_.admin_hash });
 	param_server_->updateConfig(config);
 }
 
@@ -191,8 +191,8 @@ void RosAPI::DynparamCallback(mujoco_ros::SimParamsConfig &config, uint32_t leve
 	boost::recursive_mutex::scoped_lock lk(sim_params_mutex_);
 	if (level == 0xFFFFFFFF) {
 		// First call on init -> Set params from model
-		ReadSimParams(config, env_ptr_->model_.get(), env_ptr_->settings_.run.load(),
-		              std::string(env_ptr_->settings_.admin_hash));
+		ReadSimParams(config, env_ptr_->model_.get(),
+		              RosAPISettings{ env_ptr_->settings_.run.load() != 0, env_ptr_->settings_.admin_hash });
 		return;
 	}
 	env_ptr_->settings_.run.store(config.running);
@@ -695,28 +695,16 @@ bool RosAPI::SetRTFactorCB(mujoco_ros_msgs::SetFloat::Request &req, mujoco_ros_m
 bool RosAPI::GetPluginStatsCB(mujoco_ros_msgs::GetPluginStats::Request & /*req*/,
                               mujoco_ros_msgs::GetPluginStats::Response &res)
 {
-	std::vector<std::string> plugin_names;
-	std::vector<std::string> types;
-	std::vector<double> load_times;
-	std::vector<double> reset_times;
-	std::vector<double> ema_steptimes_control;
-	std::vector<double> ema_steptimes_passive;
-	std::vector<double> ema_steptimes_render;
-	std::vector<double> ema_steptimes_last_stage;
-
-	int num_plugins = env_ptr_->GetPluginStats(plugin_names, types, load_times, reset_times, ema_steptimes_control,
-	                                           ema_steptimes_passive, ema_steptimes_render, ema_steptimes_last_stage);
-
-	for (int i = 0; i < num_plugins; ++i) {
+	for (const auto &plugin_stat : env_ptr_->GetPluginStats()) {
 		mujoco_ros_msgs::PluginStats stats;
-		// stats.plugin_name             = plugin_names[i]; // TODO: add plugin name to message
-		stats.plugin_type             = types[i];
-		stats.load_time               = load_times[i];
-		stats.reset_time              = reset_times[i];
-		stats.ema_steptime_control    = ema_steptimes_control[i];
-		stats.ema_steptime_passive    = ema_steptimes_passive[i];
-		stats.ema_steptime_render     = ema_steptimes_render[i];
-		stats.ema_steptime_last_stage = ema_steptimes_last_stage[i];
+		// stats.plugin_name             = plugin_stat.name; // TODO: add plugin name to message
+		stats.plugin_type             = plugin_stat.type;
+		stats.load_time               = plugin_stat.load_time;
+		stats.reset_time              = plugin_stat.reset_time;
+		stats.ema_steptime_control    = plugin_stat.ema_steptime_control;
+		stats.ema_steptime_passive    = plugin_stat.ema_steptime_passive;
+		stats.ema_steptime_render     = plugin_stat.ema_steptime_render;
+		stats.ema_steptime_last_stage = plugin_stat.ema_steptime_last_stage;
 		res.stats.emplace_back(stats);
 	}
 	return true;

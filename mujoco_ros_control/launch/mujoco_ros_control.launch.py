@@ -10,21 +10,21 @@ import xacro
 
 def concatenate_ns(ns1, ns2, absolute=False):
 
-    if (len(ns1) == 0):
+    if len(ns1) == 0:
         return ns2
-    if (len(ns2) == 0):
+    if len(ns2) == 0:
         return ns1
 
     # check for /s at the end and start
-    if (ns1[0] == '/'):
+    if ns1[0] == '/':
         ns1 = ns1[1:]
-    if (ns1[-1] == '/'):
+    if ns1[-1] == '/':
         ns1 = ns1[:-1]
-    if (ns2[0] == '/'):
+    if ns2[0] == '/':
         ns2 = ns2[1:]
-    if (ns2[-1] == '/'):
+    if ns2[-1] == '/':
         ns2 = ns2[:-1]
-    if (absolute):
+    if absolute:
         ns1 = '/' + ns1
     return ns1 + '/' + ns2
 
@@ -46,16 +46,14 @@ def generate_launch_description():
         executable='robot_state_publisher',
         output='screen',
         namespace=ns,
-        parameters=[params]
+        parameters=[params],
     )
     node_joint_state_broadcaster = Node(  # RVIZ dependency
-            package='joint_state_publisher',
-            executable='joint_state_publisher',
-            name='joint_state_publisher',
-            namespace=ns,
-            parameters=[
-                {'source_list': [concatenate_ns(ns, 'joint_states', True)],
-                 'rate': 10}],
+        package='joint_state_publisher',
+        executable='joint_state_publisher',
+        name='joint_state_publisher',
+        namespace=ns,
+        parameters=[{'source_list': [concatenate_ns(ns, 'joint_states', True)], 'rate': 10}],
     )
     controller_spawners = [
         Node(
@@ -73,24 +71,24 @@ def generate_launch_description():
         ]
     ]
 
-    return LaunchDescription([
-        IncludeLaunchDescription(
-            FrontendLaunchDescriptionSource(
-                os.path.join(mujoco_ros_path, 'launch', 'launch_server.launch.xml')
+    return LaunchDescription(
+        [
+            IncludeLaunchDescription(
+                FrontendLaunchDescriptionSource(
+                    os.path.join(mujoco_ros_path, 'launch', 'launch_server.launch.xml')
+                ),
+                launch_arguments={
+                    'use_sim_time': 'true',
+                    'modelfile': xml_path,
+                    'verbose': 'true',
+                    'ns': ns,
+                    'mujoco_plugin_config': os.path.join(
+                        control_path, 'example', 'ros2_control_plugins_example.yaml'
+                    ),
+                }.items(),
             ),
-            launch_arguments={
-                'use_sim_time': 'true',
-                'modelfile': xml_path,
-                'verbose': 'true',
-                'ns': ns,
-                'mujoco_plugin_config': os.path.join(
-                    control_path,
-                    'example',
-                    'ros2_control_plugins_example.yaml'
-                )
-            }.items()
-        ),
-        node_robot_state_publisher,
-        node_joint_state_broadcaster,
-        *controller_spawners,
-    ])
+            node_robot_state_publisher,
+            node_joint_state_broadcaster,
+            *controller_spawners,
+        ]
+    )

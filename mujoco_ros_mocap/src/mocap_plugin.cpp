@@ -89,6 +89,42 @@ void MocapPlugin::MocapStateCallback(const MocapStateConstPtr &msg)
 	last_mocap_state_ = *msg;
 }
 
+bool MocapPlugin::SetLastMocapState(const MocapState &state)
+{
+	if (!ValidateMocapMsg(state, m_)) {
+		return false;
+	}
+	last_mocap_state_ = state;
+	return true;
+}
+
+MocapState MocapPlugin::GetCurrentMocapsAsMsg() const
+{
+	MocapState mocap_state;
+	if (m_ == nullptr || d_ == nullptr) {
+		return mocap_state;
+	}
+
+	for (int body_id = 0; body_id < m_->nbody; ++body_id) {
+		if (m_->body_mocapid[body_id] == -1) {
+			continue;
+		}
+
+		decltype(mocap_state.pose)::value_type pose_stamped;
+		pose_stamped.header.frame_id    = "world";
+		pose_stamped.pose.position.x    = d_->xpos[3 * body_id];
+		pose_stamped.pose.position.y    = d_->xpos[3 * body_id + 1];
+		pose_stamped.pose.position.z    = d_->xpos[3 * body_id + 2];
+		pose_stamped.pose.orientation.w = d_->xquat[4 * body_id];
+		pose_stamped.pose.orientation.x = d_->xquat[4 * body_id + 1];
+		pose_stamped.pose.orientation.y = d_->xquat[4 * body_id + 2];
+		pose_stamped.pose.orientation.z = d_->xquat[4 * body_id + 3];
+		mocap_state.name.push_back(mj_id2name(m_, mjOBJ_BODY, body_id));
+		mocap_state.pose.push_back(pose_stamped);
+	}
+	return mocap_state;
+}
+
 void MocapPlugin::ControlCallback(const mjModel *model, mjData *data)
 {
 	for (std::size_t idx = 0; idx < last_mocap_state_.pose.size(); ++idx) {

@@ -79,8 +79,11 @@ public:
 	void Reset() override;
 
 	void ControlCallback(const mjModel *m, mjData *d) override;
+	const MocapState &GetLastMocapState() const { return last_mocap_state_; }
+	bool SetLastMocapState(const MocapState &state);
+	MocapState GetCurrentMocapsAsMsg() const;
 
-private:
+protected:
 	void MocapStateCallback(const MocapStateConstPtr &msg);
 
 #if MJR_ROS_VERSION == ROS_1

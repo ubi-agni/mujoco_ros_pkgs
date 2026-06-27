@@ -52,9 +52,13 @@
 
 #include <mujoco_ros/ros_version.hpp>
 
+#include <algorithm>
 #include <atomic>
-#include <thread>
 #include <condition_variable>
+#include <iterator>
+#include <string>
+#include <thread>
+#include <vector>
 
 #if MJR_ROS_VERSION == ROS_1
 
@@ -151,6 +155,129 @@ struct OffscreenRenderContext
 	~OffscreenRenderContext();
 };
 
+struct EnvSettings
+{
+	EnvSettings() = default;
+	EnvSettings(const EnvSettings &other)
+	    : headless(other.headless)
+	    , render_offscreen(other.render_offscreen)
+	    , use_sim_time(other.use_sim_time)
+	    , real_time_index(other.real_time_index)
+	    , busywait(other.busywait)
+	    , num_mj_threads(other.num_mj_threads)
+	    , eval_mode(other.eval_mode)
+	    , run(other.run.load())
+	    , exit_request(other.exit_request.load())
+	    , visual_init_request(other.visual_init_request.load())
+	    , load_request(other.load_request.load())
+	    , reset_request(other.reset_request.load())
+	    , speed_changed(other.speed_changed.load())
+	    , env_steps_request(other.env_steps_request.load())
+	    , settings_changed(other.settings_changed.load())
+	    , is_python_request(other.is_python_request.load())
+	{
+		std::copy(std::begin(other.admin_hash), std::end(other.admin_hash), std::begin(admin_hash));
+	}
+
+	EnvSettings &operator=(const EnvSettings &other)
+	{
+		if (this == &other) {
+			return *this;
+		}
+		headless         = other.headless;
+		render_offscreen = other.render_offscreen;
+		use_sim_time     = other.use_sim_time;
+		real_time_index  = other.real_time_index;
+		busywait         = other.busywait;
+		num_mj_threads   = other.num_mj_threads;
+		eval_mode        = other.eval_mode;
+		std::copy(std::begin(other.admin_hash), std::end(other.admin_hash), std::begin(admin_hash));
+		run.store(other.run.load());
+		exit_request.store(other.exit_request.load());
+		visual_init_request.store(other.visual_init_request.load());
+		load_request.store(other.load_request.load());
+		reset_request.store(other.reset_request.load());
+		speed_changed.store(other.speed_changed.load());
+		env_steps_request.store(other.env_steps_request.load());
+		settings_changed.store(other.settings_changed.load());
+		is_python_request.store(other.is_python_request.load());
+		return *this;
+	}
+
+	// Render options
+	bool headless         = false;
+	bool render_offscreen = false;
+	bool use_sim_time     = true;
+
+	// Sim speed
+	int real_time_index = 9;
+	int busywait        = 0;
+	int num_mj_threads  = 1;
+
+	// Mode
+	bool eval_mode      = false;
+	char admin_hash[64] = "\0";
+
+	// Atomics for multithread access
+	std::atomic_int run                 = { 0 };
+	std::atomic_int exit_request        = { 0 };
+	std::atomic_int visual_init_request = { 0 };
+
+	// Load request
+	//  0: no request
+	//  1: replace model_ with mnew and data_ with dnew
+	//  2: load mnew and dnew from file
+	std::atomic_int load_request      = { 0 };
+	std::atomic_int reset_request     = { 0 };
+	std::atomic_int speed_changed     = { 0 };
+	std::atomic_int env_steps_request = { 0 };
+
+	std::atomic_int settings_changed = { 0 };
+
+	// Must be set to true before loading a new model from python
+	std::atomic_int is_python_request = { 0 };
+};
+
+struct SimState
+{
+	float measured_slowdown = 1.0;
+	bool model_valid        = false;
+	uint load_count         = 0;
+};
+
+struct SimInfo
+{
+	std::string model_path;
+	bool model_valid = false;
+	int load_count   = 0;
+
+	int loading_state = 0;
+	std::string loading_description;
+
+	bool paused           = true;
+	int pending_sim_steps = 0;
+	float rt_measured     = 1.0f;
+	float rt_setting      = 1.0f;
+};
+
+struct PluginStat
+{
+	std::string name;
+	std::string type;
+	double load_time               = 0.0;
+	double reset_time              = 0.0;
+	double ema_steptime_control    = 0.0;
+	double ema_steptime_passive    = 0.0;
+	double ema_steptime_render     = 0.0;
+	double ema_steptime_last_stage = 0.0;
+};
+
+struct RosAPISettings
+{
+	bool running = false;
+	std::string admin_hash;
+};
+
 #if MJR_ROS_VERSION == ROS_1
 class MujocoEnv
 {
@@ -159,7 +286,7 @@ public:
 	 * @brief Construct a new Mujoco Env object.
 	 *
 	 */
-	MujocoEnv(const std::string &admin_hash = std::string());
+	MujocoEnv(const std::string &admin_hash = std::string(), bool python_reload_service = false);
 #else // MJR_ROS_VERSION == ROS_2
 class MujocoEnv : public rclcpp::Node
 {
@@ -169,7 +296,7 @@ public:
 	 *
 	 */
 	MujocoEnv(rclcpp::Executor::SharedPtr executor, const std::string &admin_hash = std::string(),
-	          bool auto_configure = true);
+	          bool auto_configure = true, bool python_reload_service = false);
 
 	/**
 	 * @brief Add a node to the executor of this server instance.
@@ -193,6 +320,8 @@ public:
 	 */
 	rclcpp::Executor::SharedPtr GetExecutorPtr();
 #endif
+
+	bool UsesPythonReloadService() const { return python_reload_service_; }
 	// Friend declaration of RosAPI for access to private members
 	friend class RosAPI;
 
@@ -223,49 +352,8 @@ public:
 
 	char queued_filename_[kMaxFilenameLength] = "\0";
 
-	struct
-	{
-		// Render options
-		bool headless         = false;
-		bool render_offscreen = false;
-		bool use_sim_time     = true;
-
-		// Sim speed
-		int real_time_index = 9;
-		int busywait        = 0;
-		int num_mj_threads  = 1;
-
-		// Mode
-		bool eval_mode      = false;
-		char admin_hash[64] = "\0";
-
-		// Atomics for multithread access
-		std::atomic_int run                 = { 0 };
-		std::atomic_int exit_request        = { 0 };
-		std::atomic_int visual_init_request = { 0 };
-
-		// Load request
-		//  0: no request
-		//  1: replace model_ with mnew and data_ with dnew
-		//  2: load mnew and dnew from file
-		std::atomic_int load_request      = { 0 };
-		std::atomic_int reset_request     = { 0 };
-		std::atomic_int speed_changed     = { 0 };
-		std::atomic_int env_steps_request = { 0 };
-
-		std::atomic_int settings_changed = { 0 };
-
-		// Must be set to true before loading a new model from python
-		std::atomic_int is_python_request = { 0 };
-	} settings_;
-
-	// General sim information for viewers to fetch
-	struct
-	{
-		float measured_slowdown = 1.0;
-		bool model_valid        = false;
-		uint load_count         = 0;
-	} sim_state_;
+	EnvSettings settings_;
+	SimState sim_state_;
 
 	std::vector<MujocoPluginPtr> const &GetPlugins() const { return plugins_; }
 
@@ -328,9 +416,12 @@ public:
 	void GetSimInfo(std::string &model_path, bool &model_valid, int &load_count, int &loading_state,
 	                std::string &loading_description, bool &paused, int &pending_sim_steps, float &rt_measured,
 	                float &rt_setting);
+	EnvSettings GetSettings() const;
+	SimState GetSimState() const;
+	SimInfo GetSimInfo();
 	bool SetRealTimeFactor(const float &rt_factor, const std::string &admin_hash = std::string(),
 	                       char *status_message = nullptr, const int status_sz = 0);
-	// TODO: at some point, replace vectors with a data structure PluginStat
+	std::vector<PluginStat> GetPluginStats();
 	int GetPluginStats(std::vector<std::string> &plugin_names, std::vector<std::string> &types,
 	                   std::vector<double> &load_times, std::vector<double> &reset_times,
 	                   std::vector<double> &ema_steptimes_control, std::vector<double> &ema_steptimes_passive,
@@ -450,6 +541,7 @@ protected:
 #endif
 	// ros api implementation
 	std::unique_ptr<RosAPI> ros_api_;
+	bool python_reload_service_ = false;
 
 	void Configure();
 

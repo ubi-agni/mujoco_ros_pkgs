@@ -816,14 +816,40 @@ void MujocoEnv::GetSimInfo(std::string &model_path, bool &model_valid, int &load
                            std::string &loading_description, bool &paused, int &pending_sim_steps, float &rt_measured,
                            float &rt_setting)
 {
-	model_path  = filename_;
-	model_valid = sim_state_.model_valid;
-	load_count  = sim_state_.load_count;
-	GetSimulationStatus(loading_state, loading_description);
-	paused            = !settings_.run.load();
-	pending_sim_steps = settings_.env_steps_request.load();
-	rt_measured       = 1.f / sim_state_.measured_slowdown;
-	rt_setting        = percentRealTime[settings_.real_time_index] / 100.f;
+	const auto info     = GetSimInfo();
+	model_path          = info.model_path;
+	model_valid         = info.model_valid;
+	load_count          = info.load_count;
+	loading_state       = info.loading_state;
+	loading_description = info.loading_description;
+	paused              = info.paused;
+	pending_sim_steps   = info.pending_sim_steps;
+	rt_measured         = info.rt_measured;
+	rt_setting          = info.rt_setting;
+}
+
+EnvSettings MujocoEnv::GetSettings() const
+{
+	return settings_;
+}
+
+SimState MujocoEnv::GetSimState() const
+{
+	return sim_state_;
+}
+
+SimInfo MujocoEnv::GetSimInfo()
+{
+	SimInfo info;
+	info.model_path  = filename_;
+	info.model_valid = sim_state_.model_valid;
+	info.load_count  = static_cast<int>(sim_state_.load_count);
+	GetSimulationStatus(info.loading_state, info.loading_description);
+	info.paused            = !settings_.run.load();
+	info.pending_sim_steps = settings_.env_steps_request.load();
+	info.rt_measured       = 1.f / sim_state_.measured_slowdown;
+	info.rt_setting        = percentRealTime[settings_.real_time_index] / 100.f;
+	return info;
 }
 
 // Helper function to retrieve the real-time factor closest to the requested value
@@ -880,6 +906,26 @@ bool MujocoEnv::SetRealTimeFactor(const float &rt_factor, const std::string &adm
 	return true;
 }
 
+std::vector<PluginStat> MujocoEnv::GetPluginStats()
+{
+	std::vector<PluginStat> stats;
+
+	RecursiveLock sim_lock(physics_thread_mutex_);
+	for (const auto &plugin : plugins_) {
+		PluginStat stat;
+		stat.name                    = plugin->get_name();
+		stat.type                    = plugin->get_type();
+		stat.load_time               = plugin->get_load_time();
+		stat.reset_time              = plugin->get_reset_time();
+		stat.ema_steptime_control    = plugin->get_ema_steptime_control();
+		stat.ema_steptime_passive    = plugin->get_ema_steptime_passive();
+		stat.ema_steptime_render     = plugin->get_ema_steptime_render();
+		stat.ema_steptime_last_stage = plugin->get_ema_steptime_last_stage();
+		stats.emplace_back(std::move(stat));
+	}
+	return stats;
+}
+
 int MujocoEnv::GetPluginStats(std::vector<std::string> &names, std::vector<std::string> &types,
                               std::vector<double> &load_time, std::vector<double> &reset_time,
                               std::vector<double> &step_time_control, std::vector<double> &step_time_passive,
@@ -894,18 +940,18 @@ int MujocoEnv::GetPluginStats(std::vector<std::string> &names, std::vector<std::
 	step_time_render.clear();
 	step_time_last_stage.clear();
 
-	RecursiveLock sim_lock(physics_thread_mutex_);
-	for (const auto &plugin : plugins_) {
-		names.emplace_back(plugin->get_name());
-		types.emplace_back(plugin->get_type());
-		load_time.emplace_back(plugin->get_load_time());
-		reset_time.emplace_back(plugin->get_reset_time());
-		step_time_control.emplace_back(plugin->get_ema_steptime_control());
-		step_time_passive.emplace_back(plugin->get_ema_steptime_passive());
-		step_time_render.emplace_back(plugin->get_ema_steptime_render());
-		step_time_last_stage.emplace_back(plugin->get_ema_steptime_last_stage());
+	const auto stats = GetPluginStats();
+	for (const auto &stat : stats) {
+		names.emplace_back(stat.name);
+		types.emplace_back(stat.type);
+		load_time.emplace_back(stat.load_time);
+		reset_time.emplace_back(stat.reset_time);
+		step_time_control.emplace_back(stat.ema_steptime_control);
+		step_time_passive.emplace_back(stat.ema_steptime_passive);
+		step_time_render.emplace_back(stat.ema_steptime_render);
+		step_time_last_stage.emplace_back(stat.ema_steptime_last_stage);
 	}
-	return plugins_.size();
+	return static_cast<int>(stats.size());
 }
 
 } // namespace mujoco_ros

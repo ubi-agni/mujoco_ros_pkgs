@@ -45,15 +45,29 @@ if (ROS_VERSION EQUAL "1")
       sensor_msgs
       rosgraph_msgs
       dynamic_reconfigure
+      py_binding_tools
+      pybind11_catkin
   )
 
   # Find MuJoCo
   find_package(mujoco 3.3.5 REQUIRED)
 else()
   find_package(ament_cmake REQUIRED)
+  find_package(ament_cmake_python REQUIRED)
   find_package(rclcpp REQUIRED)
   find_package(rclcpp_lifecycle REQUIRED)
 
+  find_package(py_binding_tools REQUIRED)
+  find_package(pybind11_vendor REQUIRED)
+  find_package(pybind11 REQUIRED)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+  if(NOT PYTHON_INSTALL_DIR)
+    execute_process(
+      COMMAND ${Python3_EXECUTABLE} -c "import os, sysconfig; print(sysconfig.get_path('platlib', vars={'base': '', 'platbase': ''}).lstrip(os.sep))"
+      OUTPUT_VARIABLE PYTHON_INSTALL_DIR
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+  endif()
   find_package(pluginlib REQUIRED)
   find_package(Boost REQUIRED COMPONENTS program_options)
   find_package(tf2 REQUIRED)
@@ -113,6 +127,8 @@ configure_project_option(
 # #     and list every .cfg file to be processed
 
 if (ROS_VERSION EQUAL "1")
+  catkin_python_setup()
+
   ## Dynamic Reconfigure
   generate_dynamic_reconfigure_options(
     cfg/SimParams.cfg
@@ -144,6 +160,8 @@ if (ROS_VERSION EQUAL "1")
       sensor_msgs
       rosgraph_msgs
       dynamic_reconfigure
+      py_binding_tools
+      pybind11_catkin
     INCLUDE_DIRS
       include
     LIBRARIES
@@ -231,6 +249,8 @@ if (ROS_VERSION EQUAL "1")
   add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_gencfg)
 endif()
 
+add_subdirectory(python/bindings)
+
 #############
 ## Install ##
 #############
@@ -258,6 +278,13 @@ if (ROS_VERSION EQUAL "1")
 
   install(DIRECTORY config assets
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+  )
+
+  catkin_install_python(PROGRAMS
+    test/python/python_bindings_test.py
+    test/python/python_bindings_config_test.py
+    test/python/python_bindings_plugin_test.py
+    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
   )
 
 
@@ -296,8 +323,11 @@ else()
 
   ament_export_dependencies(
     ament_cmake
+    ament_cmake_python
     rclcpp
     rclcpp_lifecycle
+    py_binding_tools
+    pybind11_vendor
     pluginlib
     tf2
     tf2_ros
@@ -327,6 +357,15 @@ else()
 
   install(DIRECTORY launch/ros2/launch config assets
     DESTINATION share/${PROJECT_NAME}
+  )
+
+  ament_python_install_package(${PROJECT_NAME} PACKAGE_DIR python/src/${PROJECT_NAME})
+
+  install(PROGRAMS
+    test/python/python_bindings_test.py
+    test/python/python_bindings_config_test.py
+    test/python/python_bindings_plugin_test.py
+    DESTINATION lib/${PROJECT_NAME}
   )
 
   install(TARGETS ${PROJECT_NAME}
