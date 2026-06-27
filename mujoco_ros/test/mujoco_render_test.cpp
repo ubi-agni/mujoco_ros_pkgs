@@ -92,6 +92,8 @@ int main(int argc, char **argv)
 using namespace mujoco_ros;
 namespace mju = ::mujoco::sample_util;
 
+#if RENDER_BACKEND == GLFW_BACKEND || RENDER_BACKEND == EGL_BACKEND || \
+    RENDER_BACKEND == OSMESA_BACKEND // i.e. any render backend available
 TEST_F(BaseEnvFixture, Not_Headless_Warn)
 {
 	nh->setParam("no_render", false);
@@ -106,8 +108,6 @@ TEST_F(BaseEnvFixture, Not_Headless_Warn)
 	env_ptr->shutdown();
 }
 
-#if RENDER_BACKEND == GLFW_BACKEND || RENDER_BACKEND == EGL_BACKEND || \
-    RENDER_BACKEND == OSMESA_BACKEND // i.e. any render backend available
 TEST_F(BaseEnvFixture, NoRender_Params_Correct)
 {
 	nh->setParam("no_render", true);
