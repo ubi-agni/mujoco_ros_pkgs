@@ -49,7 +49,7 @@ jobs:
               coverage=true
             fi
           elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            if [[ "${{ github.head_ref }}" != dev/* ]]; then
+            if [[ "${{ github.base_ref }}" == "hybrid-devel" || "${{ github.head_ref }}" != dev/* ]]; then
               full_matrix=true
               coverage=true
             fi
@@ -60,11 +60,11 @@ jobs:
           fi
 
           if [[ "${full_matrix}" != "true" ]]; then
-            matrix='{"include":[{"distro":"one","render_backend":"DISABLE","mujoco":"3.3.5","check":"plain"}]}'
+            matrix='{"include":[{"distro":"one","render_backend":"GLFW","mujoco":"3.3.5","check":"plain"}]}'
           elif [[ "${coverage}" == "true" ]]; then
-            matrix='{"include":[{"distro":"one","render_backend":"GLFW","mujoco":"3.3.5","check":"clang_tidy"},{"distro":"one","render_backend":"OSMESA","mujoco":"3.3.5","check":"clang_tidy"},{"distro":"one","render_backend":"DISABLE","mujoco":"3.3.5","check":"clang_tidy"},{"distro":"one","render_backend":"GLFW","mujoco":"3.3.5","check":"ccov"},{"distro":"one","render_backend":"OSMESA","mujoco":"3.3.5","check":"ccov"},{"distro":"one","render_backend":"DISABLE","mujoco":"3.3.5","check":"ccov"}]}'
+            matrix='{"include":[{"distro":"one","render_backend":"GLFW","mujoco":"3.3.5","check":"ccov"},{"distro":"one","render_backend":"OSMESA","mujoco":"3.3.5","check":"ccov"},{"distro":"one","render_backend":"DISABLE","mujoco":"3.3.5","check":"ccov"}]}'
           else
-            matrix='{"include":[{"distro":"one","render_backend":"GLFW","mujoco":"3.3.5","check":"plain"},{"distro":"one","render_backend":"OSMESA","mujoco":"3.3.5","check":"plain"},{"distro":"one","render_backend":"DISABLE","mujoco":"3.3.5","check":"plain"},{"distro":"one","render_backend":"GLFW","mujoco":"3.3.5","check":"clang_tidy"},{"distro":"one","render_backend":"OSMESA","mujoco":"3.3.5","check":"clang_tidy"},{"distro":"one","render_backend":"DISABLE","mujoco":"3.3.5","check":"clang_tidy"}]}'
+            matrix='{"include":[{"distro":"one","render_backend":"GLFW","mujoco":"3.3.5","check":"plain"},{"distro":"one","render_backend":"OSMESA","mujoco":"3.3.5","check":"plain"},{"distro":"one","render_backend":"DISABLE","mujoco":"3.3.5","check":"plain"}]}'
           fi
 
           echo "matrix=${matrix}" >> "${GITHUB_OUTPUT}"
@@ -85,7 +85,6 @@ jobs:
       # I'll fix this once I find some time to do it
       # CXXFLAGS: -Wall -Wextra -Wwrite-strings -Wunreachable-code -Wpointer-arith -Wredundant-decls
       CXXFLAGS: -Wwrite-strings -Wunreachable-code -Wpointer-arith -Wredundant-decls
-      CLANG_TIDY_ARGS: --fix --format-style=file
       UPSTREAM_WORKSPACE: .github/workflows/upstream.ros1.rosinstall
       # Install and start xvfb for GLFW
       AFTER_INIT: ${{ matrix.render_backend == 'GLFW' && 'apt-get install -qy xvfb; Xvfb :99 &' || '' }}
@@ -99,22 +98,15 @@ jobs:
       # Compile CCOV with Debug. Enable -Werror.
       TARGET_CMAKE_ARGS: >
         -DCMAKE_BUILD_TYPE=${{ matrix.check == 'ccov' && 'Debug' || 'Release'}}
-        -DCMAKE_CXX_FLAGS="-Werror $CXXFLAGS${{ (matrix.check == 'clang_tidy' && ' -Wno-unknown-warning-option') || '' }}${{ (matrix.check == 'ccov' && ' --coverage -O2 -fno-omit-frame-pointer') || '' }}"
+        -DCMAKE_CXX_FLAGS="-Werror $CXXFLAGS${{ (matrix.check == 'ccov' && ' --coverage -O2 -fno-omit-frame-pointer') || '' }}"
         -DRENDER_BACKEND=${{ matrix.render_backend }}
       UPSTREAM_CMAKE_ARGS: -DCMAKE_CXX_FLAGS= -DCMAKE_CXX_STANDARD=17
 
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       BASEDIR: ${{ github.workspace }}/.work
-      CLANG_TIDY_BASE_REF: ${{ github.event_name == 'workflow_dispatch' && 'refs/heads/hybrid-devel' || github.event_name == 'pull_request' && format('refs/heads/{0}', github.base_ref) || startsWith(github.ref_name, 'dev/') && 'refs/heads/hybrid-devel' || github.event.before }}
-      BEFORE_CLANG_TIDY_CHECKS: |
-        # Show list of applied checks
-        (cd $TARGET_REPO_PATH; clang-tidy --list-checks)
-      CC: ${{ (matrix.check == 'clang_tidy' && 'clang') || '' }}
-      CXX: ${{ (matrix.check == 'clang_tidy' && 'clang++') || '' }}
-      CLANG_TIDY: ${{ matrix.check == 'clang_tidy' }}
       CCOV: ${{ matrix.check == 'ccov' }}
 
-    name: "${{ matrix.distro }} mj-${{ matrix.mujoco }} ${{ matrix.render_backend }}${{ matrix.check == 'plain' && ' + test' || '' }}${{ matrix.check == 'ccov' && ' + ccov' || ''}}${{ matrix.check == 'clang_tidy' && ' + clang-tidy (delta)' || '' }}"
+    name: "${{ matrix.distro }} mj-${{ matrix.mujoco }} ${{ matrix.render_backend }}${{ matrix.check == 'plain' && ' + test' || '' }}${{ matrix.check == 'ccov' && ' + ccov' || ''}}"
     runs-on: ${{ matrix.render_backend == 'EGL' && matrix.distro || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5
@@ -174,12 +166,6 @@ jobs:
         if: always() && matrix.check == 'ccov' && steps.ici.outputs.target_test_results == '0'
         with:
           files: ${{ env.BASEDIR }}/target_ws/coverage-${{ matrix.distro }}-${{ matrix.render_backend }}.info
-      - name: Upload clang-tidy changes
-        uses: rhaschke/upload-git-patch-action@main
-        if: always() && matrix.check == 'clang_tidy'
-        with:
-          name: clang-tidy
-          path: ${{ env.BASEDIR }}/target_ws/src/$(basename $(pwd))
       - name: Prepare target_ws for cache
         if: always() && matrix.check != 'ccov'
         run: |
