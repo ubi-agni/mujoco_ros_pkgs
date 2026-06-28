@@ -34,10 +34,6 @@
 
 /* Authors: David P. Leins */
 
-#include <filesystem>
-#include <stdexcept>
-#include <sstream>
-
 #include <mujoco/mujoco.h>
 
 #include <mujoco_ros/array_safety.h>

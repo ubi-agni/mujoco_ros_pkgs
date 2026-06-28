@@ -40,7 +40,6 @@
 #include <mujoco_ros/util.hpp>
 
 #include <algorithm>
-#include <limits>
 
 namespace {
 constexpr int kActuatorParamWidth = 10;

@@ -44,7 +44,6 @@
 
 #include <mujoco/mujoco.h>
 #include <mujoco_ros/array_safety.h>
-#include <map>
 
 #include <rosgraph_msgs/msg/clock.hpp>
 

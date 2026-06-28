@@ -34,8 +34,6 @@
 
 /* Authors: David P. Leins */
 
-#include <sstream>
-
 #include <mujoco_ros/ros_version.hpp>
 #include <mujoco_ros/render_backend.hpp>
 #include <mujoco_ros/logging.hpp>

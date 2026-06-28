@@ -31,9 +31,6 @@
 #include <mujoco_ros/logging.hpp>
 #include <mujoco_ros/mujoco_env.hpp>
 
-#include <any>
-#include <functional>
-
 namespace mujoco_ros::sensors {
 
 static constexpr std::size_t SENSOR_PUBLISHER_QUEUE_SIZE = 1000;

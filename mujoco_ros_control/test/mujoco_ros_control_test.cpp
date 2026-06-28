@@ -37,10 +37,8 @@
 #include <gtest/gtest.h>
 
 #include <fstream>
-#include <memory>
 #include <stdexcept>
 #include <string>
-#include <type_traits>
 #include <unistd.h>
 
 #include <mujoco_ros/ros_version.hpp>

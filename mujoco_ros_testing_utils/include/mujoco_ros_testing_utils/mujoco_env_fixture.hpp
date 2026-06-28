@@ -38,10 +38,7 @@
 
 #include <atomic>
 #include <iomanip>
-#include <map>
-#include <mutex>
 #include <sstream>
-#include <vector>
 
 #include <mujoco_ros/ros_version.hpp>
 

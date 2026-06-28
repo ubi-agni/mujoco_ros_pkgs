@@ -3,8 +3,6 @@
 
 #include "mujoco_ros_control/ros_two/visibility_control.hpp"
 
-#include <map>
-#include <memory>
 #include <string>
 #include <vector>
 #include <mujoco/mujoco.h>

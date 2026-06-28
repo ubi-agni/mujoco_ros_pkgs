@@ -164,8 +164,8 @@ bool MocapPlugin::MocapServiceCallback(SetMocapState::Request &req, SetMocapStat
 	return true;
 }
 #else
-void MocapPlugin::MocapServiceCallback(const std::shared_ptr<SetMocapState::Request> req,
-                                       std::shared_ptr<SetMocapState::Response> resp)
+void MocapPlugin::MocapServiceCallback(const std::shared_ptr<SetMocapState::Request> &req,
+                                       const std::shared_ptr<SetMocapState::Response> &resp)
 {
 	if (!ValidateMocapMsg(req->mocap_state, m_)) {
 		resp->success = false;

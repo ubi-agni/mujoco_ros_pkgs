@@ -57,8 +57,6 @@
 #include <mujoco_ros/common_types.hpp>
 #include <mujoco_ros/offscreen_camera.hpp>
 #include <mujoco_ros/util.hpp>
-#include <vector>
-#include <chrono>
 #include <cmath>
 
 int main(int argc, char **argv)

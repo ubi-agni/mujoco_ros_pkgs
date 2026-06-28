@@ -42,8 +42,6 @@
 
 #include <boost/bind/bind.hpp>
 #include <urdf/model.h>
-#include <chrono>
-#include <thread>
 
 // clang-tidy complains about ROS_LOG in the pluginlib macros
 // NOLINTBEGIN(clang-analyzer-optin.cplusplus.VirtualCall)

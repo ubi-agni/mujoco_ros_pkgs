@@ -36,8 +36,6 @@
 
 #include "test_plugin.hpp"
 
-#include <algorithm>
-
 #if MJR_ROS_VERSION == ROS_1
 #include <pluginlib/class_list_macros.h>
 #else // MJR_ROS_VERSION == ROS_2

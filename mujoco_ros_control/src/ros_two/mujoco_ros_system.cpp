@@ -37,8 +37,6 @@
 #include <mujoco_ros_control/ros_two/mujoco_ros_system.hpp>
 
 #include <algorithm>
-#include <cmath>
-#include <limits>
 #include <sstream>
 
 namespace mujoco_ros {
@@ -154,17 +152,17 @@ bool MujocoRosSystem::initSim(rclcpp_lifecycle::LifecycleNode::SharedPtr &model_
 		}
 
 		// Populate the STATE INTERFACES
-		for (uint j = 0; j < joint_info.state_interfaces.size(); ++j) {
-			RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "\tState name: " << joint_info.state_interfaces[j].name);
+		for (const auto &state_interface : joint_info.state_interfaces) {
+			RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "\tState name: " << state_interface.name);
 			// position = qpos
-			if (joint_info.state_interfaces[j].name == "position") {
+			if (state_interface.name == "position") {
 				this->dataPtr_->state_interfaces_.emplace_back(joint_name, hardware_interface::HW_IF_POSITION,
 				                                               &this->dataPtr_->joints_[i].joint_position);
 				// initialize the data with the current value in the sim
 				this->dataPtr_->joints_[i].joint_position = d->qpos[this->dataPtr_->joints_[i].joint_qposadr];
 			}
 			// velocity = qvel
-			else if (joint_info.state_interfaces[j].name == "velocity") {
+			else if (state_interface.name == "velocity") {
 				this->dataPtr_->state_interfaces_.emplace_back(joint_name, hardware_interface::HW_IF_VELOCITY,
 				                                               &this->dataPtr_->joints_[i].joint_velocity);
 				// initialize the data with the current value in the sim
@@ -172,7 +170,7 @@ bool MujocoRosSystem::initSim(rclcpp_lifecycle::LifecycleNode::SharedPtr &model_
 			}
 
 			// effort = qfrc, but multipanda has actuator_force + qfrc_gravcomp... need to check
-			else if (joint_info.state_interfaces[j].name == "effort") {
+			else if (state_interface.name == "effort") {
 				this->dataPtr_->state_interfaces_.emplace_back(joint_name, hardware_interface::HW_IF_EFFORT,
 				                                               &this->dataPtr_->joints_[i].joint_effort);
 				// initialize the data with the current value in the sim
@@ -191,10 +189,10 @@ bool MujocoRosSystem::initSim(rclcpp_lifecycle::LifecycleNode::SharedPtr &model_
 		seems like trnid is the key to that, well, trnid * 2, since we don't consider actuators acting on tendons
 		But then again, maybe overthinking? Just document that it should be jointname_act_type
 		*/
-		for (uint j = 0; j < joint_info.command_interfaces.size(); ++j) {
-			RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "\tCommand name: " << joint_info.command_interfaces[j].name);
+		for (const auto &command_interface : joint_info.command_interfaces) {
+			RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "\tCommand name: " << command_interface.name);
 			// for some reason, this part crashes with realloc(): invalid pointer, but only sometimes?
-			if (joint_info.command_interfaces[j].name == "position") {
+			if (command_interface.name == "position") {
 				if (this->dataPtr_->joints_[i].act_posidx == -1 || this->dataPtr_->joints_[i].ignore_actuators) {
 					if (this->dataPtr_->joints_[i].kp <= 0.0) {
 						RCLCPP_ERROR(this->nh_->get_logger(),
@@ -206,7 +204,7 @@ bool MujocoRosSystem::initSim(rclcpp_lifecycle::LifecycleNode::SharedPtr &model_
 				this->dataPtr_->command_interfaces_.emplace_back(joint_name, hardware_interface::HW_IF_POSITION,
 				                                                 &this->dataPtr_->joints_[i].joint_position_cmd);
 				this->dataPtr_->joints_[i].joint_position_cmd = d->qpos[this->dataPtr_->joints_[i].joint_qposadr];
-			} else if (joint_info.command_interfaces[j].name == "velocity") {
+			} else if (command_interface.name == "velocity") {
 				if (this->dataPtr_->joints_[i].act_velidx == -1 || this->dataPtr_->joints_[i].ignore_actuators) {
 					if (this->dataPtr_->joints_[i].kv <= 0.0) {
 						RCLCPP_ERROR(this->nh_->get_logger(),
@@ -218,15 +216,14 @@ bool MujocoRosSystem::initSim(rclcpp_lifecycle::LifecycleNode::SharedPtr &model_
 				this->dataPtr_->command_interfaces_.emplace_back(joint_name, hardware_interface::HW_IF_VELOCITY,
 				                                                 &this->dataPtr_->joints_[i].joint_velocity_cmd);
 				this->dataPtr_->joints_[i].joint_velocity_cmd = d->qvel[this->dataPtr_->joints_[i].joint_dofadr];
-			} else if (joint_info.command_interfaces[j].name == "effort") {
+			} else if (command_interface.name == "effort") {
 				this->dataPtr_->command_interfaces_.emplace_back(joint_name, hardware_interface::HW_IF_EFFORT,
 				                                                 &this->dataPtr_->joints_[i].joint_effort_cmd);
 				this->dataPtr_->joints_[i].joint_effort_cmd = 0.0;
 			}
-			RCLCPP_DEBUG_STREAM(this->nh_->get_logger(),
-			                    "\tFinished processing: " << joint_info.command_interfaces[j].name);
+			RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "\tFinished processing: " << command_interface.name);
 		}
-		this->dataPtr_->joints_[i].is_actuated = (joint_info.command_interfaces.size() > 0);
+		this->dataPtr_->joints_[i].is_actuated = (!joint_info.command_interfaces.empty());
 		RCLCPP_DEBUG_STREAM(this->nh_->get_logger(), "\tJoint processing done: " << joint_name);
 	}
 

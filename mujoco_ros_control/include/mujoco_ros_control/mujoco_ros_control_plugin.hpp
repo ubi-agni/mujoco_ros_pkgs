@@ -42,7 +42,7 @@
 #include <boost/thread.hpp>
 
 #include <string>
-#include <memory> // std::unique_ptr
+// #include <memory> // std::unique_ptr
 
 #include <ros/ros.h>
 #include <pluginlib/class_loader.h>

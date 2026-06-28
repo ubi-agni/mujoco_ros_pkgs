@@ -37,14 +37,11 @@
 #include "mujoco_ros_control/ros_two/mujoco_ros_control.hpp"
 #include <lifecycle_msgs/msg/state.hpp>
 #include <mujoco_ros/logging.hpp>
-#include <chrono>
-#include <future>
-#include <set>
 
 namespace mujoco_ros {
 namespace control {
 
-std::string concatenateNamespace(const std::string ns1, const std::string ns2)
+std::string concatenateNamespace(const std::string &ns1, const std::string &ns2)
 {
 	if (ns1.back() == '/') {
 		return ns1 + ns2;
@@ -235,8 +232,8 @@ bool MujocoRosControlPlugin::Load(const mjModel *model, mjData *data)
 		MJR_ERROR_NAMED("mujoco_ros_control", "Failed to create robot simulation interface loader: %s ", ex.what());
 		return false;
 	}
-	for (unsigned int i = 0; i < control_hardware_info.size(); ++i) {
-		std::string robot_hw_sim_type_str_ = control_hardware_info[i].hardware_class_type;
+	for (auto &i : control_hardware_info) {
+		std::string robot_hw_sim_type_str_ = i.hardware_class_type;
 		std::unique_ptr<mujoco_ros::control::MujocoRosSystemInterface> mujocoRos2System;
 		MJR_DEBUG_NAMED("mujoco_ros_control", "Load hardware interface %s ...", robot_hw_sim_type_str_.c_str());
 		try {
@@ -247,8 +244,7 @@ bool MujocoRosControlPlugin::Load(const mjModel *model, mjData *data)
 			MJR_ERROR_NAMED("mujoco_ros_control", "The plugin failed to load for some reason. Error: %s\n", ex.what());
 			continue;
 		}
-		if (!mujocoRos2System->initSim(this->dataPtr_->node_, control_hardware_info[i], model, data,
-		                               this->dataPtr_->update_rate)) {
+		if (!mujocoRos2System->initSim(this->dataPtr_->node_, i, model, data, this->dataPtr_->update_rate)) {
 			MJR_FATAL_NAMED("mujoco_ros_control", "Could not initialize robot simulation interface");
 			return false;
 		}
@@ -257,13 +253,13 @@ bool MujocoRosControlPlugin::Load(const mjModel *model, mjData *data)
 
 		MJR_DEBUG_STREAM_NAMED("mujoco_ros_control",
 		                       "resource-manager system comp size: " << resource_manager_->system_components_size());
-		resource_manager_->import_component(std::move(mujocoRos2System), control_hardware_info[i]);
+		resource_manager_->import_component(std::move(mujocoRos2System), i);
 
 		MJR_DEBUG_STREAM_NAMED("mujoco_ros_control",
 		                       "resource-manager system comp size: " << resource_manager_->system_components_size());
-		MJR_DEBUG_NAMED("mujoco_ros_control", "Setting state of %s to active", control_hardware_info[i].name.c_str());
+		MJR_DEBUG_NAMED("mujoco_ros_control", "Setting state of %s to active", i.name.c_str());
 		rclcpp_lifecycle::State state(lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE, "active");
-		resource_manager_->set_component_state(control_hardware_info[i].name, state);
+		resource_manager_->set_component_state(i.name, state);
 	}
 
 	// Create the controller manager

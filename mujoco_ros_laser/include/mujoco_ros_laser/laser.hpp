@@ -55,7 +55,7 @@
 #include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros_sensors/mujoco_sensor_handler_plugin.hpp>
 
-#include <memory>
+// #include <memory>
 #include <random>
 #include <string>
 #include <vector>

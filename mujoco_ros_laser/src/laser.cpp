@@ -45,10 +45,7 @@
 #include <mujoco_ros/logging.hpp>
 
 #include <algorithm>
-#include <any>
 #include <string>
-#include <utility>
-#include <vector>
 
 using namespace mujoco_ros;
 

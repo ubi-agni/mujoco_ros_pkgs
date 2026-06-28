@@ -2,7 +2,6 @@
 #define MUJOCO_ROS_CONTROL__MUJOCO_ROS_CONTROL_HPP_
 
 #include <thread>
-#include <memory>
 #include <rclcpp/rclcpp.hpp>
 #include <controller_manager/controller_manager.hpp>
 

@@ -48,8 +48,6 @@
 #include <rclcpp/rclcpp.hpp>
 #endif
 
-#include <chrono>
-
 int main(int argc, char **argv)
 {
 #if MJR_ROS_VERSION == ROS_1

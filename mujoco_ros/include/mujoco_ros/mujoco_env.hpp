@@ -326,7 +326,7 @@ public:
 	friend class RosAPI;
 
 public:
-	~MujocoEnv();
+	virtual ~MujocoEnv();
 
 	MujocoEnv(const MujocoEnv &) = delete;
 

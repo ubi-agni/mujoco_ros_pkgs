@@ -43,8 +43,6 @@
 #include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros/ros_one/plugin_utils.hpp>
 
-// #include <mujoco_ros/offscreen_camera.hpp>
-
 #include <mujoco/mujoco.h>
 #include <mujoco_ros/array_safety.h>
 

@@ -551,8 +551,8 @@ void ShowFigure(mujoco_ros::Viewer *viewer, mjrRect viewport, mjvFigure *fig)
 	mjr_figure(viewport, fig, &viewer->platform_ui->mjr_context());
 }
 
-void ShowOverlayText(mujoco_ros::Viewer *viewer, mjrRect viewport, int font, int gridpos, std::string text1,
-                     std::string text2)
+void ShowOverlayText(mujoco_ros::Viewer *viewer, mjrRect viewport, int font, int gridpos, const std::string &text1,
+                     const std::string &text2)
 {
 	mjr_overlay(font, gridpos, viewport, text1.c_str(), text2.c_str(), &viewer->platform_ui->mjr_context());
 }

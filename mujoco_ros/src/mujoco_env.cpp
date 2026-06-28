@@ -34,9 +34,6 @@
 
 /* Authors: David P. Leins */
 
-#include <stdexcept>
-#include <sstream>
-
 #include <mujoco/mujoco.h>
 
 #include <mujoco_ros/ros_version.hpp>
@@ -64,6 +61,7 @@ namespace roscpp = ros;
 #include <mujoco_ros/ros_two/plugin_utils.hpp>
 
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <utility>
 using TransformStamped = geometry_msgs::msg::TransformStamped;
 
 namespace roscpp = rclcpp;
@@ -178,12 +176,12 @@ MujocoEnv::MujocoEnv(rclcpp::Executor::SharedPtr executor, const std::string &ad
 
 void MujocoEnv::AddNodeToExecutor(rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node)
 {
-	executor_->add_node(node);
+	executor_->add_node(std::move(node));
 }
 
 void MujocoEnv::RemoveNodeFromExecutor(rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node)
 {
-	executor_->remove_node(node);
+	executor_->remove_node(std::move(node));
 }
 
 rclcpp::Executor::SharedPtr MujocoEnv::GetExecutorPtr()

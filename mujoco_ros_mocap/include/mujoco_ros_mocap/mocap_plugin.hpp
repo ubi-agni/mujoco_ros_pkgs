@@ -89,8 +89,8 @@ protected:
 #if MJR_ROS_VERSION == ROS_1
 	bool MocapServiceCallback(SetMocapState::Request &req, SetMocapState::Response &resp);
 #else
-	void MocapServiceCallback(const std::shared_ptr<SetMocapState::Request> req,
-	                          std::shared_ptr<SetMocapState::Response> resp);
+	void MocapServiceCallback(const std::shared_ptr<SetMocapState::Request> &req,
+	                          const std::shared_ptr<SetMocapState::Response> &resp);
 #endif
 
 	const mjModel *m_{ nullptr };

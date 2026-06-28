@@ -120,40 +120,42 @@ private:
 	MujocoEnvPtr env_ptr_;
 	rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr clock_pub_;
 
-	void SetPauseCB(const mujoco_ros_msgs::srv::SetPause::Request::SharedPtr req,
-	                mujoco_ros_msgs::srv::SetPause::Response::SharedPtr res);
-	void ShutdownCB(const std_srvs::srv::Empty::Request::SharedPtr req, std_srvs::srv::Empty::Response::SharedPtr res);
-	void ReloadCB(const mujoco_ros_msgs::srv::Reload::Request::SharedPtr req,
-	              mujoco_ros_msgs::srv::Reload::Response::SharedPtr res);
-	void ResetCB(const std_srvs::srv::Empty::Request::SharedPtr req, std_srvs::srv::Empty::Response::SharedPtr res);
-	void SetBodyStateCB(const mujoco_ros_msgs::srv::SetBodyState::Request::SharedPtr req,
-	                    mujoco_ros_msgs::srv::SetBodyState::Response::SharedPtr res);
-	void GetBodyStateCB(const mujoco_ros_msgs::srv::GetBodyState::Request::SharedPtr req,
-	                    mujoco_ros_msgs::srv::GetBodyState::Response::SharedPtr res);
-	void SetGeomPropertiesCB(const mujoco_ros_msgs::srv::SetGeomProperties::Request::SharedPtr req,
-	                         mujoco_ros_msgs::srv::SetGeomProperties::Response::SharedPtr res);
-	void GetGeomPropertiesCB(const mujoco_ros_msgs::srv::GetGeomProperties::Request::SharedPtr req,
-	                         mujoco_ros_msgs::srv::GetGeomProperties::Response::SharedPtr res);
+	void SetPauseCB(const mujoco_ros_msgs::srv::SetPause::Request::SharedPtr &req,
+	                const mujoco_ros_msgs::srv::SetPause::Response::SharedPtr &res);
+	void ShutdownCB(const std_srvs::srv::Empty::Request::SharedPtr &req,
+	                const std_srvs::srv::Empty::Response::SharedPtr &res);
+	void ReloadCB(const mujoco_ros_msgs::srv::Reload::Request::SharedPtr &req,
+	              const mujoco_ros_msgs::srv::Reload::Response::SharedPtr &res);
+	void ResetCB(const std_srvs::srv::Empty::Request::SharedPtr &req,
+	             const std_srvs::srv::Empty::Response::SharedPtr &res);
+	void SetBodyStateCB(const mujoco_ros_msgs::srv::SetBodyState::Request::SharedPtr &req,
+	                    const mujoco_ros_msgs::srv::SetBodyState::Response::SharedPtr &res);
+	void GetBodyStateCB(const mujoco_ros_msgs::srv::GetBodyState::Request::SharedPtr &req,
+	                    const mujoco_ros_msgs::srv::GetBodyState::Response::SharedPtr &res);
+	void SetGeomPropertiesCB(const mujoco_ros_msgs::srv::SetGeomProperties::Request::SharedPtr &req,
+	                         const mujoco_ros_msgs::srv::SetGeomProperties::Response::SharedPtr &res);
+	void GetGeomPropertiesCB(const mujoco_ros_msgs::srv::GetGeomProperties::Request::SharedPtr &req,
+	                         const mujoco_ros_msgs::srv::GetGeomProperties::Response::SharedPtr &res);
 	void SetEqualityConstraintParametersArrayCB(
-	    const mujoco_ros_msgs::srv::SetEqualityConstraintParameters::Request::SharedPtr req,
-	    mujoco_ros_msgs::srv::SetEqualityConstraintParameters::Response::SharedPtr res);
+	    const mujoco_ros_msgs::srv::SetEqualityConstraintParameters::Request::SharedPtr &req,
+	    const mujoco_ros_msgs::srv::SetEqualityConstraintParameters::Response::SharedPtr &res);
 	void GetEqualityConstraintParametersArrayCB(
-	    const mujoco_ros_msgs::srv::GetEqualityConstraintParameters::Request::SharedPtr req,
-	    mujoco_ros_msgs::srv::GetEqualityConstraintParameters::Response::SharedPtr res);
-	void GetStateUintCB(const mujoco_ros_msgs::srv::GetStateUint::Request::SharedPtr req,
-	                    mujoco_ros_msgs::srv::GetStateUint::Response::SharedPtr res);
-	void GetSimInfoCB(const mujoco_ros_msgs::srv::GetSimInfo::Request::SharedPtr req,
-	                  mujoco_ros_msgs::srv::GetSimInfo::Response::SharedPtr res);
-	void SetRTFactorCB(const mujoco_ros_msgs::srv::SetFloat::Request::SharedPtr req,
-	                   mujoco_ros_msgs::srv::SetFloat::Response::SharedPtr res);
-	void GetPluginStatsCB(const mujoco_ros_msgs::srv::GetPluginStats::Request::SharedPtr req,
-	                      mujoco_ros_msgs::srv::GetPluginStats::Response::SharedPtr res);
-	void SetGravityCB(const mujoco_ros_msgs::srv::SetGravity::Request::SharedPtr req,
-	                  mujoco_ros_msgs::srv::SetGravity::Response::SharedPtr res);
-	void GetGravityCB(const mujoco_ros_msgs::srv::GetGravity::Request::SharedPtr req,
-	                  mujoco_ros_msgs::srv::GetGravity::Response::SharedPtr res);
-	void LoadInitialJointStatesCB(const std_srvs::srv::Empty::Request::SharedPtr req,
-	                              std_srvs::srv::Empty::Response::SharedPtr res);
+	    const mujoco_ros_msgs::srv::GetEqualityConstraintParameters::Request::SharedPtr &req,
+	    const mujoco_ros_msgs::srv::GetEqualityConstraintParameters::Response::SharedPtr &res);
+	void GetStateUintCB(const mujoco_ros_msgs::srv::GetStateUint::Request::SharedPtr &req,
+	                    const mujoco_ros_msgs::srv::GetStateUint::Response::SharedPtr &res);
+	void GetSimInfoCB(const mujoco_ros_msgs::srv::GetSimInfo::Request::SharedPtr &req,
+	                  const mujoco_ros_msgs::srv::GetSimInfo::Response::SharedPtr &res);
+	void SetRTFactorCB(const mujoco_ros_msgs::srv::SetFloat::Request::SharedPtr &req,
+	                   const mujoco_ros_msgs::srv::SetFloat::Response::SharedPtr &res);
+	void GetPluginStatsCB(const mujoco_ros_msgs::srv::GetPluginStats::Request::SharedPtr &req,
+	                      const mujoco_ros_msgs::srv::GetPluginStats::Response::SharedPtr &res);
+	void SetGravityCB(const mujoco_ros_msgs::srv::SetGravity::Request::SharedPtr &req,
+	                  const mujoco_ros_msgs::srv::SetGravity::Response::SharedPtr &res);
+	void GetGravityCB(const mujoco_ros_msgs::srv::GetGravity::Request::SharedPtr &req,
+	                  const mujoco_ros_msgs::srv::GetGravity::Response::SharedPtr &res);
+	void LoadInitialJointStatesCB(const std_srvs::srv::Empty::Request::SharedPtr &req,
+	                              const std_srvs::srv::Empty::Response::SharedPtr &res);
 	rcl_interfaces::msg::SetParametersResult DynamicParamsCallback(const std::vector<rclcpp::Parameter> &parameters);
 
 	bool SetEqualityConstraintParameters(const mujoco_ros_msgs::msg::EqualityConstraintParameters &parameters,
@@ -180,10 +182,10 @@ private:
 	//     MJR_DEBUG("Spinning up new thread to handle step goal");
 	//     std::thread{std::bind(&RosAPI::OnStepGoal, this, std::placeholders::_1), goal_handle}.detach();
 	// }
-	void OnStepGoal(const std::shared_ptr<rclcpp_action::ServerGoalHandle<mujoco_ros_msgs::action::Step>> goal_handle);
+	void OnStepGoal(const std::shared_ptr<rclcpp_action::ServerGoalHandle<mujoco_ros_msgs::action::Step>> &goal_handle);
 
 	void
-	ExecuteStepGoal(const std::shared_ptr<rclcpp_action::ServerGoalHandle<mujoco_ros_msgs::action::Step>> goal_handle);
+	ExecuteStepGoal(const std::shared_ptr<rclcpp_action::ServerGoalHandle<mujoco_ros_msgs::action::Step>> &goal_handle);
 
 	rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr dynamic_params_callback_handle_;
 

@@ -45,10 +45,7 @@
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
-#include <functional>
 #include <sstream>
-#include <unordered_set>
-#include <vector>
 
 namespace mujoco_ros {
 namespace mju = ::mujoco::sample_util;
@@ -600,13 +597,13 @@ rcl_interfaces::msg::SetParametersResult RosAPI::DynamicParamsCallback(const std
 }
 
 void RosAPI::OnStepGoal(
-    const std::shared_ptr<rclcpp_action::ServerGoalHandle<mujoco_ros_msgs::action::Step>> goal_handle)
+    const std::shared_ptr<rclcpp_action::ServerGoalHandle<mujoco_ros_msgs::action::Step>> &goal_handle)
 {
 	std::thread{ std::bind(&RosAPI::ExecuteStepGoal, this, std::placeholders::_1), goal_handle }.detach();
 }
 
 void RosAPI::ExecuteStepGoal(
-    const std::shared_ptr<rclcpp_action::ServerGoalHandle<mujoco_ros_msgs::action::Step>> goal_handle)
+    const std::shared_ptr<rclcpp_action::ServerGoalHandle<mujoco_ros_msgs::action::Step>> &goal_handle)
 {
 	const auto goal  = goal_handle->get_goal();
 	auto feedback    = std::make_shared<mujoco_ros_msgs::action::Step::Feedback>();
@@ -647,34 +644,34 @@ void RosAPI::ExecuteStepGoal(
 	goal_handle->succeed(result);
 }
 
-void RosAPI::SetPauseCB(const mujoco_ros_msgs::srv::SetPause::Request::SharedPtr req,
-                        mujoco_ros_msgs::srv::SetPause::Response::SharedPtr res)
+void RosAPI::SetPauseCB(const mujoco_ros_msgs::srv::SetPause::Request::SharedPtr &req,
+                        const mujoco_ros_msgs::srv::SetPause::Response::SharedPtr &res)
 {
 	res->success = env_ptr_->TogglePaused(req->paused, req->admin_hash);
 }
 
-void RosAPI::ShutdownCB(const std_srvs::srv::Empty::Request::SharedPtr /*req*/,
-                        std_srvs::srv::Empty::Response::SharedPtr /*res*/)
+void RosAPI::ShutdownCB(const std_srvs::srv::Empty::Request::SharedPtr & /*req*/,
+                        const std_srvs::srv::Empty::Response::SharedPtr & /*res*/)
 {
 	env_ptr_->Shutdown();
 }
 
-void RosAPI::ReloadCB(const mujoco_ros_msgs::srv::Reload::Request::SharedPtr req,
-                      mujoco_ros_msgs::srv::Reload::Response::SharedPtr res)
+void RosAPI::ReloadCB(const mujoco_ros_msgs::srv::Reload::Request::SharedPtr &req,
+                      const mujoco_ros_msgs::srv::Reload::Response::SharedPtr &res)
 {
 	char load_error[MujocoEnv::kErrorLength];
 	res->success        = env_ptr_->LoadModelFromString(req->model, load_error);
 	res->status_message = load_error;
 }
 
-void RosAPI::ResetCB(const std_srvs::srv::Empty::Request::SharedPtr /*req*/,
-                     std_srvs::srv::Empty::Response::SharedPtr /*res*/)
+void RosAPI::ResetCB(const std_srvs::srv::Empty::Request::SharedPtr & /*req*/,
+                     const std_srvs::srv::Empty::Response::SharedPtr & /*res*/)
 {
 	env_ptr_->Reset();
 }
 
-void RosAPI::SetBodyStateCB(const mujoco_ros_msgs::srv::SetBodyState::Request::SharedPtr req,
-                            mujoco_ros_msgs::srv::SetBodyState::Response::SharedPtr res)
+void RosAPI::SetBodyStateCB(const mujoco_ros_msgs::srv::SetBodyState::Request::SharedPtr &req,
+                            const mujoco_ros_msgs::srv::SetBodyState::Response::SharedPtr &res)
 {
 	geometry_msgs::msg::PoseStamped target_pose;
 
@@ -750,8 +747,8 @@ void RosAPI::SetBodyStateCB(const mujoco_ros_msgs::srv::SetBodyState::Request::S
 	}
 }
 
-void RosAPI::GetBodyStateCB(const mujoco_ros_msgs::srv::GetBodyState::Request::SharedPtr req,
-                            mujoco_ros_msgs::srv::GetBodyState::Response::SharedPtr res)
+void RosAPI::GetBodyStateCB(const mujoco_ros_msgs::srv::GetBodyState::Request::SharedPtr &req,
+                            const mujoco_ros_msgs::srv::GetBodyState::Response::SharedPtr &res)
 {
 	std::string body_name = req->name;
 	mjtNum state[14]      = { 0 };
@@ -789,16 +786,16 @@ void RosAPI::GetBodyStateCB(const mujoco_ros_msgs::srv::GetBodyState::Request::S
 	res->state.twist.twist.angular.z = twist[5];
 }
 
-void RosAPI::SetGravityCB(const mujoco_ros_msgs::srv::SetGravity::Request::SharedPtr req,
-                          mujoco_ros_msgs::srv::SetGravity::Response::SharedPtr res)
+void RosAPI::SetGravityCB(const mujoco_ros_msgs::srv::SetGravity::Request::SharedPtr &req,
+                          const mujoco_ros_msgs::srv::SetGravity::Response::SharedPtr &res)
 {
 	char status_msg[MujocoEnv::kErrorLength] = { 0 };
 	res->success = env_ptr_->SetGravity(req->gravity.data(), req->admin_hash, status_msg, MujocoEnv::kErrorLength);
 	res->status_message = std::string(status_msg);
 }
 
-void RosAPI::GetGravityCB(const mujoco_ros_msgs::srv::GetGravity::Request::SharedPtr req,
-                          mujoco_ros_msgs::srv::GetGravity::Response::SharedPtr res)
+void RosAPI::GetGravityCB(const mujoco_ros_msgs::srv::GetGravity::Request::SharedPtr &req,
+                          const mujoco_ros_msgs::srv::GetGravity::Response::SharedPtr &res)
 {
 	char status_msg[MujocoEnv::kErrorLength] = { 0 };
 
@@ -807,8 +804,8 @@ void RosAPI::GetGravityCB(const mujoco_ros_msgs::srv::GetGravity::Request::Share
 	res->status_message = std::string(status_msg);
 }
 
-void RosAPI::SetGeomPropertiesCB(const mujoco_ros_msgs::srv::SetGeomProperties::Request::SharedPtr req,
-                                 mujoco_ros_msgs::srv::SetGeomProperties::Response::SharedPtr res)
+void RosAPI::SetGeomPropertiesCB(const mujoco_ros_msgs::srv::SetGeomProperties::Request::SharedPtr &req,
+                                 const mujoco_ros_msgs::srv::SetGeomProperties::Response::SharedPtr &res)
 {
 	char status_msg[MujocoEnv::kErrorLength] = { 0 };
 	res->success                             = env_ptr_->SetGeomProperties(
@@ -819,8 +816,8 @@ void RosAPI::SetGeomPropertiesCB(const mujoco_ros_msgs::srv::SetGeomProperties::
 	res->status_message = std::string(status_msg);
 }
 
-void RosAPI::GetGeomPropertiesCB(const mujoco_ros_msgs::srv::GetGeomProperties::Request::SharedPtr req,
-                                 mujoco_ros_msgs::srv::GetGeomProperties::Response::SharedPtr res)
+void RosAPI::GetGeomPropertiesCB(const mujoco_ros_msgs::srv::GetGeomProperties::Request::SharedPtr &req,
+                                 const mujoco_ros_msgs::srv::GetGeomProperties::Response::SharedPtr &res)
 {
 	mjtNum properties[8]                     = { 0 };
 	char status_msg[MujocoEnv::kErrorLength] = { 0 };
@@ -890,8 +887,8 @@ bool RosAPI::SetEqualityConstraintParameters(const mujoco_ros_msgs::msg::Equalit
 }
 
 void RosAPI::SetEqualityConstraintParametersArrayCB(
-    const mujoco_ros_msgs::srv::SetEqualityConstraintParameters::Request::SharedPtr req,
-    mujoco_ros_msgs::srv::SetEqualityConstraintParameters::Response::SharedPtr res)
+    const mujoco_ros_msgs::srv::SetEqualityConstraintParameters::Request::SharedPtr &req,
+    const mujoco_ros_msgs::srv::SetEqualityConstraintParameters::Response::SharedPtr &res)
 {
 	res->success = true;
 
@@ -975,8 +972,8 @@ bool RosAPI::GetEqualityConstraintParameters(mujoco_ros_msgs::msg::EqualityConst
 }
 
 void RosAPI::GetEqualityConstraintParametersArrayCB(
-    const mujoco_ros_msgs::srv::GetEqualityConstraintParameters::Request::SharedPtr req,
-    mujoco_ros_msgs::srv::GetEqualityConstraintParameters::Response::SharedPtr res)
+    const mujoco_ros_msgs::srv::GetEqualityConstraintParameters::Request::SharedPtr &req,
+    const mujoco_ros_msgs::srv::GetEqualityConstraintParameters::Response::SharedPtr &res)
 {
 	res->success = true;
 
@@ -1010,16 +1007,16 @@ void RosAPI::GetEqualityConstraintParametersArrayCB(
 	}
 }
 
-void RosAPI::GetStateUintCB(const mujoco_ros_msgs::srv::GetStateUint::Request::SharedPtr /*req*/,
-                            mujoco_ros_msgs::srv::GetStateUint::Response::SharedPtr res)
+void RosAPI::GetStateUintCB(const mujoco_ros_msgs::srv::GetStateUint::Request::SharedPtr & /*req*/,
+                            const mujoco_ros_msgs::srv::GetStateUint::Response::SharedPtr &res)
 {
 	int status;
 	env_ptr_->GetSimulationStatus(status, res->state.description);
 	res->state.value = static_cast<decltype(res->state.value)>(status);
 }
 
-void RosAPI::GetSimInfoCB(const mujoco_ros_msgs::srv::GetSimInfo::Request::SharedPtr /*req*/,
-                          mujoco_ros_msgs::srv::GetSimInfo::Response::SharedPtr res)
+void RosAPI::GetSimInfoCB(const mujoco_ros_msgs::srv::GetSimInfo::Request::SharedPtr & /*req*/,
+                          const mujoco_ros_msgs::srv::GetSimInfo::Response::SharedPtr &res)
 {
 	bool valid, paused;
 	int load_count, loading_state, pending_sim_steps;
@@ -1032,14 +1029,14 @@ void RosAPI::GetSimInfoCB(const mujoco_ros_msgs::srv::GetSimInfo::Request::Share
 	res->state.pending_sim_steps   = static_cast<decltype(res->state.pending_sim_steps)>(pending_sim_steps);
 }
 
-void RosAPI::SetRTFactorCB(const mujoco_ros_msgs::srv::SetFloat::Request::SharedPtr req,
-                           mujoco_ros_msgs::srv::SetFloat::Response::SharedPtr res)
+void RosAPI::SetRTFactorCB(const mujoco_ros_msgs::srv::SetFloat::Request::SharedPtr &req,
+                           const mujoco_ros_msgs::srv::SetFloat::Response::SharedPtr &res)
 {
 	res->success = env_ptr_->SetRealTimeFactor(static_cast<float>(req->value), req->admin_hash);
 }
 
-void RosAPI::GetPluginStatsCB(const mujoco_ros_msgs::srv::GetPluginStats::Request::SharedPtr /*req*/,
-                              mujoco_ros_msgs::srv::GetPluginStats::Response::SharedPtr res)
+void RosAPI::GetPluginStatsCB(const mujoco_ros_msgs::srv::GetPluginStats::Request::SharedPtr & /*req*/,
+                              const mujoco_ros_msgs::srv::GetPluginStats::Response::SharedPtr &res)
 {
 	for (const auto &plugin_stat : env_ptr_->GetPluginStats()) {
 		mujoco_ros_msgs::msg::PluginStats stats;
@@ -1055,8 +1052,8 @@ void RosAPI::GetPluginStatsCB(const mujoco_ros_msgs::srv::GetPluginStats::Reques
 	}
 }
 
-void RosAPI::LoadInitialJointStatesCB(const std_srvs::srv::Empty::Request::SharedPtr /*req*/,
-                                      std_srvs::srv::Empty::Response::SharedPtr /*res*/)
+void RosAPI::LoadInitialJointStatesCB(const std_srvs::srv::Empty::Request::SharedPtr & /*req*/,
+                                      const std_srvs::srv::Empty::Response::SharedPtr & /*res*/)
 {
 	env_ptr_->LoadInitialJointStates();
 }
