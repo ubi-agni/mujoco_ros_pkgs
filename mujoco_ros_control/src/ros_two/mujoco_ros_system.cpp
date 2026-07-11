@@ -36,6 +36,11 @@
 
 #include <mujoco_ros_control/ros_two/mujoco_ros_system.hpp>
 
+#include <rclcpp/version.h>
+#if RCLCPP_VERSION_GTE(28, 0, 0)
+#include <hardware_interface/types/hardware_component_interface_params.hpp>
+#endif
+
 #include <algorithm>
 #include <sstream>
 
@@ -259,15 +264,25 @@ std::string getLastElement(const std::string &str, char delimiter)
 	return "";
 }
 
+#if RCLCPP_VERSION_GTE(28, 0, 0)
+CallbackReturn MujocoRosSystem::on_init(const hardware_interface::HardwareComponentInterfaceParams &params)
+{
+	// This needs to be called for ResourceManager to be able to find it.
+	if (hardware_interface::SystemInterface::on_init(params) != CallbackReturn::SUCCESS) {
+		return CallbackReturn::ERROR;
+	}
+	return CallbackReturn::SUCCESS;
+};
+#else
 CallbackReturn MujocoRosSystem::on_init(const hardware_interface::HardwareInfo &system_info)
 {
-	RCLCPP_WARN(this->nh_->get_logger(), "On init...");
 	// This needs to be called for ResourceManager to be able to find it.
 	if (hardware_interface::SystemInterface::on_init(system_info) != CallbackReturn::SUCCESS) {
 		return CallbackReturn::ERROR;
 	}
 	return CallbackReturn::SUCCESS;
 };
+#endif
 CallbackReturn MujocoRosSystem::on_configure(const rclcpp_lifecycle::State & /*previous_state*/)
 {
 	RCLCPP_DEBUG(this->nh_->get_logger(), "on_configure");
