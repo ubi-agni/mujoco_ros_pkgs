@@ -35,6 +35,10 @@
 /* Authors: David P. Leins */
 
 #include "mujoco_ros_control/ros_two/mujoco_ros_control.hpp"
+#include <rclcpp/version.h>
+#if RCLCPP_VERSION_GTE(28, 0, 0)
+#include <hardware_interface/types/hardware_component_params.hpp>
+#endif
 #include <lifecycle_msgs/msg/state.hpp>
 #include <mujoco_ros/logging.hpp>
 
@@ -216,6 +220,11 @@ bool MujocoRosControlPlugin::Load(const mjModel *model, mjData *data)
 		return false;
 	}
 
+#if RCLCPP_VERSION_GTE(28, 0, 0)
+	std::unique_ptr<hardware_interface::ResourceManager> resource_manager_ =
+	    std::make_unique<hardware_interface::ResourceManager>(dataPtr_->node_->get_clock(),
+	                                                          dataPtr_->node_->get_logger());
+#else
 	std::unique_ptr<hardware_interface::ResourceManager> resource_manager_ =
 	    std::make_unique<hardware_interface::ResourceManager>();
 
@@ -224,6 +233,8 @@ bool MujocoRosControlPlugin::Load(const mjModel *model, mjData *data)
 	} catch (...) {
 		MJR_ERROR_NAMED("mujoco_ros_control", "Error initializing URDF to resource manager!");
 	}
+#endif
+
 	try {
 		this->dataPtr_->robot_hw_sim_loader_.reset(
 		    new pluginlib::ClassLoader<mujoco_ros::control::MujocoRosSystemInterface>(
@@ -233,7 +244,11 @@ bool MujocoRosControlPlugin::Load(const mjModel *model, mjData *data)
 		return false;
 	}
 	for (auto &i : control_hardware_info) {
+#if RCLCPP_VERSION_GTE(28, 0, 0)
+		std::string robot_hw_sim_type_str_ = i.hardware_plugin_name;
+#else
 		std::string robot_hw_sim_type_str_ = i.hardware_class_type;
+#endif
 		std::unique_ptr<mujoco_ros::control::MujocoRosSystemInterface> mujocoRos2System;
 		MJR_DEBUG_NAMED("mujoco_ros_control", "Load hardware interface %s ...", robot_hw_sim_type_str_.c_str());
 		try {
@@ -253,7 +268,16 @@ bool MujocoRosControlPlugin::Load(const mjModel *model, mjData *data)
 
 		MJR_DEBUG_STREAM_NAMED("mujoco_ros_control",
 		                       "resource-manager system comp size: " << resource_manager_->system_components_size());
+#if RCLCPP_VERSION_GTE(28, 0, 0)
+		hardware_interface::HardwareComponentParams params;
+		params.hardware_info = i;
+		params.clock         = dataPtr_->node_->get_clock();
+		params.logger        = dataPtr_->node_->get_logger();
+		params.executor      = dataPtr_->executor_;
+		resource_manager_->import_component(std::move(mujocoRos2System), params);
+#else
 		resource_manager_->import_component(std::move(mujocoRos2System), i);
+#endif
 
 		MJR_DEBUG_STREAM_NAMED("mujoco_ros_control",
 		                       "resource-manager system comp size: " << resource_manager_->system_components_size());
