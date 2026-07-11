@@ -16,18 +16,28 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+option(BUILD_PYTHON_BINDINGS "Build the pybind11 Python bindings" ON)
+
 if(ROS_VERSION EQUAL 1)
   find_package(catkin REQUIRED COMPONENTS
     geometry_msgs
     mujoco_ros
     mujoco_ros_msgs
-    py_binding_tools
-    pybind11_catkin
     pluginlib
     tf2
     tf2_geometry_msgs
     tf2_ros
   )
+
+  if(BUILD_PYTHON_BINDINGS)
+    find_package(py_binding_tools QUIET)
+    if(NOT py_binding_tools_FOUND)
+      message(FATAL_ERROR
+        "py_binding_tools was not found. Install it, or disable the Python "
+        "bindings by configuring with -DBUILD_PYTHON_BINDINGS=OFF.")
+    endif()
+    find_package(pybind11_catkin REQUIRED)
+  endif()
 
   catkin_python_setup()
 
@@ -37,7 +47,6 @@ if(ROS_VERSION EQUAL 1)
       geometry_msgs
       mujoco_ros
       mujoco_ros_msgs
-      py_binding_tools
       pluginlib
       tf2
       tf2_geometry_msgs
@@ -76,7 +85,9 @@ if(ROS_VERSION EQUAL 1)
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
   )
 
-  add_subdirectory(python/bindings)
+  if(BUILD_PYTHON_BINDINGS)
+    add_subdirectory(python/bindings)
+  endif()
 
   if(CATKIN_ENABLE_TESTING)
     add_subdirectory(test)
@@ -93,16 +104,23 @@ elseif(ROS_VERSION EQUAL 2)
   find_package(mujoco_ros REQUIRED)
   find_package(geometry_msgs REQUIRED)
   find_package(mujoco_ros_msgs REQUIRED)
-  find_package(py_binding_tools REQUIRED)
-  find_package(pybind11_vendor REQUIRED)
-  find_package(pybind11 REQUIRED)
-  find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
-  if(NOT PYTHON_INSTALL_DIR)
-    execute_process(
-      COMMAND ${Python3_EXECUTABLE} -c "import os, sysconfig; print(sysconfig.get_path('platlib', vars={'base': '', 'platbase': ''}).lstrip(os.sep))"
-      OUTPUT_VARIABLE PYTHON_INSTALL_DIR
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
+  if(BUILD_PYTHON_BINDINGS)
+    find_package(py_binding_tools QUIET)
+    if(NOT py_binding_tools_FOUND)
+      message(FATAL_ERROR
+        "py_binding_tools was not found. Install it, or disable the Python "
+        "bindings by configuring with -DBUILD_PYTHON_BINDINGS=OFF.")
+    endif()
+    find_package(pybind11_vendor REQUIRED)
+    find_package(pybind11 REQUIRED)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+    if(NOT PYTHON_INSTALL_DIR)
+      execute_process(
+        COMMAND ${Python3_EXECUTABLE} -c "import os, sysconfig; print(sysconfig.get_path('platlib', vars={'base': '', 'platbase': ''}).lstrip(os.sep))"
+        OUTPUT_VARIABLE PYTHON_INSTALL_DIR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+      )
+    endif()
   endif()
   find_package(tf2 REQUIRED)
   find_package(tf2_ros REQUIRED)
@@ -146,7 +164,9 @@ elseif(ROS_VERSION EQUAL 2)
     DESTINATION share/${PROJECT_NAME}
   )
 
-  add_subdirectory(python/bindings)
+  if(BUILD_PYTHON_BINDINGS)
+    add_subdirectory(python/bindings)
+  endif()
   ament_python_install_package(${PROJECT_NAME} PACKAGE_DIR python/src/${PROJECT_NAME})
 
   install(FILES test/sensors_world.xml
@@ -166,12 +186,13 @@ elseif(ROS_VERSION EQUAL 2)
     rclcpp_lifecycle
     geometry_msgs
     mujoco_ros_msgs
-    py_binding_tools
-    pybind11_vendor
     tf2
     tf2_ros
     tf2_geometry_msgs
   )
+  if(BUILD_PYTHON_BINDINGS)
+    ament_export_dependencies(py_binding_tools pybind11_vendor)
+  endif()
 
   ament_package()
 endif()
