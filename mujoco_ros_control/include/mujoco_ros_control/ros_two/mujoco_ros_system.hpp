@@ -8,6 +8,7 @@
 #include <mujoco/mujoco.h>
 
 #include "mujoco_ros_control/ros_two/mujoco_ros_system_interface.hpp"
+#include "rclcpp/version.h"
 #include "rclcpp_lifecycle/state.hpp"
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
 
@@ -25,7 +26,12 @@ class MujocoRosSystem : public MujocoRosSystemInterface
 {
 public:
 	// Documentation Inherited
+	// Jazzy+ hardware_interface uses HardwareComponentInterfaceParams; Humble keeps HardwareInfo.
+#if RCLCPP_VERSION_GTE(28, 0, 0)
+	CallbackReturn on_init(const hardware_interface::HardwareComponentInterfaceParams &params) override;
+#else
 	CallbackReturn on_init(const hardware_interface::HardwareInfo &system_info) override;
+#endif
 
 	CallbackReturn on_configure(const rclcpp_lifecycle::State & /*previous_state*/) override;
 
