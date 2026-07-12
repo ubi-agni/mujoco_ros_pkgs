@@ -203,7 +203,7 @@ void MujocoEnv::Configure()
 		if (!settings_.admin_hash[0]) {
 			MJR_ERROR("Evaluation mode requires a hash to verify critical operations are allowed. No hash was provided, "
 			          "aborting launch.");
-			settings_.exit_request = 1;
+			RequestShutdown();
 			throw std::runtime_error(
 			    "Evaluation mode requires a hash to verify critical operations are allowed. No hash was "
 			    "provided, aborting launch.");
@@ -228,7 +228,7 @@ void MujocoEnv::Configure()
 	}
 	ros_api_->SetupClockPublisher();
 
-	MJR_INFO_COND(!settings_.run, "Starting Simulation in paused mode");
+	MJR_INFO_COND(!GetControlSnapshot().running, "Starting Simulation in paused mode");
 
 	mjv_defaultScene(&scn_);
 	mjv_defaultPerturb(&pert_);
@@ -324,42 +324,43 @@ void MujocoEnv::EventLoop()
 	is_event_running_ = 1;
 	auto now          = Clock::now();
 	auto fps_cap      = Seconds(mujoco_ros::Viewer::render_ui_rate_upper_bound_); // Cap at 60 fps
-	while (roscpp::ok() && !settings_.exit_request.load()) {
+	while (roscpp::ok() && !IsShutdownRequested()) {
 		{
 			RecursiveLock lock(physics_thread_mutex_);
-			now = Clock::now();
+			now                         = Clock::now();
+			const auto control_snapshot = control_state_.Snapshot();
 
 			if (settings_.settings_changed.load()) {
 				settings_.settings_changed.store(0);
 				ros_api_->UpdateDynamicParams();
 			}
 
-			if (settings_.load_request.load() == 1) {
+			if (control_snapshot.load_request == 1) {
 				MJR_DEBUG("Load request received");
 				LoadWithModelAndData();
 				MJR_DEBUG("Done loading");
 
 				mnew = nullptr;
 				dnew = nullptr;
-				settings_.load_request.store(0);
+				RequestLoad(0);
 				sim_state_.load_count += 1;
-			} else if (settings_.load_request.load() >= 2) { // Loading mnew and dnew requested
+			} else if (control_snapshot.load_request >= 2) { // Loading mnew and dnew requested
 				MJR_DEBUG("Initializing queued model and data");
 				if (InitModelFromQueue()) {
 					MJR_DEBUG("Init for load done. Requesting next load step");
-					settings_.load_request.store(1);
+					RequestLoad(1);
 				} else {
 					MJR_ERROR("Init for load failed. Aborting load request");
 					mj_deleteData(dnew);
 					mj_deleteModel(mnew);
 					mnew = nullptr;
 					dnew = nullptr;
-					settings_.load_request.store(0);
+					RequestLoad(0);
 					sim_state_.load_count += 1;
 				}
 			}
 
-			if (settings_.reset_request.load()) {
+			if (control_snapshot.reset_requested) {
 				ResetSim();
 			}
 		}
@@ -399,7 +400,7 @@ void MujocoEnv::ResetSim()
 	for (const auto viewer : connected_viewers_) {
 		viewer->reset_request.store(1);
 	}
-	settings_.reset_request.store(0);
+	ClearResetRequest();
 }
 
 void MujocoEnv::LoadInitialJointStates()
@@ -524,7 +525,7 @@ void MujocoEnv::DisconnectViewer(Viewer *viewer)
 	}
 
 	if (connected_viewers_.empty()) {
-		MJR_INFO_COND(settings_.exit_request == 0, "Disconnected last viewer, enabling headless mode");
+		MJR_INFO_COND(!GetControlSnapshot().shutdown_requested, "Disconnected last viewer, enabling headless mode");
 		settings_.headless = true;
 	}
 }
@@ -565,7 +566,7 @@ void MujocoEnv::RunPassiveCbs()
 MujocoEnv::~MujocoEnv()
 {
 	MJR_DEBUG("Destructor called");
-	settings_.exit_request.store(1);
+	RequestShutdown();
 	offscreen_.request_pending.store(true);
 	offscreen_.cond_render_request.notify_one();
 

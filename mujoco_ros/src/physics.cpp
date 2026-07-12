@@ -102,10 +102,11 @@ void MujocoEnv::PhysicsLoop()
 	mjtNum syncSim = 0;
 
 	// run until asked to exit
-	while (roscpp::ok() && !settings_.exit_request.load() && num_steps_until_exit_ != 0) {
+	while (roscpp::ok() && !IsShutdownRequested() && num_steps_until_exit_ != 0) {
+		const auto control_snapshot = control_state_.Snapshot();
 		// Sleep for 1 ms or yield, to let the main thread run
 		// yield results in busy wait - which has better timing but kills battery life
-		if (settings_.run.load() && settings_.busywait) {
+		if (control_snapshot.running && settings_.busywait) {
 			std::this_thread::yield();
 		} else {
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -121,8 +122,10 @@ void MujocoEnv::PhysicsLoop()
 			continue;
 		}
 
+		const auto locked_control_snapshot = control_state_.Snapshot();
+
 		// if simulation is paused
-		if (!settings_.run.load()) {
+		if (!locked_control_snapshot.running) {
 			SimPausedPhysics(syncSim);
 		} else {
 			SimUnpausedPhysics(syncSim, syncCPU);
@@ -133,7 +136,7 @@ void MujocoEnv::PhysicsLoop()
 	is_physics_running_ = 0;
 	MJR_INFO_COND(num_steps_until_exit_ == 0, "Reached requested number of steps. Exiting simulation");
 	if (num_steps_until_exit_ == 0) {
-		settings_.exit_request.store(1);
+		RequestShutdown();
 	}
 	if (offscreen_.render_thread_handle.joinable()) {
 		offscreen_.cond_render_request.notify_one();
@@ -146,16 +149,16 @@ void MujocoEnv::PhysicsLoop()
 void MujocoEnv::SimPausedPhysics(mjtNum &syncSim)
 {
 	const auto startCPU = Clock::now();
-	if (settings_.env_steps_request.load() > 0) { // Action call or arrow keys used for stepping
+	if (HasManualStepRequest()) { // Action call or arrow keys used for stepping
 		syncSim = data_->time;
 
-		while (settings_.env_steps_request.load() > 0 &&
+		while (HasManualStepRequest() &&
 		       ( // connected_viewers_.empty() ||
 		           Clock::now() - startCPU < Seconds(mujoco_ros::Viewer::render_ui_rate_lower_bound_))) {
 			// Run single step
 			WrappedStep();
 
-			settings_.env_steps_request.fetch_sub(1); // Decrement requested steps counter
+			RecordCompletedManualStep();
 			// Break if reset
 			if (data_->time < syncSim) {
 				break;
@@ -184,15 +187,15 @@ void MujocoEnv::SimUnpausedPhysics(mjtNum &syncSim, std::chrono::time_point<Cloc
 	double slowdown = 100 / percentRealTime[settings_.real_time_index];
 
 	// Misalignment condition: distance from target sim time is bigger than syncsimalign
-	bool misaligned = std::abs(Seconds(elapsedCPU).count() / slowdown - elapsedSim) > syncMisalign;
+	bool misaligned    = std::abs(Seconds(elapsedCPU).count() / slowdown - elapsedSim) > syncMisalign;
+	bool speed_changed = ConsumeSpeedChange();
 
 	// Out-of-sync (for any reason): reset sync times, step
 	if (elapsedSim < 0 || elapsedCPU.count() < 0 || syncCPU.time_since_epoch().count() == 0 || misaligned ||
-	    settings_.speed_changed) {
+	    speed_changed) {
 		// re-sync
-		syncCPU                 = startCPU;
-		syncSim                 = data_->time;
-		settings_.speed_changed = false;
+		syncCPU = startCPU;
+		syncSim = data_->time;
 
 		// run single step, let next iteration deal with timing
 		WrappedStep();
@@ -212,8 +215,8 @@ void MujocoEnv::SimUnpausedPhysics(mjtNum &syncSim, std::chrono::time_point<Cloc
 		while ((settings_.real_time_index == 0 || Seconds((data_->time - syncSim) * slowdown) < Clock::now() - syncCPU) &&
 		       (Clock::now() - startCPU < Seconds(mujoco_ros::Viewer::render_ui_rate_lower_bound_) /*||
 		        connected_viewers_.empty()*/) && // only break if rendering UI is actually necessary
-		       !settings_.exit_request.load() &&
-		       num_steps_until_exit_ != 0 && settings_.run.load()) {
+		       !IsShutdownRequested() &&
+		       num_steps_until_exit_ != 0 && control_state_.Snapshot().running) {
 			// measure slowdown before first step
 			if (!measured && elapsedSim) {
 				if (settings_.real_time_index != 0) {

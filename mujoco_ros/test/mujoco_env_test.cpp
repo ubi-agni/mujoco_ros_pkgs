@@ -40,6 +40,7 @@
 
 #include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros/common_types.hpp>
+#include <mujoco_ros/simulation_control_state.hpp>
 #include <mujoco_ros/util.hpp>
 
 #if MJR_ROS_VERSION == ROS_1
@@ -79,7 +80,203 @@ int main(int argc, char **argv)
 using namespace mujoco_ros;
 namespace mju = ::mujoco::sample_util;
 
-// This needs to be listed first, otherwise the throw is not detected
+class ControlStateTestWrapper : public MujocoEnvTestWrapper
+{
+public:
+	using MujocoEnvTestWrapper::MujocoEnvTestWrapper;
+	using MujocoEnvTestWrapper::RecordCompletedManualStep;
+	using MujocoEnvTestWrapper::RequestReload;
+	using MujocoEnvTestWrapper::RequestViewerReset;
+	using MujocoEnvTestWrapper::RequestViewerShutdown;
+	using MujocoEnvTestWrapper::SetPaused;
+	using MujocoEnvTestWrapper::SetViewerRealTimeIndex;
+};
+
+TEST(SimulationControlStateTest, PauseAndRunSnapshot)
+{
+	SimulationControlState state;
+
+	EXPECT_FALSE(state.Snapshot().running);
+	state.SetPaused(false);
+	EXPECT_TRUE(state.Snapshot().running);
+	state.SetPaused(true);
+	EXPECT_FALSE(state.Snapshot().running);
+}
+
+TEST(SimulationControlStateTest, RejectsInvalidManualStepRequests)
+{
+	SimulationControlState state;
+
+	EXPECT_FALSE(state.RequestSteps(0));
+	EXPECT_FALSE(state.RequestSteps(-1));
+
+	state.SetPaused(false);
+	EXPECT_FALSE(state.RequestSteps(1));
+}
+
+TEST(SimulationControlStateTest, RejectsOverlappingManualStepRequests)
+{
+	SimulationControlState state;
+
+	ASSERT_TRUE(state.RequestSteps(3));
+	EXPECT_FALSE(state.RequestSteps(1));
+	EXPECT_EQ(state.Snapshot().pending_steps, 3);
+}
+
+TEST(SimulationControlStateTest, ManualStepProgressIsSnapshotBased)
+{
+	SimulationControlState state;
+
+	ASSERT_TRUE(state.RequestSteps(2));
+	EXPECT_EQ(state.Snapshot().pending_steps, 2);
+	EXPECT_TRUE(state.RecordCompletedStep());
+	EXPECT_EQ(state.Snapshot().pending_steps, 1);
+	EXPECT_TRUE(state.RecordCompletedStep());
+	EXPECT_EQ(state.Snapshot().pending_steps, 0);
+	EXPECT_FALSE(state.RecordCompletedStep());
+}
+
+TEST(SimulationControlStateTest, UnpauseClearsPendingManualSteps)
+{
+	SimulationControlState state;
+
+	ASSERT_TRUE(state.RequestSteps(3));
+	state.SetPaused(false);
+
+	const auto snapshot = state.Snapshot();
+	EXPECT_TRUE(snapshot.running);
+	EXPECT_EQ(snapshot.pending_steps, 0);
+}
+
+TEST(SimulationControlStateTest, LifecycleRequestsClearPendingManualSteps)
+{
+	SimulationControlState state;
+
+	ASSERT_TRUE(state.RequestSteps(3));
+	state.RequestReset();
+	EXPECT_TRUE(state.Snapshot().reset_requested);
+	EXPECT_EQ(state.Snapshot().pending_steps, 0);
+
+	ASSERT_TRUE(state.RequestSteps(2));
+	state.SetLoadRequest(2);
+	EXPECT_EQ(state.Snapshot().load_request, 2);
+	EXPECT_EQ(state.Snapshot().pending_steps, 0);
+
+	ASSERT_TRUE(state.RequestSteps(1));
+	state.RequestShutdown();
+	EXPECT_TRUE(state.Snapshot().shutdown_requested);
+	EXPECT_EQ(state.Snapshot().pending_steps, 0);
+	EXPECT_FALSE(state.RequestSteps(1));
+}
+
+TEST(SimulationControlStateTest, ClearsLifecycleAndConsumesSpeedChange)
+{
+	SimulationControlState state;
+
+	state.RequestReset();
+	state.ClearResetRequest();
+	EXPECT_FALSE(state.Snapshot().reset_requested);
+
+	state.SetLoadRequest(2);
+	state.SetLoadRequest(1);
+	EXPECT_EQ(state.Snapshot().load_request, 1);
+	state.SetLoadRequest(0);
+	EXPECT_EQ(state.Snapshot().load_request, 0);
+
+	state.MarkSpeedChanged();
+	EXPECT_TRUE(state.Snapshot().speed_changed);
+	EXPECT_TRUE(state.ConsumeSpeedChange());
+	EXPECT_FALSE(state.Snapshot().speed_changed);
+	EXPECT_FALSE(state.ConsumeSpeedChange());
+}
+
+TEST_F(BaseEnvFixture, ControlRequestsMirrorInternalLoadTransitions)
+{
+	auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
+
+	sync_env->requestLoad(2);
+	EXPECT_EQ(sync_env->GetControlSnapshot().load_request, 2);
+	EXPECT_EQ(sync_env->settings_.load_request.load(), 2);
+
+	sync_env->requestLoad(1);
+	EXPECT_EQ(sync_env->GetControlSnapshot().load_request, 1);
+	EXPECT_EQ(sync_env->settings_.load_request.load(), 1);
+
+	sync_env->requestLoad(3);
+	EXPECT_EQ(sync_env->GetControlSnapshot().load_request, 3);
+	EXPECT_EQ(sync_env->settings_.load_request.load(), 3);
+
+	sync_env->shutdown();
+}
+
+TEST_F(BaseEnvFixture, ManualStepProgressDoesNotReapplyCompletedStepCount)
+{
+	auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
+
+	sync_env->SetPaused(true);
+	ASSERT_FALSE(sync_env->GetControlSnapshot().running);
+
+	ASSERT_TRUE(sync_env->RequestManualSteps(2));
+	sync_env->RecordCompletedManualStep();
+	ASSERT_EQ(sync_env->GetControlSnapshot().pending_steps, 1);
+
+	EXPECT_EQ(sync_env->GetControlSnapshot().pending_steps, 1);
+	EXPECT_EQ(sync_env->settings_.env_steps_request.load(), 1);
+
+	sync_env->shutdown();
+}
+
+TEST_F(BaseEnvFixture, ViewerControlRequestsRouteThroughControlState)
+{
+	auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
+
+	sync_env->SetPaused(false);
+	EXPECT_TRUE(sync_env->GetControlSnapshot().running);
+	EXPECT_TRUE(sync_env->settings_.run.load());
+
+	sync_env->SetPaused(true);
+	EXPECT_FALSE(sync_env->GetControlSnapshot().running);
+	EXPECT_FALSE(sync_env->settings_.run.load());
+
+	EXPECT_TRUE(sync_env->RequestManualSteps(2));
+	EXPECT_EQ(sync_env->GetControlSnapshot().pending_steps, 2);
+	EXPECT_EQ(sync_env->settings_.env_steps_request.load(), 2);
+
+	sync_env->RequestViewerReset();
+	EXPECT_TRUE(sync_env->GetControlSnapshot().reset_requested);
+	EXPECT_TRUE(sync_env->settings_.reset_request.load());
+	EXPECT_EQ(sync_env->GetControlSnapshot().pending_steps, 0);
+
+	sync_env->shutdown();
+}
+
+TEST_F(BaseEnvFixture, ViewerLoadAndShutdownRequestsRouteThroughControlState)
+{
+	auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
+
+	sync_env->RequestReload();
+	EXPECT_EQ(sync_env->GetControlSnapshot().load_request, 3);
+	EXPECT_EQ(sync_env->settings_.load_request.load(), 3);
+
+	sync_env->RequestViewerShutdown();
+	EXPECT_TRUE(sync_env->GetControlSnapshot().shutdown_requested);
+	EXPECT_TRUE(sync_env->settings_.exit_request.load());
+
+	sync_env->shutdown();
+}
+
+TEST_F(BaseEnvFixture, ViewerSpeedChangesRouteThroughControlState)
+{
+	auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
+
+	sync_env->SetViewerRealTimeIndex(3);
+	EXPECT_EQ(sync_env->settings_.real_time_index, 3);
+	EXPECT_TRUE(sync_env->GetControlSnapshot().speed_changed);
+	EXPECT_TRUE(sync_env->settings_.speed_changed.load());
+
+	sync_env->shutdown();
+}
+
 TEST_F(BaseEnvFixture, EvalModeWithoutHashThrow)
 {
 	MJR_WARN("###### [START] EvalModeWithoutHashThrow ######");
@@ -98,7 +295,7 @@ TEST_F(BaseEnvFixture, RunEvalMode)
 	env_ptr->StartWithXML(xml_path);
 
 	EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
-	EXPECT_FALSE(env_ptr->settings_.exit_request) << "Exit request is set before shutdown!";
+	EXPECT_FALSE(env_ptr->GetControlSnapshot().shutdown_requested) << "Exit request is set before shutdown!";
 
 	env_ptr->shutdown();
 }
@@ -114,7 +311,7 @@ TEST_F(BaseEnvFixture, EvalPauseWithHash)
 	EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
 
 	env_ptr->togglePaused(true, "some_hash");
-	EXPECT_FALSE(env_ptr->settings_.run) << "Model should not be running!";
+	EXPECT_FALSE(env_ptr->GetControlSnapshot().running) << "Model should not be running!";
 
 	env_ptr->shutdown();
 }
@@ -128,10 +325,10 @@ TEST_F(BaseEnvFixture, EvalPauseWithoutHashFails)
 	env_ptr->StartWithXML(xml_path);
 
 	EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
-	EXPECT_TRUE(env_ptr->settings_.run) << "Model should start running!";
+	EXPECT_TRUE(env_ptr->GetControlSnapshot().running) << "Model should start running!";
 
 	EXPECT_FALSE(env_ptr->togglePaused(true)) << "Pause without admin hash should fail in eval mode!";
-	EXPECT_TRUE(env_ptr->settings_.run) << "Model should keep running!";
+	EXPECT_TRUE(env_ptr->GetControlSnapshot().running) << "Model should keep running!";
 
 	env_ptr->shutdown();
 }
@@ -147,7 +344,7 @@ TEST_F(BaseEnvFixture, EvalUnpauseWithHash)
 	EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
 
 	env_ptr->togglePaused(false, "some_hash");
-	EXPECT_TRUE(env_ptr->settings_.run) << "Model should be running!";
+	EXPECT_TRUE(env_ptr->GetControlSnapshot().running) << "Model should be running!";
 
 	env_ptr->shutdown();
 }
@@ -162,10 +359,10 @@ TEST_F(BaseEnvFixture, EvalUnpauseWithoutHash)
 	env_ptr->StartWithXML(xml_path);
 
 	EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly!";
-	EXPECT_FALSE(env_ptr->settings_.run) << "Model should start paused!";
+	EXPECT_FALSE(env_ptr->GetControlSnapshot().running) << "Model should start paused!";
 
 	EXPECT_TRUE(env_ptr->togglePaused(false)) << "Unpause without admin hash should succeed in eval mode!";
-	EXPECT_TRUE(env_ptr->settings_.run) << "Model should be running!";
+	EXPECT_TRUE(env_ptr->GetControlSnapshot().running) << "Model should be running!";
 
 	env_ptr->shutdown();
 }
@@ -231,7 +428,7 @@ TEST_F(BaseEnvFixture, StepUnblocked)
 	env_ptr->StartWithXML(xml_path);
 	EXPECT_DOUBLE_EQ(env_ptr->getDataPtr()->time, 0.0);
 	EXPECT_TRUE(env_ptr->step(100, false));
-	EXPECT_GT(env_ptr->settings_.env_steps_request, 0);
+	EXPECT_GT(env_ptr->GetControlSnapshot().pending_steps, 0);
 
 	float seconds = 0;
 	while (env_ptr->getDataPtr()->time < 100 * env_ptr->getModelPtr()->opt.timestep && seconds < 2) {
@@ -252,7 +449,7 @@ TEST_F(BaseEnvFixture, StepNegativeFail)
 	env_ptr->StartWithXML(xml_path);
 	EXPECT_DOUBLE_EQ(env_ptr->getDataPtr()->time, 0.0);
 	EXPECT_FALSE(env_ptr->step(-10)) << "Stepping with negative steps should not succeed!";
-	EXPECT_EQ(env_ptr->settings_.env_steps_request, 0);
+	EXPECT_EQ(env_ptr->GetControlSnapshot().pending_steps, 0);
 	EXPECT_DOUBLE_EQ(env_ptr->getDataPtr()->time, 0.0);
 
 	env_ptr->shutdown();
@@ -268,7 +465,7 @@ TEST_F(BaseEnvFixture, Shutdown)
 	env_ptr->StartPhysicsLoop();
 	env_ptr->StartEventLoop();
 
-	EXPECT_FALSE(env_ptr->settings_.exit_request) << "Exit request is set before shutdown!";
+	EXPECT_FALSE(env_ptr->GetControlSnapshot().shutdown_requested) << "Exit request is set before shutdown!";
 
 	// Make sure the threads are running
 	float seconds = 0;
@@ -279,7 +476,7 @@ TEST_F(BaseEnvFixture, Shutdown)
 	EXPECT_TRUE(env_ptr->isPhysicsRunning()) << "Physics thread should have started by now!";
 	EXPECT_TRUE(env_ptr->isEventRunning()) << "Event thread should have started by now!";
 
-	env_ptr->settings_.exit_request = 1;
+	env_ptr->Shutdown();
 
 	seconds = 0;
 	while (seconds < 2 && (env_ptr->isPhysicsRunning() || env_ptr->isEventRunning())) { // wait for threads to exit
@@ -325,14 +522,14 @@ TEST_F(BaseEnvFixture, PauseUnpause)
 	std::string xml_path = testing::get_test_model_path("empty_world.xml");
 	env_ptr->StartWithXML(xml_path);
 
-	EXPECT_FALSE(env_ptr->settings_.run) << "Model should not be running!";
+	EXPECT_FALSE(env_ptr->GetControlSnapshot().running) << "Model should not be running!";
 
 	mjtNum time = env_ptr->getDataPtr()->time;
 
 	std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	EXPECT_EQ(env_ptr->getDataPtr()->time, time) << "Time should not have changed in paused mode!";
 
-	env_ptr->settings_.run.store(1);
+	ASSERT_TRUE(env_ptr->togglePaused(false));
 
 	float seconds = 0;
 	while (env_ptr->getDataPtr()->time == time && seconds < 2) { // wait for model to be loaded or timeout
@@ -385,14 +582,15 @@ TEST_F(BaseEnvFixture, ManualSteps)
 	std::string xml_path = testing::get_test_model_path("pendulum_world.xml");
 	env_ptr->StartWithXML(xml_path);
 
-	EXPECT_FALSE(env_ptr->settings_.env_steps_request) << "pending manual steps should be 0 after initialization!";
-	EXPECT_FALSE(env_ptr->settings_.run) << "Model should not be running!";
+	EXPECT_FALSE(env_ptr->GetControlSnapshot().pending_steps)
+	    << "pending manual steps should be 0 after initialization!";
+	EXPECT_FALSE(env_ptr->GetControlSnapshot().running) << "Model should not be running!";
 	EXPECT_EQ(env_ptr->getDataPtr()->time, 0) << "Time should be 0 after initialization!";
 
-	env_ptr->settings_.env_steps_request.store(1);
+	EXPECT_TRUE(env_ptr->Step(1, false));
 
 	float seconds = 0;
-	while (env_ptr->settings_.env_steps_request != 0 && seconds < 1) { // wait for model to be loaded
+	while (env_ptr->GetControlSnapshot().pending_steps != 0 && seconds < 1) { // wait for step completion
 		std::this_thread::sleep_for(std::chrono::milliseconds(2));
 		seconds += 0.002;
 	}
@@ -400,22 +598,22 @@ TEST_F(BaseEnvFixture, ManualSteps)
 	EXPECT_EQ(env_ptr->getDataPtr()->time, env_ptr->getModelPtr()->opt.timestep)
 	    << "Time should have been increased by one step!";
 
-	env_ptr->settings_.run.store(1);
-	env_ptr->settings_.env_steps_request.store(100);
+	EXPECT_TRUE(env_ptr->TogglePaused(false));
+	EXPECT_FALSE(env_ptr->Step(100, false));
 
 	// Wait for time to pass
 	std::this_thread::sleep_for(std::chrono::milliseconds(2));
 
-	EXPECT_EQ(env_ptr->settings_.env_steps_request, 100) << "pending manual steps should not change in unpaused mode!";
-	env_ptr->settings_.env_steps_request.store(0);
-	env_ptr->settings_.run.store(0);
+	EXPECT_EQ(env_ptr->GetControlSnapshot().pending_steps, 0)
+	    << "pending manual steps should stay clear in unpaused mode!";
+	EXPECT_TRUE(env_ptr->TogglePaused(true));
 
 	mjtNum time = env_ptr->getDataPtr()->time;
 
-	env_ptr->settings_.env_steps_request.store(100);
+	EXPECT_TRUE(env_ptr->Step(100, false));
 
 	seconds = 0;
-	while (env_ptr->settings_.env_steps_request != 0 && seconds < 2) { // wait for model to be loaded
+	while (env_ptr->GetControlSnapshot().pending_steps != 0 && seconds < 2) { // wait for step completion
 		std::this_thread::sleep_for(std::chrono::milliseconds(5));
 		seconds += 0.005;
 	}
@@ -436,43 +634,25 @@ TEST_F(BaseEnvFixture, Reset)
 
 	EXPECT_TRUE(env_ptr->step(100)) << "Stepping failed!";
 
-	env_ptr->settings_.run = 0;
+	ASSERT_TRUE(env_ptr->togglePaused(true));
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 100 * env_ptr->getModelPtr()->opt.timestep, 1e-6)
 	    << "Time should have been running!";
 
-	env_ptr->settings_.reset_request.store(1);
+	env_ptr->Reset();
 
-	float seconds = 0;
-	while (env_ptr->settings_.reset_request != 0 && seconds < 2) { // wait for model to be loaded
-		std::this_thread::sleep_for(std::chrono::milliseconds(2));
-		seconds += 0.002;
-	}
-	EXPECT_LT(seconds, 2) << "Reset should have been executed but ran into 2 seconds timeout!";
-	EXPECT_FALSE(env_ptr->settings_.run) << "Model should stay paused after reset!";
+	EXPECT_FALSE(env_ptr->GetControlSnapshot().running) << "Model should stay paused after reset!";
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 0, 1e-6) << "Time should have been reset to 0!";
 
-	env_ptr->settings_.run = 1;
-	env_ptr->settings_.reset_request.store(1);
-	seconds = 0;
-	while (env_ptr->settings_.reset_request != 0 && seconds < 2) { // wait for reset
-		std::this_thread::sleep_for(std::chrono::milliseconds(2));
-		seconds += 0.002;
-	}
-	EXPECT_LT(seconds, 2) << "Reset should have been executed but ran into 2 seconds timeout!";
-	EXPECT_TRUE(env_ptr->settings_.run) << "Model should keep running after reset!";
+	ASSERT_TRUE(env_ptr->togglePaused(false));
+	env_ptr->Reset();
+	EXPECT_TRUE(env_ptr->GetControlSnapshot().running) << "Model should keep running after reset!";
 
-	env_ptr->settings_.run = 0;
-	int id2                = mujoco_ros::util::jointName2id(env_ptr->getModelPtr(), "joint2");
+	ASSERT_TRUE(env_ptr->togglePaused(true));
+	int id2 = mujoco_ros::util::jointName2id(env_ptr->getModelPtr(), "joint2");
 	EXPECT_NE(id2, -1) << "joint2 should exist in model!";
 	env_ptr->getDataPtr()->qpos[env_ptr->getModelPtr()->jnt_qposadr[id2]] = 0.5;
 	env_ptr->getDataPtr()->qvel[env_ptr->getModelPtr()->jnt_dofadr[id2]]  = 0.1;
-	env_ptr->settings_.reset_request.store(1);
-	seconds = 0;
-	while (env_ptr->settings_.reset_request != 0 && seconds < 2) { // wait for reset
-		std::this_thread::sleep_for(std::chrono::milliseconds(2));
-		seconds += 0.002;
-	}
-	EXPECT_LT(seconds, 2) << "Reset should have been executed but ran into 2 seconds timeout!";
+	env_ptr->Reset();
 	EXPECT_NE(env_ptr->getDataPtr()->qpos[id2], 0.5) << "joint2 position should have been reset!";
 	EXPECT_NE(env_ptr->getDataPtr()->qvel[id2], 0.1) << "joint2 velocity should have been reset!";
 
@@ -490,17 +670,17 @@ TEST_F(BaseEnvFixture, Reload)
 
 	// Load same model again in unpaused state
 	env_ptr->load_queued_model();
-	EXPECT_FALSE(env_ptr->settings_.run) << "Model should stay paused on init!";
+	EXPECT_FALSE(env_ptr->GetControlSnapshot().running) << "Model should stay paused on init!";
 	EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Wrong content in filename_!";
 	EXPECT_EQ(env_ptr->getDataPtr()->time, 0) << "Time should have been reset to 0!";
-	EXPECT_EQ(env_ptr->settings_.run, 0) << "Model should stay paused after reset!";
+	EXPECT_FALSE(env_ptr->GetControlSnapshot().running) << "Model should stay paused after reset!";
 
 	// Load new model in paused state
 	std::string xml_path2 = testing::get_test_model_path("pendulum_world.xml");
 	env_ptr->load_filename(xml_path2);
 	EXPECT_EQ(env_ptr->getFilename(), xml_path2) << "Wrong content in filename_!";
 
-	env_ptr->settings_.run.store(1);
+	ASSERT_TRUE(env_ptr->togglePaused(false));
 
 	// Let some time pass
 	float seconds = 0;

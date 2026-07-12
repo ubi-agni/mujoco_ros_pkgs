@@ -267,7 +267,7 @@ bool MujocoEnv::InitModelFromQueue()
 		// next mj_forward will print the message
 		MJR_WARN_STREAM("Model compiled, but got simulation warning: " << load_error_);
 		if (!settings_.headless)
-			settings_.run = 0;
+			SetPaused(true);
 	} else if (load_seconds > 0.25) {
 		mju::sprintf_arr(load_error_, "Model loaded in %.2g seconds", load_seconds);
 	}

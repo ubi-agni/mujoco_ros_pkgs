@@ -194,14 +194,14 @@ public:
 			std::strncpy(filename_, filename.c_str(), kMaxFilenameLength - 1);
 			filename_[kMaxFilenameLength - 1] = '\0';
 			settings_.is_python_request.store(1);
-			settings_.load_request.store(1);
 		}
+		RequestLoad(1);
 
 		const auto deadline = Clock::now() + Seconds(timeout);
-		while (settings_.load_request.load() != 0) {
+		while (GetControlSnapshot().load_request != 0) {
 			if (Clock::now() > deadline) {
 				RecursiveLock lock(physics_thread_mutex_);
-				settings_.load_request.store(0);
+				RequestLoad(0);
 				settings_.is_python_request.store(0);
 				mnew = nullptr;
 				dnew = nullptr;
@@ -372,7 +372,7 @@ public:
 
 	std::string Filename() const { return std::string(filename_); }
 
-	bool IsRunning() const { return settings_.run.load() != 0; }
+	bool IsRunning() const { return GetControlSnapshot().running; }
 
 	std::string HandleNamespace() const
 	{

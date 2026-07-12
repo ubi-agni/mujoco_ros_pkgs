@@ -81,9 +81,9 @@ void MujocoEnv::FetchRosConfiguration()
 
 	nh_->param("num_steps", num_steps_until_exit_, -1);
 	nh_->param("num_mj_threads", settings_.num_mj_threads, settings_.num_mj_threads);
-	bool run; // settings_.run is atomic and can't directly be set!
+	bool run;
 	nh_->param("unpause", run, true);
-	settings_.run = run;
+	ApplyPauseState(!run, false);
 
 	/*
 	 * Model (file) passing: the model can be provided as file to parse or directly as string stored in the rosparam
@@ -120,7 +120,7 @@ void MujocoEnv::FetchRosConfiguration()
 
 	if (!filename.empty()) {
 		mju::strcpy_arr(queued_filename_, filename.c_str());
-		settings_.load_request = 2;
+		RequestLoad(2);
 	}
 }
 

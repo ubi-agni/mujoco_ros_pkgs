@@ -1648,14 +1648,14 @@ void UiEvent(mjuiState *state)
 					viewer->pending_.ui_update_run = true;
 					viewer->pert.active            = 0;
 
-					if (viewer->env_->settings_.run.load())
+					if (viewer->env_->GetControlSnapshot().running)
 						viewer->scrub_index = 0; // reset scrubber
 					mjui0_update_section(viewer, -1);
 				}
 				break;
 
 			case mjKEY_RIGHT: // step forward
-				if (!viewer->is_passive_ && !viewer->env_->settings_.run.load()) {
+				if (!viewer->is_passive_ && !viewer->env_->GetControlSnapshot().running) {
 					ClearTimers(viewer->d_.get());
 
 					// currently in scrubber: increment scrub, load state, update slider UI
@@ -1667,7 +1667,7 @@ void UiEvent(mjuiState *state)
 
 					// not in scrubber: step, add to history buffer
 					else {
-						viewer->env_->settings_.env_steps_request.fetch_add(1);
+						viewer->env_->RequestManualSteps(1);
 						viewer->AddToHistory();
 					}
 				}
@@ -1690,9 +1690,9 @@ void UiEvent(mjuiState *state)
 				break;
 
 			case mjKEY_DOWN: // step forward 100
-				if (!viewer->env_->settings_.run.load()) {
+				if (!viewer->env_->GetControlSnapshot().running) {
 					ClearTimers(viewer->d_.get());
-					viewer->env_->settings_.env_steps_request.fetch_add(100);
+					viewer->env_->RequestManualSteps(100);
 				}
 				break;
 
@@ -1914,7 +1914,7 @@ void Viewer::Sync(bool state_only)
 	}
 
 	// Avoid updating during load
-	if (env_->settings_.load_request == 1) {
+	if (env_->GetControlSnapshot().load_request == 1) {
 		return;
 	}
 
@@ -2005,18 +2005,16 @@ void Viewer::Sync(bool state_only)
 		}
 	}
 
-	this->run = env_->settings_.run.load();
+	this->run = env_->GetControlSnapshot().running;
 	if (pending_.ui_update_run) {
-		env_->settings_.run.store(1 - env_->settings_.run.load());
-		env_->settings_.settings_changed.store(true);
-		this->run              = env_->settings_.run.load();
+		env_->SetPaused(this->run);
+		this->run              = env_->GetControlSnapshot().running;
 		pending_.ui_update_run = false;
 	}
 
 	if (pending_.ui_update_speed) {
-		env_->settings_.real_time_index = real_time_index;
-		env_->settings_.speed_changed   = true;
-		pending_.ui_update_speed        = false;
+		env_->SetViewerRealTimeIndex(real_time_index);
+		pending_.ui_update_speed = false;
 	} else {
 		real_time_index = env_->settings_.real_time_index;
 	}
@@ -2052,7 +2050,7 @@ void Viewer::Sync(bool state_only)
 
 	if (pending_.ui_reset) {
 		load_error[0] = '\0';
-		env_->settings_.reset_request.store(1);
+		env_->RequestViewerReset();
 		pending_.ui_reset             = false;
 		update_profiler               = true;
 		update_sensor                 = true;
@@ -2062,16 +2060,15 @@ void Viewer::Sync(bool state_only)
 
 	if (pending_.ui_reload) {
 		load_error[0] = '\0';
-		env_->settings_.load_request.store(3); // 3 triggers prepare reload
+		env_->RequestReload();
 		pending_.ui_reload = false;
 		update_profiler    = true;
 		update_sensor      = true;
 	}
 
 	if (dropload_request.load()) {
-		mju::strcpy_arr(env_->queued_filename_, dropfilename);
 		dropload_request.store(0);
-		env_->settings_.load_request.store(3);
+		env_->RequestModelLoad(dropfilename);
 		update_profiler = true;
 		update_sensor   = true;
 	}
@@ -2264,7 +2261,7 @@ void Viewer::Sync(bool state_only)
 	}
 
 	if (pending_.ui_exit) {
-		env_->settings_.exit_request.store(1);
+		env_->RequestViewerShutdown();
 		this->exit_request.store(1);
 	}
 }

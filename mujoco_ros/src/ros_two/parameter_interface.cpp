@@ -83,9 +83,9 @@ void MujocoEnv::FetchRosConfiguration()
 
 	settings_.render_offscreen = render_offscreen_param.as_bool();
 	settings_.headless         = headless_param.as_bool();
-	settings_.run              = unpause_param.as_bool();
-	num_steps_until_exit_      = num_steps_param.as_int();
-	settings_.num_mj_threads   = num_mj_threads_param.as_int();
+	ApplyPauseState(!unpause_param.as_bool(), false);
+	num_steps_until_exit_    = num_steps_param.as_int();
+	settings_.num_mj_threads = num_mj_threads_param.as_int();
 
 	std::string filename = "";
 
@@ -113,7 +113,7 @@ void MujocoEnv::FetchRosConfiguration()
 	if (!filename.empty()) {
 		RCLCPP_INFO_STREAM(this->get_logger(), "Using modelfile " << filename);
 		mju::strcpy_arr(queued_filename_, filename.c_str());
-		settings_.load_request = 2;
+		RequestLoad(2);
 	} else {
 		RCLCPP_WARN(this->get_logger(), "No modelfile was provided, launching empty simulation!");
 	}

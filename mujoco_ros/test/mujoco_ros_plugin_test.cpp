@@ -267,15 +267,15 @@ TEST_F(BaseEnvFixture, LoadPlugin)
 
 TEST_F(LoadedPluginFixture, ResetPlugin)
 {
-	env_ptr->settings_.reset_request = 1;
-	float seconds                    = 0;
-	while (env_ptr->settings_.reset_request != 0 && seconds < 2) {
+	env_ptr->RequestReset();
+	float seconds = 0;
+	while (!test_plugin->ran_reset.load() && seconds < 2) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		seconds += 0.001;
 	}
-	EXPECT_LT(seconds, 2) << "Env reset ran into 2 seconds timeout!";
 	env_ptr->step(10);
 
+	EXPECT_LT(seconds, 2) << "Env reset ran into 2 seconds timeout!";
 	EXPECT_TRUE(test_plugin->ran_reset.load()) << "Dummy plugin reset was not called!";
 }
 
@@ -376,8 +376,8 @@ TEST_F(BaseEnvFixture, FailedLoadRecoverReload)
 		env_ptr->set_parameters({ rclcpp::Parameter("should_fail", false) });
 #endif
 
-		env_ptr->settings_.load_request = 2;
-		float seconds                   = 0;
+		env_ptr->load_queued_model();
+		float seconds = 0;
 		while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			seconds += 0.001;
@@ -423,15 +423,15 @@ TEST_F(BaseEnvFixture, FailedLoadReset)
 
 		ASSERT_NE(test_plugin, nullptr) << "Dummy plugin was not loaded!";
 
-		env_ptr->settings_.reset_request = 1;
-		float seconds                    = 0;
-		while (env_ptr->settings_.reset_request != 0 && seconds < 2) {
+		env_ptr->RequestReset();
+		float seconds = 0;
+		while (env_ptr->GetControlSnapshot().reset_requested && seconds < 2) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			seconds += 0.001;
 		}
-		EXPECT_LT(seconds, 2) << "Env reset ran into 2 seconds timeout!";
 		env_ptr->step(10);
 
+		EXPECT_LT(seconds, 2) << "Env reset ran into 2 seconds timeout!";
 		EXPECT_FALSE(test_plugin->ran_reset.load()) << "Dummy plugin should not have beeon reset!";
 	}
 
@@ -440,7 +440,7 @@ TEST_F(BaseEnvFixture, FailedLoadReset)
 
 TEST_F(LoadedPluginFixture, PluginStats_InitialPaused)
 {
-	EXPECT_EQ(env_ptr->settings_.run, 0) << "Env should be paused!";
+	EXPECT_FALSE(env_ptr->GetControlSnapshot().running) << "Env should be paused!";
 
 // TODO: once this service is added to ROS 2, refactor to hybrid test fixtures, too
 // Tests the GetPluginStats service
@@ -480,7 +480,7 @@ TEST_F(LoadedPluginFixture, PluginStats_InitialPaused)
 
 TEST_F(LoadedPluginFixture, PluginStats_SetTimesOnStep)
 {
-	EXPECT_EQ(env_ptr->settings_.run, 0) << "Env should be paused!";
+	EXPECT_FALSE(env_ptr->GetControlSnapshot().running) << "Env should be paused!";
 
 	env_ptr->step(1);
 	// sleep for a bit to ensure the plugin callbacks have been called
@@ -525,13 +525,14 @@ TEST_F(LoadedPluginFixture, PluginStats_SetTimesOnStep)
 
 TEST_F(LoadedPluginFixture, PluginStats_ResetTimeOnReset)
 {
-	env_ptr->settings_.reset_request = 1;
-	float seconds                    = 0;
-	while (env_ptr->settings_.reset_request != 0 && seconds < 2) {
+	env_ptr->RequestReset();
+
+	float seconds = 0;
+	while (test_plugin->get_reset_time() <= -1 && seconds < 2) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		seconds += 0.001;
 	}
-	EXPECT_LT(seconds, 2) << "Env reset ran into 2 seconds timeout!";
+	EXPECT_LT(seconds, 2) << "Plugin reset stats were not recorded before timeout!";
 
 // TODO: once this service is added to ROS 2, refactor to hybrid test fixtures, too
 // Tests the GetPluginStats service

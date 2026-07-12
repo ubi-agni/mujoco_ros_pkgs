@@ -56,21 +56,144 @@ bool MujocoEnv::TogglePaused(bool paused, const std::string &admin_hash /*= std:
 		MJR_ERROR("Unauthorized pause request detected. Ignoring request");
 		return false;
 	}
-	settings_.settings_changed.store(1);
-	settings_.run.store(!paused);
-	if (settings_.run.load())
-		settings_.env_steps_request.store(0);
+	SetPaused(paused);
 	return true;
+}
+
+void MujocoEnv::SetPaused(bool paused)
+{
+	ApplyPauseState(paused);
+}
+
+void MujocoEnv::ApplyPauseState(bool paused, bool notify_settings_changed)
+{
+	control_state_.SetPaused(paused);
+	if (notify_settings_changed) {
+		settings_.settings_changed.store(1);
+	}
+	SyncSettingsFromControlState();
+}
+
+SimulationControlSnapshot MujocoEnv::GetControlSnapshot() const
+{
+	return control_state_.Snapshot();
+}
+
+bool MujocoEnv::RequestManualSteps(int num_steps)
+{
+	const bool accepted = control_state_.RequestSteps(num_steps);
+	SyncSettingsFromControlState();
+	return accepted;
+}
+
+void MujocoEnv::CancelManualSteps()
+{
+	control_state_.CancelPendingSteps();
+	SyncSettingsFromControlState();
+}
+
+void MujocoEnv::RequestReload()
+{
+	RequestLoad(3);
+}
+
+void MujocoEnv::RequestModelLoad(const std::string &filename)
+{
+	mju::strcpy_arr(queued_filename_, filename.c_str());
+	RequestReload();
+}
+
+void MujocoEnv::RequestViewerReset()
+{
+	RequestReset();
+}
+
+void MujocoEnv::RequestViewerShutdown()
+{
+	RequestShutdown();
+}
+
+void MujocoEnv::SetViewerRealTimeIndex(int real_time_index)
+{
+	settings_.real_time_index = real_time_index;
+	MarkSpeedChanged();
+}
+
+bool MujocoEnv::HasManualStepRequest() const
+{
+	return control_state_.HasPendingSteps();
+}
+
+void MujocoEnv::RecordCompletedManualStep()
+{
+	control_state_.RecordCompletedStep();
+	SyncSettingsFromControlState();
+}
+
+bool MujocoEnv::IsShutdownRequested() const
+{
+	return control_state_.IsShutdownRequested();
+}
+
+void MujocoEnv::RequestShutdown()
+{
+	control_state_.RequestShutdown();
+	SyncSettingsFromControlState();
+}
+
+void MujocoEnv::RequestLoad(int load_request)
+{
+	control_state_.SetLoadRequest(load_request);
+	SyncSettingsFromControlState();
+}
+
+void MujocoEnv::RequestReset()
+{
+	control_state_.RequestReset();
+	SyncSettingsFromControlState();
+}
+
+void MujocoEnv::ClearResetRequest()
+{
+	control_state_.ClearResetRequest();
+	SyncSettingsFromControlState();
+}
+
+void MujocoEnv::MarkSpeedChanged()
+{
+	control_state_.MarkSpeedChanged();
+	SyncSettingsFromControlState();
+}
+
+bool MujocoEnv::ConsumeSpeedChange()
+{
+	const bool consumed = control_state_.ConsumeSpeedChange();
+	SyncSettingsFromControlState();
+	return consumed;
+}
+
+void MujocoEnv::SyncSettingsFromControlState()
+{
+	const auto snapshot = control_state_.Snapshot();
+	settings_.run.store(snapshot.running);
+	settings_.env_steps_request.store(snapshot.pending_steps);
+	settings_.exit_request.store(snapshot.shutdown_requested);
+	settings_.load_request.store(snapshot.load_request);
+	settings_.reset_request.store(snapshot.reset_requested);
+	settings_.speed_changed.store(snapshot.speed_changed);
 }
 
 int MujocoEnv::GetOperationalStatus()
 {
-	return mju_max(settings_.load_request.load(), mju_max(settings_.visual_init_request, settings_.reset_request));
+	const auto snapshot = control_state_.Snapshot();
+	return mju_max(snapshot.load_request,
+	               mju_max(settings_.visual_init_request.load(), snapshot.reset_requested ? 1 : 0));
 }
 
 bool MujocoEnv::Step(int num_steps /* = 1*/, bool blocking /* = true*/)
 {
-	if (settings_.exit_request.load()) {
+	const auto snapshot = control_state_.Snapshot();
+	if (snapshot.shutdown_requested) {
 		MJR_WARN("Step requested after shutdown has been requested. Ignoring step request.");
 		return false;
 	}
@@ -80,7 +203,7 @@ bool MujocoEnv::Step(int num_steps /* = 1*/, bool blocking /* = true*/)
 		return false;
 	}
 
-	if (settings_.run) {
+	if (snapshot.running) {
 		MJR_WARN("Simulation is already running. Ignoring request");
 		return false;
 	}
@@ -96,10 +219,12 @@ bool MujocoEnv::Step(int num_steps /* = 1*/, bool blocking /* = true*/)
 	}
 
 	MJR_DEBUG("Handling request of stepping %d steps", num_steps);
-	settings_.env_steps_request.store(num_steps);
+	if (!RequestManualSteps(num_steps)) {
+		return false;
+	}
 	if (blocking) {
 		MJR_DEBUG("\t blocking until steps are done");
-		while (settings_.env_steps_request.load() > 0) {
+		while (GetControlSnapshot().pending_steps > 0) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
 	}
@@ -135,7 +260,7 @@ void MujocoEnv::SetJointVelocity(const double &vel, const int &joint_id, const i
 void MujocoEnv::Reset()
 {
 	MJR_DEBUG("Reset requested");
-	settings_.reset_request.store(1);
+	RequestReset();
 
 	while (GetOperationalStatus() > 0) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -145,7 +270,7 @@ void MujocoEnv::Reset()
 void MujocoEnv::Shutdown()
 {
 	MJR_DEBUG("Shutdown requested");
-	settings_.exit_request.store(1);
+	RequestShutdown();
 }
 
 bool MujocoEnv::LoadModelFromString(const std::string &model, char *load_error, const int error_sz)
@@ -159,7 +284,7 @@ bool MujocoEnv::LoadModelFromString(const std::string &model, char *load_error, 
 	mju::strcpy_arr(queued_filename_, model.c_str());
 
 	MJR_DEBUG("Issuing model load");
-	settings_.load_request.store(2);
+	RequestLoad(2);
 	while (GetOperationalStatus() > 0) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(5));
 	}
@@ -840,13 +965,14 @@ SimState MujocoEnv::GetSimState() const
 
 SimInfo MujocoEnv::GetSimInfo()
 {
+	const auto control_snapshot = control_state_.Snapshot();
 	SimInfo info;
 	info.model_path  = filename_;
 	info.model_valid = sim_state_.model_valid;
 	info.load_count  = static_cast<int>(sim_state_.load_count);
 	GetSimulationStatus(info.loading_state, info.loading_description);
-	info.paused            = !settings_.run.load();
-	info.pending_sim_steps = settings_.env_steps_request.load();
+	info.paused            = !control_snapshot.running;
+	info.pending_sim_steps = control_snapshot.pending_steps;
 	info.rt_measured       = 1.f / sim_state_.measured_slowdown;
 	info.rt_setting        = percentRealTime[settings_.real_time_index] / 100.f;
 	return info;
@@ -887,7 +1013,7 @@ bool MujocoEnv::SetRealTimeFactor(const float &rt_factor, const std::string &adm
 	if (rt_factor < 0) {
 		MJR_DEBUG("Setting to unbound rt mode");
 		settings_.real_time_index = 0;
-		settings_.speed_changed   = true;
+		MarkSpeedChanged();
 		return true;
 	}
 
@@ -902,7 +1028,7 @@ bool MujocoEnv::SetRealTimeFactor(const float &rt_factor, const std::string &adm
 	// get index of closest real-time factor
 	auto it                   = std::find(std::begin(percentRealTime), std::end(percentRealTime), closest_rt);
 	settings_.real_time_index = std::distance(std::begin(percentRealTime), it);
-	settings_.speed_changed   = true;
+	MarkSpeedChanged();
 	return true;
 }
 

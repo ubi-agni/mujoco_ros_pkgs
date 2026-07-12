@@ -372,7 +372,7 @@ void MujocoEnv::OffscreenRenderLoop()
 	mjv_makeScene(nullptr, &offscreen_.callbacks_scn, Viewer::kMaxGeom);
 
 	MJR_DEBUG_NAMED("offscreen_rendering", "Starting offscreen render loop");
-	while (roscpp::ok() && !settings_.exit_request.load()) {
+	while (roscpp::ok() && !IsShutdownRequested()) {
 		{
 			// Setup rendering resources if requested
 			if (settings_.visual_init_request) {
@@ -384,12 +384,11 @@ void MujocoEnv::OffscreenRenderLoop()
 			std::unique_lock<std::mutex> lock(offscreen_.render_mutex);
 			// MJR_DEBUG_NAMED("offscreen_rendering", "Waiting for render request");
 			offscreen_.cond_render_request.wait(lock, [this] {
-				return offscreen_.request_pending.load() || settings_.visual_init_request.load() ||
-				       settings_.exit_request.load();
+				return offscreen_.request_pending.load() || settings_.visual_init_request.load() || IsShutdownRequested();
 			});
 
 			// In case of exit request after waiting for render request
-			if (!roscpp::ok() || settings_.exit_request.load()) {
+			if (!roscpp::ok() || IsShutdownRequested()) {
 				break;
 			}
 

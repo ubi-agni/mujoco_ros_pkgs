@@ -91,6 +91,7 @@ using TransformStamped = geometry_msgs::msg::TransformStamped;
 
 #include <mujoco_ros/render_backend.hpp>
 #include <mujoco_ros/common_types.hpp>
+#include <mujoco_ros/simulation_control_state.hpp>
 #include <mujoco_ros/viewer.hpp>
 
 #include <tf2_ros/static_transform_broadcaster.h>
@@ -324,6 +325,7 @@ public:
 	bool UsesPythonReloadService() const { return python_reload_service_; }
 	// Friend declaration of RosAPI for access to private members
 	friend class RosAPI;
+	friend class Viewer;
 
 public:
 	virtual ~MujocoEnv();
@@ -460,6 +462,10 @@ public:
 	void RunPassiveCbs();
 
 	bool TogglePaused(bool paused, const std::string &admin_hash = std::string());
+	SimulationControlSnapshot GetControlSnapshot() const;
+	bool RequestManualSteps(int num_steps);
+	void CancelManualSteps();
+	void RequestReset();
 
 #if RENDER_BACKEND == GLFW_BACKEND
 	GlfwAdapter *gui_adapter_ = nullptr;
@@ -588,6 +594,22 @@ protected:
 	 * @brief physics step when sim is paused.
 	 */
 	void SimPausedPhysics(mjtNum &syncSim);
+	void SetPaused(bool paused);
+	void RequestReload();
+	void RequestModelLoad(const std::string &filename);
+	void RequestViewerReset();
+	void RequestViewerShutdown();
+	void SetViewerRealTimeIndex(int real_time_index);
+	bool HasManualStepRequest() const;
+	void RecordCompletedManualStep();
+	bool IsShutdownRequested() const;
+	void RequestShutdown();
+	void RequestLoad(int load_request);
+	void ClearResetRequest();
+	void MarkSpeedChanged();
+	bool ConsumeSpeedChange();
+	void ApplyPauseState(bool paused, bool notify_settings_changed = true);
+	void SyncSettingsFromControlState();
 
 	/**
 	 * @brief Handles requests from other threads (viewers).
@@ -623,6 +645,7 @@ protected:
 	void LoadWithModelAndData();
 
 	mjThreadPool *threadpool_ = nullptr;
+	SimulationControlState control_state_;
 };
 
 } // end namespace mujoco_ros

@@ -177,7 +177,7 @@ void RosAPI::UpdateDynamicParams()
 	boost::recursive_mutex::scoped_lock lk(sim_params_mutex_);
 	SimParamsConfig config;
 	ReadSimParams(config, env_ptr_->model_.get(),
-	              RosAPISettings{ env_ptr_->settings_.run.load() != 0, env_ptr_->settings_.admin_hash });
+	              RosAPISettings{ env_ptr_->GetControlSnapshot().running, env_ptr_->settings_.admin_hash });
 	param_server_->updateConfig(config);
 }
 
@@ -192,10 +192,10 @@ void RosAPI::DynparamCallback(mujoco_ros::SimParamsConfig &config, uint32_t leve
 	if (level == 0xFFFFFFFF) {
 		// First call on init -> Set params from model
 		ReadSimParams(config, env_ptr_->model_.get(),
-		              RosAPISettings{ env_ptr_->settings_.run.load() != 0, env_ptr_->settings_.admin_hash });
+		              RosAPISettings{ env_ptr_->GetControlSnapshot().running, env_ptr_->settings_.admin_hash });
 		return;
 	}
-	env_ptr_->settings_.run.store(config.running);
+	env_ptr_->ApplyPauseState(!config.running, false);
 	mju::strcpy_arr(env_ptr_->settings_.admin_hash, config.admin_hash.c_str());
 
 	env_ptr_->model_->opt.integrator = config.integrator;
@@ -255,7 +255,7 @@ void RosAPI::OnStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal)
 {
 	mujoco_ros_msgs::StepResult result;
 
-	if (env_ptr_->settings_.env_steps_request.load() > 0 || env_ptr_->settings_.run.load()) {
+	if (!env_ptr_->RequestManualSteps(goal->num_steps)) {
 		ROS_WARN("Simulation is currently unpaused. Stepping makes no sense right now.");
 		result.success = false;
 		action_step_->setPreempted(result);
@@ -265,27 +265,27 @@ void RosAPI::OnStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal)
 	mujoco_ros_msgs::StepFeedback feedback;
 
 	feedback.steps_left = goal->num_steps;
-	env_ptr_->settings_.env_steps_request.store(goal->num_steps);
 
 	result.success = true;
-	while (env_ptr_->settings_.env_steps_request.load() > 0) {
-		if (action_step_->isPreemptRequested() || !ros::ok() || env_ptr_->settings_.exit_request.load() > 0 ||
-		    env_ptr_->settings_.load_request.load() > 0 || env_ptr_->settings_.reset_request.load() > 0) {
+	while (env_ptr_->GetControlSnapshot().pending_steps > 0) {
+		const auto control_snapshot = env_ptr_->GetControlSnapshot();
+		if (action_step_->isPreemptRequested() || !ros::ok() || control_snapshot.shutdown_requested ||
+		    control_snapshot.load_request > 0 || control_snapshot.reset_requested) {
 			ROS_WARN_STREAM("Simulation step action preempted");
-			feedback.steps_left = util::as_unsigned(env_ptr_->settings_.env_steps_request.load());
+			feedback.steps_left = util::as_unsigned(control_snapshot.pending_steps);
 			action_step_->publishFeedback(feedback);
 			result.success = false;
 			action_step_->setPreempted(result);
-			env_ptr_->settings_.env_steps_request.store(0);
+			env_ptr_->CancelManualSteps();
 			return;
 		}
 
-		feedback.steps_left = util::as_unsigned(env_ptr_->settings_.env_steps_request.load());
+		feedback.steps_left = util::as_unsigned(control_snapshot.pending_steps);
 		action_step_->publishFeedback(feedback);
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 
-	feedback.steps_left = util::as_unsigned(env_ptr_->settings_.env_steps_request.load());
+	feedback.steps_left = util::as_unsigned(env_ptr_->GetControlSnapshot().pending_steps);
 	action_step_->publishFeedback(feedback);
 	action_step_->setSucceeded(result);
 }

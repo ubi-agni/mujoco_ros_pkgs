@@ -1,7 +1,9 @@
 <a name="unreleased"></a>
 ## Unreleased
 
-No unreleased changes yet.
+### Changed
+* Simulation control commands now route through `SimulationControlState`; legacy control-related `EnvSettings` fields are read-only mirrors rather than command inputs.
+
 
 <a name="1.0.0"></a>
 ## [1.0.0] - 2026-06-27

@@ -347,7 +347,7 @@ TEST_F(MocapPluginFixture, ServiceUpdatesMocapPose)
 	ASSERT_TRUE(call_set_mocap_state(env_ptr.get(), srv));
 	EXPECT_TRUE(srv.response.success);
 
-	env_ptr->settings_.run.store(0);
+	env_ptr->togglePaused(true);
 	ASSERT_TRUE(env_ptr->step());
 
 	const int mocap_id = mocap_id_for_body(m, "mocap");
@@ -359,7 +359,7 @@ TEST_F(MocapPluginFixture, TopicUpdatesMocapPose)
 	const MocapState state = make_mocap_state("mocap2", "world", 0.4, 0.5, 0.6, 1.0);
 	publish_mocap_state(env_ptr.get(), nh.get(), state);
 
-	env_ptr->settings_.run.store(0);
+	env_ptr->togglePaused(true);
 	for (int i = 0; i < 10; ++i) {
 		ASSERT_TRUE(env_ptr->step());
 	}

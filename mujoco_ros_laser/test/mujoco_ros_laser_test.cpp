@@ -185,7 +185,7 @@ MessageConstPtr<LaserScanMsg> wait_for_scan_message(MujocoEnvTestWrapper *env_pt
 	auto sub = subscribe_to<LaserScanMsg>(env_ptr, nh, scan_topic_name(env_ptr), 10,
 	                                      [&message](const MessageConstPtr<LaserScanMsg> &msg) { message = msg; });
 
-	env_ptr->settings_.run.store(0);
+	env_ptr->togglePaused(true);
 	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
 	while (message == nullptr && std::chrono::steady_clock::now() < deadline) {
 		env_ptr->step(25);

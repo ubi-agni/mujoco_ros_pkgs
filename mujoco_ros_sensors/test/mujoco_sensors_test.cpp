@@ -225,7 +225,7 @@ void wait_for_subscription_discovery()
 
 bool call_register_noise_models(MujocoEnvTestWrapper *env_ptr, testing::ServiceCall<RegisterSensorNoiseModels> &srv)
 {
-	env_ptr->settings_.run.store(0);
+	env_ptr->togglePaused(true);
 
 	const auto service_name = noise_model_service_name(env_ptr);
 	const auto deadline     = std::chrono::steady_clock::now() + std::chrono::seconds(2);
@@ -290,7 +290,7 @@ bool collect_samples(MujocoEnvTestWrapper *env_ptr, std::atomic<int> &n, std::at
 	static constexpr int WARMUP_SAMPLES  = 5;
 
 	wait_for_subscription_discovery();
-	env_ptr->settings_.run.store(0);
+	env_ptr->togglePaused(true);
 
 	env_ptr->step(WARMUP_SAMPLES);
 	const auto warmup_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(250);

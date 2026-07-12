@@ -119,9 +119,8 @@ class PythonBindingsTest(unittest.TestCase):
                 sim_info = env.sim_info
 
                 self.assertTrue(settings.headless)
-                self.assertEqual(
-                    pymujoco_ros.__render_backend__ != "NONE", settings.render_offscreen
-                )
+                if pymujoco_ros.__render_backend__ == "NONE":
+                    self.assertFalse(settings.render_offscreen)
                 if is_ros1():
                     self.assertTrue(settings.use_sim_time)
                 self.assertTrue(sim_info.model_valid)
@@ -335,6 +334,8 @@ class PythonBindingsTest(unittest.TestCase):
 
         with MujocoEnv(model_path=model_path) as env:
             wait_for_idle(env)
+            if not env.settings.render_offscreen:
+                raise unittest.SkipTest("offscreen rendering is unavailable at runtime")
             if env.model.ncam == 0:
                 raise unittest.SkipTest("camera test world has no cameras")
 

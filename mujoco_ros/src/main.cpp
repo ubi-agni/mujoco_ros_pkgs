@@ -60,7 +60,7 @@ std::shared_ptr<mujoco_ros::MujocoEnv> env;
 void sigint_handler(int /*sig*/)
 {
 	std::printf("Registered C-c. Shutting down MuJoCo ROS Server ...\n");
-	env->settings_.exit_request.store(1);
+	env->Shutdown();
 #if MJR_ROS_VERSION == ROS_2
 	rclcpp::shutdown();
 #endif
@@ -160,7 +160,7 @@ int main(int argc, char **argv)
 		env->WaitForPhysicsJoin();
 	}
 
-	env->settings_.exit_request.store(1);
+	env->Shutdown();
 
 #if MJR_ROS_VERSION == ROS_2
 	rclcpp::shutdown();

@@ -313,7 +313,7 @@ void RosAPI::UpdateDynamicParams()
 		}
 
 		const auto &opt = env_ptr_->model_->opt;
-		parameters.emplace_back("running", static_cast<bool>(env_ptr_->settings_.run.load()));
+		parameters.emplace_back("running", env_ptr_->GetControlSnapshot().running);
 		parameters.emplace_back("admin_hash", std::string(env_ptr_->settings_.admin_hash));
 
 		parameters.emplace_back("integrator", opt.integrator);
@@ -462,10 +462,7 @@ rcl_interfaces::msg::SetParametersResult RosAPI::DynamicParamsCallback(const std
 				if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_BOOL) {
 					throw std::runtime_error("'running' must be a boolean parameter");
 				}
-				env_ptr_->settings_.run.store(parameter.as_bool());
-				if (parameter.as_bool()) {
-					env_ptr_->settings_.env_steps_request.store(0);
-				}
+				env_ptr_->ApplyPauseState(!parameter.as_bool(), false);
 			} else if (name == "admin_hash") {
 				if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_STRING) {
 					throw std::runtime_error("'admin_hash' must be a string parameter");
@@ -610,7 +607,7 @@ void RosAPI::ExecuteStepGoal(
 	auto &steps_left = feedback->steps_left;
 	auto result      = std::make_shared<mujoco_ros_msgs::action::Step::Result>();
 
-	if (env_ptr_->settings_.env_steps_request.load() > 0 || env_ptr_->settings_.run.load()) {
+	if (!env_ptr_->RequestManualSteps(goal->num_steps)) {
 		MJR_WARN("Simulation is currently unpaused. Stepping makes no sense right now.");
 		result->success = false;
 		goal_handle->abort(result);
@@ -619,27 +616,27 @@ void RosAPI::ExecuteStepGoal(
 	}
 
 	steps_left = goal->num_steps;
-	env_ptr_->settings_.env_steps_request.store(goal->num_steps);
 
 	result->success = true;
-	while (env_ptr_->settings_.env_steps_request.load() > 0) {
-		if (goal_handle->is_canceling() || !rclcpp::ok() || env_ptr_->settings_.exit_request.load() > 0 ||
-		    env_ptr_->settings_.load_request.load() > 0 || env_ptr_->settings_.reset_request.load() > 0) {
+	while (env_ptr_->GetControlSnapshot().pending_steps > 0) {
+		const auto control_snapshot = env_ptr_->GetControlSnapshot();
+		if (goal_handle->is_canceling() || !rclcpp::ok() || control_snapshot.shutdown_requested ||
+		    control_snapshot.load_request > 0 || control_snapshot.reset_requested) {
 			MJR_WARN("Simulation step action preempted");
-			steps_left = util::as_unsigned(env_ptr_->settings_.env_steps_request.load());
+			steps_left = util::as_unsigned(control_snapshot.pending_steps);
 			goal_handle->publish_feedback(feedback);
 			result->success = false;
 			goal_handle->canceled(result);
-			env_ptr_->settings_.env_steps_request.store(0);
+			env_ptr_->CancelManualSteps();
 			return;
 		}
 
-		steps_left = util::as_unsigned(env_ptr_->settings_.env_steps_request.load());
+		steps_left = util::as_unsigned(control_snapshot.pending_steps);
 		goal_handle->publish_feedback(feedback);
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 
-	steps_left = util::as_unsigned(env_ptr_->settings_.env_steps_request.load());
+	steps_left = util::as_unsigned(env_ptr_->GetControlSnapshot().pending_steps);
 	goal_handle->publish_feedback(feedback);
 	goal_handle->succeed(result);
 }

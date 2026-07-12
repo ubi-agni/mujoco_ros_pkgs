@@ -687,6 +687,14 @@ public:
 	{
 		return TogglePaused(paused, admin_hash);
 	}
+	bool isRunning() const { return GetControlSnapshot().running; }
+	int pendingManualSteps() const { return GetControlSnapshot().pending_steps; }
+	bool isResetRequested() const { return GetControlSnapshot().reset_requested; }
+	bool isShutdownRequested() const { return GetControlSnapshot().shutdown_requested; }
+	int loadRequest() const { return GetControlSnapshot().load_request; }
+	void requestReset() { RequestReset(); }
+	void requestShutdown() { RequestShutdown(); }
+	void requestLoad(int load_request) { RequestLoad(load_request); }
 	int GetOperationalStatus() { return MujocoEnv::GetOperationalStatus(); }
 	void StartPhysicsLoop() { MujocoEnv::StartPhysicsLoop(); }
 	void StartEventLoop() { MujocoEnv::StartEventLoop(); }
@@ -695,8 +703,8 @@ public:
 
 	void load_queued_model()
 	{
-		settings_.load_request = 2;
-		float seconds          = 0;
+		requestLoad(2);
+		float seconds = 0;
 		while (GetOperationalStatus() != 0 && seconds < 2) { // wait for model to be loaded or timeout
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			seconds += 0.001;
@@ -720,7 +728,7 @@ public:
 
 		// Only clean up physics threads if construction completed successfully
 		if (construction_complete_) {
-			settings_.exit_request = 1;
+			requestShutdown();
 			MujocoEnv::WaitForPhysicsJoin();
 			MujocoEnv::WaitForEventsJoin();
 		}
@@ -747,7 +755,7 @@ public:
 	void StartWithXML(const std::string &xml_path, bool wait = true, float timeout_secs = 2.)
 	{
 		mju::strcpy_arr(queued_filename_, xml_path.c_str());
-		settings_.load_request = 2;
+		requestLoad(2);
 		MujocoEnv::StartPhysicsLoop();
 		MujocoEnv::StartEventLoop();
 
@@ -883,7 +891,7 @@ protected:
 		m = env_ptr->getModelPtr();
 		d = env_ptr->getDataPtr();
 
-		EXPECT_FALSE(env_ptr->settings_.run) << "Simulation should be paused!";
+		EXPECT_FALSE(env_ptr->GetControlSnapshot().running) << "Simulation should be paused!";
 		EXPECT_NEAR(d->time, 0, 1e-6) << "Simulation time should be 0.0!";
 		EXPECT_TRUE(testing::wait_for_service(env_ptr->GetHandleNamespace() + "/set_eq_constraint_parameters"))
 		    << "Set eq constraints service should be available!";

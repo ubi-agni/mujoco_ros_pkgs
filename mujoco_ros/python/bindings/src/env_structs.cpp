@@ -56,18 +56,8 @@ void InitEnvStructs(py::module_ &module)
 	    .def_property_readonly("headless", [](const EnvSettings &settings) { return settings.headless; })
 	    .def_property_readonly("render_offscreen", [](const EnvSettings &settings) { return settings.render_offscreen; })
 	    .def_property_readonly("use_sim_time", [](const EnvSettings &settings) { return settings.use_sim_time; })
-	    .def_property(
+	    .def_property_readonly(
 	        "real_time_index", [](const EnvSettings &settings) { return settings.real_time_index; },
-	        [](EnvSettings &settings, int value) {
-		        int num_clicks = sizeof(MujocoEnv::percentRealTime) / sizeof(MujocoEnv::percentRealTime[0]);
-
-		        if (value < 0 || value >= num_clicks) {
-			        throw std::out_of_range("real_time_index must be between 0 and " + std::to_string(num_clicks - 1));
-		        }
-
-		        settings.real_time_index = value;
-		        settings.speed_changed.store(1);
-	        },
 	        "The index of the real-time factor in the simulation.")
 	    .def_readwrite(
 	        "busywait", &EnvSettings::busywait,
@@ -76,24 +66,17 @@ void InitEnvStructs(py::module_ &module)
 	    .def_property_readonly("eval_mode", [](const EnvSettings &settings) { return settings.eval_mode; })
 	    .def_property_readonly("admin_hash",
 	                           [](const EnvSettings &settings) { return std::string(settings.admin_hash); })
-	    .def_property(
-	        "run", [](const EnvSettings &settings) { return settings.run.load(); },
-	        [](EnvSettings &settings, bool value) { settings.run.store(value); })
-	    .def_property(
-	        "exit_request", [](const EnvSettings &settings) { return settings.exit_request.load(); },
-	        [](EnvSettings &settings, bool value) { settings.exit_request.store(value); })
-	    .def_property(
-	        "visual_init_request", [](const EnvSettings &settings) { return settings.visual_init_request.load(); },
-	        [](EnvSettings &settings, bool value) { settings.visual_init_request.store(value); })
+	    .def_property_readonly("run", [](const EnvSettings &settings) { return settings.run.load(); })
+	    .def_property_readonly("exit_request", [](const EnvSettings &settings) { return settings.exit_request.load(); })
+	    .def_property_readonly("visual_init_request",
+	                           [](const EnvSettings &settings) { return settings.visual_init_request.load(); })
 	    .def_property_readonly("load_request", [](const EnvSettings &settings) { return settings.load_request.load(); })
-	    .def_property(
-	        "reset_request", [](const EnvSettings &settings) { return settings.reset_request.load(); },
-	        [](EnvSettings &settings, bool value) { settings.reset_request.store(value); })
+	    .def_property_readonly("reset_request",
+	                           [](const EnvSettings &settings) { return settings.reset_request.load(); })
 	    .def_property_readonly("speed_changed",
 	                           [](const EnvSettings &settings) { return settings.speed_changed.load(); })
-	    .def_property(
-	        "env_steps_request", [](const EnvSettings &settings) { return settings.env_steps_request.load(); },
-	        [](EnvSettings &settings, bool value) { settings.env_steps_request.store(value); })
+	    .def_property_readonly("env_steps_request",
+	                           [](const EnvSettings &settings) { return settings.env_steps_request.load(); })
 	    .def_property_readonly("settings_changed",
 	                           [](const EnvSettings &settings) { return settings.settings_changed.load(); })
 	    .def_property_readonly("is_python_request",
