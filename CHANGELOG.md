@@ -4,6 +4,9 @@
 ### Changed
 * Simulation control commands now route through `SimulationControlState`; legacy control-related `EnvSettings` fields are read-only mirrors rather than command inputs.
 
+### Fixed
+* Fixed equality constraint array services returning strings with embedded null characters when individual requests fail.
+
 
 <a name="1.0.0"></a>
 ## [1.0.0] - 2026-06-27

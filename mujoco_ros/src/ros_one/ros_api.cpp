@@ -551,7 +551,7 @@ bool RosAPI::SetEqualityConstraintParametersArrayCB(mujoco_ros_msgs::SetEquality
 	std::string status_message;
 
 	for (const auto &parameters : req.parameters) {
-		status_message[0] = '\0';
+		error_msg[0]  = '\0';
 		bool success  = SetEqualityConstraintParameters(parameters, req.admin_hash, error_msg, MujocoEnv::kErrorLength);
 		failed_any    = (failed_any || !success);
 		succeeded_any = (succeeded_any || success);
@@ -636,7 +636,7 @@ bool RosAPI::GetEqualityConstraintParametersArrayCB(mujoco_ros_msgs::GetEquality
 	char error_msg[MujocoEnv::kErrorLength];
 	std::string status_message;
 	for (const auto &name : req.names) {
-		status_message[0] = '\0';
+		error_msg[0] = '\0';
 		mujoco_ros_msgs::EqualityConstraintParameters eqc;
 		eqc.name     = name;
 		bool success = GetEqualityConstraintParameters(eqc, req.admin_hash, error_msg, MujocoEnv::kErrorLength);
