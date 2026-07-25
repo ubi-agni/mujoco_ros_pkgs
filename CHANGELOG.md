@@ -6,6 +6,7 @@
 
 ### Fixed
 * Fixed equality constraint array services returning strings with embedded null characters when individual requests fail.
+* Fixed ROS 2 runtime parameter sync reapplying stale pause state and causing flaky reset/step action tests.
 
 
 <a name="1.0.0"></a>

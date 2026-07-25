@@ -52,6 +52,8 @@ namespace mju = ::mujoco::sample_util;
 
 namespace {
 
+thread_local bool syncing_dynamic_params = false;
+
 rcl_interfaces::msg::ParameterDescriptor MakeParameterDescriptor(const std::string &description = "")
 {
 	rcl_interfaces::msg::ParameterDescriptor descriptor;
@@ -88,6 +90,16 @@ void DeclareRuntimeParameter(MujocoEnvPtr env_ptr, const std::string &name, cons
 {
 	declare_parameter_if_not_declared(env_ptr, name, rclcpp::ParameterValue(value), descriptor);
 }
+
+class ScopedBoolFlag
+{
+public:
+	explicit ScopedBoolFlag(bool &flag) : flag_(flag) { flag_ = true; }
+	~ScopedBoolFlag() { flag_ = false; }
+
+private:
+	bool &flag_;
+};
 
 void ValidateIntegerRange(const rclcpp::Parameter &parameter, int64_t lower_bound, int64_t upper_bound)
 {
@@ -368,6 +380,7 @@ void RosAPI::UpdateDynamicParams()
 		parameters.emplace_back("friction", ArrayToString(opt.o_friction, 5));
 	}
 
+	ScopedBoolFlag scoped_syncing_dynamic_params(syncing_dynamic_params);
 	auto results = env_ptr_->set_parameters(parameters);
 	for (const auto &result : results) {
 		if (!result.successful) {
@@ -380,6 +393,10 @@ rcl_interfaces::msg::SetParametersResult RosAPI::DynamicParamsCallback(const std
 {
 	rcl_interfaces::msg::SetParametersResult result;
 	result.successful = true;
+
+	if (syncing_dynamic_params) {
+		return result;
+	}
 
 	static const std::unordered_set<std::string> model_backed_parameters = { "integrator",
 		                                                                      "cone",
