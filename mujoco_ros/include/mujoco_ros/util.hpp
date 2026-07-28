@@ -133,6 +133,6 @@ static inline std::string vector_to_string(const std::vector<T> &vec)
 		}
 	}
 	return oss.str();
-};
+}
 
 } // namespace mujoco_ros::util
