@@ -136,9 +136,11 @@ void MujocoEnv::RunLastStageCbs()
 
 #if MJR_ROS_VERSION == ROS_1
 
-MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/, bool python_reload_service /* = false */)
+MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/, bool python_reload_service /* = false */,
+                     bool create_gui_adapter /* = true */)
 {
 	python_reload_service_ = python_reload_service;
+	create_gui_adapter_    = create_gui_adapter;
 	if (!admin_hash.empty()) {
 		mju::strcpy_arr(settings_.admin_hash, admin_hash.c_str());
 	} else {
@@ -155,11 +157,13 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/, bool py
 #else // MJR_ROS_VERSION == ROS_2
 
 MujocoEnv::MujocoEnv(rclcpp::Executor::SharedPtr executor, const std::string &admin_hash /* = std::string()*/,
-                     bool auto_configure /* = true */, bool python_reload_service /* = false */)
+                     bool auto_configure /* = true */, bool python_reload_service /* = false */,
+                     bool create_gui_adapter /* = true */)
     : rclcpp::Node("mujoco_server", "", rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true))
     , executor_(std::move(executor))
 {
 	python_reload_service_ = python_reload_service;
+	create_gui_adapter_    = create_gui_adapter;
 	if (!admin_hash.empty()) {
 		mju::strcpy_arr(settings_.admin_hash, admin_hash.c_str());
 	} else {
@@ -219,7 +223,7 @@ void MujocoEnv::Configure()
 		                                                                         << ", library: " << mj_version() << ")");
 	}
 
-	if (!settings_.headless) {
+	if (!settings_.headless && create_gui_adapter_) {
 #if RENDER_BACKEND == GLFW_BACKEND
 		gui_adapter_ = new mujoco_ros::GlfwAdapter();
 #else

@@ -287,7 +287,8 @@ public:
 	 * @brief Construct a new Mujoco Env object.
 	 *
 	 */
-	MujocoEnv(const std::string &admin_hash = std::string(), bool python_reload_service = false);
+	MujocoEnv(const std::string &admin_hash = std::string(), bool python_reload_service = false,
+	          bool create_gui_adapter = true);
 #else // MJR_ROS_VERSION == ROS_2
 class MujocoEnv : public rclcpp::Node
 {
@@ -297,7 +298,7 @@ public:
 	 *
 	 */
 	MujocoEnv(rclcpp::Executor::SharedPtr executor, const std::string &admin_hash = std::string(),
-	          bool auto_configure = true, bool python_reload_service = false);
+	          bool auto_configure = true, bool python_reload_service = false, bool create_gui_adapter = true);
 
 	/**
 	 * @brief Add a node to the executor of this server instance.
@@ -548,6 +549,7 @@ protected:
 	// ros api implementation
 	std::unique_ptr<RosAPI> ros_api_;
 	bool python_reload_service_ = false;
+	bool create_gui_adapter_    = true;
 
 	void Configure();
 

@@ -108,6 +108,7 @@ const struct Glfw &Glfw(void *dlhandle)
 		mjGLFW_INITIALIZE_SYMBOL(glfwSetWindowRefreshCallback);
 		mjGLFW_INITIALIZE_SYMBOL(glfwSetWindowSizeCallback);
 		mjGLFW_INITIALIZE_SYMBOL(glfwSetWindowTitle);
+		mjGLFW_INITIALIZE_SYMBOL(glfwShowWindow);
 		mjGLFW_INITIALIZE_SYMBOL(glfwSetWindowUserPointer);
 		mjGLFW_INITIALIZE_SYMBOL(glfwSwapBuffers);
 		mjGLFW_INITIALIZE_SYMBOL(glfwSwapInterval);

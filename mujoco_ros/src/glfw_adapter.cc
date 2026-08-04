@@ -45,7 +45,7 @@ GlfwAdapter &GlfwAdapterFromWindow(GLFWwindow *window)
 
 } // namespace
 
-GlfwAdapter::GlfwAdapter()
+GlfwAdapter::GlfwAdapter(bool visible)
 {
 	if (MaybeGlfwInit() != GLFW_TRUE) {
 		mju_error("Failed to initialize GLFW");
@@ -53,7 +53,7 @@ GlfwAdapter::GlfwAdapter()
 
 	// multisampling
 	Glfw().glfwWindowHint(GLFW_SAMPLES, 4);
-	Glfw().glfwWindowHint(GLFW_VISIBLE, 1);
+	Glfw().glfwWindowHint(GLFW_VISIBLE, visible ? GLFW_TRUE : GLFW_FALSE);
 
 	// get video mode and save
 	vidmode_ = *Glfw().glfwGetVideoMode(Glfw().glfwGetPrimaryMonitor());
@@ -98,6 +98,15 @@ GlfwAdapter::GlfwAdapter()
 
 	// make context current
 	Glfw().glfwMakeContextCurrent(window_);
+	if (!visible) {
+		Glfw().glfwMakeContextCurrent(nullptr);
+	}
+}
+
+void GlfwAdapter::ShowWindow()
+{
+	Glfw().glfwMakeContextCurrent(window_);
+	Glfw().glfwShowWindow(window_);
 }
 
 GlfwAdapter::~GlfwAdapter()

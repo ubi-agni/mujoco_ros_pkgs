@@ -5,6 +5,7 @@
 * Simulation control commands now route through `SimulationControlState`; legacy control-related `EnvSettings` fields are read-only mirrors rather than command inputs.
 
 ### Fixed
+* Fixed Python viewer rendering on hybrid-GPU systems by preparing the GLFW viewer context before offscreen rendering initializes.
 * Fixed equality constraint array services returning strings with embedded null characters when individual requests fail.
 * Fixed ROS 2 runtime parameter sync reapplying stale pause state and causing flaky reset/step action tests.
 

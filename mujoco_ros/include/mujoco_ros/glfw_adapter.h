@@ -27,8 +27,10 @@ namespace mujoco_ros {
 class GlfwAdapter : public PlatformUIAdapter
 {
 public:
-	GlfwAdapter();
+	explicit GlfwAdapter(bool visible = true);
 	~GlfwAdapter() override;
+
+	void ShowWindow();
 
 	std::pair<double, double> GetCursorPosition() const override;
 	double GetDisplayPixelsPerInch() const override;

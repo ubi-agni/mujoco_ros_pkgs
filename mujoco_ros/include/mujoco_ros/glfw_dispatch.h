@@ -59,6 +59,7 @@ struct Glfw
 	mjGLFW_DECLARE_SYMBOL(glfwSetWindowRefreshCallback);
 	mjGLFW_DECLARE_SYMBOL(glfwSetWindowSizeCallback);
 	mjGLFW_DECLARE_SYMBOL(glfwSetWindowTitle);
+	mjGLFW_DECLARE_SYMBOL(glfwShowWindow);
 	mjGLFW_DECLARE_SYMBOL(glfwSetWindowUserPointer);
 	mjGLFW_DECLARE_SYMBOL(glfwSwapBuffers);
 	mjGLFW_DECLARE_SYMBOL(glfwSwapInterval);

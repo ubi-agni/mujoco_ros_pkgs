@@ -121,20 +121,23 @@ class MujocoEnvWrapper : public MujocoEnv
 public:
 #if MJR_ROS_VERSION == ROS_1
 	explicit MujocoEnvWrapper(const std::string &admin_hash = std::string())
-	    : MujocoEnv((EnsureRosInitialized(), admin_hash))
+	    : MujocoEnv((EnsureRosInitialized(), admin_hash), false, false)
 	{
 	}
 	MujocoEnvWrapper(const std::string &admin_hash, bool python_reload_service)
-	    : MujocoEnv((EnsureRosInitialized(), admin_hash), python_reload_service)
+	    : MujocoEnv((EnsureRosInitialized(), admin_hash), python_reload_service, false)
 	{
 	}
 #else
 	explicit MujocoEnvWrapper(const std::string &admin_hash = std::string(), bool python_reload_service = false)
-	    : MujocoEnv(MakeExecutor(), admin_hash, false, python_reload_service)
+	    : MujocoEnv(MakeExecutor(), admin_hash, false, python_reload_service, false)
 	{
 		GetExecutorPtr()->add_node(get_node_base_interface());
 		executor_thread_handle_ = std::thread([this]() { GetExecutorPtr()->spin(); });
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+#if RENDER_BACKEND == GLFW_BACKEND
+		prepared_viewer_adapter_ = std::make_unique<mujoco_ros::GlfwAdapter>(false);
+#endif
 		Configure();
 		construction_complete_ = true;
 	}
@@ -222,8 +225,16 @@ public:
 			return false;
 		}
 		viewer_thread_handle_ = std::thread([this]() {
-			auto adapter     = std::make_unique<mujoco_ros::GlfwAdapter>();
-			auto viewer      = std::make_unique<mujoco_ros::Viewer>(std::move(adapter), this, false);
+#if MJR_ROS_VERSION == ROS_2
+			auto adapter = std::move(prepared_viewer_adapter_);
+			if (!adapter) {
+				throw std::runtime_error("Prepared Python viewer context is unavailable");
+			}
+			adapter->ShowWindow();
+#else
+			auto adapter = std::make_unique<mujoco_ros::GlfwAdapter>();
+#endif
+			auto viewer = std::make_unique<mujoco_ros::Viewer>(std::move(adapter), this, false);
 			attached_viewer_ = viewer.get();
 			viewer_running_  = true;
 			viewer->RenderLoop();
@@ -455,6 +466,9 @@ private:
 	std::thread viewer_thread_handle_;
 	std::atomic_bool viewer_running_     = false;
 	mujoco_ros::Viewer *attached_viewer_ = nullptr;
+#if MJR_ROS_VERSION == ROS_2
+	std::unique_ptr<mujoco_ros::GlfwAdapter> prepared_viewer_adapter_;
+#endif
 #endif
 #if MJR_ROS_VERSION == ROS_2
 	bool construction_complete_ = false;
