@@ -8,6 +8,42 @@ elseif(ROS_VERSION EQUAL 2)
   find_package(mujoco_ros_testing_utils REQUIRED)
 endif()
 
+# Plain (no ROS node, no launch file) gtest unit tests for the Robot
+# Description Converter module -- unlike add_mujoco_ros_integration_test
+# below, these link mujoco_ros directly and never spin up a live node.
+function(add_mujoco_ros_unit_test TEST_NAME)
+  set(multiValueArgs SOURCES)
+  cmake_parse_arguments(UT "" "" "${multiValueArgs}" ${ARGN})
+
+  if(ROS_VERSION EQUAL 1)
+    catkin_add_gtest(${TEST_NAME} ${UT_SOURCES})
+  elseif(ROS_VERSION EQUAL 2)
+    ament_add_gtest(${TEST_NAME} ${UT_SOURCES})
+  endif()
+
+  if(TARGET ${TEST_NAME})
+    target_compile_definitions(${TEST_NAME} PRIVATE
+      TEST_RESOURCES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources"
+    )
+    target_link_libraries(${TEST_NAME}
+      mujoco_ros
+      mujoco::mujoco
+      tinyxml2::tinyxml2
+      project_option
+      project_warning
+    )
+  endif()
+endfunction()
+
+add_mujoco_ros_unit_test(tinyxml2_smoke_test SOURCES tinyxml2_smoke_test.cpp)
+add_mujoco_ros_unit_test(extended_params_test SOURCES extended_params_test.cpp)
+add_mujoco_ros_unit_test(description_converter_test SOURCES description_converter_test.cpp)
+add_mujoco_ros_unit_test(description_bundle_test SOURCES description_bundle_test.cpp)
+add_mujoco_ros_unit_test(mesh_uri_prep_test SOURCES mesh_uri_prep_test.cpp)
+add_mujoco_ros_unit_test(glb_visual_prep_test SOURCES glb_visual_prep_test.cpp)
+add_mujoco_ros_unit_test(ascii_stl_convert_test SOURCES ascii_stl_convert_test.cpp)
+add_mujoco_ros_unit_test(viewer_geom_defaults_test SOURCES viewer_geom_defaults_test.cpp)
+
 # Helper function handling ROS 1/2 specific setup
 function(add_mujoco_ros_integration_test TEST_NAME TEST_SOURCE)
   set(options)
