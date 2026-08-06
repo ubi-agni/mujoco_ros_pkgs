@@ -754,3 +754,32 @@ TEST_F(BaseEnvFixture, InitModelFromInvalidQueuedBuffer)
 
 	env_ptr->shutdown();
 }
+
+TEST_F(BaseEnvFixture, DestructorClearsGlobalInstancePointer)
+{
+	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	ASSERT_EQ(mujoco_ros::MujocoEnv::instance, env_ptr.get());
+	env_ptr->shutdown();
+	env_ptr.reset();
+	EXPECT_EQ(mujoco_ros::MujocoEnv::instance, nullptr)
+	    << "Destroying a MujocoEnv must clear the global instance pointer (and the mjcb_control/mjcb_passive "
+	       "callbacks that read it), otherwise a later mj_step/mj_compile use-after-frees the destroyed env.";
+}
+
+TEST_F(BaseEnvFixture, FromDescriptionProducesARunningEnv)
+{
+	env_ptr.reset(); // BaseEnvFixture's TearDown calls env_ptr->shutdown(); from_description returns a plain
+	                 // MujocoEnv, not a MujocoEnvTestWrapper, so manage its lifetime directly in this test.
+	auto env = mujoco_ros::MujocoEnv::from_description(std::string(TEST_RESOURCES_DIR) + "/two_link_robot.urdf",
+	                                                   std::string(TEST_RESOURCES_DIR) + "/two_link_robot.srdf");
+	ASSERT_NE(env, nullptr);
+	EXPECT_TRUE(env->sim_state_.model_valid);
+}
+
+TEST_F(BaseEnvFixture, FromDescriptionThrowsOnMissingUrdf)
+{
+	env_ptr.reset();
+	EXPECT_THROW(mujoco_ros::MujocoEnv::from_description(std::string(TEST_RESOURCES_DIR) + "/does_not_exist.urdf",
+	                                                     std::string(TEST_RESOURCES_DIR) + "/two_link_robot.srdf"),
+	             std::runtime_error);
+}

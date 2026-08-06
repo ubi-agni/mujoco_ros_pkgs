@@ -1,0 +1,3 @@
+<robot name="test_robot">
+  <disable_collisions link1="link_a" reason="bad"/>
+</robot>

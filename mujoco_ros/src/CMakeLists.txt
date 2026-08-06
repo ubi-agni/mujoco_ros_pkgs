@@ -95,6 +95,7 @@ target_link_libraries(${PROJECT_NAME}
   PUBLIC
    mujoco::mujoco
   PRIVATE
+   tinyxml2::tinyxml2
    project_option
    project_warning
 )
@@ -108,6 +109,7 @@ if (ROS_VERSION EQUAL "1")
 else()
   ament_target_dependencies(${PROJECT_NAME}
     PUBLIC
+      ament_index_cpp
       rclcpp
       rclcpp_lifecycle
       pluginlib

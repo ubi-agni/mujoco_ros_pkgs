@@ -1882,6 +1882,14 @@ void UiEvent(mjuiState *state)
 namespace mujoco_ros {
 namespace mju = ::mujoco::sample_util;
 
+void ApplyInteractiveViewerGeomDefaults(mjvOption *opt)
+{
+	if (opt == nullptr) {
+		return;
+	}
+	opt->geomgroup[2] = 0;
+}
+
 Viewer::Viewer(std::unique_ptr<PlatformUIAdapter> platform_ui_adapter, MujocoEnv *env, bool is_passive)
     : env_(env)
     , pert(env->pert_)
@@ -2797,6 +2805,7 @@ void Viewer::RenderLoop()
 	// Init abstract visualization
 	mjv_defaultCamera(&this->cam);
 	mjv_defaultOption(&this->opt);
+	ApplyInteractiveViewerGeomDefaults(&this->opt);
 	InitializeProfiler(this);
 	InitializeSensor(this);
 

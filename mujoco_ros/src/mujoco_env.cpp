@@ -36,12 +36,15 @@
 
 #include <mujoco/mujoco.h>
 
+#include <cstdio>
+
 #include <mujoco_ros/ros_version.hpp>
 #include <mujoco_ros/render_backend.hpp>
 #include <mujoco_ros/version.hpp>
 #include <mujoco_ros/logging.hpp>
 
 #include <mujoco_ros/array_safety.h>
+#include <mujoco_ros/description_converter.hpp>
 #include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros/offscreen_camera.hpp>
 #include <mujoco_ros/viewer.hpp>

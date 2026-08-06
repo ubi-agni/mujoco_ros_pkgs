@@ -71,6 +71,17 @@ add_mujoco_ros_integration_test(
   ROS1_LAUNCH launch/mujoco_env.test
   ROS2_LAUNCH launch/mujoco_env.test.py
 )
+target_compile_definitions(mujoco_env_test PRIVATE TEST_RESOURCES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources")
+
+add_mujoco_ros_integration_test(
+  description_bundle_integration_test
+  description_bundle_integration_test.cpp
+  ROS1_LAUNCH launch/description_bundle_integration.test
+  ROS2_LAUNCH launch/description_bundle_integration.test.py
+)
+target_compile_definitions(description_bundle_integration_test PRIVATE
+  TEST_RESOURCES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources"
+)
 
 add_mujoco_ros_integration_test(
   ros_interface_test
@@ -106,6 +117,7 @@ if(ROS_VERSION EQUAL 1)
   add_rostest(launch/python_bindings.test)
   add_rostest(launch/python_bindings_config.test)
   add_rostest(launch/python_bindings_plugin.test)
+  add_rostest(launch/description_converter_bindings.test)
 elseif(ROS_VERSION EQUAL 2)
   add_launch_test(launch/python_bindings.test.py
     TARGET python_bindings_test
@@ -116,6 +128,16 @@ elseif(ROS_VERSION EQUAL 2)
   )
   if(TARGET python_bindings_test)
     add_dependencies(python_bindings_test pymujoco_ros)
+  endif()
+  add_launch_test(launch/description_converter_bindings.test.py
+    TARGET description_converter_bindings_test
+    ARGS
+      "test_script:=${CMAKE_CURRENT_SOURCE_DIR}/python/description_converter_bindings_test.py"
+      "python_module_path:=$<TARGET_FILE_DIR:pymujoco_ros>"
+      "python_package_path:=${PROJECT_SOURCE_DIR}/python/src"
+  )
+  if(TARGET description_converter_bindings_test)
+    add_dependencies(description_converter_bindings_test pymujoco_ros)
   endif()
   add_launch_test(launch/python_bindings_config.test.py
     TARGET python_bindings_config_test

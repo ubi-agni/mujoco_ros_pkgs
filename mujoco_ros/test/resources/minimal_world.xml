@@ -1,0 +1,5 @@
+<mujoco model="minimal_world">
+  <worldbody>
+    <frame name="spawn_frame" pos="0 0 0"/>
+  </worldbody>
+</mujoco>

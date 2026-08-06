@@ -91,6 +91,7 @@ using TransformStamped = geometry_msgs::msg::TransformStamped;
 
 #include <mujoco_ros/render_backend.hpp>
 #include <mujoco_ros/common_types.hpp>
+#include <mujoco_ros/mesh_uri_prep.hpp>
 #include <mujoco_ros/simulation_control_state.hpp>
 #include <mujoco_ros/viewer.hpp>
 

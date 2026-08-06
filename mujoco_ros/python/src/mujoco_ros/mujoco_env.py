@@ -189,6 +189,15 @@ class MujocoEnv:
         if model_path is not None:
             self.load_from_path(model_path)
 
+    @classmethod
+    def from_description(cls, urdf_path, srdf_path):
+        from pymujoco_ros import load_model_from_description
+
+        model, data = load_model_from_description(urdf_path, srdf_path)
+        env = cls()
+        env._load_python_model(model, data, filename=urdf_path)
+        return env
+
     def _prepare_parameters(self, config_files, parameters, plugin_config):
         if _is_ros1():
             config = {}

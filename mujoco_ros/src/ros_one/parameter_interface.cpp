@@ -47,6 +47,15 @@
 #include <mujoco_ros/array_safety.h>
 
 #include <rosgraph_msgs/Clock.h>
+#include <std_msgs/String.h>
+
+#include <mujoco_ros/description_bundle.hpp>
+#include <mujoco_ros/description_converter.hpp>
+
+#include <atomic>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
 
 namespace mju = ::mujoco::sample_util;
 

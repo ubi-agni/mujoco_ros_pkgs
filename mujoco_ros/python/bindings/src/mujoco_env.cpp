@@ -36,6 +36,7 @@
 
 #include "pymujoco_ros.hpp"
 
+#include <mujoco_ros/description_converter.hpp>
 #include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros/render_backend.hpp>
 
@@ -44,6 +45,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -234,7 +236,7 @@ public:
 #else
 			auto adapter = std::make_unique<mujoco_ros::GlfwAdapter>();
 #endif
-			auto viewer = std::make_unique<mujoco_ros::Viewer>(std::move(adapter), this, false);
+			auto viewer      = std::make_unique<mujoco_ros::Viewer>(std::move(adapter), this, false);
 			attached_viewer_ = viewer.get();
 			viewer_running_  = true;
 			viewer->RenderLoop();
@@ -480,6 +482,34 @@ private:
 
 void InitMujocoEnv(py::module_ &module)
 {
+	// First module-level (non-class-bound) function in pymujoco_ros. Reuses
+	// SaveDescriptionToTempMjb -- the temp-.mjb-producing helper
+	// mujoco_ros::load_model_from_description (description_converter.hpp)
+	// itself is built on -- rather than that C++-pointer-returning overload,
+	// because there is no existing C++-pointer -> Python-object conversion
+	// anywhere in this codebase (only the reverse, via .attr("_address")).
+	// Instead this mirrors mujoco_env.py's own _model_from_string/
+	// load_from_path idiom (mujoco.MjModel.from_binary_path + mujoco.MjData)
+	// from the C++ side, so the returned model/data are genuinely
+	// Python-owned mujoco objects, not a hand-rolled pointer wrapper.
+	module.def(
+	    "load_model_from_description",
+	    [](const std::string &urdf_path, const std::string &srdf_path, bool generate_actuators,
+	       const std::string &attach_prefix) {
+		    std::string tmp_path = mujoco_ros::SaveDescriptionToTempMjb(urdf_path, srdf_path, nullptr, {},
+		                                                                generate_actuators, attach_prefix);
+		    TempMjbFileGuard tmp_file_guard(tmp_path);
+		    py::object mujoco_module = py::module_::import("mujoco");
+		    py::object model         = mujoco_module.attr("MjModel").attr("from_binary_path")(tmp_path);
+		    py::object data          = mujoco_module.attr("MjData")(model);
+		    return py::make_tuple(model, data);
+	    },
+	    py::arg("urdf_path"), py::arg("srdf_path"), py::arg("generate_actuators") = false,
+	    py::arg("attach_prefix") = std::string(""),
+	    "Derive a compiled MuJoCo model+data from URDF/SRDF, with no MujocoEnv required. "
+	    "Set generate_actuators to derive native MuJoCo actuators from ros2_control command interfaces. "
+	    "Set attach_prefix to namespace composed model names.");
+
 	py::class_<MujocoEnvWrapper, std::shared_ptr<MujocoEnvWrapper>>(module, "_MujocoEnvWrapper")
 	    .def(py::init([](std::optional<std::string> admin_hash, bool python_reload_service) {
 		         return std::make_shared<MujocoEnvWrapper>(admin_hash.value_or(""), python_reload_service);

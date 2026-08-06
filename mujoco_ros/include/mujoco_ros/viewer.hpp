@@ -84,6 +84,8 @@ namespace mujoco_ros {
 class ViewerMutex : public std::recursive_mutex
 {};
 
+void ApplyInteractiveViewerGeomDefaults(mjvOption *opt);
+
 class Viewer
 {
 public:

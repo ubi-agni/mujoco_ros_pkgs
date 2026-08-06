@@ -1,0 +1,15 @@
+<robot name="two_link_robot">
+  <link name="base_link"/>
+  <link name="link_1">
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/>
+    </inertial>
+  </link>
+  <joint name="joint_1" type="revolute">
+    <parent link="base_link"/>
+    <child link="link_1"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.0" upper="1.0" effort="10" velocity="1"/>
+  </joint>
+</robot>
