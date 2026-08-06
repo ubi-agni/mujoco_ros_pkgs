@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 import threading
+import time
 
 from pymujoco_ros import _MujocoEnvWrapper
 from pymujoco_ros import __mujoco_version__
@@ -80,6 +81,77 @@ def _is_existing_file(value):
         return Path(os.fspath(value)).is_file()
     except OSError:
         return False
+
+
+def _fetch_topic_content(topic, timeout):
+    """Read one std_msgs/String off `topic`, mirroring the C++ ResolveTopicSource
+    contract (parameter_interface.cpp): the publisher must be latched
+    (transient_local + reliable QoS on ROS 2, latch=True on ROS 1)."""
+    if _is_ros1():
+        import rospy
+        from std_msgs.msg import String
+
+        if not rospy.core.is_initialized():
+            rospy.init_node(
+                "mujoco_ros_python_description_reader", anonymous=True, disable_signals=True
+            )
+        result = {}
+        sub = rospy.Subscriber(topic, String, lambda msg: result.setdefault("data", msg.data))
+        try:
+            deadline = time.monotonic() + timeout
+            while "data" not in result:
+                if time.monotonic() > deadline:
+                    raise RuntimeError(
+                        f"Timed out after {timeout:.1f}s waiting for a message on topic "
+                        f"'{topic}'. The publisher must publish std_msgs/String with "
+                        "latch=True (a latched publisher)."
+                    )
+                time.sleep(0.01)
+        finally:
+            sub.unregister()
+        return result["data"]
+
+    import rclpy
+    from rclpy.qos import DurabilityPolicy
+    from rclpy.qos import HistoryPolicy
+    from rclpy.qos import QoSProfile
+    from rclpy.qos import ReliabilityPolicy
+    from std_msgs.msg import String
+
+    if not rclpy.ok():
+        rclpy.init()
+    node = rclpy.create_node("mujoco_ros_python_description_reader")
+    result = {}
+    qos = QoSProfile(
+        reliability=ReliabilityPolicy.RELIABLE,
+        durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        history=HistoryPolicy.KEEP_LAST,
+        depth=1,
+    )
+    sub = node.create_subscription(
+        String, topic, lambda msg: result.setdefault("data", msg.data), qos
+    )
+    try:
+        deadline = time.monotonic() + timeout
+        while "data" not in result:
+            if time.monotonic() > deadline:
+                raise RuntimeError(
+                    f"Timed out after {timeout:.1f}s waiting for a message on topic "
+                    f"'{topic}'. The publisher must publish std_msgs/String with "
+                    "transient_local + reliable QoS (a latched publisher)."
+                )
+            rclpy.spin_once(node, timeout_sec=0.05)
+    finally:
+        node.destroy_subscription(sub)
+        node.destroy_node()
+    return result["data"]
+
+
+def _write_temp_description_file(content, suffix):
+    fd, path = tempfile.mkstemp(prefix="mujoco_ros_python_description_", suffix=suffix)
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        stream.write(content)
+    return path
 
 
 class RuntimeSettings:
@@ -190,12 +262,71 @@ class MujocoEnv:
             self.load_from_path(model_path)
 
     @classmethod
-    def from_description(cls, urdf_path, srdf_path):
+    def from_description(
+        cls,
+        urdf_path,
+        srdf_path="",
+        generate_actuators=False,
+        attach_prefix="",
+        ros_params=None,
+    ):
         from pymujoco_ros import load_model_from_description
 
-        model, data = load_model_from_description(urdf_path, srdf_path)
-        env = cls()
+        model, data = load_model_from_description(
+            urdf_path,
+            srdf_path,
+            generate_actuators=generate_actuators,
+            attach_prefix=attach_prefix,
+        )
+        env = cls(parameters=ros_params)
         env._load_python_model(model, data, filename=urdf_path)
+        return env
+
+    @classmethod
+    def from_description_topic(
+        cls,
+        urdf_topic='/robot_description',
+        srdf_topic="",
+        srdf_path="",
+        timeout=5.0,
+        generate_actuators=False,
+        attach_prefix="",
+        ros_params=None,
+    ):
+        """Same as from_description, but reads URDF content off a ROS topic
+        instead of a file path. srdf_path (a plain filesystem path, e.g. for
+        deployments where SRDF stays local-only) takes precedence over
+        srdf_topic when both are given. The publisher(s) must be latched
+        (see _fetch_topic_content); this mirrors the server-side kTopic
+        DescriptionSource convention (description_bundle.hpp). ros_params is
+        forwarded to MujocoEnv's own `parameters` kwarg, becoming top-level
+        mujoco_server ROS params -- e.g. domain_id, or any other param a
+        plugin reads off env_ptr_->get_parameter(...)."""
+        from pymujoco_ros import load_model_from_description
+
+        urdf_content = _fetch_topic_content(urdf_topic, timeout)
+
+        urdf_path = _write_temp_description_file(urdf_content, ".urdf")
+        resolved_srdf_path = srdf_path
+        temp_srdf_path = ""
+        if not resolved_srdf_path and srdf_topic:
+            srdf_content = _fetch_topic_content(srdf_topic, timeout)
+            temp_srdf_path = _write_temp_description_file(srdf_content, ".srdf")
+            resolved_srdf_path = temp_srdf_path
+        try:
+            model, data = load_model_from_description(
+                urdf_path,
+                resolved_srdf_path,
+                generate_actuators=generate_actuators,
+                attach_prefix=attach_prefix,
+            )
+        finally:
+            os.unlink(urdf_path)
+            if temp_srdf_path:
+                os.unlink(temp_srdf_path)
+
+        env = cls(parameters=ros_params)
+        env._load_python_model(model, data, filename=urdf_topic)
         return env
 
     def _prepare_parameters(self, config_files, parameters, plugin_config):
@@ -383,6 +514,15 @@ class MujocoEnv:
             self._ros_core = None
 
         if getattr(self, "_temp_param_file", None) is not None:
+            # sys.argv is process-global and rclpy.init() re-parses it on every
+            # call; leaving our "--params-file <path>" pair behind breaks the
+            # *next* MujocoEnv/rclpy.init() in this process once the file below
+            # is deleted (RCLError: "Couldn't parse params file").
+            pair = ["--params-file", self._temp_param_file]
+            for i in range(len(sys.argv) - 1):
+                if sys.argv[i : i + 2] == pair:
+                    del sys.argv[i : i + 2]
+                    break
             try:
                 os.unlink(self._temp_param_file)
             except OSError:

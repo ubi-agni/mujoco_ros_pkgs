@@ -158,6 +158,160 @@ class DescriptionConverterBindingsTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             MujocoEnv.from_description(urdf_path, srdf_path)
 
+    def _latch_publish(self, node_or_none, topic, content):
+        """Publish `content` once on `topic` with a latched publisher, returning
+        whatever handle(s) must stay alive until the subscriber has read it."""
+        if is_ros1():
+            import rospy
+            from std_msgs.msg import String
+
+            if not rospy.core.is_initialized():
+                rospy.init_node(
+                    "description_converter_bindings_test_pub", anonymous=True, disable_signals=True
+                )
+            pub = rospy.Publisher(topic, String, queue_size=1, latch=True)
+            time.sleep(0.2)  # let the publisher register before the subscriber connects
+            pub.publish(String(data=content))
+            return pub
+
+        import rclpy
+        from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+        from std_msgs.msg import String
+
+        qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
+        pub = node_or_none.create_publisher(String, topic, qos)
+        pub.publish(String(data=content))
+        return pub
+
+    def test_mujoco_env_from_description_topic_loads_a_valid_model(self):
+        require_python_mujoco()
+
+        urdf_content = Path(self._resource("two_link_robot.urdf")).read_text(encoding="utf-8")
+        srdf_content = Path(self._resource("two_link_robot.srdf")).read_text(encoding="utf-8")
+
+        pub_node = None
+        try:
+            if is_ros1():
+                self._latch_publish(None, "/description_topic_test/urdf", urdf_content)
+                self._latch_publish(None, "/description_topic_test/srdf", srdf_content)
+            else:
+                import rclpy
+
+                if not rclpy.ok():
+                    rclpy.init()
+                pub_node = rclpy.create_node("description_converter_bindings_test_pub")
+                self._latch_publish(pub_node, "/description_topic_test/urdf", urdf_content)
+                self._latch_publish(pub_node, "/description_topic_test/srdf", srdf_content)
+
+            with MujocoEnv.from_description_topic(
+                "/description_topic_test/urdf", "/description_topic_test/srdf"
+            ) as env:
+                wait_for_idle(env)
+                self.assertTrue(env.model_valid)
+                self.assertIsNotNone(env.model)
+                self.assertIsNotNone(env.data)
+        finally:
+            if pub_node is not None:
+                pub_node.destroy_node()
+
+    def test_mujoco_env_from_description_topic_raises_on_timeout(self):
+        require_python_mujoco()
+
+        with self.assertRaisesRegex(RuntimeError, "Timed out"):
+            MujocoEnv.from_description_topic(
+                "/description_topic_test/never_published", timeout=0.2
+            )
+
+    def test_mujoco_env_from_description_topic_prefers_srdf_path_over_srdf_topic(self):
+        """srdf_path is a plain filesystem backup for deployments where SRDF stays
+        local-only; when given it must win even if srdf_topic is also set (and
+        never published on, so a topic-read attempt would time out and fail)."""
+        require_python_mujoco()
+
+        urdf_content = Path(self._resource("two_link_robot.urdf")).read_text(encoding="utf-8")
+        srdf_path = self._resource("two_link_robot.srdf")
+
+        pub_node = None
+        try:
+            if is_ros1():
+                self._latch_publish(None, "/description_topic_test/urdf_only", urdf_content)
+            else:
+                import rclpy
+
+                if not rclpy.ok():
+                    rclpy.init()
+                pub_node = rclpy.create_node("description_converter_bindings_test_pub2")
+                self._latch_publish(pub_node, "/description_topic_test/urdf_only", urdf_content)
+
+            with MujocoEnv.from_description_topic(
+                "/description_topic_test/urdf_only",
+                srdf_topic="/description_topic_test/srdf_never_published",
+                srdf_path=srdf_path,
+                timeout=0.2,
+            ) as env:
+                wait_for_idle(env)
+                self.assertTrue(env.model_valid)
+        finally:
+            if pub_node is not None:
+                pub_node.destroy_node()
+
+    def test_mujoco_env_from_description_forwards_ros_params(self):
+        require_python_mujoco()
+
+        urdf_path = self._resource("two_link_robot.urdf")
+        srdf_path = self._resource("two_link_robot.srdf")
+
+        with MujocoEnv.from_description(
+            urdf_path, srdf_path, ros_params={"domain_id": 7}
+        ) as env:
+            wait_for_idle(env)
+            self.assertTrue(env.model_valid)
+            if not is_ros1():
+                self.assertIsNotNone(env._temp_param_file)
+                self.assertIn(
+                    "domain_id: 7",
+                    Path(env._temp_param_file).read_text(encoding="utf-8"),
+                )
+
+    def test_mujoco_env_from_description_topic_forwards_ros_params(self):
+        require_python_mujoco()
+
+        urdf_content = Path(self._resource("two_link_robot.urdf")).read_text(encoding="utf-8")
+
+        pub_node = None
+        try:
+            if is_ros1():
+                self._latch_publish(None, "/description_topic_test/urdf_params", urdf_content)
+            else:
+                import rclpy
+
+                if not rclpy.ok():
+                    rclpy.init()
+                pub_node = rclpy.create_node("description_converter_bindings_test_pub3")
+                self._latch_publish(pub_node, "/description_topic_test/urdf_params", urdf_content)
+
+            with MujocoEnv.from_description_topic(
+                "/description_topic_test/urdf_params",
+                srdf_path=self._resource("two_link_robot.srdf"),
+                ros_params={"domain_id": 3},
+            ) as env:
+                wait_for_idle(env)
+                self.assertTrue(env.model_valid)
+                if not is_ros1():
+                    self.assertIsNotNone(env._temp_param_file)
+                    self.assertIn(
+                        "domain_id: 3",
+                        Path(env._temp_param_file).read_text(encoding="utf-8"),
+                    )
+        finally:
+            if pub_node is not None:
+                pub_node.destroy_node()
+
 
 if __name__ == "__main__":
     if is_ros1():
