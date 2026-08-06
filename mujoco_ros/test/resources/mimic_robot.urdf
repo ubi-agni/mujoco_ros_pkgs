@@ -1,0 +1,28 @@
+<robot name="mimic_robot">
+  <link name="base_link"/>
+  <link name="driver_link">
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/>
+    </inertial>
+  </link>
+  <joint name="driver_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="driver_link"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.0" upper="1.0" effort="10" velocity="2"/>
+  </joint>
+  <link name="follower_link">
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/>
+    </inertial>
+  </link>
+  <joint name="follower_joint" type="revolute">
+    <parent link="driver_link"/>
+    <child link="follower_link"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.0" upper="1.0" effort="10" velocity="2"/>
+    <mimic joint="driver_joint" multiplier="1.0" offset="0.0"/>
+  </joint>
+</robot>

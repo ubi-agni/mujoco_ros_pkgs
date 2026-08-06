@@ -147,7 +147,11 @@ struct OffscreenRenderContext
 	std::thread render_thread_handle;
 
 	// Condition variable to signal that the offscreen render thread should render a new frame
-	std::atomic_bool request_pending = { false };
+	std::atomic_bool request_pending        = { false };
+	std::atomic_int pending_request_waiters = { 0 }; // Internal lifecycle observability for teardown tests.
+	std::atomic_int render_request_waiters  = { 0 }; // Internal lifecycle observability for teardown tests.
+	std::atomic_int shutdown_exit_observers = { 0 }; // Internal lifecycle observability for teardown tests.
+	std::atomic_bool pause_shutdown_exit    = { false }; // Test-only barrier before shutdown clears a request.
 
 	std::mutex render_mutex;
 	std::condition_variable_any cond_render_request;
@@ -387,6 +391,17 @@ public:
 	void Shutdown();
 	void Reset();
 	bool LoadModelFromString(const std::string &model_xml, char *load_error = nullptr, const int error_sz = 0);
+
+	// Builds a MujocoEnv directly from URDF/SRDF (Extended Params come from SRDF
+	// <extended_params>, not a separate parameter), bypassing the
+	// ROS-param-driven FetchRosConfiguration path entirely -- useful for tests
+	// and non-ROS embedding. Routes through the existing LoadModelFromString
+	// .mjb-file path; adds no new protected load method. Throws std::runtime_error
+	// if conversion or compilation fails.
+	static std::unique_ptr<MujocoEnv> from_description(const std::string &urdf_path, const std::string &srdf_path,
+	                                                   const MeshPrepOptions &mesh_options = {},
+	                                                   bool generate_actuators             = false,
+	                                                   const std::string &attach_prefix    = "");
 	bool SetBodyState(const std::string &body_name, mjtNum *pose, mjtNum *twist, mjtNum &mass, bool set_pose,
 	                  bool set_twist, bool set_mass, bool reset_qpos, const std::string &admin_hash = std::string(),
 	                  char *status_message = nullptr, const int status_sz = 0);

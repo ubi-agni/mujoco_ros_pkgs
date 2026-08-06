@@ -22,7 +22,7 @@ def generate_test_description():
 
     test_proc = ExecuteProcess(
         cmd=[sys.executable, test_script, '--ros-args'],
-        name='python_bindings_test',
+        name='description_converter_bindings_test',
         output='screen',
     )
 
@@ -54,12 +54,12 @@ def generate_test_description():
     }
 
 
-class TestPythonBindingsWaitForCompletion(unittest.TestCase):
-    def test_python_bindings_run_complete(self, proc_info, test_proc):
+class TestDescriptionConverterBindingsWaitForCompletion(unittest.TestCase):
+    def test_description_converter_bindings_run_complete(self, proc_info, test_proc):
         proc_info.assertWaitForShutdown(test_proc, timeout=TEST_TIMEOUT)
 
 
 @launch_testing.post_shutdown_test()
-class TestPythonBindingsProcessPostShutdown(unittest.TestCase):
-    def test_python_bindings_pass(self, proc_info, test_proc):
+class TestDescriptionConverterBindingsProcessPostShutdown(unittest.TestCase):
+    def test_description_converter_bindings_pass(self, proc_info, test_proc):
         launch_testing.asserts.assertExitCodes(proc_info, process=test_proc)

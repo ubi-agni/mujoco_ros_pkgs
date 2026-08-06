@@ -71,9 +71,15 @@ void MujocoEnv::WrappedStep()
 	}
 
 	if (settings_.render_offscreen) {
-		// Wait until no render request is pending
-		while (offscreen_.request_pending.load()) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(3));
+		// Wait until no render request is pending. Also bail out on shutdown: the offscreen render thread
+		// clears request_pending before exiting, but only checks exit_request between iterations, so without
+		// this check a request issued right before shutdown can leave this loop spinning forever.
+		if (offscreen_.request_pending.load() && roscpp::ok() && !settings_.exit_request.load()) {
+			offscreen_.pending_request_waiters.fetch_add(1);
+			while (offscreen_.request_pending.load() && roscpp::ok() && !settings_.exit_request.load()) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(3));
+			}
+			offscreen_.pending_request_waiters.fetch_sub(1);
 		}
 		std::unique_lock<std::mutex> lock(offscreen_.render_mutex);
 

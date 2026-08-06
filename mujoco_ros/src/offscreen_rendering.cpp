@@ -383,12 +383,21 @@ void MujocoEnv::OffscreenRenderLoop()
 			// Wait for render request
 			std::unique_lock<std::mutex> lock(offscreen_.render_mutex);
 			// MJR_DEBUG_NAMED("offscreen_rendering", "Waiting for render request");
+			offscreen_.render_request_waiters.fetch_add(1);
 			offscreen_.cond_render_request.wait(lock, [this] {
 				return offscreen_.request_pending.load() || settings_.visual_init_request.load() || IsShutdownRequested();
 			});
+			offscreen_.render_request_waiters.fetch_sub(1);
 
 			// In case of exit request after waiting for render request
 			if (!roscpp::ok() || IsShutdownRequested()) {
+				offscreen_.shutdown_exit_observers.fetch_add(1);
+				while (offscreen_.pause_shutdown_exit.load()) {
+					std::this_thread::yield();
+				}
+				// Release any thread still busy-waiting on this request in WrappedStep, otherwise it spins forever
+				// and the physics thread join in ~MujocoEnv() hangs.
+				offscreen_.request_pending.store(false);
 				break;
 			}
 

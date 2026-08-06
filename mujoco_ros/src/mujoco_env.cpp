@@ -157,6 +157,28 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/, bool py
 	Configure();
 }
 
+std::unique_ptr<MujocoEnv> MujocoEnv::from_description(const std::string &urdf_path, const std::string &srdf_path,
+                                                       const MeshPrepOptions &mesh_options, bool generate_actuators,
+                                                       const std::string &attach_prefix)
+{
+	std::string tmp_path =
+	    SaveDescriptionToTempMjb(urdf_path, srdf_path, nullptr, mesh_options, generate_actuators, attach_prefix);
+
+	auto env = std::make_unique<MujocoEnv>("");
+	env->StartPhysicsLoop();
+	env->StartEventLoop();
+
+	char load_error[MujocoEnv::kErrorLength] = { '\0' };
+	bool ok                                  = env->LoadModelFromString(tmp_path, load_error, sizeof(load_error));
+	std::remove(tmp_path.c_str());
+
+	if (!ok) {
+		throw std::runtime_error(std::string("MujocoEnv::from_description: failed to load compiled description: ") +
+		                         load_error);
+	}
+	return env;
+}
+
 #else // MJR_ROS_VERSION == ROS_2
 
 MujocoEnv::MujocoEnv(rclcpp::Executor::SharedPtr executor, const std::string &admin_hash /* = std::string()*/,
@@ -194,6 +216,29 @@ void MujocoEnv::RemoveNodeFromExecutor(rclcpp::node_interfaces::NodeBaseInterfac
 rclcpp::Executor::SharedPtr MujocoEnv::GetExecutorPtr()
 {
 	return executor_;
+}
+
+std::unique_ptr<MujocoEnv> MujocoEnv::from_description(const std::string &urdf_path, const std::string &srdf_path,
+                                                       const MeshPrepOptions &mesh_options, bool generate_actuators,
+                                                       const std::string &attach_prefix)
+{
+	std::string tmp_path =
+	    SaveDescriptionToTempMjb(urdf_path, srdf_path, nullptr, mesh_options, generate_actuators, attach_prefix);
+
+	auto executor = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+	auto env      = std::make_unique<MujocoEnv>(executor);
+	env->StartPhysicsLoop();
+	env->StartEventLoop();
+
+	char load_error[MujocoEnv::kErrorLength] = { '\0' };
+	bool ok                                  = env->LoadModelFromString(tmp_path, load_error, sizeof(load_error));
+	std::remove(tmp_path.c_str());
+
+	if (!ok) {
+		throw std::runtime_error(std::string("MujocoEnv::from_description: failed to load compiled description: ") +
+		                         load_error);
+	}
+	return env;
 }
 
 #endif

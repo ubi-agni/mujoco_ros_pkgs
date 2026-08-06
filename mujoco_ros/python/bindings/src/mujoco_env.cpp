@@ -80,6 +80,16 @@ std::string NormalizeNamespace(std::string ns)
 	return ns;
 }
 
+class TempMjbFileGuard
+{
+public:
+	explicit TempMjbFileGuard(const std::string &path) : path_(path) {}
+	~TempMjbFileGuard() { std::remove(path_.c_str()); }
+
+private:
+	const std::string &path_;
+};
+
 #if MJR_ROS_VERSION == ROS_1
 void EnsureRosInitialized()
 {

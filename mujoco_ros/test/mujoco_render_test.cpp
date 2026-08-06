@@ -58,9 +58,52 @@
 #include <mujoco_ros/offscreen_camera.hpp>
 #include <mujoco_ros/util.hpp>
 #include <cmath>
+#include <atomic>
+#include <thread>
+#include <array>
+#include <cerrno>
+#include <csignal>
+#include <limits.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+extern char **environ;
+
+namespace {
+
+bool run_render_teardown_child = false;
+
+class ChildProcessReaper
+{
+public:
+	explicit ChildProcessReaper(pid_t pid) : pid_(pid) {}
+
+	~ChildProcessReaper()
+	{
+		if (!reaped_) {
+			kill(pid_, SIGKILL);
+			while (waitpid(pid_, nullptr, 0) == -1 && errno == EINTR) {
+			}
+		}
+	}
+
+	void MarkReaped() { reaped_ = true; }
+
+private:
+	pid_t pid_;
+	bool reaped_ = false;
+};
+
+} // namespace
 
 int main(int argc, char **argv)
 {
+	for (int index = 1; index < argc; ++index) {
+		if (std::string(argv[index]) == "--render-teardown-child") {
+			run_render_teardown_child = true;
+		}
+	}
 #if MJR_ROS_VERSION == ROS_1
 	::testing::InitGoogleTest(&argc, argv);
 	ros::init(argc, argv, "mujoco_render_test");
@@ -92,6 +135,137 @@ namespace mju = ::mujoco::sample_util;
 
 #if RENDER_BACKEND == GLFW_BACKEND || RENDER_BACKEND == EGL_BACKEND || \
     RENDER_BACKEND == OSMESA_BACKEND // i.e. any render backend available
+class RenderTeardownEnvWrapper : public MujocoEnvTestWrapper
+{
+public:
+	using MujocoEnvTestWrapper::MujocoEnvTestWrapper;
+
+	void RunBlockedRenderStep() { WrappedStep(); }
+};
+
+TEST_F(BaseEnvFixture, OffscreenRenderShutdownChild)
+{
+	if (!run_render_teardown_child) {
+		GTEST_SKIP() << "run only from the bounded parent process";
+	}
+
+	nh->setParam("no_render", false);
+	nh->setParam("headless", true);
+	nh->setParam("render_offscreen", true);
+	nh->setParam("unpause", false);
+	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::RGB);
+
+	auto render_env = std::make_unique<RenderTeardownEnvWrapper>("", nh.get());
+	render_env->StartWithXML(testing::get_test_model_path("camera_world.xml"));
+	ASSERT_EQ(render_env->GetOperationalStatus(), 0);
+	ASSERT_TRUE(render_env->isRenderingRunning());
+
+	OffscreenRenderContext *offscreen = render_env->getOffscreenContext();
+	ASSERT_TRUE(render_env->step(1, false));
+	const auto request_deadline = Clock::now() + std::chrono::seconds(2);
+	while (!offscreen->request_pending.load() && Clock::now() < request_deadline) {
+		std::this_thread::yield();
+	}
+	ASSERT_TRUE(offscreen->request_pending.load()) << "physics never issued an observable offscreen render request";
+
+	const auto idle_deadline = Clock::now() + std::chrono::seconds(2);
+	while ((offscreen->request_pending.load() || offscreen->render_request_waiters.load() == 0) &&
+	       Clock::now() < idle_deadline) {
+		std::this_thread::yield();
+	}
+	ASSERT_FALSE(offscreen->request_pending.load()) << "initial offscreen request did not complete";
+	ASSERT_GT(offscreen->render_request_waiters.load(), 0) << "offscreen thread did not return to its request wait";
+
+	std::unique_lock<std::mutex> render_lock(offscreen->render_mutex);
+	// Keep the observed request pending until the second step has entered WrappedStep's
+	// pending-request wait. This makes shutdown race against the real failure point.
+	offscreen->request_pending.store(true);
+	offscreen->pause_shutdown_exit.store(true);
+	std::thread in_flight_step([&] { render_env->RunBlockedRenderStep(); });
+	const auto waiting_deadline = Clock::now() + std::chrono::seconds(2);
+	while (offscreen->pending_request_waiters.load() == 0 && Clock::now() < waiting_deadline) {
+		std::this_thread::yield();
+	}
+	const bool second_step_waiting = offscreen->pending_request_waiters.load() > 0;
+
+	const auto shutdown_started = Clock::now();
+	render_env->requestShutdown();
+	offscreen->cond_render_request.notify_one();
+	render_lock.unlock();
+	const auto shutdown_exit_deadline = Clock::now() + std::chrono::seconds(2);
+	while (offscreen->shutdown_exit_observers.load() == 0 && Clock::now() < shutdown_exit_deadline) {
+		std::this_thread::yield();
+	}
+	const bool shutdown_exit_observed = offscreen->shutdown_exit_observers.load() > 0;
+	offscreen->pause_shutdown_exit.store(false);
+	if (in_flight_step.joinable()) {
+		in_flight_step.join();
+	}
+	render_env->shutdown();
+
+	EXPECT_TRUE(second_step_waiting) << "second physics step did not enter the pending-render wait";
+	EXPECT_TRUE(shutdown_exit_observed) << "offscreen thread did not observe shutdown before request release";
+	EXPECT_LT(Clock::now() - shutdown_started, std::chrono::seconds(2));
+	EXPECT_EQ(render_env->isPhysicsRunning(), 0);
+	EXPECT_EQ(render_env->isRenderingRunning(), 0);
+	EXPECT_EQ(render_env->isEventRunning(), 0);
+}
+
+TEST_F(BaseEnvFixture, OffscreenRenderShutdownCompletesAllJoinsWithinDeadline)
+{
+	std::array<char, PATH_MAX> executable_buffer = {};
+	const ssize_t executable_length = readlink("/proc/self/exe", executable_buffer.data(), executable_buffer.size());
+	ASSERT_GT(executable_length, 0) << "could not resolve render test executable";
+	ASSERT_LT(executable_length, static_cast<ssize_t>(executable_buffer.size()))
+	    << "render test executable path is too long";
+	const std::string executable(executable_buffer.data(), executable_length);
+
+	std::array<char *, 4> child_args = {
+		const_cast<char *>(executable.c_str()),
+		const_cast<char *>("--render-teardown-child"),
+		const_cast<char *>("--gtest_filter=BaseEnvFixture.OffscreenRenderShutdownChild"),
+		nullptr,
+	};
+	pid_t child_pid = -1;
+	ASSERT_EQ(posix_spawn(&child_pid, executable.c_str(), nullptr, nullptr, child_args.data(), environ), 0)
+	    << "could not start bounded render teardown child";
+	ChildProcessReaper reaper(child_pid);
+
+	constexpr auto child_deadline = std::chrono::seconds(5);
+	const auto deadline           = Clock::now() + child_deadline;
+	int child_status              = 0;
+	bool child_exited             = false;
+	while (Clock::now() < deadline) {
+		const pid_t wait_result = waitpid(child_pid, &child_status, WNOHANG);
+		if (wait_result == child_pid) {
+			child_exited = true;
+			break;
+		}
+		ASSERT_NE(wait_result, -1) << "waitpid failed for render teardown child";
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	if (child_exited) {
+		reaper.MarkReaped();
+	}
+	const bool child_timed_out = !child_exited;
+	if (child_timed_out) {
+		ASSERT_EQ(kill(child_pid, SIGKILL), 0) << "could not terminate hung render teardown child";
+		while (waitpid(child_pid, &child_status, 0) == -1 && errno == EINTR) {
+		}
+		child_exited = true;
+		reaper.MarkReaped();
+	}
+
+	EXPECT_FALSE(child_timed_out) << "render teardown child exceeded " << child_deadline.count()
+	                              << " seconds and was terminated";
+	ASSERT_TRUE(child_exited);
+	EXPECT_TRUE(WIFEXITED(child_status)) << "render teardown child did not exit normally";
+	if (WIFEXITED(child_status)) {
+		EXPECT_EQ(WEXITSTATUS(child_status), 0) << "render teardown child reported a test failure";
+	}
+}
+
 TEST_F(BaseEnvFixture, Not_Headless_Warn)
 {
 	nh->setParam("no_render", false);
