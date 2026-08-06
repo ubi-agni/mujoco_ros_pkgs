@@ -618,6 +618,15 @@ void MujocoEnv::RunPassiveCbs()
 MujocoEnv::~MujocoEnv()
 {
 	MJR_DEBUG("Destructor called");
+	// mjcb_control/mjcb_passive are process-wide MuJoCo globals that read MujocoEnv::instance
+	// (see ProxyControlCB/ProxyPassiveCB). Left set, a later mj_step/mj_compile call (e.g. from
+	// a subsequently-constructed env, or mj_compile's internal warm-up step) would dereference
+	// this now-destroyed instance.
+	if (MujocoEnv::instance == this) {
+		MujocoEnv::instance = nullptr;
+		mjcb_control        = nullptr;
+		mjcb_passive        = nullptr;
+	}
 	RequestShutdown();
 	offscreen_.request_pending.store(true);
 	offscreen_.cond_render_request.notify_one();
