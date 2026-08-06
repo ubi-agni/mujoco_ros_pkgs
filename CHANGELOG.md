@@ -1,14 +1,27 @@
 <a name="unreleased"></a>
 ## Unreleased
 
+### Added
+* [major] Load robot descriptions from URDF/SRDF bundles into MuJoCo worlds through ROS 1, ROS 2, and Python APIs. URDF-only bundles are supported, with optional world MJCF composition. Python: `MujocoEnv.from_description_topic()` loads from latched ROS topics, mirroring `from_description()`'s file-path API. (quick-change)
+* [minor] Resolve relative, file://, and package:// mesh URIs through the MuJoCo VFS without modifying source descriptions. Add ASCII STL OBJ fallback and optional cached conversion.
+* [minor] Generate MuJoCo actuators from ros2_control command interfaces, including position, velocity, and torque modes with URDF-derived limits and mimic-joint validation.
+* [minor] Convert textured GLB visuals into cached OBJ assets with UV/material handling and fallbacks for missing textures or UVs.
+
 ### Changed
-* Simulation control commands now route through `SimulationControlState`; legacy control-related `EnvSettings` fields are read-only mirrors rather than command inputs.
+* [minor] Simulation control commands now route through `SimulationControlState`; legacy control-related `EnvSettings` fields are read-only mirrors rather than command inputs.
+* [major] SRDF <extended_params> is now the only Extended Params input. Remove standalone XML compatibility, extended_params_path APIs/fields/ROS parameters, and legacy standalone fixtures (breaking).
+* [major] Rename built-in Extended Params tags actuator and gravcomp to mujoco_actuator and mujoco_gravcomp; unregistered custom tags now warn and skip instead of entering core parsing (breaking).
+* [major] Description launch sources use topics for URDF/SRDF delivery. modelfile is the optional composition world; empty selects the built-in default world.
 
 ### Fixed
-* Fixed Python viewer rendering on hybrid-GPU systems by preparing the GLFW viewer context before offscreen rendering initializes.
-* Fixed equality constraint array services returning strings with embedded null characters when individual requests fail.
-* Fixed ROS 2 runtime parameter sync reapplying stale pause state and causing flaky reset/step action tests.
+* [patch] Fixed Python viewer rendering on hybrid-GPU systems by preparing the GLFW viewer context before offscreen rendering initializes.
+* [patch] Fixed equality constraint array services returning strings with embedded null characters when individual requests fail.
+* [patch] Fixed ROS 2 runtime parameter sync reapplying stale pause state and causing flaky reset/step action tests.
+* [patch] Clean up MuJoCo environment-global callbacks during destruction to prevent dangling-instance crashes during later model loads and compilation.
+* [patch] Attach description robots through valid MuJoCo frame parents and preserve stable generated geom names and collision exclusions.
 
+### Known limitations
+* GLB conversion still has unresolved scaling differences across some robot descriptions. Textured visuals are stable for the tested descriptions; cross-description scale normalization remains follow-up work.
 
 <a name="1.0.0"></a>
 ## [1.0.0] - 2026-06-27
