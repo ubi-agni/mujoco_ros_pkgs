@@ -314,8 +314,6 @@ bool RegisterPlugin(const std::string &nh_namespace, const XmlRpc::XmlRpcValue &
 void UnloadPluginloader();
 void InitPluginLoader();
 
-static std::unique_ptr<pluginlib::ClassLoader<MujocoPlugin>> plugin_loader_ptr_;
-
 /**
  * @brief Defines under which path the plugin configuration is stored in the ros parameter server.
  */

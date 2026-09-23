@@ -1,0 +1,5 @@
+<robot name="test_robot">
+  <disable_collisions link1="link_a" link2="link_b" reason="Adjacent"/>
+  <disable_collisions link1="link_b" link2="link_c" reason="Never in contact"/>
+  <group name="arm"><joint name="joint_1"/></group>
+</robot>

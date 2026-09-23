@@ -1,0 +1,17 @@
+<robot name="ros2_control_robot">
+  <link name="base_link"/>
+  <link name="pos_link"><inertial><mass value="1.0"/><inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/></inertial></link>
+  <joint name="pos_joint" type="revolute"><parent link="base_link"/><child link="pos_link"/><axis xyz="0 0 1"/><limit lower="-1.0" upper="1.0" effort="10" velocity="2"/></joint>
+  <link name="vel_link"><inertial><mass value="1.0"/><inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/></inertial></link>
+  <joint name="vel_joint" type="revolute"><parent link="pos_link"/><child link="vel_link"/><axis xyz="0 0 1"/><limit lower="-1.0" upper="1.0" effort="10" velocity="2"/></joint>
+  <link name="eff_link"><inertial><mass value="1.0"/><inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/></inertial></link>
+  <joint name="eff_joint" type="revolute"><parent link="vel_link"/><child link="eff_link"/><axis xyz="0 0 1"/><limit lower="-1.0" upper="1.0" effort="10" velocity="2"/></joint>
+  <link name="dual_link"><inertial><mass value="1.0"/><inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/></inertial></link>
+  <joint name="dual_joint" type="revolute"><parent link="eff_link"/><child link="dual_link"/><axis xyz="0 0 1"/><limit lower="-1.0" upper="1.0" effort="10" velocity="2"/></joint>
+  <ros2_control name="test_system" type="system">
+    <joint name="pos_joint"><command_interface name="position"/></joint>
+    <joint name="vel_joint"><command_interface name="velocity"/></joint>
+    <joint name="eff_joint"><command_interface name="effort"/></joint>
+    <joint name="dual_joint"><command_interface name="position"/><command_interface name="velocity"/></joint>
+  </ros2_control>
+</robot>

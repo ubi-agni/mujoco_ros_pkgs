@@ -38,6 +38,13 @@
 
 namespace mujoco_ros::plugin_utils {
 
+namespace {
+
+std::unique_ptr<pluginlib::ClassLoader<MujocoPlugin>> plugin_loader_ptr_;
+int plugin_loader_refcount_ = 0;
+
+} // namespace
+
 bool ParsePlugins(const ros::NodeHandle *nh, XmlRpc::XmlRpcValue &plugin_config_rpc)
 {
 	std::string param_path;
@@ -113,15 +120,26 @@ bool RegisterPlugin(const std::string &nh_namespace, const XmlRpc::XmlRpcValue &
 
 void InitPluginLoader()
 {
-	// NOLINTBEGIN(clang-analyzer-optin.cplusplus.VirtualCall)
-	plugin_loader_ptr_ =
-	    std::make_unique<pluginlib::ClassLoader<mujoco_ros::MujocoPlugin>>("mujoco_ros", "mujoco_ros::MujocoPlugin");
-	// NOLINTEND(clang-analyzer-optin.cplusplus.VirtualCall)
+	// Refcount: overlapping MujocoEnv lifetimes (e.g. unique_ptr reassignment constructs
+	// the new env before destroying the old) must not replace/destroy the ClassLoader
+	// while plugins from another env still reference it.
+	if (plugin_loader_refcount_ == 0) {
+		// NOLINTBEGIN(clang-analyzer-optin.cplusplus.VirtualCall)
+		plugin_loader_ptr_ =
+		    std::make_unique<pluginlib::ClassLoader<mujoco_ros::MujocoPlugin>>("mujoco_ros", "mujoco_ros::MujocoPlugin");
+		// NOLINTEND(clang-analyzer-optin.cplusplus.VirtualCall)
+	}
+	++plugin_loader_refcount_;
 }
 
 void UnloadPluginloader()
 {
-	plugin_loader_ptr_.reset();
+	if (plugin_loader_refcount_ == 0) {
+		return;
+	}
+	if (--plugin_loader_refcount_ == 0) {
+		plugin_loader_ptr_.reset();
+	}
 }
 
 } // namespace mujoco_ros::plugin_utils

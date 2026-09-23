@@ -1,0 +1,1 @@
+<robot name="r"><link name="base_link"/><ros2_control name="s" type="system"><joint name="missing"><command_interface name="position"/></joint></ros2_control></robot>

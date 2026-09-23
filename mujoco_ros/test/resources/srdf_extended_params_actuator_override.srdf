@@ -1,0 +1,5 @@
+<robot name="two_link_robot">
+  <extended_params name="joint_1">
+    <mujoco_actuator kp="500" kv="20" armature="0.02"/>
+  </extended_params>
+</robot>

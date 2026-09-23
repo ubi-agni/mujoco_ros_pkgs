@@ -20,7 +20,7 @@ def generate_test_description():
     python_package_path = LaunchConfiguration('python_package_path')
 
     test_proc = ExecuteProcess(
-        cmd=[sys.executable, test_script],
+        cmd=[sys.executable, test_script, '--ros-args'],
         name='python_bindings_config_test',
         output='screen',
     )

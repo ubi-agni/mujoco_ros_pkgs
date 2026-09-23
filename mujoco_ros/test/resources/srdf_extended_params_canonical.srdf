@@ -1,0 +1,11 @@
+<robot name="extended_params_canonical">
+  <disable_collisions link1="link_a" link2="link_b" reason="Adjacent"/>
+  <disable_collisions link1="link_b" link2="link_c" reason="Adjacent"/>
+  <extended_params name="joint1">
+    <mujoco_actuator kp="121"/>
+    <motor reduction_ratio="2" inertia="0.01" torque_constant="0.2"/>
+    <mujoco_gravcomp value="1.0"/>
+  </extended_params>
+  <group name="ignored_group"/>
+  <group_state name="ignored_state" group="ignored_group"/>
+</robot>

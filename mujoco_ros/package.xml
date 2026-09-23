@@ -17,7 +17,9 @@
   <buildtool_depend condition="$ROS_VERSION == 2">ament_cmake_python</buildtool_depend>
 
   <depend condition="$ROS_VERSION == 1">roscpp</depend>
+  <depend condition="$ROS_VERSION == 1">roslib</depend>
   <depend condition="$ROS_VERSION == 2">rclcpp</depend>
+  <depend condition="$ROS_VERSION == 2">ament_index_cpp</depend>
   <depend condition="$ROS_VERSION == 1">dynamic_reconfigure</depend>
   <depend condition="$ROS_VERSION == 1">actionlib</depend>
   <depend>py_binding_tools</depend>
@@ -42,6 +44,7 @@
   <depend>std_srvs</depend>
   <depend>libboost-program-options-dev</depend>
   <depend version_gte="1.13.2">urdf</depend>
+  <depend>tinyxml2</depend>
   <test_depend>mujoco_ros_testing_utils</test_depend>
   <test_depend condition="$ROS_VERSION == 1">rostest</test_depend>
 

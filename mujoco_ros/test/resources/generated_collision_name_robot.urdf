@@ -1,0 +1,10 @@
+<robot name="generated_collision_name_robot">
+  <link name="base_link">
+    <visual>
+      <geometry><box size="0.1 0.1 0.1"/></geometry>
+    </visual>
+    <visual>
+      <geometry><sphere radius="0.05"/></geometry>
+    </visual>
+  </link>
+</robot>

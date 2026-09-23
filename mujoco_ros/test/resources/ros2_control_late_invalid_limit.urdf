@@ -1,0 +1,12 @@
+<robot name="late_invalid_limit"><link name="base"/>
+  <link name="link_1"><inertial><mass value="1"/><inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/></inertial></link>
+  <link name="link_2"><inertial><mass value="1"/><inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/></inertial></link>
+  <joint name="joint_1" type="revolute"><parent link="base"/><child link="link_1"/><axis xyz="0 0 1"/>
+    <limit lower="-1" upper="1" effort="1" velocity="1"/></joint>
+  <joint name="joint_2" type="revolute"><parent link="link_1"/><child link="link_2"/><axis xyz="0 0 1"/>
+    <limit lower="-1" upper="1" effort="0" velocity="1"/></joint>
+  <ros2_control name="system" type="system">
+    <joint name="joint_1"><command_interface name="position"/></joint>
+    <joint name="joint_2"><command_interface name="effort"/></joint>
+  </ros2_control>
+</robot>

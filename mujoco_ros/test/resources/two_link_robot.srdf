@@ -1,0 +1,3 @@
+<robot name="two_link_robot">
+  <disable_collisions link1="base_link" link2="link_1" reason="Adjacent"/>
+</robot>
