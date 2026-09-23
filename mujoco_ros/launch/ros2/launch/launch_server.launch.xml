@@ -22,103 +22,64 @@
   <arg name="mujoco_threads"       default="1"     description="Deprecated. Number of threads to use in the MuJoCo simulation. Values greater than 1 can increase CPU usage because MuJoCo worker threads busy-wait." />
   <arg name="gdb_term_cmd"         default="gnome-terminal -- " description="Command to open gdb in a new terminal. Common alternative: 'xterm -e '" />
 
-  <arg name="modelfile"            default="$(find-pkg-share mujoco_ros)/assets/pendulum_world.xml"        description="MuJoCo xml file to load. Should define robot model and world." />
+  <arg name="modelfile"            default="" description="Full MuJoCo model when description bundle unused. With urdf_source set: world MJCF to compose into (empty = built-in default_world)." />
   <arg name="initial_joint_states" default="$(find-pkg-share mujoco_ros)/config/initial_joint_states.yaml" description="Provide a filepath containing initial joint states to load." />
   <arg name="console_config_file"  default="$(find-pkg-share mujoco_ros)/config/rosconsole.config"         description="Path to ROS console config used when verbose logging is active." />
+
+  <!-- Description bundle. Activation requires urdf_source; SRDF args are optional. -->
+  <arg name="urdf_source"          default="" description="URDF source kind: 'file' or 'topic'. Empty skips the description bundle." />
+  <arg name="urdf_path"            default="" description="URDF file path when urdf_source:=file." />
+  <arg name="urdf_topic"           default="" description="Topic publishing URDF as a latched std_msgs/String when urdf_source:=topic. Server defaults to robot_description if unset." />
+  <arg name="srdf_source"          default="" description="Optional. SRDF source kind: 'file' or 'topic'." />
+  <arg name="srdf_path"            default="" description="SRDF file path when srdf_source:=file." />
+  <arg name="srdf_topic"           default="" description="Topic publishing SRDF as a latched std_msgs/String when srdf_source:=topic. Server defaults to robot_description_semantic if unset." />
+  <arg name="convert_ascii_stl"    default="" description="Optional. 'true'/'false' for description.convert_ascii_stl (ASCII STL → temp binary cache). Empty = false (OBJ fallback)." />
 
   <arg name="use_sim_time" />
 
   <let unless="$(var verbose)" name="log_level" value="info" />
   <let if="$(var verbose)" name="log_level" value="debug" />
 
+  <!-- Mutually exclusive launch-prefix (ROS 1 launch_server.launch style). -->
+  <let if="$(eval '\'$(var debug)\' == \'true\' and \'$(var debug_server)\' != \'true\'')"
+       name="launch_prefix" value="$(var gdb_term_cmd)gdb --args" />
+  <let if="$(eval '\'$(var debug_server)\' == \'true\'')"
+       name="launch_prefix" value="gdbserver localhost:1234" />
+  <let if="$(eval '\'$(var debug)\' != \'true\' and \'$(var debug_server)\' != \'true\' and \'$(var valgrind)\' == \'true\'')"
+       name="launch_prefix" value="valgrind $(var valgrind_args)" />
+  <let if="$(eval '\'$(var debug)\' != \'true\' and \'$(var debug_server)\' != \'true\' and \'$(var valgrind)\' != \'true\'')"
+       name="launch_prefix" value="" />
+
   <set_env name="RCUTILS_CONSOLE_OUTPUT_FORMAT" value="[{severity}] [{time}] [{name}] [{function_name}]: {message}"/>
   <set_env name="RCUTILS_COLORIZED_OUTPUT" value="1"/>
-  <!-- <set_env if="$(var verbose)" name="ROSCONSOLE_CONFIG_FILE" -->
-       <!-- value="$(var console_config_file)"/> -->
+  <set_env if="$(eval '\'$(var debug)\' != \'true\' and \'$(var debug_server)\' != \'true\' and \'$(var valgrind)\' != \'true\' and \'$(var profile)\' == \'true\'')"
+           name="CPUPROFILE" value="/tmp/profile.out" />
 
-  <group if="$(var debug)">
-    <group unless="$(var debug_server)">
-      <node pkg="mujoco_ros" exec="mujoco_node" output="screen" launch-prefix="$(var gdb_term_cmd) gdb --args" args="--admin-hash $(var admin_hash) --ros-args --log-level mujoco_server:=$(var log_level) --log-level mujoco_ros_plugin_loader:=$(var log_level) --log-level Viewer:=$(var log_level)" >
-        <param name="/use_sim_time"        value="$(var use_sim_time)"/>
-        <param name="ns"                   value="$(var ns)" />
-        <param name="unpause"              value="$(var unpause)" />
-        <param name="headless"             value="$(var headless)" />
-        <param name="render_offscreen"     value="$(var render_offscreen)" />
-        <param name="no_render"            value="$(var no_render)" />
-        <param name="num_steps"            value="$(var num_sim_steps)" />
-        <param name="eval_mode"            value="$(var eval_mode)" />
-        <param name="modelfile"            value="$(var modelfile)" />
-        <param name="wait_for_xml"         value="$(var wait_for_xml)" />
-        <param name="realtime"             value="$(var realtime)" />
-        <param name="num_mj_threads"       value="$(var mujoco_threads)" />
-        <param name="log_level"            value="$(var log_level)" />
-        <param from="$(var initial_joint_states)" />
-        <param from="$(var mujoco_plugin_config)" />
-      </node>
-    </group>
-    <group if="$(var debug_server)">
-      <node pkg="mujoco_ros" exec="mujoco_node" output="screen" launch-prefix="gdbserver localhost:1234" args="--admin-hash $(var admin_hash) --ros-args --log-level mujoco_server:=$(var log_level) --log-level mujoco_ros_plugin_loader:=$(var log_level) --log-level Viewer:=$(var log_level)" >
-        <param name="/use_sim_time"        value="$(var use_sim_time)"/>
-        <param name="ns"                   value="$(var ns)" />
-        <param name="unpause"              value="$(var unpause)" />
-        <param name="headless"             value="$(var headless)" />
-        <param name="render_offscreen"     value="$(var render_offscreen)" />
-        <param name="no_render"            value="$(var no_render)" />
-        <param name="num_steps"            value="$(var num_sim_steps)" />
-        <param name="eval_mode"            value="$(var eval_mode)" />
-        <param name="modelfile"            value="$(var modelfile)" />
-        <param name="wait_for_xml"         value="$(var wait_for_xml)" />
-        <param name="realtime"             value="$(var realtime)" />
-        <param name="num_mj_threads"       value="$(var mujoco_threads)" />
-        <param name="log_level"            value="$(var log_level)" />
-        <param from="$(var initial_joint_states)" />
-        <param from="$(var mujoco_plugin_config)" />
-      </node>
-    </group>
-  </group>
-
-  <group unless="$(var debug)">
-    <group if="$(var valgrind)">
-      <node pkg="mujoco_ros" exec="mujoco_node" output="screen" args="--admin-hash $(var admin_hash) --ros-args --log-level mujoco_server:=$(var log_level) --log-level mujoco_ros_plugin_loader:=$(var log_level)" launch-prefix="valgrind $(var valgrind_args) --log-level Viewer:=$(var log_level)" >
-        <param name="/use_sim_time"        value="$(var use_sim_time)"/>
-        <param name="ns"                   value="$(var ns)" />
-        <param name="unpause"              value="$(var unpause)" />
-        <param name="headless"             value="$(var headless)" />
-        <param name="render_offscreen"     value="$(var render_offscreen)" />
-        <param name="no_render"            value="$(var no_render)" />
-        <param name="num_steps"            value="$(var num_sim_steps)" />
-        <param name="eval_mode"            value="$(var eval_mode)" />
-        <param name="modelfile"            value="$(var modelfile)" />
-        <param name="wait_for_xml"         value="$(var wait_for_xml)" />
-        <param name="realtime"             value="$(var realtime)" />
-        <param name="num_mj_threads"       value="$(var mujoco_threads)" />
-        <param name="log_level"            value="$(var log_level)" />
-        <param from="$(var initial_joint_states)" />
-        <param from="$(var mujoco_plugin_config)" />
-      </node>
-    </group>
-    <group unless="$(var valgrind)">
-      <group if="$(var profile)">
-        <set_env name="CPUPROFILE" value="/tmp/profile.out" />
-      </group>
-
-      <node pkg="mujoco_ros" exec="mujoco_node" output="screen" args="--admin-hash $(var admin_hash) --ros-args --log-level mujoco_server:=$(var log_level) --log-level mujoco_ros_plugin_loader:=$(var log_level) --log-level Viewer:=$(var log_level)" >
-        <param name="use_sim_time"        value="$(var use_sim_time)"/>
-        <param name="ns"                   value="$(var ns)" />
-        <param name="unpause"              value="$(var unpause)" />
-        <param name="headless"             value="$(var headless)" />
-        <param name="render_offscreen"     value="$(var render_offscreen)" />
-        <param name="no_render"            value="$(var no_render)" />
-        <param name="num_steps"            value="$(var num_sim_steps)" />
-        <param name="eval_mode"            value="$(var eval_mode)" />
-        <param name="modelfile"            value="$(var modelfile)" />
-        <param name="wait_for_xml"         value="$(var wait_for_xml)" />
-        <param name="realtime"             value="$(var realtime)" />
-        <param name="num_mj_threads"       value="$(var mujoco_threads)" />
-        <param from="$(var initial_joint_states)" />
-        <param from="$(var mujoco_plugin_config)" />
-      </node>
-    </group>
-  </group>
+  <node pkg="mujoco_ros" exec="mujoco_node" output="screen"
+        launch-prefix="$(var launch_prefix)"
+        args="--admin-hash $(var admin_hash) --ros-args --log-level mujoco_server:=$(var log_level) --log-level mujoco_ros_plugin_loader:=$(var log_level) --log-level Viewer:=$(var log_level)">
+    <param name="use_sim_time"         value="$(var use_sim_time)"/>
+    <param name="ns"                   value="$(var ns)" />
+    <param name="unpause"              value="$(var unpause)" />
+    <param name="headless"             value="$(var headless)" />
+    <param name="render_offscreen"     value="$(var render_offscreen)" />
+    <param name="no_render"            value="$(var no_render)" />
+    <param name="num_steps"            value="$(var num_sim_steps)" />
+    <param name="eval_mode"            value="$(var eval_mode)" />
+    <param name="modelfile"            value="$(var modelfile)" />
+    <param name="wait_for_xml"         value="$(var wait_for_xml)" />
+    <param name="realtime"             value="$(var realtime)" />
+    <param name="num_mj_threads"       value="$(var mujoco_threads)" />
+    <!-- Empty strings treated as unset by parameter_interface (ROS 2 param has no if=). -->
+    <param name="urdf.source"          value="$(var urdf_source)" />
+    <param name="urdf.path"            value="$(var urdf_path)" />
+    <param name="urdf.topic"           value="$(var urdf_topic)" />
+    <param name="srdf.source"          value="$(var srdf_source)" />
+    <param name="srdf.path"            value="$(var srdf_path)" />
+    <param name="srdf.topic"           value="$(var srdf_topic)" />
+    <param name="description.convert_ascii_stl" value="$(var convert_ascii_stl)" />
+    <param from="$(var initial_joint_states)" />
+    <param from="$(var mujoco_plugin_config)" />
+  </node>
 
 </launch>

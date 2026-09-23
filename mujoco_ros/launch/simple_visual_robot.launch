@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="use_sim_time" default="true" />
+  <arg name="unpause" default="false" />
+  <arg name="headless" default="false" />
+  <arg name="no_render" default="false" />
+
+  <include file="$(find mujoco_ros)/launch/launch_server.launch">
+    <arg name="use_sim_time" value="$(arg use_sim_time)" />
+    <arg name="unpause" value="$(arg unpause)" />
+    <arg name="headless" value="$(arg headless)" />
+    <arg name="no_render" value="$(arg no_render)" />
+    <arg name="urdf_source" value="file" />
+    <arg name="urdf_path" value="$(find mujoco_ros)/examples/robot_description/simple_visual_robot.urdf" />
+  </include>
+</launch>

@@ -131,6 +131,8 @@ the `ignore_actuators` generalized-force fallback mode.
 The documentation is published at
 [ubi-agni.github.io/mujoco_ros_pkgs](https://ubi-agni.github.io/mujoco_ros_pkgs/).
 The Sphinx sources live under `docs/`.
+The Extended Params schema reference lives at
+`docs/concepts/robot_description/robot_description.rst`.
 
 ## Licensing
 

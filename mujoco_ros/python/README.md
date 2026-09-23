@@ -32,6 +32,93 @@ For ROS 1, the Python helper sets `/use_sim_time=true` before constructing the
 C++ environment by default. Pass `MujocoEnv(use_sim_time=False)` only when a
 standalone script intentionally wants wall-clock ROS time.
 
+
+## URDF/SRDF Tutorials
+
+There are two main ways to build a `MujocoEnv` from a robot description bundle.
+
+### 1. Load URDF/SRDF directly from file paths
+
+Use `MujocoEnv.from_description(...)` when the URDF and optional SRDF already
+exist on disk:
+
+```python
+from pathlib import Path
+
+from mujoco_ros import MujocoEnv
+
+urdf_path = Path("/absolute/path/to/robot.urdf")
+srdf_path = Path("/absolute/path/to/robot.srdf")
+
+with MujocoEnv.from_description(
+    urdf_path=urdf_path,
+    srdf_path=srdf_path,
+) as env:
+    env.pause()
+    env.step(1)
+    print(env.filename)
+    print(env.sim_info.model_valid)
+```
+
+This path compiles the description bundle first, then loads the resulting
+MuJoCo model into the wrapped C++ environment. If you do not have an SRDF,
+pass `""` for `srdf_path`.
+
+### 2. Load URDF/SRDF from ROS topics
+
+Use the regular constructor and pass the same parameters that `mujoco_server`
+accepts in launch files:
+
+```python
+from mujoco_ros import MujocoEnv
+
+parameters = {
+    "urdf.source": "topic",
+    "urdf.topic": "/robot_description",
+    "srdf.source": "topic",
+    "srdf.topic": "/robot_description_semantic",
+    "modelfile": "",
+}
+
+with MujocoEnv(parameters=parameters) as env:
+    env.pause()
+    env.step(1)
+    print(env.filename)
+    print(env.sim_info.model_valid)
+```
+
+`urdf.topic` defaults to `robot_description`, and `srdf.topic` defaults to
+`robot_description_semantic`, so you can omit those keys when you use the
+standard topic names.
+
+The topics must publish latched `std_msgs/String` payloads because the server
+resolves the topic source once during environment construction.
+
+### 3. Use file-backed description parameters through the constructor
+
+If you want the server-style parameter path, but your descriptions are still on
+disk, you can also supply file-backed bundle parameters directly:
+
+```python
+from mujoco_ros import MujocoEnv
+
+parameters = {
+    "urdf.source": "file",
+    "urdf.path": "/absolute/path/to/robot.urdf",
+    "srdf.source": "file",
+    "srdf.path": "/absolute/path/to/robot.srdf",
+    "description.generate_actuators": "true",
+    "description.attach_prefix": "robot1_",
+    "modelfile": "/absolute/path/to/world.xml",
+}
+
+with MujocoEnv(parameters=parameters) as env:
+    env.step(10)
+```
+
+This is useful when you want one code path that mirrors your ROS launch
+configuration exactly.
+
 ## ROS 1 Core Ownership
 
 `MujocoEnv` does not silently start or stop a ROS 1 master by default. This

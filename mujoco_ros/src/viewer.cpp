@@ -18,6 +18,7 @@
  * Software License Agreement (BSD 3-Clause License)
  *
  *  Copyright (c) 2022-2026, Bielefeld University
+ *  Copyright (c) 2026, Neura Robotics
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -30,7 +31,7 @@
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *   * Neither the name of Bielefeld University nor the names of its
+ *   * Neither the name of Bielefeld University nor Neura Robotics nor the names of their
  *     contributors may be used to endorse or promote products derived
  *     from this software without specific prior written permission.
  *
@@ -2797,6 +2798,7 @@ void Viewer::RenderLoop()
 	// Init abstract visualization
 	mjv_defaultCamera(&this->cam);
 	mjv_defaultOption(&this->opt);
+	ApplyInteractiveViewerGeomDefaults(&this->opt);
 	InitializeProfiler(this);
 	InitializeSensor(this);
 

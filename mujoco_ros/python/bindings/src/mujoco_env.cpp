@@ -2,6 +2,7 @@
  * Software License Agreement (BSD 3-Clause License)
  *
  *  Copyright (c) 2022-2026, Bielefeld University
+ *  Copyright (c) 2026, Neura Robotics
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -14,7 +15,7 @@
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *   * Neither the name of Bielefeld University nor the names of its
+ *   * Neither the name of Bielefeld University nor Neura Robotics nor the names of their
  *     contributors may be used to endorse or promote products derived
  *     from this software without specific prior written permission.
  *
@@ -36,6 +37,7 @@
 
 #include "pymujoco_ros.hpp"
 
+#include <mujoco_ros/description_converter.hpp>
 #include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros/render_backend.hpp>
 
@@ -44,6 +46,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -77,6 +80,16 @@ std::string NormalizeNamespace(std::string ns)
 	}
 	return ns;
 }
+
+class TempMjbFileGuard
+{
+public:
+	explicit TempMjbFileGuard(const std::string &path) : path_(path) {}
+	~TempMjbFileGuard() { std::remove(path_.c_str()); }
+
+private:
+	const std::string &path_;
+};
 
 #if MJR_ROS_VERSION == ROS_1
 void EnsureRosInitialized()
@@ -234,7 +247,7 @@ public:
 #else
 			auto adapter = std::make_unique<mujoco_ros::GlfwAdapter>();
 #endif
-			auto viewer = std::make_unique<mujoco_ros::Viewer>(std::move(adapter), this, false);
+			auto viewer      = std::make_unique<mujoco_ros::Viewer>(std::move(adapter), this, false);
 			attached_viewer_ = viewer.get();
 			viewer_running_  = true;
 			viewer->RenderLoop();
@@ -288,6 +301,28 @@ public:
 		return MujocoEnv::SetGravity(gravity_values, admin_hash);
 	}
 
+	int CountFreeJointsOnBody(const std::string &body_name)
+	{
+		RecursiveLock lock(physics_thread_mutex_);
+		if (!sim_state_.model_valid || model_.get() == nullptr) {
+			throw std::runtime_error("no valid MuJoCo model is loaded");
+		}
+		if (body_name.empty()) {
+			throw py::value_error("body_name must not be empty");
+		}
+		const int body_id = mj_name2id(model_.get(), mjOBJ_BODY, body_name.c_str());
+		if (body_id < 0) {
+			throw py::value_error("no body named '" + body_name + "'");
+		}
+		int count = 0;
+		for (int joint_id = 0; joint_id < model_->njnt; ++joint_id) {
+			if (model_->jnt_bodyid[joint_id] == body_id && model_->jnt_type[joint_id] == mjJNT_FREE) {
+				++count;
+			}
+		}
+		return count;
+	}
+
 	py::object ModelPy() const { return model_py_; }
 
 	py::object DataPy() const { return data_py_; }
@@ -317,6 +352,11 @@ public:
 		}
 		try {
 			MujocoEnv::WaitForEventsJoin();
+		} catch (...) {
+		}
+		try {
+			cb_ready_plugins_.clear();
+			plugins_.clear();
 		} catch (...) {
 		}
 		try {
@@ -480,6 +520,34 @@ private:
 
 void InitMujocoEnv(py::module_ &module)
 {
+	// First module-level (non-class-bound) function in pymujoco_ros. Reuses
+	// SaveDescriptionToTempMjb -- the temp-.mjb-producing helper
+	// mujoco_ros::load_model_from_description (description_converter.hpp)
+	// itself is built on -- rather than that C++-pointer-returning overload,
+	// because there is no existing C++-pointer -> Python-object conversion
+	// anywhere in this codebase (only the reverse, via .attr("_address")).
+	// Instead this mirrors mujoco_env.py's own _model_from_string/
+	// load_from_path idiom (mujoco.MjModel.from_binary_path + mujoco.MjData)
+	// from the C++ side, so the returned model/data are genuinely
+	// Python-owned mujoco objects, not a hand-rolled pointer wrapper.
+	module.def(
+	    "load_model_from_description",
+	    [](const std::string &urdf_path, const std::string &srdf_path, bool generate_actuators,
+	       const std::string &attach_prefix) {
+		    std::string tmp_path = mujoco_ros::SaveDescriptionToTempMjb(urdf_path, srdf_path, nullptr, {},
+		                                                                generate_actuators, attach_prefix);
+		    TempMjbFileGuard tmp_file_guard(tmp_path);
+		    py::object mujoco_module = py::module_::import("mujoco");
+		    py::object model         = mujoco_module.attr("MjModel").attr("from_binary_path")(tmp_path);
+		    py::object data          = mujoco_module.attr("MjData")(model);
+		    return py::make_tuple(model, data);
+	    },
+	    py::arg("urdf_path"), py::arg("srdf_path"), py::arg("generate_actuators") = false,
+	    py::arg("attach_prefix") = std::string(""),
+	    "Derive a compiled MuJoCo model+data from URDF/SRDF, with no MujocoEnv required. "
+	    "Set generate_actuators to derive native MuJoCo actuators from ros2_control command interfaces. "
+	    "Set attach_prefix to namespace composed model names.");
+
 	py::class_<MujocoEnvWrapper, std::shared_ptr<MujocoEnvWrapper>>(module, "_MujocoEnvWrapper")
 	    .def(py::init([](std::optional<std::string> admin_hash, bool python_reload_service) {
 		         return std::make_shared<MujocoEnvWrapper>(admin_hash.value_or(""), python_reload_service);
@@ -502,6 +570,7 @@ void InitMujocoEnv(py::module_ &module)
 	    .def("attach_viewer", &MujocoEnvWrapper::AttachViewer, py::arg("active") = true)
 	    .def("get_gravity", &MujocoEnvWrapper::GetGravityWrapper)
 	    .def("set_gravity", &MujocoEnvWrapper::SetGravityWrapper, py::arg("gravity"), py::arg("admin_hash") = "")
+	    .def("count_free_joints_on_body", &MujocoEnvWrapper::CountFreeJointsOnBody, py::arg("body_name"))
 	    .def_property_readonly("model_valid", &MujocoEnvWrapper::ModelValid)
 	    .def_property_readonly("load_count", &MujocoEnvWrapper::LoadCount)
 	    .def_property_readonly("operational_status", &MujocoEnvWrapper::OperationalStatus)
@@ -509,7 +578,7 @@ void InitMujocoEnv(py::module_ &module)
 	    .def_property_readonly("sim_state", &MujocoEnvWrapper::State)
 	    .def_property_readonly("sim_info", &MujocoEnvWrapper::Info)
 	    .def_property_readonly("plugin_stats", &MujocoEnvWrapper::PluginStats)
-	    .def_property_readonly("plugins", &MujocoEnvWrapper::PluginObjects, py::return_value_policy::reference)
+	    .def_property_readonly("plugins", &MujocoEnvWrapper::PluginObjects, py::return_value_policy::reference_internal)
 	    .def_property_readonly("plugin_names", &MujocoEnvWrapper::PluginNames)
 	    .def_property_readonly("_offscreen_context", &MujocoEnvWrapper::Offscreen,
 	                           py::return_value_policy::reference_internal)
