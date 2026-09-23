@@ -51,6 +51,7 @@
 #include <sensor_msgs/msg/laser_scan.hpp>
 #endif
 
+#include <algorithm>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -227,7 +228,7 @@ protected:
 		env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 		const std::string xml_path = get_laser_model_path();
-		env_ptr->StartWithXML(xml_path, false);
+		env_ptr->StartWithXML(xml_path);
 
 		float seconds = 0;
 		while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) {
@@ -270,12 +271,12 @@ TEST_P(LoadedPluginFixture, ScanTopicCreated)
 
 TEST_P(LoadedPluginFixture, ThreadpoolModeMatchesConfiguration)
 {
-	const bool has_threadpool = static_cast<bool>(env_ptr->getDataPtr()->threadpool);
-	if (GetParam() > 1) {
-		EXPECT_TRUE(has_threadpool) << "Expected MuJoCo threadpool for multithreaded laser execution";
-	} else {
-		EXPECT_FALSE(has_threadpool) << "Expected single-threaded laser execution";
-	}
+	const bool has_threadpool           = static_cast<bool>(env_ptr->getDataPtr()->threadpool);
+	const unsigned int hardware_threads = std::thread::hardware_concurrency();
+	const int available_threads         = hardware_threads > 1 ? static_cast<int>(hardware_threads - 1) : 0;
+	const int effective_threads         = std::min(GetParam(), available_threads);
+	EXPECT_EQ(has_threadpool, effective_threads > 1) << "Unexpected MuJoCo threadpool state for requested " << GetParam()
+	                                                 << " and effective " << effective_threads << " threads";
 }
 
 TEST_P(LoadedPluginFixture, PublishesLaserScan)

@@ -295,7 +295,7 @@ protected:
 		env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
 		const std::string xml_path = get_mocap_model_path();
-		env_ptr->StartWithXML(xml_path, false);
+		env_ptr->StartWithXML(xml_path);
 
 		float seconds = 0;
 		while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) {

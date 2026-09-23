@@ -45,20 +45,13 @@
 #endif
 
 namespace mujoco_ros::python {
-namespace {
-
-struct EnginePluginLoader
-{
-	EnginePluginLoader() { plugin_utils::InitPluginLoader(); }
-};
-
-EnginePluginLoader engine_plugin_loader;
-
-} // namespace
 
 void InitPlugins(py::module_ &module)
 {
-	py::class_<MujocoPlugin, std::shared_ptr<MujocoPlugin>>(module, "_MujocoPlugin")
+	// Non-owning view: plugins_ holds unique_ptr ownership. A shared_ptr holder plus the
+	// permanent EnginePluginLoader Init bump left ClassLoader alive until process exit —
+	// after rclpy.shutdown() — and SIGSEGV'd Humble when TestPlugin had been loaded.
+	py::class_<MujocoPlugin>(module, "_MujocoPlugin")
 	    .def_property_readonly("name", &MujocoPlugin::get_name)
 	    .def_property_readonly("type", &MujocoPlugin::get_type)
 	    .def_property_readonly("is_loaded", &MujocoPlugin::is_loaded)

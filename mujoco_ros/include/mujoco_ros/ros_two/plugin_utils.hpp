@@ -64,8 +64,11 @@ public:
 		if (node_.get() && get_lifecycle_state().id() != lifecycle_msgs::msg::State::PRIMARY_STATE_FINALIZED &&
 		    rclcpp::ok()) {
 			RCLCPP_DEBUG_STREAM(rclcpp::get_logger(plugin_name_), "Removing node from executor");
+			auto node_base = node_->get_node_base_interface();
+			if (env_ptr_ != nullptr && node_base != nullptr && node_base->get_associated_with_executor_atomic().load()) {
+				env_ptr_->RemoveNodeFromExecutor(node_base);
+			}
 			node_->shutdown();
-			env_ptr_->RemoveNodeFromExecutor(this->get_node()->get_node_base_interface());
 		}
 	}
 
@@ -352,8 +355,6 @@ void RegisterPlugins(const std::vector<std::string> &plugin_names, std::vector<M
 
 void UnloadPluginloader();
 void InitPluginLoader();
-
-static std::unique_ptr<pluginlib::ClassLoader<MujocoPlugin>> plugin_loader_ptr_;
 
 /**
  * @brief Defines under which path the plugin configuration is stored in the ros parameter server.

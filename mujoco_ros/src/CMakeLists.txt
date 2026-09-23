@@ -49,6 +49,13 @@ if(ROS_VERSION EQUAL "1")
     offscreen_camera.cpp
     offscreen_rendering.cpp
     viewer.cpp
+    viewer_geom_defaults.cpp
+    extended_params.cpp
+    description_converter.cpp
+    description_bundle.cpp
+    mesh_uri_prep.cpp
+    glb_visual_prep.cpp
+    ascii_stl_convert.cpp
   )
 else()
   set(MJR_SOURCE_FILES
@@ -64,6 +71,13 @@ else()
     offscreen_camera.cpp
     offscreen_rendering.cpp
     viewer.cpp
+    viewer_geom_defaults.cpp
+    extended_params.cpp
+    description_converter.cpp
+    description_bundle.cpp
+    mesh_uri_prep.cpp
+    glb_visual_prep.cpp
+    ascii_stl_convert.cpp
   )
 endif()
 
@@ -91,10 +105,15 @@ target_include_directories(${PROJECT_NAME}
     ${catkin_INCLUDE_DIRS}
 )
 
+target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/cgltf
+)
+
 target_link_libraries(${PROJECT_NAME}
   PUBLIC
    mujoco::mujoco
   PRIVATE
+   tinyxml2::tinyxml2
    project_option
    project_warning
 )
@@ -108,6 +127,7 @@ if (ROS_VERSION EQUAL "1")
 else()
   ament_target_dependencies(${PROJECT_NAME}
     PUBLIC
+      ament_index_cpp
       rclcpp
       rclcpp_lifecycle
       pluginlib

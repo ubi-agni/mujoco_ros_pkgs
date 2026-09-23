@@ -1,0 +1,6 @@
+<robot name="ros2_control_missing_interface_name">
+  <link name="base_link"/>
+  <link name="pos_link"><inertial><mass value="1.0"/><inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/></inertial></link>
+  <joint name="pos_joint" type="revolute"><parent link="base_link"/><child link="pos_link"/><axis xyz="0 0 1"/><limit lower="-1.0" upper="1.0" effort="10" velocity="2"/></joint>
+  <ros2_control name="test_system" type="system"><joint name="pos_joint"><command_interface/></joint></ros2_control>
+</robot>

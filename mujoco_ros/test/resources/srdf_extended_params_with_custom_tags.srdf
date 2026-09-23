@@ -1,0 +1,6 @@
+<robot name="extended_params_custom">
+  <extended_params name="joint1">
+    <mujoco_gravcomp value="1.0"/>
+    <vendor_tag vendor_attribute="preserved"/>
+  </extended_params>
+</robot>

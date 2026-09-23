@@ -34,6 +34,19 @@ def require_python_mujoco():
         raise unittest.SkipTest("Python mujoco package is not available")
 
 
+try:
+    from python_bindings_test import shutdown_rclpy_if_needed
+except ImportError:
+
+    def shutdown_rclpy_if_needed():
+        try:
+            import rclpy
+        except ImportError:
+            return
+        if rclpy.ok():
+            rclpy.shutdown()
+
+
 def wait_for_idle(env, timeout=5.0):
     deadline = time.monotonic() + timeout
     while env.operational_status != 0 and time.monotonic() < deadline:
@@ -68,4 +81,9 @@ if __name__ == "__main__":
 
         rostest.rosrun("mujoco_ros", "python_bindings_config_test", PythonBindingsConfigTest)
     else:
-        unittest.main(argv=[sys.argv[0]])
+        result = None
+        try:
+            result = unittest.main(argv=[sys.argv[0]], exit=False).result
+        finally:
+            shutdown_rclpy_if_needed()
+        sys.exit(0 if result is not None and result.wasSuccessful() else 1)
