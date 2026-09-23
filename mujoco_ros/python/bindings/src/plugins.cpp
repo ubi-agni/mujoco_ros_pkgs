@@ -38,6 +38,7 @@
 
 #include <mujoco_ros/ros_version.hpp>
 
+#include <mujoco_ros/plugin_host.hpp>
 #if MJR_ROS_VERSION == ROS_1
 #include <mujoco_ros/ros_one/plugin_utils.hpp>
 #else
@@ -58,18 +59,56 @@ EnginePluginLoader engine_plugin_loader;
 
 void InitPlugins(py::module_ &module)
 {
-	py::class_<MujocoPlugin, std::shared_ptr<MujocoPlugin>>(module, "_MujocoPlugin")
-	    .def_property_readonly("name", &MujocoPlugin::get_name)
-	    .def_property_readonly("type", &MujocoPlugin::get_type)
-	    .def_property_readonly("is_loaded", &MujocoPlugin::is_loaded)
-	    .def_property_readonly("load_time", &MujocoPlugin::get_load_time)
-	    .def_property_readonly("reset_time", &MujocoPlugin::get_reset_time)
-	    .def_property_readonly("ema_steptime_control", &MujocoPlugin::get_ema_steptime_control)
-	    .def_property_readonly("ema_steptime_passive", &MujocoPlugin::get_ema_steptime_passive)
-	    .def_property_readonly("ema_steptime_render", &MujocoPlugin::get_ema_steptime_render)
-	    .def_property_readonly("ema_steptime_last_stage", &MujocoPlugin::get_ema_steptime_last_stage)
-	    .def("__repr__", [](const MujocoPlugin &plugin) {
-		    return "<MujocoPlugin name='" + plugin.get_name() + "' type='" + plugin.get_type() + "'>";
+	py::class_<PluginHandle>(module, "_MujocoPlugin")
+	    .def_property_readonly("name", &PluginHandle::Name)
+	    .def_property_readonly("type", &PluginHandle::Type)
+	    .def_property_readonly("generation", [](const PluginHandle &plugin) { return plugin.Generation().value(); })
+	    .def_property_readonly("is_loaded",
+	                           [](const PluginHandle &plugin) {
+		                           return plugin.WithAccess([](const ScopedPluginAccess &) { return true; });
+	                           })
+	    .def_property_readonly("load_time",
+	                           [](const PluginHandle &plugin) {
+		                           return plugin.WithAccess([&plugin](const ScopedPluginAccess &access) {
+			                           return access.Adapter(plugin.Name(), plugin.Type())->Statistics().load_time;
+		                           });
+	                           })
+	    .def_property_readonly("reset_time",
+	                           [](const PluginHandle &plugin) {
+		                           return plugin.WithAccess([&plugin](const ScopedPluginAccess &access) {
+			                           return access.Adapter(plugin.Name(), plugin.Type())->Statistics().reset_time;
+		                           });
+	                           })
+	    .def_property_readonly(
+	        "ema_steptime_control",
+	        [](const PluginHandle &plugin) {
+		        return plugin.WithAccess([&plugin](const ScopedPluginAccess &access) {
+			        return access.Adapter(plugin.Name(), plugin.Type())->Statistics().ema_steptime_control;
+		        });
+	        })
+	    .def_property_readonly(
+	        "ema_steptime_passive",
+	        [](const PluginHandle &plugin) {
+		        return plugin.WithAccess([&plugin](const ScopedPluginAccess &access) {
+			        return access.Adapter(plugin.Name(), plugin.Type())->Statistics().ema_steptime_passive;
+		        });
+	        })
+	    .def_property_readonly(
+	        "ema_steptime_render",
+	        [](const PluginHandle &plugin) {
+		        return plugin.WithAccess([&plugin](const ScopedPluginAccess &access) {
+			        return access.Adapter(plugin.Name(), plugin.Type())->Statistics().ema_steptime_render;
+		        });
+	        })
+	    .def_property_readonly(
+	        "ema_steptime_last_stage",
+	        [](const PluginHandle &plugin) {
+		        return plugin.WithAccess([&plugin](const ScopedPluginAccess &access) {
+			        return access.Adapter(plugin.Name(), plugin.Type())->Statistics().ema_steptime_last_stage;
+		        });
+	        })
+	    .def("__repr__", [](const PluginHandle &plugin) {
+		    return "<MujocoPluginHandle name='" + plugin.Name() + "' type='" + plugin.Type() + "'>";
 	    });
 }
 

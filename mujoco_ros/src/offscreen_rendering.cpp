@@ -1,423 +1,293 @@
 /*********************************************************************
  * Software License Agreement (BSD 3-Clause License)
  *
- *  Copyright (c) 2022-2026, Bielefeld University
- *  All rights reserved.
- *
- *  Redistribution and use in source and binary forms, with or without
- *  modification, are permitted provided that the following conditions
- *  are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *   * Neither the name of Bielefeld University nor the names of its
- *     contributors may be used to endorse or promote products derived
- *     from this software without specific prior written permission.
- *
- *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- *  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- *  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
- *  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
- *  COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
- *  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
- *  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- *  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- *  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
- *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- *  POSSIBILITY OF SUCH DAMAGE.
+ * Copyright (c) 2022-2026, Bielefeld University
+ * Copyright (c) 2026, Neura Robotics
  *********************************************************************/
 
-/* Authors: David P. Leins */
+#include <algorithm>
+#include <exception>
+#include <memory>
+#include <stdexcept>
+#include <string>
 
-#include <mujoco_ros/ros_version.hpp>
-#include <mujoco_ros/render_backend.hpp>
 #include <mujoco_ros/logging.hpp>
-
 #include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros/offscreen_camera.hpp>
-#include <mujoco_ros/viewer.hpp>
-
-#if MJR_ROS_VERSION == ROS_1
-#include <ros/ros.h>
-namespace roscpp = ros;
-#else // MJR_ROS_VERSION == ROS_2
-#include <rclcpp/rclcpp.hpp>
-namespace roscpp = rclcpp;
-#endif
-
-#if RENDER_BACKEND == EGL_BACKEND
-#include <EGL/egl.h>
-#include <EGL/eglext.h>
-
-static constexpr int MAX_EGL_DEVICES = 6;
-
-bool get_egl_device(EGLDeviceEXT *egl_devices, int &choose_device)
-{
-	EGLint num_devices;
-
-	// Get devices
-	PFNEGLQUERYDEVICESEXTPROC eglQueryDevicesEXT =
-	    reinterpret_cast<PFNEGLQUERYDEVICESEXTPROC>(eglGetProcAddress("eglQueryDevicesEXT"));
-	if (eglQueryDevicesEXT(MAX_EGL_DEVICES, egl_devices, &num_devices) != EGL_TRUE) {
-		MJR_ERROR_STREAM("Failed to query EGL devices. Error type: " << eglGetError());
-		return false;
-	}
-	MJR_DEBUG_STREAM("Found " << num_devices << " EGL devices");
-
-	PFNEGLQUERYDEVICESTRINGEXTPROC eglQueryDeviceStringEXT =
-	    reinterpret_cast<PFNEGLQUERYDEVICESTRINGEXTPROC>(eglGetProcAddress("eglQueryDeviceStringEXT"));
-	const char *extensions;
-	choose_device = 0;
-	for (int i = 0; i < num_devices; i++) {
-		extensions = eglQueryDeviceStringEXT(egl_devices[i], EGL_EXTENSIONS);
-		MJR_DEBUG_STREAM("Device " << i << " has extensions: " << extensions);
-		if (strstr(extensions, "EGL_NV_device_cuda")) {
-			MJR_DEBUG_STREAM("Choosing device " << i << " for CUDA support");
-			choose_device = i;
-			break;
-		}
-	}
-	return true;
-}
-
-#endif
+#include <mujoco_ros/util.hpp>
+#include <mujoco_ros/rendering/frame_capacity.hpp>
 
 namespace mujoco_ros {
 
-OffscreenRenderContext::~OffscreenRenderContext()
+CameraPublicationTransport::~CameraPublicationTransport() = default;
+
+std::shared_ptr<rendering::RenderCore> CameraPublicationTransport::ActiveRenderCore() const
 {
-#if RENDER_BACKEND == GLFW_BACKEND
-	if (window != nullptr) {
-		MJR_DEBUG("Freeing GLFW offscreen context");
-		std::unique_lock<std::mutex> lock(render_mutex);
-		request_pending.store(false);
-		mjv_freeScene(&scn);
-		mjv_freeScene(&callbacks_scn);
-		mjr_defaultContext(&con);
-		mjr_freeContext(&con);
+	return render_owner_ != nullptr ? render_owner_->ActiveRenderCore() : nullptr;
+}
+
+FrameGeneration CameraPublicationTransport::ActiveFrameGeneration() const
+{
+	std::lock_guard<std::mutex> lock(lifecycle_mutex);
+	return ActiveFrameGenerationLocked();
+}
+
+FrameGeneration CameraPublicationTransport::ActiveFrameGenerationLocked() const
+{
+	if (render_owner_ == nullptr || cams.empty()) {
+		return FrameGeneration(0);
 	}
-#elif RENDER_BACKEND == EGL_BACKEND
-	MJR_DEBUG("Freeing EGL offscreen context");
-	mjv_freeScene(&scn);
-	mjv_freeScene(&callbacks_scn);
-	mjr_defaultContext(&con);
-	mjr_freeContext(&con);
+	return render_owner_->PublishedFrameGeneration();
+}
 
-	EGLDeviceEXT egl_devices[MAX_EGL_DEVICES];
-	int choosen_device = 0;
-	if (!get_egl_device(egl_devices, choosen_device)) {
-		return;
+#ifdef MJR_BUILD_TESTING
+void CameraPublicationTransport::SetRetirementPendingForTest(const bool pending)
+{
+	std::lock_guard<std::mutex> lock(lifecycle_mutex);
+	retirement_pending = pending;
+}
+#endif
+
+std::uint64_t CameraPublicationTransport::RegisterPythonConsumer(const std::uint8_t camera_id,
+                                                                 const std::size_t history_depth)
+{
+	rendering::ValidatePythonHistoryDepth(history_depth);
+	std::lock_guard<std::mutex> lock(lifecycle_mutex);
+	if (retirement_pending) {
+		throw std::runtime_error("Python rendering registration rejected while camera retirement is pending");
 	}
-
-	EGLDisplay display = eglGetPlatformDisplay(EGL_PLATFORM_DEVICE_EXT, egl_devices[choosen_device], nullptr);
-	if (display != EGL_NO_DISPLAY) {
-		// Get current context
-		EGLContext current_context = eglGetCurrentContext();
-
-		// Release context
-		eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-
-		// Destroy context if valid
-		if (current_context != EGL_NO_CONTEXT) {
-			eglDestroyContext(display, current_context);
+	ValidatePythonConsumerRequest(history_depth, ActiveRenderCore() != nullptr);
+	for (const auto &camera : cams) {
+		if (camera->cam_id_ != camera_id) {
+			continue;
 		}
-
-		// Terminate display
-		eglTerminate(display);
+		const auto registration_id = next_python_registration_id++;
+		const auto core            = ActiveRenderCore();
+		const auto consumer        = camera->RegisterPythonConsumer(core, history_depth);
+		python_consumers.emplace(registration_id,
+		                         PythonDemandRegistration{ camera_id, history_depth, core, camera, consumer });
+		return registration_id;
 	}
-#elif RENDER_BACKEND == OSMESA_BACKEND
-	if (!osmesa.initialized) {
-		return;
-	}
-	MJR_DEBUG("Freeing OSMesa offscreen context");
-	mjv_freeScene(&scn);
-	mjv_freeScene(&callbacks_scn);
-	mjr_defaultContext(&con);
-	mjr_freeContext(&con);
-	OSMesaDestroyContext(osmesa.ctx);
-#endif
+	throw std::out_of_range("Invalid camera id " + std::to_string(camera_id));
 }
 
-void MujocoEnv::InitializeRenderResources()
+void CameraPublicationTransport::UnregisterPythonConsumer(const std::uint64_t registration_id)
 {
-	bool use_segid;
-	rendering::StreamType stream_type;
-	std::string cam_name, base_topic, rgb, depth, segment;
-	float pub_freq;
-	int max_res_h = 0, max_res_w = 0;
-
-	if (this->model_->ncam == 0) {
-		MJR_DEBUG_NAMED("offscreen_rendering", "Model has no cameras, skipping offscreen render utils init");
+	std::lock_guard<std::mutex> lock(lifecycle_mutex);
+	const auto it = python_consumers.find(registration_id);
+	if (it == python_consumers.end()) {
 		return;
 	}
-
-	MJR_DEBUG_STREAM("Model has " << this->model_->ncam << " cameras");
-
-	offscreen_.cams.clear();
-
-	// TODO(dleins): move camera pub config to URDF/SRDF config once it's ready
-	int res_h, res_w, unnamed_cam_id = 0;
-	for (int cam_id = 0; cam_id < this->model_->ncam; cam_id++) {
-		// TODO: check unnamed camera (should then be unnamed_cam_X, where X is a counter variable)
-		const char *c_cam_name = mj_id2name(this->model_.get(), mjOBJ_CAMERA, cam_id);
-		if (c_cam_name == nullptr) {
-			MJR_WARN_STREAM_NAMED("offscreen_rendering", "Found unnamed camera with id " << cam_id << ", skipping");
-			cam_name = "unnamed_cam_" + std::to_string(unnamed_cam_id++);
-		} else {
-			cam_name = c_cam_name;
-		}
-		MJR_DEBUG_STREAM_NAMED("offscreen_rendering",
-		                       "Found camera '" << cam_name << "' with id " << cam_id << ". Setting up publishers...");
-
-		GetCameraConfiguration(cam_name, stream_type, pub_freq, use_segid, res_w, res_h, base_topic, rgb, depth, segment);
-
-		max_res_h = std::max(res_h, max_res_h);
-		max_res_w = std::max(res_w, max_res_w);
-
-		auto camera =
-		    std::make_unique<rendering::OffscreenCamera>(cam_id, base_topic, cam_name, res_w, res_h, stream_type,
-		                                                 use_segid, pub_freq, model_.get(), data_.get(), this);
-
-#if MJR_ROS_VERSION == ROS_1
-		camera->InitializeTransport(nh_, model_.get(), data_.get(), rgb, depth, segment);
-#else // MJR_ROS_VERSION == ROS_2
-		camera->InitializeTransport(model_.get(), data_.get(), rgb, depth, segment);
-#endif
-		offscreen_.cams.emplace_back(std::move(camera));
+	if (it->second.camera) {
+		it->second.camera->UnregisterPythonConsumer(it->second.consumer);
 	}
-
-	if (model_->vis.global.offheight < max_res_h || model_->vis.global.offwidth < max_res_w) {
-		MJR_WARN_STREAM_NAMED("offscreen_rendering", "Model offscreen resolution too small for configured cameras, "
-		                                             "updating offscreen resolution to fit cam config ... ("
-		                                                 << max_res_w << "x" << max_res_h << ")");
-		model_->vis.global.offheight = max_res_h;
-		model_->vis.global.offwidth  = max_res_w;
-	}
-
-	int buffer_size  = max_res_w * max_res_h;
-	offscreen_.rgb   = std::make_unique<unsigned char[]>(buffer_size * 3);
-	offscreen_.depth = std::make_unique<float[]>(buffer_size);
-
-	MJR_DEBUG_NAMED("offscreen_rendering", "Initializing offscreen rendering utils");
-
-#if RENDER_BACKEND == GLFW_BACKEND
-	Glfw().glfwMakeContextCurrent(offscreen_.window.get());
-	// Glfw().glfwSetWindowSize(offscreen_.window.get(), max_res_w, max_res_h);
-	glfwSetWindowSize(offscreen_.window.get(), max_res_w, max_res_h);
-#endif
-
-	mjr_makeContext(this->model_.get(), &offscreen_.con, 50);
-	MJR_DEBUG_NAMED("offscreen_rendering", "\tApplied model to context");
-	mjv_makeScene(this->model_.get(), &offscreen_.scn, Viewer::kMaxGeom);
-	mjv_makeScene(this->model_.get(), &offscreen_.callbacks_scn, Viewer::kMaxGeom);
-	mjr_setBuffer(mjFB_OFFSCREEN, &offscreen_.con);
+	python_consumers.erase(it);
 }
 
-#if RENDER_BACKEND == EGL_BACKEND
-bool MujocoEnv::InitGL()
+void CameraPublicationTransport::RebindPythonConsumersLocked()
 {
-	MJR_DEBUG("Initializing EGL...");
-
-	EGLDeviceEXT egl_devices[MAX_EGL_DEVICES];
-	int choosen_device = 0;
-	if (!get_egl_device(egl_devices, choosen_device)) {
-		return false;
+	if (retirement_pending) {
+		throw std::logic_error("Python rendering consumers cannot rebind during camera retirement");
 	}
-
-	// clang-format off
-	const EGLint config[] = {
-		EGL_RED_SIZE,		   8,
-		EGL_GREEN_SIZE,		   8,
-		EGL_BLUE_SIZE,		   8,
-		EGL_ALPHA_SIZE,		   8,
-		EGL_DEPTH_SIZE,		   24,
-		EGL_STENCIL_SIZE,	   8,
-		EGL_COLOR_BUFFER_TYPE, EGL_RGB_BUFFER,
-		EGL_SURFACE_TYPE, 	   EGL_PBUFFER_BIT,
-		EGL_RENDERABLE_TYPE,   EGL_OPENGL_BIT,
-		EGL_NONE };
-	// clang-format on
-
-	// Get Display
-	EGLDisplay display = eglGetPlatformDisplay(EGL_PLATFORM_DEVICE_EXT, egl_devices[choosen_device], nullptr);
-	if (display == EGL_NO_DISPLAY) {
-		MJR_ERROR_STREAM("Failed to get EGL display. Error type: " << eglGetError());
-		return false;
-	}
-
-	// Initialize EGL
-	EGLint major, minor;
-	if (eglInitialize(display, &major, &minor) != EGL_TRUE) {
-		MJR_ERROR_STREAM("Failed to initialize EGL. Error type: " << eglGetError());
-		return false;
-	}
-
-	// Choose Config
-	EGLint num_configs;
-	EGLConfig egl_config;
-	if (eglChooseConfig(display, config, &egl_config, 1, &num_configs) != EGL_TRUE) {
-		MJR_ERROR_STREAM("Failed to choose EGL config. Error type: " << eglGetError());
-		return false;
-	}
-
-	// bind OpenGL API
-	if (eglBindAPI(EGL_OPENGL_API) != EGL_TRUE) {
-		MJR_ERROR_STREAM("Failed to bind OpenGL API. Error type: " << eglGetError());
-		return false;
-	}
-
-	// Create context
-	EGLContext context = eglCreateContext(display, egl_config, EGL_NO_CONTEXT, nullptr);
-	if (context == EGL_NO_CONTEXT) {
-		MJR_ERROR_STREAM("Failed to create EGL context. Error type: " << eglGetError());
-		return false;
-	}
-
-	// Make current
-	if (eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, context) != EGL_TRUE) {
-		MJR_ERROR_STREAM("Failed to make EGL context current. Error type: " << eglGetError());
-		return false;
-	}
-
-	MJR_DEBUG("EGL initialized");
-	return true;
-}
-#elif RENDER_BACKEND == OSMESA_BACKEND
-bool MujocoEnv::InitGL()
-{
-	MJR_DEBUG("Initializing OSMesa...");
-	// Initialize OSMesa
-	offscreen_.osmesa.ctx = OSMesaCreateContextExt(GL_RGBA, 24, 8, 8, nullptr);
-	if (!offscreen_.osmesa.ctx) {
-		MJR_ERROR("OSMesa context creation failed");
-		return false;
-	}
-
-	// Make current
-	// if (!OSMesaMakeCurrent(offscreen_.osmesa.ctx, offscreen_.osmesa.buffer, GL_UNSIGNED_BYTE, width, height)) {
-	if (!OSMesaMakeCurrent(offscreen_.osmesa.ctx, offscreen_.osmesa.buffer, GL_UNSIGNED_BYTE, 800, 800)) {
-		MJR_ERROR("OSMesa make current failed");
-		return false;
-	}
-	MJR_DEBUG("OSMesa initialized");
-	offscreen_.osmesa.initialized = true;
-	return true;
-} // InitGL
-#endif
-
-void MujocoEnv::OffscreenRenderLoop()
-{
-#if RENDER_BACKEND == GLFW_BACKEND
-	Glfw().glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_FALSE);
-	Glfw().glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-	offscreen_.window.reset(Glfw().glfwCreateWindow(800, 600, "Invisible window", nullptr, nullptr),
-	                        [](GLFWwindow *window) {
-		                        Glfw().glfwMakeContextCurrent(nullptr);
-		                        Glfw().glfwDestroyWindow(window);
-	                        });
-
-	if (!offscreen_.window) {
-		MJR_ERROR_NAMED("offscreen_rendering", "Failed to create offscreen window");
-		settings_.render_offscreen    = false;
-		settings_.visual_init_request = false;
-		offscreen_.request_pending.store(false);
-		return;
-	}
-
-	Glfw().glfwMakeContextCurrent(offscreen_.window.get());
-	Glfw().glfwSwapInterval(0);
-#elif RENDER_BACKEND == EGL_BACKEND
-	if (!InitGL()) {
-		MJR_ERROR("Failed to initialize EGL. Cannot run offscreen rendering");
-		settings_.render_offscreen    = false;
-		settings_.visual_init_request = false;
-		offscreen_.request_pending.store(false);
-		return;
-	}
-#elif RENDER_BACKEND == OSMESA_BACKEND
-	if (!InitGL()) {
-		MJR_ERROR("Failed to initialize OSMesa. Cannot run offscreen rendering");
-		settings_.render_offscreen    = false;
-		settings_.visual_init_request = false;
-		offscreen_.request_pending.store(false);
-		return;
-	}
-#endif
-
-#if RENDER_BACKEND == NO_BACKEND
-	MJR_ERROR("No offscreen rendering backend available. Cannot run offscreen rendering");
-	settings_.render_offscreen    = false;
-	settings_.visual_init_request = false;
-	offscreen_.request_pending.store(false);
-	is_rendering_running_ = 0;
-	MJR_DEBUG("Exiting offscreen render loop");
-	return;
-#else
-	is_rendering_running_ = 1;
-	MJR_DEBUG_NAMED("offscreen_rendering", "Creating offscreen rendering resources ...");
-	mjv_defaultCamera(&offscreen_.cam);
-	// Set to fixed camera
-	offscreen_.cam.type = mjCAMERA_FIXED;
-	MJR_DEBUG_NAMED("offscreen_rendering", "\tInitialized camera");
-	mjr_defaultContext(&offscreen_.con);
-	MJR_DEBUG_NAMED("offscreen_rendering", "\tInitialized context");
-
-	mjv_defaultScene(&offscreen_.scn);
-	mjv_makeScene(nullptr, &offscreen_.scn, Viewer::kMaxGeom);
-	mjv_makeScene(nullptr, &offscreen_.callbacks_scn, Viewer::kMaxGeom);
-
-	MJR_DEBUG_NAMED("offscreen_rendering", "Starting offscreen render loop");
-	while (roscpp::ok() && !IsShutdownRequested()) {
-		{
-			// Setup rendering resources if requested
-			if (settings_.visual_init_request) {
-				InitializeRenderResources();
-				settings_.visual_init_request = false;
-			}
-
-			// Wait for render request
-			std::unique_lock<std::mutex> lock(offscreen_.render_mutex);
-			// MJR_DEBUG_NAMED("offscreen_rendering", "Waiting for render request");
-			offscreen_.render_request_waiters.fetch_add(1);
-			offscreen_.cond_render_request.wait(lock, [this] {
-				return offscreen_.request_pending.load() || settings_.visual_init_request.load() || IsShutdownRequested();
-			});
-			offscreen_.render_request_waiters.fetch_sub(1);
-
-			// In case of exit request after waiting for render request
-			if (!roscpp::ok() || IsShutdownRequested()) {
-				offscreen_.shutdown_exit_observers.fetch_add(1);
-				while (offscreen_.pause_shutdown_exit.load()) {
-					std::this_thread::yield();
-				}
-				// Release any thread still busy-waiting on this request in WrappedStep, otherwise it spins forever
-				// and the physics thread join in ~MujocoEnv() hangs.
-				offscreen_.request_pending.store(false);
-				break;
-			}
-
-			if (settings_.visual_init_request.load()) {
-				MJR_DEBUG_NAMED("offscreen_rendering", "Initializing render resources");
-				InitializeRenderResources();
-				settings_.visual_init_request = false;
+	for (auto &[registration_id, registration] : python_consumers) {
+		(void)registration_id;
+		registration.core.reset();
+		registration.camera.reset();
+		for (const auto &camera : cams) {
+			if (camera->cam_id_ != registration.camera_id) {
 				continue;
 			}
-
-			for (const auto &cam_ptr : offscreen_.cams) {
-				cam_ptr->RenderAndPublish(&offscreen_);
+			if (!ActiveRenderCore()) {
+				break;
 			}
-
-			offscreen_.request_pending.store(false);
+			registration.core     = ActiveRenderCore();
+			registration.camera   = camera;
+			registration.consumer = camera->RegisterPythonConsumer(ActiveRenderCore(), registration.history_depth);
+			break;
 		}
 	}
-	is_rendering_running_ = 0;
-	MJR_DEBUG("Exiting offscreen render loop");
-#endif
 }
+
+void CameraPublicationTransport::UnregisterPythonConsumersLocked()
+{
+	std::exception_ptr first_error;
+	for (auto &[registration_id, registration] : python_consumers) {
+		(void)registration_id;
+		if (!registration.camera) {
+			registration.core.reset();
+			continue;
+		}
+		try {
+			registration.camera->UnregisterPythonConsumer(registration.consumer);
+			registration.core.reset();
+			registration.camera.reset();
+		} catch (...) {
+			if (!first_error) {
+				first_error = std::current_exception();
+			}
+		}
+	}
+	if (first_error) {
+		std::rethrow_exception(first_error);
+	}
+}
+
+std::optional<rendering::FrameLease>
+CameraPublicationTransport::AcquirePythonLatest(const std::uint64_t registration_id, const rendering::PlaneKind plane)
+{
+	std::lock_guard<std::mutex> lock(lifecycle_mutex);
+	const auto registration_it = python_consumers.find(registration_id);
+	if (registration_it == python_consumers.end()) {
+		throw std::runtime_error("unknown Python rendering registration");
+	}
+	const auto &registration = registration_it->second;
+	if (retirement_pending) {
+		throw std::runtime_error("Python frame acquisition rejected while camera retirement is pending");
+	}
+	if (!ActiveRenderCore()) {
+		throw std::runtime_error("Python camera handle is stale after RenderCore reload");
+	}
+	const auto render_core = ActiveRenderCore();
+	if (render_core != registration.core) {
+		throw std::runtime_error("Python camera handle is stale after RenderCore reload");
+	}
+	const auto frame_generation = ActiveFrameGenerationLocked();
+	if (render_core->frames().generation() != frame_generation) {
+		throw std::runtime_error("Python camera handle is stale after frame-generation change");
+	}
+	for (const auto &camera : cams) {
+		if (camera->cam_id_ != registration.camera_id) {
+			continue;
+		}
+		if (registration.history_depth <= 1) {
+			render_core->RequestOneShot(registration.consumer);
+		}
+		auto lease = render_core->AcquireLatest(camera->descriptor().id, plane);
+		if (lease && lease->generation() != frame_generation) {
+			throw std::runtime_error("Python acquisition crossed a frame-generation boundary");
+		}
+		return lease;
+	}
+	throw std::runtime_error("Python camera handle is stale after camera-layout change");
+}
+
+std::vector<rendering::FrameLease> CameraPublicationTransport::AcquirePythonRecent(const std::uint64_t registration_id,
+                                                                                   const rendering::PlaneKind plane,
+                                                                                   const std::size_t count)
+{
+	std::lock_guard<std::mutex> lock(lifecycle_mutex);
+	const auto registration_it = python_consumers.find(registration_id);
+	if (registration_it == python_consumers.end()) {
+		throw std::runtime_error("unknown Python rendering registration");
+	}
+	const auto &registration = registration_it->second;
+	if (retirement_pending) {
+		throw std::runtime_error("Python frame acquisition rejected while camera retirement is pending");
+	}
+	if (!ActiveRenderCore()) {
+		throw std::runtime_error("Python camera handle is stale after RenderCore reload");
+	}
+	const auto render_core = ActiveRenderCore();
+	if (render_core != registration.core) {
+		throw std::runtime_error("Python camera handle is stale after RenderCore reload");
+	}
+	const auto frame_generation = ActiveFrameGenerationLocked();
+	if (render_core->frames().generation() != frame_generation) {
+		throw std::runtime_error("Python camera handle is stale after frame-generation change");
+	}
+	for (const auto &camera : cams) {
+		if (camera->cam_id_ != registration.camera_id) {
+			continue;
+		}
+		if (registration.history_depth <= 1) {
+			render_core->RequestOneShot(registration.consumer);
+		}
+		auto leases = render_core->AcquireRecent(camera->descriptor().id, plane, count);
+		if (std::any_of(leases.begin(), leases.end(),
+		                [frame_generation](const auto &lease) { return lease.generation() != frame_generation; })) {
+			throw std::runtime_error("Python acquisition crossed a frame-generation boundary");
+		}
+		return leases;
+	}
+	throw std::runtime_error("Python camera handle is stale after camera-layout change");
+}
+
+namespace {
+
+rendering::CameraTransportBootstrap BuildCameraTransportBootstrap(const mjModel &model, const mjData &data,
+                                                                  const std::uint8_t cam_id)
+{
+	if (cam_id >= static_cast<std::uint8_t>(model.ncam)) {
+		throw std::invalid_argument("camera id out of range for transport bootstrap");
+	}
+	const int body_id     = model.cam_bodyid[cam_id];
+	const char *body_name = mj_id2name(const_cast<mjModel *>(&model), mjOBJ_BODY, body_id);
+	if (body_name == nullptr) {
+		throw std::invalid_argument("camera transport bootstrap requires named parent body for camera id " +
+		                            std::to_string(cam_id));
+	}
+	rendering::CameraTransportBootstrap bootstrap;
+	bootstrap.static_transform_stamp = util::toRosTime(data.time);
+	bootstrap.parent_frame           = std::string(body_name);
+	mju_copy(bootstrap.body_to_cam_position.data(), model.cam_pos + cam_id * 3, 3);
+	mju_copy(bootstrap.body_to_cam_orientation.data(), model.cam_quat + cam_id * 4, 4);
+	bootstrap.vertical_field_of_view_deg = model.cam_fovy[cam_id];
+	return bootstrap;
+}
+
+} // namespace
+
+std::vector<rendering::OffscreenCameraPtr> MujocoEnv::InitializeRenderResources()
+{
+	std::vector<rendering::OffscreenCameraPtr> cameras;
+	if (!settings_.render_offscreen || !model_ || model_->ncam == 0) {
+		return cameras;
+	}
+
+	int res_h          = 0;
+	int res_w          = 0;
+	int unnamed_cam_id = 0;
+	for (int cam_id = 0; cam_id < model_->ncam; ++cam_id) {
+		const char *name = mj_id2name(model_.get(), mjOBJ_CAMERA, cam_id);
+		const std::string cam_name =
+		    name != nullptr ? std::string(name) : "unnamed_cam_" + std::to_string(unnamed_cam_id++);
+		rendering::StreamType stream_type;
+		bool use_segid;
+		std::string base_topic, rgb, depth, segment;
+		float pub_freq;
+		GetCameraConfiguration(cam_name, stream_type, pub_freq, use_segid, res_w, res_h, base_topic, rgb, depth, segment);
+		const auto bootstrap = BuildCameraTransportBootstrap(*model_, *data_, static_cast<std::uint8_t>(cam_id));
+		auto camera =
+		    std::make_shared<rendering::OffscreenCamera>(static_cast<std::uint8_t>(cam_id), base_topic, cam_name, res_w,
+		                                                 res_h, stream_type, use_segid, pub_freq, bootstrap, this);
+#if MJR_ROS_VERSION == ROS_1
+		camera->InitializeTransport(nh_, bootstrap.vertical_field_of_view_deg, rgb, depth, segment);
+#else
+		camera->InitializeTransport(bootstrap.vertical_field_of_view_deg, rgb, depth, segment);
+#endif
+		cameras.emplace_back(std::move(camera));
+	}
+	return cameras;
+}
+
+#ifdef MJR_BUILD_TESTING
+namespace python_buffer_test_access {
+
+std::uint64_t RegisterBufferConsumer(CameraPublicationTransport &state, const std::uint8_t camera_id,
+                                     const std::size_t buffer_size)
+{
+	rendering::ValidatePythonHistoryDepth(buffer_size);
+	return state.RegisterPythonConsumer(camera_id, buffer_size);
+}
+
+std::optional<rendering::FrameLease> BorrowLatestThroughBuffer(CameraPublicationTransport &state,
+                                                               const std::uint64_t registration_id,
+                                                               const rendering::PlaneKind plane)
+{
+	return state.AcquirePythonLatest(registration_id, plane);
+}
+
+} // namespace python_buffer_test_access
+#endif
 
 } // namespace mujoco_ros

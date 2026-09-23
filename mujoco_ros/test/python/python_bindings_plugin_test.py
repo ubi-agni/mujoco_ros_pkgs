@@ -141,6 +141,21 @@ class PythonBindingsPluginTest(unittest.TestCase):
             self.assertGreaterEqual(plugin.ema_steptime_render, 0.0)
             self.assertGreaterEqual(plugin.ema_steptime_last_stage, 0.0)
 
+    def test_plugin_handle_rejects_access_after_reload(self):
+        model_path = get_package_share_directory("mujoco_ros") / "assets" / "pendulum_world.xml"
+
+        with MujocoEnv() as env:
+            self.assertTrue(env.load_from_path(str(model_path)))
+            wait_for_idle(env)
+            old_plugin = env.plugins[0]
+
+            self.assertTrue(env.load_from_path(str(model_path)))
+            wait_for_idle(env)
+
+            with self.assertRaisesRegex(RuntimeError, "inactive"):
+                _ = old_plugin.load_time
+            self.assertEqual("mujoco_ros/TestPlugin", env.plugins[0].type)
+
 
 if __name__ == "__main__":
     if is_ros1():

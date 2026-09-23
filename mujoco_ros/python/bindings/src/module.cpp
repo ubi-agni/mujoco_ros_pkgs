@@ -41,11 +41,9 @@
 
 namespace {
 
-#if RENDER_BACKEND == GLFW_BACKEND
-constexpr const char *kRenderBackend = "GLFW";
-#elif RENDER_BACKEND == OSMESA_BACKEND
+#if OFFSCREEN_RENDER_BACKEND == OSMESA_BACKEND
 constexpr const char *kRenderBackend = "OSMesa";
-#elif RENDER_BACKEND == EGL_BACKEND
+#elif OFFSCREEN_RENDER_BACKEND == EGL_BACKEND
 constexpr const char *kRenderBackend = "EGL";
 #else
 constexpr const char *kRenderBackend = "NONE";

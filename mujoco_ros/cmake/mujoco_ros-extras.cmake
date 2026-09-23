@@ -11,7 +11,7 @@ if(NOT _MUJOCO_ROS_MUJOCO_LIB)
 endif()
 
 if(NOT TARGET mujoco::mujoco)
-  add_library(mujoco::mujoco SHARED IMPORTED)
+  add_library(mujoco::mujoco SHARED IMPORTED GLOBAL)
   set_target_properties(mujoco::mujoco PROPERTIES
     IMPORTED_LOCATION "${_MUJOCO_ROS_MUJOCO_LIB}"
     INTERFACE_INCLUDE_DIRECTORIES "${_MUJOCO_ROS_PREFIX}/include"
@@ -21,3 +21,14 @@ endif()
 set(mujoco_FOUND TRUE)
 set(mujoco_INCLUDE_DIRS "${_MUJOCO_ROS_PREFIX}/include")
 set(mujoco_LIBRARIES mujoco::mujoco)
+
+# The exported RenderCore target references OSMesa::OSMesa only when the
+# package was configured with OSMesa.  Load the bundled module before the
+# exported targets are consumed by downstream packages.
+if("@_MUJOCO_RESOLVED_OFFSCREEN_BACKEND@" STREQUAL "OSMESA")
+  list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
+  find_package(OSMesa REQUIRED)
+  list(POP_BACK CMAKE_MODULE_PATH)
+elseif("@_MUJOCO_RESOLVED_OFFSCREEN_BACKEND@" STREQUAL "EGL")
+  find_package(OpenGL COMPONENTS OpenGL EGL REQUIRED)
+endif()

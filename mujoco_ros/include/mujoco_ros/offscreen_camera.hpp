@@ -36,13 +36,19 @@
 
 #pragma once
 
-#include <cmath>
+#include <array>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <unordered_map>
 
 #include <mujoco_ros/ros_version.hpp>
 
 #include <mujoco_ros/common_types.hpp>
 #include <mujoco_ros/logging.hpp>
-#include <mujoco_ros/offscreen_camera.hpp>
+#include <mujoco_ros/rendering/bounded_publication_queue.hpp>
+#include <mujoco_ros/rendering/render_core.hpp>
 
 #if MJR_ROS_VERSION == ROS_1
 
@@ -76,50 +82,43 @@ namespace roscpp = rclcpp;
 
 #include <tf2_ros/transform_listener.h>
 
+#include <atomic>
+
 namespace mujoco_ros::rendering {
+
+struct CameraTransportBootstrap
+{
+	roscpp::Time static_transform_stamp{};
+	std::string parent_frame;
+	std::array<mjtNum, 3> body_to_cam_position{};
+	std::array<mjtNum, 4> body_to_cam_orientation{};
+	float vertical_field_of_view_deg = 0.0F;
+};
 
 class OffscreenCamera
 {
 public:
+	struct PublishResult
+	{
+		rendering::FrameStatus status = rendering::FrameStatus::Ok();
+		bool accepted                 = false;
+
+		bool ok() const { return status.ok(); }
+	};
+
 	OffscreenCamera(const uint8_t cam_id, const std::string &base_topic, const std::string &cam_name, const int width,
 	                const int height, const StreamType stream_type, const bool use_segid, const float pub_freq,
-	                const mjModel *model, mjData *data, mujoco_ros::MujocoEnv *env_ptr);
+	                const CameraTransportBootstrap &bootstrap, mujoco_ros::MujocoEnv *env_ptr);
 
 #if MJR_ROS_VERSION == ROS_1
-	void InitializeTransport(const std::shared_ptr<ros::NodeHandle> &parent_nh, const mjModel *model, mjData *data,
+	void InitializeTransport(const std::shared_ptr<ros::NodeHandle> &parent_nh, float vertical_field_of_view_deg,
 	                         std::string &rgb_topic, std::string &depth_topic, std::string &segment_topic);
 #else // MJR_ROS_VERSION == ROS_2
-	void InitializeTransport(const mjModel *model, mjData *data, std::string &rgb_topic, std::string &depth_topic,
+	void InitializeTransport(float vertical_field_of_view_deg, std::string &rgb_topic, std::string &depth_topic,
 	                         std::string &segment_topic);
 #endif
 
-	~OffscreenCamera()
-	{
-		MJR_DEBUG("Freeing offscreen model and data states");
-		mj_deleteData(data_state_);
-		mj_deleteModel(model_state_);
-
-#if MJR_ROS_VERSION == ROS_1
-		if (rgb_pub_ != nullptr) {
-			rgb_pub_.shutdown();
-		}
-		if (depth_pub_ != nullptr) {
-			depth_pub_.shutdown();
-		}
-		if (segment_pub_ != nullptr) {
-			segment_pub_.shutdown();
-		}
-		if (rgb_camera_info_pub_.get() != nullptr) {
-			rgb_camera_info_pub_->shutdown();
-		}
-		if (depth_camera_info_pub_.get() != nullptr) {
-			depth_camera_info_pub_->shutdown();
-		}
-		if (segment_camera_info_pub_.get() != nullptr) {
-			segment_camera_info_pub_->shutdown();
-		}
-#endif
-	};
+	~OffscreenCamera();
 
 	uint8_t cam_id_;
 	std::string cam_name_;
@@ -129,11 +128,20 @@ public:
 	bool use_segid_         = true;
 	float pub_freq_         = 15.f;
 
-	bool initial_published_ = false;
+	std::atomic_uint64_t publication_sequence_{ 0 };
+	std::atomic_bool reset_pending_{ false };
 
-	mjvOption vopt_       = {}; // Options should be individual for each camera
-	mjModel *model_state_ = nullptr;
-	mjData *data_state_   = nullptr;
+	mjvOption vopt_ = {}; // Options remain transport-visible camera settings.
+	rendering::CameraDescriptor descriptor_;
+	rendering::ConsumerId ros_consumer_;
+	bool ros_consumer_registered_             = false;
+	rendering::RenderCore *ros_consumer_core_ = nullptr;
+	std::weak_ptr<rendering::RenderCore> ros_consumer_owner_;
+	rendering::ConsumerId python_consumer_;
+	bool python_consumer_registered_             = false;
+	rendering::RenderCore *python_consumer_core_ = nullptr;
+	std::weak_ptr<rendering::RenderCore> python_consumer_owner_;
+	bool demand_enabled_ = false;
 
 	roscpp::Time last_pub_;
 #if MJR_ROS_VERSION == ROS_1
@@ -152,19 +160,111 @@ public:
 	image_transport::Publisher depth_pub_;
 	image_transport::Publisher segment_pub_;
 
-	void RenderAndPublish(mujoco_ros::OffscreenRenderContext *offscreen);
+	rendering::CameraDescriptor descriptor() const;
+	void RegisterConsumer(rendering::RenderCore &core);
+	rendering::ConsumerId RegisterPythonConsumer(const std::shared_ptr<rendering::RenderCore> &core,
+	                                             std::size_t history_depth = 1);
+	rendering::ConsumerId RegisterPythonConsumer(rendering::RenderCore &core, std::size_t history_depth = 1);
+	void UnregisterPythonConsumer(rendering::ConsumerId consumer);
+	void UnregisterPythonConsumer();
+	void SetActiveRenderCore(const std::shared_ptr<rendering::RenderCore> &core);
+	void SetVisualFlag(int flag_idx, bool enable);
+	void ToggleVisualFlag(int flag_idx);
+	int GetVisualFlag(int flag_idx) const;
+	std::uint64_t UpdateDemand(rendering::RenderCore &core, const roscpp::Time &time);
+	bool HasSubscribers() const;
+	PublishResult PublishLatest(rendering::RenderCore &core, const roscpp::Time &accepted_time,
+	                            std::uint64_t accepted_publication_sequence, std::uint64_t expected_capture_id);
+	std::uint64_t last_published_capture_id() const
+	{
+		std::lock_guard<std::mutex> lock(publication_mutex_);
+		return last_published_capture_id_;
+	}
+	std::size_t publication_drops() const
+	{
+		if (!publication_queue_) {
+			return 0;
+		}
+		return publication_queue_->dropped_count();
+	}
+	std::size_t publication_cancelled() const
+	{
+		if (!publication_queue_) {
+			return 0;
+		}
+		return publication_queue_->cancelled_count();
+	}
+	rendering::FrameStatus last_publication_status() const
+	{
+		std::lock_guard<std::mutex> lock(publication_mutex_);
+		return last_publication_status_;
+	}
+	void Reset();
 
 	/**
-	 * @brief Check if the camera should render a new image at time t.
-	 * @param[in] t The time to check.
+	 * @brief Check if the camera should publish at time t.
 	 */
-	bool ShouldRender(const roscpp::Time &t);
+	bool ShouldPublishAtTime(const roscpp::Time &t);
 
 private:
-	std::unique_ptr<camera_info_manager::CameraInfoManager> camera_info_manager_;
+	friend class OffscreenCameraTestAccess;
 
-	bool RenderAndPubIfNecessary(mujoco_ros::OffscreenRenderContext *offscreen, const bool rgb, const bool depth,
-	                             const bool segment);
+	struct TransportEnvelope
+	{
+		roscpp::Time stamp;
+		std::uint64_t capture_id = 0;
+	};
+
+	struct PublicationItem
+	{
+		std::uint64_t capture_id                     = 0;
+		std::uint64_t committed_publication_sequence = 0;
+		std::optional<rendering::FrameLease> rgb;
+		std::optional<rendering::FrameLease> depth;
+		std::optional<rendering::FrameLease> segment;
+		TransportEnvelope envelope;
+		rendering::PlaneMask published_planes = rendering::PlaneMask::kNone;
+		std::optional<rendering::FrameStatus> missing_plane;
+		std::function<void()> worker_hook;
+		std::function<void()> publication_end_hook;
+	};
+
+	std::unique_ptr<BoundedPublicationQueue<PublicationItem>> publication_queue_;
+	void EnsurePublicationWorker();
+	void PublishQueuedItem(PublicationItem &item);
+	bool PublicationItemIsStale(const PublicationItem &item) const;
+
+	std::unique_ptr<camera_info_manager::CameraInfoManager> camera_info_manager_;
+	mutable std::mutex descriptor_mutex_;
+	mutable std::mutex publication_mutex_;
+	mutable std::mutex test_hook_mutex_;
+	std::weak_ptr<rendering::RenderCore> active_render_core_;
+	std::function<roscpp::Time(const rendering::FrameLease &)> timestamp_resolver_;
+	bool ros_request_accepted_               = false;
+	std::uint64_t last_published_capture_id_ = 0;
+	rendering::FrameStatus last_publication_status_;
+	std::function<void()> publication_test_hook_;
+	std::function<void()> publication_enqueue_test_hook_;
+	std::function<void()> worker_publication_hook_;
+	std::function<void()> publication_publish_entry_test_hook_;
+	std::function<void()> publication_end_test_hook_;
+	std::function<void()> reset_test_hook_;
+	std::atomic_bool retirement_failure_once_{ false };
+
+	void UnregisterRosConsumer();
+	bool ShouldPublishAtTimeLocked(const roscpp::Time &time) const;
+	void PublishRgb(const rendering::FrameLease &lease, const TransportEnvelope &envelope);
+	void PublishDepth(const rendering::FrameLease &lease, const TransportEnvelope &envelope);
+	void PublishSegment(const rendering::FrameLease &lease, const TransportEnvelope &envelope);
+	void PublishCameraInfo(const roscpp::Time &time, rendering::PlaneMask planes);
+	void UnregisterConsumers();
+
+	struct PythonConsumerRegistration
+	{
+		rendering::RenderCore *core = nullptr;
+		std::weak_ptr<rendering::RenderCore> owner;
+	};
+	std::unordered_map<std::uint64_t, PythonConsumerRegistration> python_consumers_;
 };
 
 } // end namespace mujoco_ros::rendering

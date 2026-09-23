@@ -37,6 +37,9 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <memory>
+
+#include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros_laser/laser.hpp>
 
 namespace py = pybind11;
@@ -44,13 +47,19 @@ namespace py = pybind11;
 namespace mujoco_ros::python::laser {
 namespace {
 
-mujoco_ros::sensors::laser::LaserPlugin *Bind(mujoco_ros::MujocoPlugin *plugin)
+struct LaserPluginHandle
 {
-	auto *typed_plugin = dynamic_cast<mujoco_ros::sensors::laser::LaserPlugin *>(plugin);
-	if (typed_plugin == nullptr) {
+	explicit LaserPluginHandle(mujoco_ros::PluginHandle handle) : handle(std::move(handle)) {}
+	mujoco_ros::PluginHandle handle;
+};
+
+std::shared_ptr<LaserPluginHandle> Bind(py::object plugin)
+{
+	auto handle = py::cast<mujoco_ros::PluginHandle>(plugin);
+	if (handle.Type() != "mujoco_ros_laser/LaserPlugin") {
 		throw py::type_error("plugin is not a LaserPlugin");
 	}
-	return typed_plugin;
+	return std::make_shared<LaserPluginHandle>(std::move(handle));
 }
 
 } // namespace
@@ -88,21 +97,32 @@ PYBIND11_MODULE(pymujoco_ros_laser, module)
 		    return "<LaserConfig name='" + config.name + "'>";
 	    });
 
-	py::class_<mujoco_ros::sensors::laser::LaserPlugin, mujoco_ros::MujocoPlugin,
-	           std::shared_ptr<mujoco_ros::sensors::laser::LaserPlugin>>(module, "LaserPlugin")
-	    .def_property_readonly(
-	        "configs", [](mujoco_ros::sensors::laser::LaserPlugin &plugin) { return plugin.GetLaserConfigs(); },
-	        py::return_value_policy::reference_internal)
-	    .def_property_readonly(
-	        "config_count",
-	        [](const mujoco_ros::sensors::laser::LaserPlugin &plugin) { return plugin.GetLaserConfigs().size(); })
-	    .def_property_readonly("has_render_data", &mujoco_ros::sensors::laser::LaserPlugin::HasRenderData)
-	    .def_property_readonly("render_geom_count", &mujoco_ros::sensors::laser::LaserPlugin::GetRenderGeomCount)
-	    .def("__repr__", [](const mujoco_ros::sensors::laser::LaserPlugin &plugin) {
-		    return "<LaserPlugin name='" + plugin.get_name() + "' type='" + plugin.get_type() + "'>";
+	py::class_<LaserPluginHandle, std::shared_ptr<LaserPluginHandle>>(module, "LaserPlugin")
+	    .def_property_readonly("configs",
+	                           [](const LaserPluginHandle &handle) {
+		                           return handle.handle.WithBackend<mujoco_ros::sensors::laser::LaserPlugin>(
+		                               [](const auto &plugin) { return plugin.GetLaserConfigs(); });
+	                           })
+	    .def_property_readonly("config_count",
+	                           [](const LaserPluginHandle &handle) {
+		                           return handle.handle.WithBackend<mujoco_ros::sensors::laser::LaserPlugin>(
+		                               [](const auto &plugin) { return plugin.GetLaserConfigs().size(); });
+	                           })
+	    .def_property_readonly("has_render_data",
+	                           [](const LaserPluginHandle &handle) {
+		                           return handle.handle.WithBackend<mujoco_ros::sensors::laser::LaserPlugin>(
+		                               [](const auto &plugin) { return plugin.HasRenderData(); });
+	                           })
+	    .def_property_readonly("render_geom_count",
+	                           [](const LaserPluginHandle &handle) {
+		                           return handle.handle.WithBackend<mujoco_ros::sensors::laser::LaserPlugin>(
+		                               [](const auto &plugin) { return plugin.GetRenderGeomCount(); });
+	                           })
+	    .def("__repr__", [](const LaserPluginHandle &plugin) {
+		    return "<LaserPlugin name='" + plugin.handle.Name() + "' type='" + plugin.handle.Type() + "'>";
 	    });
 
-	module.def("bind", &Bind, py::arg("plugin"), py::return_value_policy::reference);
+	module.def("bind", &Bind, py::arg("plugin"));
 }
 
 } // namespace mujoco_ros::python::laser

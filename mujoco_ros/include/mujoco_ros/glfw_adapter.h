@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <thread>
 #include <utility>
 
 #include <GLFW/glfw3.h>
@@ -62,7 +63,9 @@ public:
 
 private:
 	GLFWvidmode vidmode_;
-	GLFWwindow *window_;
+	GLFWwindow *window_           = nullptr;
+	bool glfw_initialized_        = false;
+	std::thread::id owner_thread_ = std::this_thread::get_id();
 
 	// store last window information when going to full screen
 	std::pair<int, int> window_pos_;

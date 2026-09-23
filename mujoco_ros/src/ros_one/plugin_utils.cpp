@@ -36,7 +36,42 @@
 
 #include <mujoco_ros/ros_one/plugin_utils.hpp>
 
+#include <utility>
+
 namespace mujoco_ros::plugin_utils {
+
+namespace {
+
+class FailedPluginAdapter final : public IPluginAdapter
+{
+public:
+	FailedPluginAdapter(std::string name, std::string type, std::string error)
+	    : name_(std::move(name)), type_(std::move(type)), error_(std::move(error))
+	{
+	}
+
+	const std::string &Name() const override { return name_; }
+	const std::string &Type() const override { return type_; }
+	bool Load(const mjModel *, mjData *, std::string &error) override
+	{
+		error = error_;
+		return false;
+	}
+	void Control(const mjModel *, mjData *) override {}
+	void Passive(const mjModel *, mjData *) override {}
+	void Render(const mjModel *, mjData *, mjvScene *) override {}
+	void LastStage(const mjModel *, mjData *) override {}
+	void Reset() override {}
+	void GeometryChanged(const mjModel *, mjData *, int) override {}
+	PluginStat Statistics() const override { return { name_, type_ }; }
+
+private:
+	std::string name_;
+	std::string type_;
+	std::string error_;
+};
+
+} // namespace
 
 bool ParsePlugins(const ros::NodeHandle *nh, XmlRpc::XmlRpcValue &plugin_config_rpc)
 {
@@ -109,6 +144,39 @@ bool RegisterPlugin(const std::string &nh_namespace, const XmlRpc::XmlRpcValue &
 	}
 
 	return true;
+}
+
+RosPluginAdapterFactory::~RosPluginAdapterFactory()
+{
+	UnloadPluginloader();
+}
+
+std::vector<std::unique_ptr<IPluginAdapter>> RosPluginAdapterFactory::CreateAdapters()
+{
+	std::vector<std::unique_ptr<IPluginAdapter>> adapters;
+	XmlRpc::XmlRpcValue config;
+	if (!ParsePlugins(node_handle_, config)) {
+		return adapters;
+	}
+
+	for (int index = 0; index < config.size(); ++index) {
+		const std::string name = "plugin_" + std::to_string(index);
+		if (config[index].getType() != XmlRpc::XmlRpcValue::TypeStruct || !config[index].hasMember("type")) {
+			adapters.emplace_back(std::make_unique<FailedPluginAdapter>(
+			    name, "", "ROS 1 plugin configuration entry must be a struct with a type"));
+			continue;
+		}
+
+		const std::string type = static_cast<std::string>(config[index]["type"]);
+		try {
+			auto plugin = MujocoPluginPtr(plugin_loader_ptr_->createUnmanagedInstance(type));
+			plugin->Init(config[index], node_handle_->getNamespace(), env_);
+			adapters.emplace_back(std::make_unique<RosPluginAdapter>(std::move(plugin)));
+		} catch (const pluginlib::PluginlibException &ex) {
+			adapters.emplace_back(std::make_unique<FailedPluginAdapter>(name, type, ex.what()));
+		}
+	}
+	return adapters;
 }
 
 void InitPluginLoader()

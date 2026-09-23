@@ -280,9 +280,8 @@ class MocapPluginFixture : public ::testing::Test
 protected:
 	std::unique_ptr<testing::TestNodeHandle> nh;
 	std::unique_ptr<MujocoEnvTestWrapper> env_ptr;
-	mujoco_ros::mocap::MocapPlugin *mocap_plugin = nullptr;
-	mjModel *m                                   = nullptr;
-	mjData *d                                    = nullptr;
+	mjModel *m = nullptr;
+	mjData *d  = nullptr;
 
 	void SetUp() override
 	{
@@ -307,17 +306,12 @@ protected:
 		m = env_ptr->getModelPtr();
 		d = env_ptr->getDataPtr();
 
-		for (const auto &plugin : env_ptr->GetPlugins()) {
-			mocap_plugin = dynamic_cast<mujoco_ros::mocap::MocapPlugin *>(plugin.get());
-			if (mocap_plugin != nullptr) {
-				break;
-			}
-		}
+		ASSERT_EQ(env_ptr->GetPluginStats().size(), 1u);
+		ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
 	}
 
 	void TearDown() override
 	{
-		mocap_plugin = nullptr;
 		if (env_ptr != nullptr) {
 			env_ptr->shutdown();
 		}
@@ -329,7 +323,7 @@ protected:
 
 TEST_F(MocapPluginFixture, PluginLoaded)
 {
-	EXPECT_NE(mocap_plugin, nullptr);
+	EXPECT_EQ(env_ptr->GetPluginStats().front().type, "mujoco_ros_mocap/MocapPlugin");
 }
 
 TEST_F(MocapPluginFixture, TopicAndServiceCreated)

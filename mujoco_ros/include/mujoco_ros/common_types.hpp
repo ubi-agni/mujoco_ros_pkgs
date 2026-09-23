@@ -83,12 +83,12 @@ static constexpr char kDEFAULT_CAM_DEPTH_TOPIC[]     = "depth";
 static constexpr char kDEFAULT_CAM_SEGMENT_TOPIC[]   = "segmented";
 
 class OffscreenCamera;
-using OffscreenCameraPtr = std::unique_ptr<OffscreenCamera>;
+using OffscreenCameraPtr = std::shared_ptr<OffscreenCamera>;
 
 } // namespace rendering
 
-// Struct holding all the data needed for offscreen rendering
-struct OffscreenRenderContext;
+// ROS transport state for configured camera publication adapters. RenderCore owns graphics state.
+struct CameraPublicationTransport;
 
 /**
  * @def mjModelPtr

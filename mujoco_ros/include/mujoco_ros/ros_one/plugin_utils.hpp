@@ -41,6 +41,7 @@
 #include <ros/ros.h>
 #include <mujoco_ros/common_types.hpp>
 #include <mujoco_ros/mujoco_env.hpp>
+#include <mujoco_ros/plugin_adapter.hpp>
 
 #include <pluginlib/class_loader.h>
 
@@ -280,6 +281,67 @@ protected:
 };
 
 namespace plugin_utils {
+
+class RosPluginAdapter final : public IPluginAdapter
+{
+public:
+	explicit RosPluginAdapter(MujocoPluginPtr plugin)
+	    : plugin_(std::move(plugin)), name_(plugin_->get_name()), type_(plugin_->get_type())
+	{
+	}
+
+	const std::string &Name() const override { return name_; }
+	const std::string &Type() const override { return type_; }
+	bool Load(const mjModel *model, mjData *data, std::string &error) override
+	{
+		const bool loaded = plugin_->SafeLoad(model, data);
+		if (!loaded) {
+			error = "ROS 1 MuJoCo Plugin rejected the model";
+		}
+		return loaded;
+	}
+	void Control(const mjModel *model, mjData *data) override { plugin_->WrappedControlCallback(model, data); }
+	void Passive(const mjModel *model, mjData *data) override { plugin_->WrappedPassiveCallback(model, data); }
+	void Render(const mjModel *model, mjData *data, mjvScene *scene) override
+	{
+		plugin_->WrappedRenderCallback(model, data, scene);
+	}
+	void LastStage(const mjModel *model, mjData *data) override { plugin_->WrappedLastStageCallback(model, data); }
+	void Reset() override { plugin_->SafeReset(); }
+	void GeometryChanged(const mjModel *model, mjData *data, int geom_id) override
+	{
+		plugin_->OnGeomChanged(model, data, geom_id);
+	}
+	PluginStat Statistics() const override
+	{
+		return { name_,
+			      plugin_->get_type(),
+			      plugin_->get_load_time(),
+			      plugin_->get_reset_time(),
+			      plugin_->get_ema_steptime_control(),
+			      plugin_->get_ema_steptime_passive(),
+			      plugin_->get_ema_steptime_render(),
+			      plugin_->get_ema_steptime_last_stage() };
+	}
+	void *BackendObject() override { return plugin_.get(); }
+
+private:
+	MujocoPluginPtr plugin_;
+	std::string name_;
+	std::string type_;
+};
+
+class RosPluginAdapterFactory final : public IPluginAdapterFactory
+{
+public:
+	RosPluginAdapterFactory(ros::NodeHandle *node_handle, MujocoEnv *env) : node_handle_(node_handle), env_(env) {}
+	~RosPluginAdapterFactory() override;
+	std::vector<std::unique_ptr<IPluginAdapter>> CreateAdapters() override;
+
+private:
+	ros::NodeHandle *node_handle_;
+	MujocoEnv *env_;
+};
 
 /**
  * @brief Searches for plugins to load in the ros parameter server and stores a the configuration in \c

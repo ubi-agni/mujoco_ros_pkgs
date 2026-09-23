@@ -34,11 +34,7 @@ def require_python_mujoco():
 
 
 def wait_for_idle(env, timeout=5.0):
-    deadline = time.monotonic() + timeout
-    while env.operational_status != 0 and time.monotonic() < deadline:
-        time.sleep(0.01)
-    if env.operational_status != 0:
-        raise AssertionError("environment did not become idle before timeout")
+    env.wait_for_operational_status_idle(timeout)
 
 
 def shutdown_rclpy_if_needed():
@@ -169,11 +165,13 @@ class DescriptionConverterBindingsTest(unittest.TestCase):
                 rospy.init_node(
                     "description_converter_bindings_test_pub", anonymous=True, disable_signals=True
                 )
+            # rospy.Publisher registers with the ROS master before returning. The
+            # latched publish therefore survives the later subscriber connection.
             pub = rospy.Publisher(topic, String, queue_size=1, latch=True)
-            time.sleep(0.2)  # let the publisher register before the subscriber connects
             pub.publish(String(data=content))
             return pub
 
+        import rclpy
         from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
         from std_msgs.msg import String
 
@@ -184,6 +182,11 @@ class DescriptionConverterBindingsTest(unittest.TestCase):
             depth=1,
         )
         pub = node_or_none.create_publisher(String, topic, qos)
+        deadline = time.monotonic() + 5.0
+        while not node_or_none.get_publishers_info_by_topic(topic):
+            if time.monotonic() >= deadline:
+                raise AssertionError(f"publisher discovery timed out for {topic}")
+            rclpy.spin_once(node_or_none, timeout_sec=0.05)
         pub.publish(String(data=content))
         return pub
 

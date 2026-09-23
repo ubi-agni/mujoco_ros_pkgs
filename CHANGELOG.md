@@ -7,12 +7,19 @@
 * [minor] Generate MuJoCo actuators from ros2_control command interfaces, including position, velocity, and torque modes with URDF-derived limits and mimic-joint validation.
 * [minor] Convert textured GLB visuals into cached OBJ assets with UV/material handling and fallbacks for missing textures or UVs.
 * [minor] Python entry-points can set verbose mode or a specific ROS log level when constructing `MujocoEnv`.
+* [major] Typed Runtime Options seam with atomic transactions across ROS 1, ROS 2, and Python (`runtime_options` / `apply_runtime_options`); rejected patches leave effective options unchanged.
+* [major] ROS-free shared RenderCore and transport-neutral Frame Boundary for offscreen capture; ROS and Python share one capture path with lease-backed borrowed frames.
+* [minor] Generation-safe plugin host; plugin handles are bound to a Plugin Generation and reject use across reload.
+* [minor] Configurable `render_backpressure_policy` (`drop` default, opt-in `wait_for_slot`) for bounded frame-slot exhaustion.
+* [minor] Architecture and configuration docs for Runtime Options, RenderCore, Plugin Host, and offscreen frame leases.
 
 ### Changed
 * [major] Simulation control commands now route through SimulationControlState; remove legacy lifecycle/control fields and settings synchronization from EnvSettings (breaking). Use MujocoEnv or Python control APIs.
 * [major] SRDF <extended_params> is now the only Extended Params input. Remove standalone XML compatibility, extended_params_path APIs/fields/ROS parameters, and legacy standalone fixtures (breaking).
 * [major] Rename built-in Extended Params tags actuator and gravcomp to mujoco_actuator and mujoco_gravcomp; unregistered custom tags now warn and skip instead of entering core parsing (breaking).
 * [major] Description launch sources use topics for URDF/SRDF delivery. modelfile is the optional composition world; empty selects the built-in default world.
+* [major] Replace `RENDER_BACKEND` with separate `WITH_GUI` (ON|OFF) and `OFFSCREEN_BACKEND` (ANY|EGL|OSMESA|DISABLE); GLFW is not a supported offscreen backend (breaking).
+* [major] Offscreen RenderCore no longer creates or destroys GLFW worker contexts; visible GLFW remains GUI-owned only (breaking for GLFW-as-offscreen builds).
 
 ### Fixed
 * [patch] Fixed Python viewer rendering on hybrid-GPU systems by preparing the GLFW viewer context before offscreen rendering initializes.

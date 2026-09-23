@@ -37,6 +37,15 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <future>
+#include <mutex>
+#include <thread>
+#include <utility>
+#include <vector>
+
 #include <mujoco_ros_testing_utils/mujoco_env_fixture.hpp>
 
 #include <mujoco_ros/mujoco_env.hpp>
@@ -93,7 +102,211 @@ public:
 	using MujocoEnvTestWrapper::RequestViewerShutdown;
 	using MujocoEnvTestWrapper::SetPaused;
 	using MujocoEnvTestWrapper::SetViewerRealTimeIndex;
+
+	template <typename Func>
+	void PublishLoadRequestForTest(int load_request, Func &&publish_payload)
+	{
+		PublishLoadRequest(load_request, std::forward<Func>(publish_payload));
+	}
+
+	bool CanAcquireControlBoundaryForTest()
+	{
+		if (!control_state_boundary_mutex_.try_lock()) {
+			return false;
+		}
+		control_state_boundary_mutex_.unlock();
+		return true;
+	}
+
+	bool CanAcquirePhysicsBoundaryForTest()
+	{
+		if (!physics_thread_mutex_.try_lock()) {
+			return false;
+		}
+		physics_thread_mutex_.unlock();
+		return true;
+	}
+
+	ControlSpeedSnapshot ConsumeSpeedSettingsSnapshotForTest() { return ConsumeSpeedSettingsSnapshot(); }
 };
+
+class WarningTestWrapper : public MujocoEnvTestWrapper
+{
+public:
+	using MujocoEnvTestWrapper::FrameSlotWarningCountForTesting;
+	using MujocoEnvTestWrapper::LastFrameSlotWarningForTesting;
+	using MujocoEnvTestWrapper::MujocoEnvTestWrapper;
+	using MujocoEnvTestWrapper::SetWarningClockForTesting;
+	using MujocoEnvTestWrapper::WarnFrameSlotDrop;
+};
+
+namespace mujoco_ros {
+
+class SimulationControlStateTestAccess
+{
+public:
+	class ScopedAdmissionTestHook
+	{
+	public:
+		ScopedAdmissionTestHook(SimulationControlState::AdmissionTestHook hook, void *context)
+		{
+			SetAdmissionTestHook(hook, context);
+		}
+
+		~ScopedAdmissionTestHook() { SetAdmissionTestHook(nullptr, nullptr); }
+
+		ScopedAdmissionTestHook(const ScopedAdmissionTestHook &)            = delete;
+		ScopedAdmissionTestHook &operator=(const ScopedAdmissionTestHook &) = delete;
+	};
+
+	static bool IsAdmissionTransactionLocked(SimulationControlState &state)
+	{
+		if (!state.state_mutex_.try_lock()) {
+			return true;
+		}
+		state.state_mutex_.unlock();
+		return false;
+	}
+
+	static bool IsManualStepAdmissionPoint(int hook_point)
+	{
+		return hook_point == static_cast<int>(SimulationControlState::AdmissionTestHookPoint::kBeforeManualStepAdmission);
+	}
+
+private:
+	static void SetAdmissionTestHook(SimulationControlState::AdmissionTestHook hook, void *context)
+	{
+		SimulationControlState::admission_test_hook_context_.store(context);
+		SimulationControlState::admission_test_hook_.store(hook);
+	}
+};
+
+} // namespace mujoco_ros
+
+namespace {
+
+class AdmissionArbitrationGate
+{
+public:
+	static void PauseManualStepAdmission(void *context, int hook_point)
+	{
+		if (!SimulationControlStateTestAccess::IsManualStepAdmissionPoint(hook_point)) {
+			return;
+		}
+		auto &gate = *static_cast<AdmissionArbitrationGate *>(context);
+		std::unique_lock<std::mutex> lock(gate.mutex_);
+		gate.manual_step_checkpoint_reached_ = true;
+		gate.condition_.notify_all();
+		gate.condition_.wait(lock, [&gate] { return gate.manual_step_checkpoint_released_; });
+	}
+
+	bool WaitForManualStepCheckpoint()
+	{
+		std::unique_lock<std::mutex> lock(mutex_);
+		return condition_.wait_for(lock, std::chrono::seconds(1), [this] { return manual_step_checkpoint_reached_; });
+	}
+
+	void ReleaseManualStepCheckpoint()
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		manual_step_checkpoint_released_ = true;
+		condition_.notify_all();
+	}
+
+private:
+	std::mutex mutex_;
+	std::condition_variable condition_;
+	bool manual_step_checkpoint_reached_  = false;
+	bool manual_step_checkpoint_released_ = false;
+};
+
+class LifecycleTransitionProbe
+{
+public:
+	void MarkStarted()
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		started_ = true;
+		condition_.notify_all();
+	}
+
+	void MarkCompleted()
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		completed_ = true;
+		condition_.notify_all();
+	}
+
+	bool WaitUntilStarted()
+	{
+		std::unique_lock<std::mutex> lock(mutex_);
+		return condition_.wait_for(lock, std::chrono::seconds(1), [this] { return started_; });
+	}
+
+	bool WaitUntilCompleted()
+	{
+		std::unique_lock<std::mutex> lock(mutex_);
+		return condition_.wait_for(lock, std::chrono::seconds(1), [this] { return completed_; });
+	}
+
+private:
+	std::mutex mutex_;
+	std::condition_variable condition_;
+	bool started_   = false;
+	bool completed_ = false;
+};
+
+const char *LifecycleRequestName(int request)
+{
+	switch (request) {
+		case 0:
+			return "reset";
+		case 1:
+			return "load";
+		case 2:
+			return "shutdown";
+		default:
+			return "run";
+	}
+}
+
+void ApplyLifecycleRequest(SimulationControlState &state, int request)
+{
+	switch (request) {
+		case 0:
+			state.RequestReset();
+			break;
+		case 1:
+			state.SetLoadRequest(1);
+			break;
+		case 2:
+			state.RequestShutdown();
+			break;
+		default:
+			state.SetPaused(false);
+			break;
+	}
+}
+
+void ExpectLifecycleRequestActive(const SimulationControlSnapshot &snapshot, int request)
+{
+	switch (request) {
+		case 0:
+			EXPECT_TRUE(snapshot.reset_requested);
+			break;
+		case 1:
+			EXPECT_EQ(snapshot.load_request, 1);
+			break;
+		case 2:
+			EXPECT_TRUE(snapshot.shutdown_requested);
+			break;
+		default:
+			EXPECT_TRUE(snapshot.running);
+			break;
+	}
+}
+
+} // namespace
 
 TEST(SimulationControlStateTest, PauseAndRunSnapshot)
 {
@@ -126,6 +339,162 @@ TEST(SimulationControlStateTest, RejectsOverlappingManualStepRequests)
 	EXPECT_EQ(state.Snapshot().pending_steps, 3);
 }
 
+TEST(SimulationControlStateTest, RejectsManualStepsForEveryConflictingRequestState)
+{
+	SimulationControlState reset_state;
+	reset_state.RequestReset();
+	EXPECT_FALSE(reset_state.RequestSteps(1));
+
+	SimulationControlState load_state;
+	load_state.SetLoadRequest(1);
+	EXPECT_FALSE(load_state.RequestSteps(1));
+
+	SimulationControlState shutdown_state;
+	shutdown_state.RequestShutdown();
+	EXPECT_FALSE(shutdown_state.RequestSteps(1));
+
+	SimulationControlState running_state;
+	running_state.SetPaused(false);
+	EXPECT_FALSE(running_state.RequestSteps(1));
+
+	SimulationControlState pending_state;
+	ASSERT_TRUE(pending_state.RequestSteps(1));
+	EXPECT_FALSE(pending_state.RequestSteps(1));
+}
+
+TEST(SimulationControlStateTest, ConcurrentManualStepRequestsHaveExactlyOneWinner)
+{
+	constexpr int kRequests = 16;
+	SimulationControlState state;
+	std::atomic_int ready    = { 0 };
+	std::atomic_bool start   = { false };
+	std::atomic_int admitted = { 0 };
+	std::vector<std::thread> requesters;
+	requesters.reserve(kRequests);
+
+	for (int i = 0; i < kRequests; ++i) {
+		requesters.emplace_back([&] {
+			ready.fetch_add(1);
+			while (!start.load()) {
+			}
+			if (state.RequestSteps(1)) {
+				admitted.fetch_add(1);
+			}
+		});
+	}
+	while (ready.load() != kRequests) {
+	}
+	start.store(true);
+	for (auto &requester : requesters) {
+		requester.join();
+	}
+
+	EXPECT_EQ(admitted.load(), 1);
+	EXPECT_EQ(state.Snapshot().pending_steps, 1);
+}
+
+TEST(SimulationControlStateTest, ConcurrentLifecycleRequestNeverLeavesPendingManualSteps)
+{
+	constexpr int kAttempts = 1024;
+	for (int request = 0; request < 4; ++request) {
+		for (int attempt = 0; attempt < kAttempts; ++attempt) {
+			SimulationControlState state;
+			std::atomic_int ready  = { 0 };
+			std::atomic_bool start = { false };
+			std::thread stepper([&] {
+				ready.fetch_add(1);
+				while (!start.load()) {
+				}
+				state.RequestSteps(1);
+			});
+			std::thread lifecycle([&] {
+				ready.fetch_add(1);
+				while (!start.load()) {
+				}
+				switch (request) {
+					case 0:
+						state.RequestReset();
+						break;
+					case 1:
+						state.SetLoadRequest(1);
+						break;
+					case 2:
+						state.RequestShutdown();
+						break;
+					default:
+						state.SetPaused(false);
+						break;
+				}
+			});
+			while (ready.load() != 2) {
+			}
+			start.store(true);
+			stepper.join();
+			lifecycle.join();
+
+			const auto snapshot = state.Snapshot();
+			const bool conflict =
+			    snapshot.reset_requested || snapshot.load_request > 0 || snapshot.shutdown_requested || snapshot.running;
+			EXPECT_FALSE(conflict && snapshot.pending_steps > 0) << "request=" << request << ", attempt=" << attempt;
+		}
+	}
+}
+
+TEST(SimulationControlStateTest, LifecycleRequestsCannotBeOverwrittenByManualStepAdmissionRace)
+{
+	for (int request = 0; request < 4; ++request) {
+		SCOPED_TRACE(LifecycleRequestName(request));
+		SimulationControlState state;
+		AdmissionArbitrationGate gate;
+		SimulationControlStateTestAccess::ScopedAdmissionTestHook hook_scope(
+		    AdmissionArbitrationGate::PauseManualStepAdmission, &gate);
+
+		std::atomic_bool manual_step_admitted = { false };
+		std::thread stepper([&] { manual_step_admitted.store(state.RequestSteps(1)); });
+
+		if (!gate.WaitForManualStepCheckpoint()) {
+			stepper.join();
+			FAIL() << "manual-step admission hook was not reached";
+			return;
+		}
+
+		const bool admission_transaction_locked = SimulationControlStateTestAccess::IsAdmissionTransactionLocked(state);
+		EXPECT_TRUE(admission_transaction_locked) << "manual-step lifecycle check and pending-step store must be atomic";
+
+		LifecycleTransitionProbe lifecycle_probe;
+		std::thread lifecycle([&] {
+			lifecycle_probe.MarkStarted();
+			ApplyLifecycleRequest(state, request);
+			lifecycle_probe.MarkCompleted();
+		});
+
+		if (!lifecycle_probe.WaitUntilStarted()) {
+			gate.ReleaseManualStepCheckpoint();
+			stepper.join();
+			lifecycle.join();
+			FAIL() << "lifecycle request thread did not start";
+			return;
+		}
+
+		if (!admission_transaction_locked && !lifecycle_probe.WaitUntilCompleted()) {
+			gate.ReleaseManualStepCheckpoint();
+			stepper.join();
+			lifecycle.join();
+			FAIL() << "pre-fix lifecycle request did not complete before stale manual-step store";
+			return;
+		}
+
+		gate.ReleaseManualStepCheckpoint();
+		stepper.join();
+		lifecycle.join();
+
+		const auto snapshot = state.Snapshot();
+		EXPECT_TRUE(manual_step_admitted.load());
+		ExpectLifecycleRequestActive(snapshot, request);
+		EXPECT_EQ(snapshot.pending_steps, 0) << "lifecycle request must cancel a manual step admitted from a stale check";
+	}
+}
+
 TEST(SimulationControlStateTest, ManualStepProgressIsSnapshotBased)
 {
 	SimulationControlState state;
@@ -137,6 +506,127 @@ TEST(SimulationControlStateTest, ManualStepProgressIsSnapshotBased)
 	EXPECT_TRUE(state.RecordCompletedStep());
 	EXPECT_EQ(state.Snapshot().pending_steps, 0);
 	EXPECT_FALSE(state.RecordCompletedStep());
+}
+
+TEST(SimulationControlStateTest, LifecycleCancellationWinsOverStepCompletionSnapshot)
+{
+	SimulationControlState state;
+	ManualStepToken token = 0;
+	ASSERT_TRUE(state.RequestSteps(2, &token));
+	EXPECT_EQ(state.GetManualStepSnapshot(token).status, ManualStepTerminalStatus::kPending);
+
+	state.RequestReset();
+	const auto terminal = state.GetManualStepSnapshot(token);
+	EXPECT_EQ(terminal.status, ManualStepTerminalStatus::kCancelled);
+	EXPECT_EQ(terminal.pending_steps, 0);
+	EXPECT_FALSE(state.RecordCompletedStep());
+	state.AcknowledgeManualStep(token);
+}
+
+TEST(SimulationControlStateTest, LoadingWindowTransitionsAreExplicit)
+{
+	SimulationControlState state;
+
+	EXPECT_EQ(state.Snapshot().model_lifecycle, ModelLifecyclePhase::kNoModel);
+	state.SetLoadRequest(1);
+	EXPECT_EQ(state.Snapshot().model_lifecycle, ModelLifecyclePhase::kLoading);
+
+	state.SetLifecyclePhase(ModelLifecyclePhase::kOperational);
+	EXPECT_EQ(state.Snapshot().model_lifecycle, ModelLifecyclePhase::kOperational);
+
+	state.RequestShutdown();
+	EXPECT_EQ(state.Snapshot().model_lifecycle, ModelLifecyclePhase::kShuttingDown);
+	state.SetLifecyclePhase(ModelLifecyclePhase::kOperational);
+	EXPECT_EQ(state.Snapshot().model_lifecycle, ModelLifecyclePhase::kShuttingDown);
+}
+
+TEST(SimulationControlStateTest, LoadRequestClearPreservesLifecycleUntilExplicitPublish)
+{
+	SimulationControlState state;
+	state.SetLoadRequest(2);
+	state.SetLoadRequest(0);
+	const auto snapshot = state.Snapshot();
+	EXPECT_EQ(snapshot.load_request, 0);
+	EXPECT_EQ(snapshot.model_lifecycle, ModelLifecyclePhase::kLoading)
+	    << "SetLoadRequest(0) must not publish kNoModel; failure paths use CompleteFailedLoad";
+}
+
+TEST(SimulationControlStateTest, PublishOperationalIdleEnablesStepAdmission)
+{
+	SimulationControlState state;
+	state.SetLoadRequest(2);
+	EXPECT_FALSE(state.RequestSteps(1));
+	state.PublishOperationalIdle();
+	const auto snapshot = state.Snapshot();
+	EXPECT_EQ(snapshot.load_request, 0);
+	EXPECT_EQ(snapshot.model_lifecycle, ModelLifecyclePhase::kOperational);
+	EXPECT_TRUE(state.RequestSteps(1));
+}
+
+TEST(SimulationControlStateTest, CompleteFailedLoadPublishesNoModelAtomically)
+{
+	SimulationControlState state;
+	state.SetLoadRequest(2);
+	state.CompleteFailedLoad();
+	const auto snapshot = state.Snapshot();
+	EXPECT_EQ(snapshot.load_request, 0);
+	EXPECT_EQ(snapshot.model_lifecycle, ModelLifecyclePhase::kNoModel);
+}
+
+TEST(SimulationControlStateTest, CompleteFailedLoadRespectsShutdownLifecycle)
+{
+	SimulationControlState state;
+	state.SetLoadRequest(2);
+	state.RequestShutdown();
+	state.CompleteFailedLoad();
+	const auto snapshot = state.Snapshot();
+	EXPECT_EQ(snapshot.load_request, 0);
+	EXPECT_EQ(snapshot.model_lifecycle, ModelLifecyclePhase::kShuttingDown);
+}
+
+TEST(SimulationControlStateTest, CompleteFailedLoadCancelsOperationalManualSteps)
+{
+	SimulationControlState state;
+	state.SetLoadRequest(2);
+	state.PublishOperationalIdle();
+	ManualStepToken token = 0;
+	ASSERT_TRUE(state.RequestSteps(2, &token));
+	EXPECT_EQ(state.Snapshot().pending_steps, 2);
+
+	state.CompleteFailedLoad();
+
+	const auto snapshot = state.Snapshot();
+	EXPECT_EQ(snapshot.pending_steps, 0);
+	EXPECT_EQ(snapshot.load_request, 0);
+	EXPECT_EQ(snapshot.model_lifecycle, ModelLifecyclePhase::kNoModel);
+	EXPECT_EQ(state.GetManualStepSnapshot(token).status, ManualStepTerminalStatus::kCancelled);
+	state.AcknowledgeManualStep(token);
+}
+
+TEST(SimulationControlStateTest, PublishOperationalIdleClearsLoadRequestDuringShutdown)
+{
+	SimulationControlState state;
+	state.SetLoadRequest(2);
+	state.RequestShutdown();
+	state.PublishOperationalIdle();
+	const auto snapshot = state.Snapshot();
+	EXPECT_EQ(snapshot.load_request, 0);
+	EXPECT_EQ(snapshot.model_lifecycle, ModelLifecyclePhase::kShuttingDown);
+}
+
+TEST(SimulationControlStateTest, ManualStepWaitUsesTerminalConditionWithoutPolling)
+{
+	SimulationControlState state;
+	ManualStepToken token = 0;
+	ASSERT_TRUE(state.RequestSteps(1, &token));
+	std::promise<ManualStepSnapshot> waiter;
+	auto result = waiter.get_future();
+	std::thread wait_thread([&] { waiter.set_value(state.WaitForManualStepUpdate(token, 1)); });
+
+	state.RequestShutdown();
+	wait_thread.join();
+	EXPECT_EQ(result.get().status, ManualStepTerminalStatus::kCancelled);
+	state.AcknowledgeManualStep(token);
 }
 
 TEST(SimulationControlStateTest, UnpauseClearsPendingManualSteps)
@@ -160,11 +650,15 @@ TEST(SimulationControlStateTest, LifecycleRequestsClearPendingManualSteps)
 	EXPECT_TRUE(state.Snapshot().reset_requested);
 	EXPECT_EQ(state.Snapshot().pending_steps, 0);
 
+	EXPECT_FALSE(state.RequestSteps(2));
+	state.ClearResetRequest();
 	ASSERT_TRUE(state.RequestSteps(2));
 	state.SetLoadRequest(2);
 	EXPECT_EQ(state.Snapshot().load_request, 2);
 	EXPECT_EQ(state.Snapshot().pending_steps, 0);
 
+	EXPECT_FALSE(state.RequestSteps(1));
+	state.SetLoadRequest(0);
 	ASSERT_TRUE(state.RequestSteps(1));
 	state.RequestShutdown();
 	EXPECT_TRUE(state.Snapshot().shutdown_requested);
@@ -193,21 +687,88 @@ TEST(SimulationControlStateTest, ClearsLifecycleAndConsumesSpeedChange)
 	EXPECT_FALSE(state.ConsumeSpeedChange());
 }
 
-TEST_F(BaseEnvFixture, ControlRequestsMirrorInternalLoadTransitions)
+TEST_F(BaseEnvFixture, ControlRequestsUseAuthoritativeLoadState)
 {
 	auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
 
 	sync_env->requestLoad(2);
 	EXPECT_EQ(sync_env->GetControlSnapshot().load_request, 2);
-	EXPECT_EQ(sync_env->settings_.load_request.load(), 2);
 
 	sync_env->requestLoad(1);
 	EXPECT_EQ(sync_env->GetControlSnapshot().load_request, 1);
-	EXPECT_EQ(sync_env->settings_.load_request.load(), 1);
 
 	sync_env->requestLoad(3);
 	EXPECT_EQ(sync_env->GetControlSnapshot().load_request, 3);
-	EXPECT_EQ(sync_env->settings_.load_request.load(), 3);
+
+	sync_env->shutdown();
+}
+
+TEST_F(BaseEnvFixture, RenderBackpressurePolicyRejectsInvalidValuesAtomically)
+{
+	auto sync_env = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	EXPECT_EQ(sync_env->GetRenderBackpressurePolicy(), rendering::RenderBackpressurePolicy::kDrop);
+	ASSERT_TRUE(sync_env->SetRenderBackpressurePolicy("wait_for_slot").ok());
+	EXPECT_EQ(sync_env->GetRenderBackpressurePolicy(), rendering::RenderBackpressurePolicy::kWaitForSlot);
+
+	const auto rejected = sync_env->SetRenderBackpressurePolicy("wait");
+	EXPECT_EQ(rejected.code, rendering::FrameStatusCode::kInvalidPolicy);
+	EXPECT_EQ(sync_env->GetRenderBackpressurePolicy(), rendering::RenderBackpressurePolicy::kWaitForSlot);
+}
+
+TEST_F(BaseEnvFixture, FrameSlotWarningsAreThrottledAndStatusSpecific)
+{
+	auto sync_env     = std::make_unique<WarningTestWrapper>("", nh.get());
+	auto warning_time = std::chrono::steady_clock::time_point(std::chrono::seconds(10));
+	sync_env->SetWarningClockForTesting([&warning_time] { return warning_time; });
+	const rendering::FrameStatus dropped{ rendering::FrameStatusCode::kFrameSlotsExhausted, 0, std::nullopt,
+		                                   FrameGeneration(1), "frame storage exhausted" };
+	const rendering::FrameStatus cancelled{ rendering::FrameStatusCode::kStopped, 0, std::nullopt, FrameGeneration(1),
+		                                     "capacity wait cancelled" };
+	const rendering::FrameStatus backend_failure{ rendering::FrameStatusCode::kBackendFailure, 0, std::nullopt,
+		                                           FrameGeneration(1), "backend failed" };
+
+	sync_env->WarnFrameSlotDrop(cancelled);
+	EXPECT_EQ(sync_env->FrameSlotWarningCountForTesting(), 0U);
+	sync_env->WarnFrameSlotDrop(dropped);
+	sync_env->WarnFrameSlotDrop(dropped);
+	EXPECT_EQ(sync_env->FrameSlotWarningCountForTesting(), 1U);
+	EXPECT_NE(sync_env->LastFrameSlotWarningForTesting().find("render_backpressure_policy=wait_for_slot"),
+	          std::string::npos);
+	warning_time += std::chrono::milliseconds(999);
+	sync_env->WarnFrameSlotDrop(dropped);
+	EXPECT_EQ(sync_env->FrameSlotWarningCountForTesting(), 1U);
+	warning_time += std::chrono::milliseconds(1);
+	sync_env->WarnFrameSlotDrop(dropped);
+	EXPECT_EQ(sync_env->FrameSlotWarningCountForTesting(), 2U);
+	sync_env->WarnFrameSlotDrop(backend_failure);
+	EXPECT_EQ(sync_env->FrameSlotWarningCountForTesting(), 2U);
+}
+
+TEST_F(BaseEnvFixture, ManualStepAdmissionRejectsMissingModel)
+{
+	auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
+	sync_env->SetPaused(true);
+
+	EXPECT_FALSE(sync_env->RequestManualSteps(1));
+	EXPECT_EQ(sync_env->GetControlSnapshot().pending_steps, 0);
+	sync_env->shutdown();
+}
+
+TEST_F(BaseEnvFixture, DirectSettingsLifecycleMutationCannotBypassControlState)
+{
+	auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
+
+	sync_env->SetPaused(true);
+	EXPECT_FALSE(sync_env->GetControlSnapshot().running);
+	EXPECT_EQ(sync_env->GetControlSnapshot().load_request, 0);
+	EXPECT_EQ(sync_env->GetControlSnapshot().pending_steps, 0);
+
+	// EnvSettings no longer contains lifecycle fields. This test compiles only against
+	// configuration/internal markers, proving callers must use MujocoEnv control methods.
+	sync_env->requestLoad(2);
+	EXPECT_EQ(sync_env->GetControlSnapshot().load_request, 2);
+	EXPECT_FALSE(sync_env->GetControlSnapshot().running);
+	EXPECT_EQ(sync_env->GetControlSnapshot().pending_steps, 0);
 
 	sync_env->shutdown();
 }
@@ -215,7 +776,7 @@ TEST_F(BaseEnvFixture, ControlRequestsMirrorInternalLoadTransitions)
 TEST_F(BaseEnvFixture, ManualStepProgressDoesNotReapplyCompletedStepCount)
 {
 	auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
-
+	sync_env->StartWithXML("<mujoco/>");
 	sync_env->SetPaused(true);
 	ASSERT_FALSE(sync_env->GetControlSnapshot().running);
 
@@ -224,7 +785,6 @@ TEST_F(BaseEnvFixture, ManualStepProgressDoesNotReapplyCompletedStepCount)
 	ASSERT_EQ(sync_env->GetControlSnapshot().pending_steps, 1);
 
 	EXPECT_EQ(sync_env->GetControlSnapshot().pending_steps, 1);
-	EXPECT_EQ(sync_env->settings_.env_steps_request.load(), 1);
 
 	sync_env->shutdown();
 }
@@ -232,22 +792,19 @@ TEST_F(BaseEnvFixture, ManualStepProgressDoesNotReapplyCompletedStepCount)
 TEST_F(BaseEnvFixture, ViewerControlRequestsRouteThroughControlState)
 {
 	auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
+	sync_env->StartWithXML("<mujoco/>");
 
 	sync_env->SetPaused(false);
 	EXPECT_TRUE(sync_env->GetControlSnapshot().running);
-	EXPECT_TRUE(sync_env->settings_.run.load());
 
 	sync_env->SetPaused(true);
 	EXPECT_FALSE(sync_env->GetControlSnapshot().running);
-	EXPECT_FALSE(sync_env->settings_.run.load());
 
 	EXPECT_TRUE(sync_env->RequestManualSteps(2));
 	EXPECT_EQ(sync_env->GetControlSnapshot().pending_steps, 2);
-	EXPECT_EQ(sync_env->settings_.env_steps_request.load(), 2);
 
 	sync_env->RequestViewerReset();
 	EXPECT_TRUE(sync_env->GetControlSnapshot().reset_requested);
-	EXPECT_TRUE(sync_env->settings_.reset_request.load());
 	EXPECT_EQ(sync_env->GetControlSnapshot().pending_steps, 0);
 
 	sync_env->shutdown();
@@ -259,11 +816,47 @@ TEST_F(BaseEnvFixture, ViewerLoadAndShutdownRequestsRouteThroughControlState)
 
 	sync_env->RequestReload();
 	EXPECT_EQ(sync_env->GetControlSnapshot().load_request, 3);
-	EXPECT_EQ(sync_env->settings_.load_request.load(), 3);
 
 	sync_env->RequestViewerShutdown();
 	EXPECT_TRUE(sync_env->GetControlSnapshot().shutdown_requested);
-	EXPECT_TRUE(sync_env->settings_.exit_request.load());
+
+	sync_env->shutdown();
+}
+
+TEST_F(BaseEnvFixture, LoadPayloadPublishesBeforeRequestInsideControlBoundary)
+{
+	auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
+
+	std::atomic_int payload_observed_load_request       = { -1 };
+	std::atomic_bool payload_ran_under_boundary         = { false };
+	std::atomic_bool payload_ran_under_physics_boundary = { false };
+	const std::string queued_name                       = "queued-by-load-payload";
+
+	sync_env->PublishLoadRequestForTest(1, [&] {
+		payload_observed_load_request.store(sync_env->GetControlSnapshot().load_request);
+		mju::strcpy_arr(sync_env->queued_filename_, queued_name.c_str());
+
+		std::promise<bool> can_acquire_boundary;
+		auto boundary_result = can_acquire_boundary.get_future();
+		std::thread inspector([&] { can_acquire_boundary.set_value(sync_env->CanAcquireControlBoundaryForTest()); });
+		inspector.join();
+		payload_ran_under_boundary.store(!boundary_result.get());
+
+		std::promise<bool> can_acquire_physics_boundary;
+		auto physics_boundary_result = can_acquire_physics_boundary.get_future();
+		std::thread physics_inspector(
+		    [&] { can_acquire_physics_boundary.set_value(sync_env->CanAcquirePhysicsBoundaryForTest()); });
+		physics_inspector.join();
+		payload_ran_under_physics_boundary.store(!physics_boundary_result.get());
+	});
+
+	EXPECT_EQ(payload_observed_load_request.load(), 0) << "payload must run before load-request publication";
+	EXPECT_TRUE(payload_ran_under_boundary.load())
+	    << "payload and load-request publication must share one control boundary";
+	EXPECT_TRUE(payload_ran_under_physics_boundary.load())
+	    << "payload publication must share the event-loop load-consumption boundary";
+	EXPECT_STREQ(sync_env->queued_filename_, queued_name.c_str());
+	EXPECT_EQ(sync_env->GetControlSnapshot().load_request, 1);
 
 	sync_env->shutdown();
 }
@@ -273,9 +866,29 @@ TEST_F(BaseEnvFixture, ViewerSpeedChangesRouteThroughControlState)
 	auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
 
 	sync_env->SetViewerRealTimeIndex(3);
-	EXPECT_EQ(sync_env->settings_.real_time_index, 3);
 	EXPECT_TRUE(sync_env->GetControlSnapshot().speed_changed);
-	EXPECT_TRUE(sync_env->settings_.speed_changed.load());
+
+	sync_env->shutdown();
+}
+
+TEST_F(BaseEnvFixture, SpeedSnapshotPairsIndexWithChangeConsumption)
+{
+	auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
+
+	sync_env->SetViewerRealTimeIndex(4);
+	auto first_snapshot = sync_env->ConsumeSpeedSettingsSnapshotForTest();
+	EXPECT_EQ(first_snapshot.real_time_index, 4);
+	EXPECT_TRUE(first_snapshot.speed_changed);
+	EXPECT_FALSE(sync_env->GetControlSnapshot().speed_changed);
+
+	auto second_snapshot = sync_env->ConsumeSpeedSettingsSnapshotForTest();
+	EXPECT_EQ(second_snapshot.real_time_index, 4);
+	EXPECT_FALSE(second_snapshot.speed_changed);
+
+	sync_env->SetViewerRealTimeIndex(7);
+	auto third_snapshot = sync_env->ConsumeSpeedSettingsSnapshotForTest();
+	EXPECT_EQ(third_snapshot.real_time_index, 7);
+	EXPECT_TRUE(third_snapshot.speed_changed);
 
 	sync_env->shutdown();
 }
@@ -517,6 +1130,140 @@ TEST_F(BaseEnvFixture, InitWithModel)
 	env_ptr->shutdown();
 }
 
+TEST_F(BaseEnvFixture, RuntimeOptionsTransactionsAdvanceEpochAndRollback)
+{
+	nh->setParam("unpause", false);
+	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	env_ptr->StartWithXML(testing::get_test_model_path("empty_world.xml"));
+
+	const auto before = env_ptr->GetRuntimeOptions();
+	ASSERT_TRUE(before.ok());
+
+	const auto applied = env_ptr->ApplyRuntimeOptions({ { "timestep", 0.002 }, { "iterations", std::int64_t(50) } });
+	ASSERT_TRUE(applied.ok());
+	ASSERT_TRUE(applied.effective.has_value());
+	EXPECT_EQ(applied.epoch.value(), before.epoch.value() + 1);
+	EXPECT_DOUBLE_EQ(applied.effective->timestep, 0.002);
+	EXPECT_EQ(applied.effective->iterations, 50);
+
+	const auto rejected =
+	    env_ptr->ApplyRuntimeOptions({ { "timestep", 0.003 }, { "solimp", std::string("0.9 0.95 0.001 0.5 nan") } });
+	ASSERT_FALSE(rejected.ok());
+	ASSERT_TRUE(rejected.error.has_value());
+	EXPECT_EQ(rejected.error->field, "solimp");
+	EXPECT_EQ(rejected.epoch, applied.epoch);
+
+	const auto after = env_ptr->GetRuntimeOptions();
+	ASSERT_TRUE(after.ok());
+	EXPECT_EQ(after.epoch, applied.epoch);
+	EXPECT_EQ(after.effective, applied.effective);
+
+	env_ptr->shutdown();
+}
+
+TEST_F(BaseEnvFixture, RuntimeOptionsUpdateWaitsForHeldPhysicsBoundary)
+{
+	nh->setParam("unpause", false);
+	auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
+	sync_env->StartWithXML(testing::get_test_model_path("empty_world.xml"), false);
+	ASSERT_TRUE(sync_env->WaitForOperationalStatusIdle(std::chrono::seconds(2)));
+
+	sync_env->getMutexPtr()->lock();
+	std::promise<bool> admission_probe;
+	std::promise<RuntimeOptionsTransactionResult> transaction;
+	auto admission_result   = admission_probe.get_future();
+	auto transaction_result = transaction.get_future();
+	std::thread updater([&] {
+		admission_probe.set_value(!sync_env->CanAcquirePhysicsBoundaryForTest());
+		transaction.set_value(sync_env->ApplyRuntimeOptions({ { "timestep", 0.002 } }));
+	});
+
+	const bool update_blocked = admission_result.get();
+	if (!update_blocked) {
+		sync_env->getMutexPtr()->unlock();
+		static_cast<void>(transaction_result.get());
+		updater.join();
+		FAIL() << "The held physics boundary must block the update thread";
+	}
+	EXPECT_EQ(transaction_result.wait_for(std::chrono::milliseconds(0)), std::future_status::timeout);
+
+	sync_env->getMutexPtr()->unlock();
+	const auto applied = transaction_result.get();
+	updater.join();
+	ASSERT_TRUE(applied.ok());
+	ASSERT_TRUE(applied.effective.has_value());
+	EXPECT_DOUBLE_EQ(applied.effective->timestep, 0.002);
+
+	sync_env->shutdown();
+}
+
+TEST_F(BaseEnvFixture, RuntimeOptionsRejectsEveryLoadingWindowStage)
+{
+	auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
+
+	for (const int request : { 3, 2, 1 }) {
+		sync_env->requestLoad(request);
+		ASSERT_EQ(sync_env->GetControlSnapshot().model_lifecycle, ModelLifecyclePhase::kLoading);
+		EXPECT_THROW(sync_env->SetPendingRuntimeOptions({ { "timestep", 0.002 } }), std::runtime_error);
+		const auto rejected = sync_env->ApplyRuntimeOptions({ { "timestep", 0.002 } });
+		EXPECT_FALSE(rejected.ok());
+		ASSERT_TRUE(rejected.error.has_value());
+		EXPECT_EQ(rejected.error->message, "Runtime Options unavailable during Loading Window");
+	}
+
+	sync_env->requestLoad(0);
+	EXPECT_EQ(sync_env->GetControlSnapshot().model_lifecycle, ModelLifecyclePhase::kLoading);
+	EXPECT_FALSE(sync_env->ApplyRuntimeOptions({ { "timestep", 0.002 } }).ok());
+
+	sync_env->shutdown();
+}
+
+TEST_F(BaseEnvFixture, RejectedReloadUpdateDoesNotReachReplacementModel)
+{
+	nh->setParam("unpause", false);
+	auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
+	sync_env->StartWithXML(testing::get_test_model_path("empty_world.xml"), false);
+	ASSERT_TRUE(sync_env->WaitForOperationalStatusIdle(std::chrono::seconds(2)));
+	const auto before = sync_env->GetRuntimeOptions();
+	ASSERT_TRUE(before.ok());
+
+	const std::string replacement = testing::get_test_model_path("pendulum_world.xml");
+	sync_env->getMutexPtr()->lock();
+	sync_env->PublishLoadRequestForTest(3, [&] { mju::strcpy_arr(sync_env->queued_filename_, replacement.c_str()); });
+	ASSERT_EQ(sync_env->GetControlSnapshot().model_lifecycle, ModelLifecyclePhase::kLoading);
+	const auto rejected = sync_env->ApplyRuntimeOptions({ { "timestep", 0.002 } });
+	ASSERT_FALSE(rejected.ok());
+
+	sync_env->requestLoad(2);
+	sync_env->getMutexPtr()->unlock();
+	ASSERT_TRUE(sync_env->WaitForOperationalStatusIdle(std::chrono::seconds(2)));
+	ASSERT_EQ(sync_env->getFilename(), replacement);
+
+	const auto after = sync_env->GetRuntimeOptions();
+	ASSERT_TRUE(after.ok());
+	EXPECT_EQ(after.effective, before.effective);
+	EXPECT_DOUBLE_EQ(after.effective->timestep, 0.001);
+
+	sync_env->shutdown();
+}
+
+TEST_F(BaseEnvFixture, FailedLoadClearsStartupRuntimeOptions)
+{
+	auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
+	sync_env->SetPendingRuntimeOptions({ { "timestep", 0.002 } });
+	sync_env->StartWithXML("<mujoco>", false);
+	ASSERT_TRUE(sync_env->WaitForOperationalStatusIdle(std::chrono::seconds(2)));
+	EXPECT_FALSE(sync_env->sim_state_.model_valid);
+
+	sync_env->StartWithXML(testing::get_test_model_path("empty_world.xml"), false);
+	ASSERT_TRUE(sync_env->WaitForOperationalStatusIdle(std::chrono::seconds(2)));
+	const auto options = sync_env->GetRuntimeOptions();
+	ASSERT_TRUE(options.ok());
+	EXPECT_DOUBLE_EQ(options.effective->timestep, 0.001);
+
+	sync_env->shutdown();
+}
+
 TEST_F(BaseEnvFixture, PauseUnpause)
 {
 	nh->setParam("unpause", false);
@@ -710,8 +1457,13 @@ TEST_F(BaseEnvFixture, Reload)
 
 TEST_F(BaseEnvFixture, InitModelFromQueuedBuffer)
 {
+	nh->setParam("unpause", false);
+	nh->setParam("realtime", 0.5);
+
 	// Create a MujocoEnv object
-	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	env_ptr       = std::make_unique<ControlStateTestWrapper>("", nh.get());
+	auto sync_env = static_cast<ControlStateTestWrapper *>(env_ptr.get());
+	static_cast<void>(sync_env->ConsumeSpeedSettingsSnapshotForTest());
 
 	// Set the queued model buffer
 	std::string queuedFilename = "<mujoco/>";
@@ -724,6 +1476,9 @@ TEST_F(BaseEnvFixture, InitModelFromQueuedBuffer)
 	ASSERT_TRUE(env_ptr->getDataPtr());
 	ASSERT_STREQ(env_ptr->getFilename().c_str(), queuedFilename.c_str());
 	ASSERT_TRUE(env_ptr->sim_state_.model_valid);
+	auto speed_snapshot = sync_env->ConsumeSpeedSettingsSnapshotForTest();
+	ASSERT_FLOAT_EQ(env_ptr->percentRealTime[speed_snapshot.real_time_index], 50.f);
+	ASSERT_TRUE(speed_snapshot.speed_changed);
 
 	env_ptr->shutdown();
 }

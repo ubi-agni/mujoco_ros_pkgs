@@ -119,12 +119,41 @@ Runtime Settings
 ``env.settings`` is a runtime facade. Reads use a fresh read-only ``_EnvSettings`` copy, while supported writes call thread-safe C++ setters.
 Writable fields are:
 
-* ``running`` / ``run``
+* ``running``
 * ``rt_factor``
 * ``busywait``
 * ``gravity``
 
 Use ``env.settings.snapshot()`` to retrieve the raw read-only settings value object for debugging or tests.
+
+Runtime Options
+---------------
+
+``env.runtime_options`` returns an immutable ``RuntimeOptionsSnapshot`` of the
+active MuJoCo ``mjOption`` fields. ``env.apply_runtime_options(dict)`` applies a
+partial patch through the same transaction path as ROS dynamic reconfigure and
+ROS 2 parameters.
+
+Field names match the configuration reference: integrator and solver settings,
+scalars such as ``timestep`` and ``iterations``, space-delimited arrays such as
+``gravity`` and ``solimp``, disable flags ending in ``_disabled``, and enable
+flags such as ``energy`` and ``multiccd``.
+
+A rejected patch leaves the previous snapshot unchanged and does not advance the
+Options Epoch. Validation failures raise ``ValueError`` with
+``field + ": " + message``:
+
+.. code-block:: python
+
+   before = env.runtime_options
+   with self.assertRaisesRegex(ValueError, "solimp"):
+       env.apply_runtime_options({"timestep": 0.002, "solimp": "0.9 0.95"})
+   self.assertEqual(before, env.runtime_options)
+
+During the Loading Window, reads and writes raise ``RuntimeError`` with
+``Runtime Options unavailable during Loading Window``. Constructor keyword
+``runtime_options={...}`` applies startup-only patches before the first model
+load; invalid startup values raise ``ValueError`` at construction time.
 
 Plugins
 -------
@@ -138,6 +167,13 @@ It reports the model path, validity, load count, loading state, pause state, pen
 ``env.plugins`` returns generic bound plugin objects.
 Each plugin exposes its name, type, load/reset timing, and callback timing EMAs.
 ``env.plugin_names`` provides a convenience list of plugin names.
+
+Each loaded plugin belongs to the current **Plugin Generation** — the complete
+adapter set for one Simulation Model and runtime data pair. Reload replaces the
+generation. Python plugin handles reacquire the host on every property or method
+access and compare the handle's generation to the active one. A handle retained
+across reload raises ``RuntimeError("plugin handle belongs to an inactive Plugin
+Generation")`` rather than returning stale backend state.
 
 Downstream packages can provide plugin-specific wrappers by registering with ``mujoco_ros.plugins`` when imported, or through entry points in the ``mujoco_ros.plugins`` group.
 Entry point names may match the plugin type suffix, the sanitized full plugin type, or the plugin instance name.
@@ -156,7 +192,8 @@ The same entry points are importable as dynamic submodules, for example ``import
 Rendering
 ---------
 
-When offscreen rendering is enabled, camera metadata and ROS image ring buffers are available through ``mujoco_ros.rendering``:
+When offscreen rendering is enabled, camera metadata and frame access are
+available through ``mujoco_ros.rendering``:
 
 .. code-block:: python
 
@@ -164,11 +201,94 @@ When offscreen rendering is enabled, camera metadata and ROS image ring buffers 
    from mujoco_ros.rendering import OffcamManager
 
    with MujocoEnv(model_path="/absolute/path/to/camera_model.xml") as env:
-       cameras = OffcamManager(env.binding._offscreen_context, env.model)
-       rgb, depth, segment = cameras.buffer(0)
+       with OffcamManager(env.binding._camera_publication_transport, env.model) as cameras:
+           rgb, depth, segment = cameras.buffer(0)
 
-``attach_viewer(active=True)`` attaches the GLFW viewer when the package was compiled with the GLFW render backend.
-Passive viewer attachment is not implemented.
+The Python camera helper reads committed ``RenderCore`` leases directly. It
+does not subscribe to ROS image topics and does not maintain a private ring.
+Python demand is independent from ROS subscriber demand. A Python consumer can
+force a capture while ROS publishers keep their configured cadence. When both
+consumers select a frame, they use the same camera-specific capture identity.
+
+``buffer_size == 1`` registers a one-shot consumer: idle managers do not render
+until ``borrow_latest_*`` or ``copy_*`` requests a frame. ``buffer_size > 1``
+registers an explicit async cadence (one capture per simulation step,
+independent from ROS) so step-then-read history fills without continuous idle
+demand.
+
+``buffer(last_n=...)`` returns stable copied NumPy arrays. Borrowed access is
+read-only and keeps its lease alive for the context-manager lifetime:
+
+.. code-block:: python
+
+   with cameras.camera(0).borrow_latest_rgb() as rgb:
+       assert not rgb.flags.writeable
+       print(rgb.capture_id, rgb.frame_generation)
+
+Copies remain valid after later captures, resize operations, and reloads.
+Use ``OffcamManager.close()`` or a ``with OffcamManager(...)`` block to release
+Python render registrations explicitly. Manager destruction performs the same
+cleanup.
+Reload advances the frame generation. Existing managers rebind their Python
+demand to the new generation. A borrowed view already acquired keeps its old
+lease and remains readable. Acquire a new borrowed view after reload.
+
+Camera wrappers rebind by camera ID after reload. Their ``width``, ``height``,
+``cam_name``, ``fps``, and plane metadata always describe the active camera
+descriptor. A separately held native camera descriptor remains an old-layout
+snapshot, and an already acquired borrowed view keeps its old shape and frame
+generation. Name lookups are refreshed: the old name disappears and the new
+name becomes available after the next manager lookup.
+
+``cam.buffer`` remains a stable compatibility object. It delegates legacy
+native names such as ``getBufferHandles()`` and frame-count properties, while
+also supporting copied aggregate snapshots through
+``cam.buffer(last_n=2)``. Legacy ring indices, lock methods, reset mutators,
+and counter setters raise ``RuntimeError``. An unconfigured plane's read-only
+frame count remains ``0`` for compatibility.
+
+The aggregate ``buffer()`` result keeps its three-element shape. It uses
+``None`` for a plane that is not configured. The explicit
+``borrow_latest_*()`` and ``copy_*()`` accessors raise ``RuntimeError`` when
+their requested plane is not configured. For a configured plane with no
+committed frame yet, ``borrow_latest_*()`` raises ``RuntimeError`` while
+``copy_*()`` and aggregate ``buffer()`` snapshots may return ``None``. The
+removed native ring-buffer indices, lock methods, counter setters, and reset
+mutators raise ``RuntimeError``.
+``getBufferHandles()`` follows the same three-slot shape and returns ``None``
+for a missing plane.
+
+``attach_viewer(active=True)`` is unsupported and raises ``RuntimeError``.
+Visible GLFW remains owned by the GUI path. Passive viewer attachment is also
+unsupported and raises ``RuntimeError``.
+
+Render failures and capacity limits
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Offscreen rendering uses the shared ``mujoco_ros_render_core`` library. The
+offscreen backend is selected at build time through ``OFFSCREEN_BACKEND``
+(``ANY``, EGL, OSMesa, or ``DISABLE``). Visible GLFW GUI is controlled
+independently by ``WITH_GUI=ON`` or ``WITH_GUI=OFF``. GLFW is not an offscreen
+backend.
+
+When configured camera history or byte demand exceeds the RenderCore budget,
+model setup fails loudly with an explicit error such as ``configured frame slot
+capacity ... exceeds RenderCore frame boundary budget ...``. The server does
+not shrink history or return empty placeholders.
+
+At runtime, capacity pressure surfaces as non-terminal ``FrameStatusCode`` values
+such as ``kFrameSlotsExhausted`` and ``kGenerationCapacityExhausted``. These are
+distinct from backend integrity failures
+(``kTerminalError``, ``kBackendFailure``, ``kBackendUnavailable``).
+
+When the configured backend is disabled or fails to initialize, frame access
+returns terminal status rather than empty placeholders.
+
+Python plane accessors raise ``RuntimeError`` for unconfigured planes and for
+legacy ring-buffer APIs; they do not fabricate zero-filled frames.
+``borrow_latest_*()`` also raises ``RuntimeError`` when a configured plane has
+no committed frame yet. ``copy_*()`` and aggregate ``buffer()`` snapshots may
+return ``None`` for a configured plane that has not committed a frame yet.
 
 Current Limitations
 -------------------

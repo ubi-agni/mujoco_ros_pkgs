@@ -37,8 +37,11 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <functional>
 #include <iomanip>
+#include <stdexcept>
 #include <sstream>
+#include <utility>
 
 #include <mujoco_ros/ros_version.hpp>
 
@@ -641,8 +644,10 @@ public:
 			// Only perform cleanup if construction completed successfully
 			// If construction failed, base class destructor will handle cleanup
 			if (construction_complete_) {
-				test_nh_->clearNode();
 				shutdown();
+				if (test_nh_ != nullptr) {
+					test_nh_->clearNode();
+				}
 			}
 		} catch (const std::exception &e) {
 			MJR_ERROR_STREAM("Exception during shutdown in destructor: " << e.what());
@@ -675,11 +680,21 @@ public:
 	int isEventRunning() { return is_event_running_; }
 	int isRenderingRunning() { return is_rendering_running_; }
 
-	OffscreenRenderContext *getOffscreenContext() { return &offscreen_; }
+	CameraPublicationTransport *getCameraPublicationTransport() { return &camera_publication_transport_; }
 
-	std::vector<MujocoPluginPtr> const &GetPlugins() const { return MujocoEnv::GetPlugins(); }
+	template <typename Plugin, typename Func>
+	decltype(auto) WithBackendPlugin(const std::string &name, const std::string &type, Func &&func)
+	{
+		return WithPluginAccess([&](const ScopedPluginAccess &access) -> decltype(auto) {
+			auto *plugin = static_cast<Plugin *>(access.Adapter(name, type)->BackendObject());
+			if (plugin == nullptr) {
+				throw std::runtime_error("plugin backend object is missing");
+			}
+			return std::invoke(std::forward<Func>(func), plugin);
+		});
+	}
 
-	int GetNumCBReadyPlugins() { return cb_ready_plugins_.size(); }
+	int GetNumCBReadyPlugins() const { return static_cast<int>(plugin_host_->ReadyCount()); }
 	void NotifyGeomChange() { NotifyGeomChanged(0); }
 
 	bool step(int num_steps = 1, bool blocking = true) { return MujocoEnv::Step(num_steps, blocking); }
@@ -695,6 +710,10 @@ public:
 	void requestReset() { RequestReset(); }
 	void requestShutdown() { RequestShutdown(); }
 	void requestLoad(int load_request) { RequestLoad(load_request); }
+	void SetReloadObserver(std::function<void(MujocoEnv::ReloadPhase)> observer)
+	{
+		reload_observer_ = std::move(observer);
+	}
 	int GetOperationalStatus() { return MujocoEnv::GetOperationalStatus(); }
 	void StartPhysicsLoop() { MujocoEnv::StartPhysicsLoop(); }
 	void StartEventLoop() { MujocoEnv::StartEventLoop(); }
@@ -740,6 +759,9 @@ public:
 		if (executor_thread_handle_.joinable()) {
 			executor_thread_handle_.join();
 		}
+		if (construction_complete_ && GetExecutorPtr() != nullptr) {
+			GetExecutorPtr()->remove_node(this->get_node_base_interface());
+		}
 #endif
 	}
 
@@ -773,6 +795,17 @@ public:
 #if MJR_ROS_VERSION == ROS_2
 	std::thread executor_thread_handle_;
 #endif
+
+protected:
+	void OnReloadPhase(MujocoEnv::ReloadPhase phase) override
+	{
+		if (reload_observer_) {
+			reload_observer_(phase);
+		}
+	}
+
+private:
+	std::function<void(MujocoEnv::ReloadPhase)> reload_observer_;
 };
 
 class BaseEnvFixture : public ::testing::Test
@@ -795,6 +828,7 @@ protected:
 	{
 		if (env_ptr != nullptr) {
 			env_ptr->shutdown();
+			env_ptr.reset();
 		}
 #if MJR_ROS_VERSION == ROS_1
 		// clean up all parameters
