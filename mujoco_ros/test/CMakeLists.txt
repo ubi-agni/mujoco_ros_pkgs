@@ -54,12 +54,20 @@ function(add_mujoco_ros_unit_test TEST_NAME)
         ../src/glb_visual_prep.cpp
         ../src/ascii_stl_convert.cpp
       )
+      target_include_directories(${TEST_NAME} SYSTEM PRIVATE
+        ${PROJECT_SOURCE_DIR}/third_party/cgltf
+      )
+      if(ROS_VERSION EQUAL 1)
+        target_link_libraries(${TEST_NAME}
+          ${MJR_ROS1_ROSLIB_LIBRARY}
+          ${MJR_ROS1_ROSCONSOLE_LIBRARY}
+        )
+      elseif(ROS_VERSION EQUAL 2 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${TEST_NAME} PRIVATE -Wno-error=old-style-cast)
+      endif()
     elseif(TEST_NAME STREQUAL "description_bundle_test")
       set(MJR_UNIT_LINK_MAIN FALSE)
       target_sources(${TEST_NAME} PRIVATE ../src/description_bundle.cpp)
-      if(ROS_VERSION EQUAL 1)
-        target_link_libraries(${TEST_NAME} gtest_main)
-      endif()
     elseif(TEST_NAME STREQUAL "mesh_uri_prep_test")
       # Keep mesh URI coverage master-free. Linking the full mujoco_ros shared
       # library pulls in runtime ROS publishers that wait for a master during
@@ -73,9 +81,6 @@ function(add_mujoco_ros_unit_test TEST_NAME)
       target_include_directories(${TEST_NAME} SYSTEM PRIVATE
         ${PROJECT_SOURCE_DIR}/third_party/cgltf
       )
-      if(ROS_VERSION EQUAL 1)
-        target_link_libraries(${TEST_NAME} gtest_main)
-      endif()
     elseif(TEST_NAME STREQUAL "glb_visual_prep_test")
       set(MJR_UNIT_LINK_MAIN FALSE)
       target_sources(${TEST_NAME} PRIVATE ../src/glb_visual_prep.cpp)
@@ -84,9 +89,6 @@ function(add_mujoco_ros_unit_test TEST_NAME)
       )
       if(ROS_VERSION EQUAL 2 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(${TEST_NAME} PRIVATE -Wno-error=old-style-cast)
-      endif()
-      if(ROS_VERSION EQUAL 1)
-        target_link_libraries(${TEST_NAME} gtest_main)
       endif()
     elseif(TEST_NAME STREQUAL "ascii_stl_convert_test")
       set(MJR_UNIT_LINK_MAIN FALSE)
@@ -98,15 +100,13 @@ function(add_mujoco_ros_unit_test TEST_NAME)
       target_include_directories(${TEST_NAME} SYSTEM PRIVATE
         ${PROJECT_SOURCE_DIR}/third_party/cgltf
       )
-      if(ROS_VERSION EQUAL 1)
-        target_link_libraries(${TEST_NAME} gtest_main)
-      endif()
+    elseif(TEST_NAME STREQUAL "viewer_sync_policy_test")
+      set(MJR_UNIT_LINK_MAIN FALSE)
+      target_sources(${TEST_NAME} PRIVATE ../src/viewer_sync_policy.cpp)
     elseif(TEST_NAME STREQUAL "viewer_geom_defaults_test")
       set(MJR_UNIT_LINK_MAIN FALSE)
       target_sources(${TEST_NAME} PRIVATE ../src/viewer_geom_defaults.cpp)
-      if(ROS_VERSION EQUAL 1)
-        target_link_libraries(${TEST_NAME} gtest_main)
-      elseif(ROS_VERSION EQUAL 2)
+      if(ROS_VERSION EQUAL 2)
         ament_target_dependencies(${TEST_NAME}
           ament_index_cpp
           rclcpp
@@ -125,31 +125,31 @@ function(add_mujoco_ros_unit_test TEST_NAME)
           std_srvs
         )
       endif()
+    elseif(TEST_NAME STREQUAL "viewer_branding_test")
+      set(MJR_UNIT_LINK_MAIN FALSE)
+      target_sources(${TEST_NAME} PRIVATE
+        ../src/viewer_branding.cpp
+        $<TARGET_OBJECTS:lodepng>
+      )
+      target_include_directories(${TEST_NAME} SYSTEM PRIVATE
+        ${PROJECT_SOURCE_DIR}/third_party/lodepng
+      )
+      target_compile_definitions(${TEST_NAME} PRIVATE
+        VIEWER_BRANDING_SOURCE_ASSETS_DIR="${PROJECT_SOURCE_DIR}/assets"
+      )
     elseif(TEST_NAME STREQUAL "runtime_options_test")
       set(MJR_UNIT_LINK_MAIN FALSE)
       target_sources(${TEST_NAME} PRIVATE ../src/runtime_options.cpp)
-      if(ROS_VERSION EQUAL 1)
-        target_link_libraries(${TEST_NAME} gtest_main)
-      endif()
     elseif(TEST_NAME STREQUAL "plugin_host_test")
       set(MJR_UNIT_LINK_MAIN FALSE)
       target_sources(${TEST_NAME} PRIVATE ../src/plugin_host.cpp)
-      if(ROS_VERSION EQUAL 1)
-        target_link_libraries(${TEST_NAME} gtest_main)
-      endif()
     elseif(TEST_NAME STREQUAL "offscreen_transport_test")
       # Keep transport validation master-free. The production transport methods
       # remain in mujoco_ros for runtime/integration coverage; this unit uses
       # the header-only validation seam and queue/status primitives.
       set(MJR_UNIT_LINK_MAIN FALSE)
-      if(ROS_VERSION EQUAL 1)
-        target_link_libraries(${TEST_NAME} gtest_main)
-      endif()
     elseif(TEST_NAME STREQUAL "render_core_consumer_test")
       set(MJR_UNIT_LINK_MAIN FALSE)
-      if(ROS_VERSION EQUAL 1)
-        target_link_libraries(${TEST_NAME} gtest_main)
-      endif()
       target_link_libraries(${TEST_NAME} mujoco_ros_render_core)
     else()
       target_link_libraries(${TEST_NAME} mujoco_ros)
@@ -163,33 +163,15 @@ function(add_mujoco_ros_unit_test TEST_NAME)
     if(NOT MJR_UNIT_LINK_MAIN)
       if(ROS_VERSION EQUAL 1)
         target_include_directories(${TEST_NAME} SYSTEM PRIVATE ${catkin_INCLUDE_DIRS})
-        target_link_libraries(${TEST_NAME} ${MJR_ROS1_ROSLIB_LIBRARY})
-      endif()
-    endif()
-    if(TEST_NAME STREQUAL "description_converter_test")
-      target_include_directories(${TEST_NAME} SYSTEM PRIVATE
-        ${PROJECT_SOURCE_DIR}/third_party/cgltf
-      )
-      if(ROS_VERSION EQUAL 1)
         target_link_libraries(${TEST_NAME} gtest_main)
-        target_include_directories(${TEST_NAME} SYSTEM PRIVATE ${catkin_INCLUDE_DIRS})
-        target_link_libraries(${TEST_NAME}
-          ${MJR_ROS1_ROSLIB_LIBRARY}
-          ${MJR_ROS1_ROSCONSOLE_LIBRARY}
-        )
-      else()
-        ament_target_dependencies(${TEST_NAME} ament_index_cpp rclcpp)
-        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-          target_compile_options(${TEST_NAME} PRIVATE -Wno-error=old-style-cast)
-        endif()
+        target_link_libraries(${TEST_NAME} ${MJR_ROS1_ROSLIB_LIBRARY})
       endif()
     endif()
     if(ROS_VERSION EQUAL 2)
       ament_target_dependencies(${TEST_NAME} ament_index_cpp rclcpp)
     endif()
     if(ROS_VERSION EQUAL 2 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND
-       (TEST_NAME STREQUAL "description_converter_test" OR
-        TEST_NAME STREQUAL "mesh_uri_prep_test" OR
+       (TEST_NAME STREQUAL "mesh_uri_prep_test" OR
         TEST_NAME STREQUAL "glb_visual_prep_test" OR
         TEST_NAME STREQUAL "ascii_stl_convert_test"))
       target_compile_options(${TEST_NAME} PRIVATE -Wno-error=old-style-cast)
@@ -255,11 +237,51 @@ add_mujoco_ros_unit_test(description_bundle_test SOURCES description_bundle_test
 add_mujoco_ros_unit_test(mesh_uri_prep_test SOURCES mesh_uri_prep_test.cpp)
 add_mujoco_ros_unit_test(glb_visual_prep_test SOURCES glb_visual_prep_test.cpp)
 add_mujoco_ros_unit_test(ascii_stl_convert_test SOURCES ascii_stl_convert_test.cpp)
+add_mujoco_ros_unit_test(viewer_sync_policy_test SOURCES viewer_sync_policy_test.cpp)
 add_mujoco_ros_unit_test(viewer_geom_defaults_test SOURCES viewer_geom_defaults_test.cpp)
+add_mujoco_ros_unit_test(viewer_branding_test SOURCES viewer_branding_test.cpp)
 add_mujoco_ros_unit_test(runtime_options_test SOURCES runtime_options_test.cpp)
 add_mujoco_ros_unit_test(plugin_host_test SOURCES plugin_host_test.cpp)
 add_mujoco_ros_unit_test(offscreen_transport_test SOURCES offscreen_transport_test.cpp)
 add_mujoco_ros_unit_test(render_core_consumer_test SOURCES render_core_consumer_test.cpp)
+if(ROS_VERSION EQUAL 1)
+  # Run under rostest so a master is available for ros::init() and the
+  # /rosout publisher registration. The gtest binary is built and launched
+  # by rostest, matching the mujoco_env_test convention.
+  add_rostest_gtest(ros1_plugin_adapter_test
+    launch/ros1_plugin_adapter.test
+    ros1_plugin_adapter_test.cpp
+  )
+  # This unit invokes ROS 1 APIs directly, so do not rely on transitive
+  # linkage from a production target it intentionally does not use.
+  target_link_libraries(ros1_plugin_adapter_test
+    gtest_main
+    ${catkin_LIBRARIES}
+    ${MJR_ROS1_ROSCONSOLE_LIBRARY}
+    ${MJR_ROS1_ROSLIB_LIBRARY}
+    mujoco::mujoco
+    tinyxml2::tinyxml2
+    project_option
+    project_warning
+  )
+  target_include_directories(ros1_plugin_adapter_test SYSTEM PRIVATE ${catkin_INCLUDE_DIRS})
+  target_include_directories(ros1_plugin_adapter_test BEFORE PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../mujoco_ros_testing_utils/include
+  )
+  target_compile_definitions(ros1_plugin_adapter_test PRIVATE
+    TEST_RESOURCES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources"
+  )
+  target_include_directories(ros1_plugin_adapter_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${GENERATED_HEADERS_DIR}
+    ${mujoco_include_DIRS}
+  )
+  add_dependencies(ros1_plugin_adapter_test
+    ${PROJECT_NAME}_gencfg
+    ${${PROJECT_NAME}_EXPORTED_TARGETS}
+    ${catkin_EXPORTED_TARGETS}
+  )
+endif()
 
 function(add_render_core_unit_test TEST_NAME TEST_SOURCE)
   if(ROS_VERSION EQUAL 1)
@@ -295,16 +317,6 @@ add_test(NAME render_backend_config_contract
 )
 set_tests_properties(render_backend_config_contract PROPERTIES TIMEOUT 30)
 
-if(ROS_VERSION EQUAL 1)
-  add_test(NAME installed_export_uses_workspace_mujoco_prefix
-    COMMAND ${CMAKE_COMMAND}
-      -DEXPORT_FILE=${CMAKE_INSTALL_PREFIX}/${CATKIN_PACKAGE_SHARE_DESTINATION}/cmake/mujoco_ros-extras
-      -DEXPECTED_MUJOCO_PREFIX=${CMAKE_INSTALL_PREFIX}
-      -P ${PROJECT_SOURCE_DIR}/cmake/installed_export_path_test.cmake
-  )
-  set_tests_properties(installed_export_uses_workspace_mujoco_prefix PROPERTIES TIMEOUT 30)
-endif()
-
 if(WITH_GUI STREQUAL "ON")
   if(ROS_VERSION EQUAL 1)
     catkin_add_gtest(glfw_visible_gui_test
@@ -312,6 +324,8 @@ if(WITH_GUI STREQUAL "ON")
       ../src/glfw_adapter.cc
       ../src/glfw_dispatch.cc
       ../src/platform_ui_adapter.cc
+      ../src/viewer_branding.cpp
+      $<TARGET_OBJECTS:lodepng>
     )
   elseif(ROS_VERSION EQUAL 2)
     ament_add_gtest(glfw_visible_gui_test
@@ -319,18 +333,26 @@ if(WITH_GUI STREQUAL "ON")
       ../src/glfw_adapter.cc
       ../src/glfw_dispatch.cc
       ../src/platform_ui_adapter.cc
+      ../src/viewer_branding.cpp
+      $<TARGET_OBJECTS:lodepng>
     )
   endif()
   if(TARGET glfw_visible_gui_test)
     target_include_directories(glfw_visible_gui_test PRIVATE
       ${PROJECT_SOURCE_DIR}/include
+      ${GENERATED_HEADERS_DIR}
       ${GLFW_INTERFACE_INCLUDE_DIRECTORIES}
+    )
+    target_include_directories(glfw_visible_gui_test SYSTEM PRIVATE
+      ${PROJECT_SOURCE_DIR}/third_party/lodepng
     )
     target_compile_definitions(glfw_visible_gui_test PRIVATE
       MJR_RENDER_BACKEND_GLFW=1
     )
     if(ROS_VERSION EQUAL 1)
       target_link_libraries(glfw_visible_gui_test gtest_main)
+    elseif(ROS_VERSION EQUAL 2)
+      ament_target_dependencies(glfw_visible_gui_test ament_index_cpp)
     endif()
     target_link_libraries(glfw_visible_gui_test
       mujoco::mujoco
@@ -345,22 +367,32 @@ if(WITH_GUI STREQUAL "ON")
       glfw_adapter_failure_test.cpp
       ../src/glfw_adapter.cc
       ../src/platform_ui_adapter.cc
+      ../src/viewer_branding.cpp
+      $<TARGET_OBJECTS:lodepng>
     )
   elseif(ROS_VERSION EQUAL 2)
     ament_add_gtest(glfw_adapter_failure_test
       glfw_adapter_failure_test.cpp
       ../src/glfw_adapter.cc
       ../src/platform_ui_adapter.cc
+      ../src/viewer_branding.cpp
+      $<TARGET_OBJECTS:lodepng>
     )
   endif()
   if(TARGET glfw_adapter_failure_test)
     target_include_directories(glfw_adapter_failure_test PRIVATE
       ${PROJECT_SOURCE_DIR}/include
+      ${GENERATED_HEADERS_DIR}
       ${GLFW_INTERFACE_INCLUDE_DIRECTORIES}
+    )
+    target_include_directories(glfw_adapter_failure_test SYSTEM PRIVATE
+      ${PROJECT_SOURCE_DIR}/third_party/lodepng
     )
     target_compile_definitions(glfw_adapter_failure_test PRIVATE MJR_RENDER_BACKEND_GLFW=1)
     if(ROS_VERSION EQUAL 1)
       target_link_libraries(glfw_adapter_failure_test gtest_main)
+    elseif(ROS_VERSION EQUAL 2)
+      ament_target_dependencies(glfw_adapter_failure_test ament_index_cpp)
     endif()
     target_link_libraries(glfw_adapter_failure_test
       mujoco::mujoco
@@ -379,12 +411,15 @@ endif()
 
 add_test(NAME render_core_standalone_installed
   COMMAND ${CMAKE_COMMAND}
+    -DBUILD_DIR=${CMAKE_BINARY_DIR}
     -DSTANDALONE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/render_core_standalone
     -DSTANDALONE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/render_core_standalone_build
     -DINSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
+    -DEXPECTED_MUJOCO_DIR=${MUJOCO_DIR}
     -DSTANDALONE_COVERAGE=${_render_core_standalone_coverage}
     -P ${CMAKE_CURRENT_SOURCE_DIR}/render_core_standalone/run_installed_smoke.cmake
 )
+set_tests_properties(render_core_standalone_installed PROPERTIES RUN_SERIAL TRUE)
 
 add_executable(render_performance_test render_performance_test.cpp)
 target_link_libraries(render_performance_test
@@ -408,6 +443,99 @@ endif()
 target_compile_options(render_performance_test BEFORE PRIVATE
   "-I${CMAKE_CURRENT_SOURCE_DIR}/../../mujoco_ros_testing_utils/include"
 )
+
+if(_MUJOCO_RESOLVED_OFFSCREEN_BACKEND STREQUAL "EGL")
+  set(RENDER_PERFORMANCE_BENCHMARK_BACKEND "EGL")
+elseif(_MUJOCO_RESOLVED_OFFSCREEN_BACKEND STREQUAL "OSMESA")
+  set(RENDER_PERFORMANCE_BENCHMARK_BACKEND "OSMESA")
+endif()
+
+function(add_serial_render_performance_rostest CASE_NAME CAMERA_COUNT ITERATIONS REPEAT TIME_LIMIT)
+  set(RENDER_PERFORMANCE_CASE "${CASE_NAME}")
+  set(RENDER_PERFORMANCE_CAMERA_COUNT "${CAMERA_COUNT}")
+  set(RENDER_PERFORMANCE_ITERATIONS "${ITERATIONS}")
+  set(RENDER_PERFORMANCE_REPEAT "${REPEAT}")
+  set(RENDER_PERFORMANCE_TIME_LIMIT "${TIME_LIMIT}")
+  set(RENDER_PERFORMANCE_OUTPUT_DIR "${CATKIN_TEST_RESULTS_DIR}")
+  configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/launch/render_performance.test.in
+    ${CMAKE_CURRENT_BINARY_DIR}/render_performance_${CASE_NAME}.test
+    @ONLY
+  )
+  add_rostest(
+    ${CMAKE_CURRENT_BINARY_DIR}/render_performance_${CASE_NAME}.test
+    DEPENDENCIES render_performance_test
+  )
+  # add_rostest derives this component from the generated file's path.
+  set(_render_performance_test_name
+    "test_render_performance_${CASE_NAME}.test"
+  )
+  set(_render_performance_run_target
+    "run_tests_${PROJECT_NAME}_rostest_${_render_performance_test_name}"
+  )
+  set(_render_performance_hidden_run_target
+    "_run_tests_${PROJECT_NAME}_rostest_${_render_performance_test_name}"
+  )
+  # DEFINED guard first: an empty ${...} leaves a dangling TARGET clause
+  # that fails CMake if() parsing on the first call (no previous case yet).
+  if(DEFINED _previous_render_performance_run_target
+     AND DEFINED _previous_render_performance_hidden_run_target)
+  if(TARGET ${_previous_render_performance_run_target} AND
+     TARGET ${_render_performance_run_target} AND
+     TARGET ${_previous_render_performance_hidden_run_target} AND
+     TARGET ${_render_performance_hidden_run_target})
+    add_dependencies(
+      ${_render_performance_run_target}
+      ${_previous_render_performance_run_target}
+    )
+    add_dependencies(
+      ${_render_performance_hidden_run_target}
+      ${_previous_render_performance_hidden_run_target}
+    )
+  endif()
+  endif()
+  set(_previous_render_performance_run_target
+    "${_render_performance_run_target}"
+    PARENT_SCOPE
+  )
+  set(_previous_render_performance_hidden_run_target
+    "${_render_performance_hidden_run_target}"
+    PARENT_SCOPE
+  )
+  set_tests_properties(
+    "_ctest_${PROJECT_NAME}_rostest_${_render_performance_test_name}"
+    PROPERTIES RUN_SERIAL TRUE
+  )
+endfunction()
+
+if(ROS_VERSION EQUAL 1 AND RENDER_PERFORMANCE_BENCHMARK_BACKEND)
+  # Each case gets its own rostest process. RUN_SERIAL covers CTest; the
+  # visible and hidden catkin target chains cover both aggregate run paths.
+  add_serial_render_performance_rostest(completion 4 2 1 30.0)
+  add_serial_render_performance_rostest(attribution 2 3 2 60.0)
+  add_serial_render_performance_rostest(exit_deadline 4 10 2 180.0)
+  add_serial_render_performance_rostest(camera_1 1 2 1 30.0)
+  add_serial_render_performance_rostest(camera_2 2 2 1 30.0)
+  add_serial_render_performance_rostest(camera_4 4 2 1 30.0)
+endif()
+
+if(WITH_GUI STREQUAL "ON")
+  add_executable(viewer_connection_benchmark viewer_connection_benchmark.cpp)
+  target_link_libraries(viewer_connection_benchmark
+    mujoco_ros
+    mujoco::mujoco
+    project_option
+    project_warning
+  )
+  target_include_directories(viewer_connection_benchmark BEFORE PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../mujoco_ros_testing_utils/include
+  )
+  if(ROS_VERSION EQUAL 1)
+    target_link_libraries(viewer_connection_benchmark ${mujoco_ros_testing_utils_LIBRARIES})
+  elseif(ROS_VERSION EQUAL 2)
+    ament_target_dependencies(viewer_connection_benchmark rclcpp)
+  endif()
+endif()
 # Build the harness binary for the advisory workflow / local campaigns only.
 # Do not register render_performance_launch_test (or rostest) in the regular
 # package suite — that CTest would fail the matrix. OSMesa advisory CI in
@@ -507,6 +635,11 @@ add_mujoco_ros_integration_test(
   ROS2_LAUNCH launch/mujoco_env.test.py
 )
 target_compile_definitions(mujoco_env_test PRIVATE TEST_RESOURCES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources")
+if(ROS_VERSION EQUAL 1 AND WITH_GUI STREQUAL "ON")
+  # Child-process lifetime coverage has separate rostest ownership so its
+  # _exit()-based child status cannot obscure regular GUI environment results.
+  add_rostest(launch/mujoco_env_lifetime.test)
+endif()
 
 add_mujoco_ros_integration_test(
   description_bundle_integration_test

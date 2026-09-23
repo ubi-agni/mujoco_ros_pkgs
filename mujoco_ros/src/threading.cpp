@@ -47,7 +47,7 @@ void MujocoEnv::StartPhysicsLoop()
 		return;
 	}
 	MJR_DEBUG("Starting physics loop");
-	physics_thread_handle_ = std::thread(std::bind(&MujocoEnv::PhysicsLoop, this));
+	physics_thread_handle_ = std::thread([this] { PhysicsLoop(); });
 }
 
 void MujocoEnv::WaitForPhysicsJoin()
@@ -66,7 +66,7 @@ void MujocoEnv::StartEventLoop()
 		return;
 	}
 	MJR_DEBUG("Starting event loop");
-	event_thread_handle_ = std::thread(std::bind(&MujocoEnv::EventLoop, this));
+	event_thread_handle_ = std::thread([this] { EventLoop(); });
 }
 
 void MujocoEnv::WaitForEventsJoin()

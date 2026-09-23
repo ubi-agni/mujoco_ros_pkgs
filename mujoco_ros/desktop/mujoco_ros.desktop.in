@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=MuJoCo ROS Viewer
+Comment=MuJoCo ROS robotic simulation viewer
+Exec=@MUJOCO_ROS_EXEC@
+Icon=@MUJOCO_ROS_ICON@
+Terminal=false
+StartupNotify=true
+StartupWMClass=mujoco_ros
+Categories=Science;Robotics;

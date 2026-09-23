@@ -112,8 +112,6 @@ endif()
 configure_project_option(
   WARNINGS
     TARGET project_warning
-  AVX
-    TARGET project_option
   LINKER
     TARGET project_option
   SANITIZER
@@ -337,7 +335,7 @@ if (ROS_VERSION EQUAL "1")
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
   )
 
-  install(DIRECTORY config assets examples
+  install(DIRECTORY config assets examples desktop
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
   )
 
@@ -420,7 +418,7 @@ else()
     DESTINATION include/${PROJECT_NAME}
   )
 
-  install(DIRECTORY launch/ros2/launch config assets examples
+  install(DIRECTORY launch/ros2/launch config assets examples desktop
     DESTINATION share/${PROJECT_NAME}
   )
 
@@ -456,5 +454,19 @@ else()
 
   ament_package(
     CONFIG_EXTRAS ${CMAKE_CURRENT_BINARY_DIR}/mujoco_ros-extras.cmake
+  )
+endif()
+
+if(DEFINED ENV{HOME})
+  set(MUJOCO_ROS_EXEC "${CMAKE_INSTALL_PREFIX}/lib/${PROJECT_NAME}/mujoco_node")
+  set(MUJOCO_ROS_ICON "${CMAKE_INSTALL_PREFIX}/share/${PROJECT_NAME}/assets/mj_ros_icon.png")
+  configure_file(
+    desktop/mujoco_ros.desktop.in
+    ${CMAKE_CURRENT_BINARY_DIR}/mujoco_ros.desktop
+    @ONLY
+  )
+  install(
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/mujoco_ros.desktop
+    DESTINATION "$ENV{HOME}/.local/share/applications"
   )
 endif()

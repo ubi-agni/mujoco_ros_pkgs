@@ -65,6 +65,7 @@ private:
 	GLFWvidmode vidmode_;
 	GLFWwindow *window_           = nullptr;
 	bool glfw_initialized_        = false;
+	bool window_visible_          = false;
 	std::thread::id owner_thread_ = std::this_thread::get_id();
 
 	// store last window information when going to full screen

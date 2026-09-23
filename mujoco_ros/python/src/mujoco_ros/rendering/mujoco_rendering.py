@@ -24,37 +24,12 @@ class _BorrowedFrame:
         return self._native.__exit__(exc_type, exc_value, traceback)
 
 
-class _BufferCompatibility:
-    """Keep legacy ``cam.buffer`` object access while allowing calls for snapshots."""
-
-    def __init__(self, camera):
-        object.__setattr__(self, "_camera", camera)
-
-    def __call__(self, last_n=None):
-        return self._camera._buffer_snapshot(last_n=last_n)
-
-    def __enter__(self):
-        return self._camera._buffer.__enter__()
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        return self._camera._buffer.__exit__(exc_type, exc_value, traceback)
-
-    def __getattr__(self, name):
-        return getattr(self._camera._buffer, name)
-
-    def __setattr__(self, name, value):
-        if name == "_camera":
-            object.__setattr__(self, name, value)
-            return
-        setattr(self._camera._buffer, name, value)
-
-
 class RosCamWrapper:
     def __init__(self, context, camera: _OffscreenCamera, cam_buff_size: int = 1):
         self._context = context
         self._camera_id = camera.id
         self._buffer = _OffscreenCameraBuffer(context, self._camera_id, cam_buff_size)
-        self.buffer = _BufferCompatibility(self)
+        self.buffer = self._buffer
 
     @property
     def camera(self):

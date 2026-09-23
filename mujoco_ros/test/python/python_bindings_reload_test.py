@@ -61,7 +61,7 @@ class PythonBindingsReloadTest(unittest.TestCase):
                 self.assertEqual(old_generation, old_view.frame_generation)
 
                 self.assertTrue(env.step(2))
-                rgb, depth, segment = cam.buffer(last_n=1)
+                rgb, depth, segment = cam.get_buffered_frames(last_n=1)
                 self.assertIsNotNone(rgb)
                 self.assertIsNone(depth)
                 self.assertIsNone(segment)

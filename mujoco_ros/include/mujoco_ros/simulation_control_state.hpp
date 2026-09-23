@@ -153,8 +153,10 @@ public:
 	{
 		std::lock_guard<std::mutex> lock(state_mutex_);
 		shutdown_requested_.store(true);
+		load_request_.store(0);
 		model_lifecycle_.store(ModelLifecyclePhase::kShuttingDown);
 		CancelPendingStepsLocked();
+		state_condition_.notify_all();
 	}
 
 	bool IsShutdownRequested() const

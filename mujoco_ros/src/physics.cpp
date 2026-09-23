@@ -165,7 +165,8 @@ void MujocoEnv::WrappedStep()
 
 	if (message) {
 		MJR_WARN("Simulation diverged: %s", message);
-		for (const auto &viewer : connected_viewers_) {
+		const auto connected_viewers = AcquireConnectedViewersLease();
+		for (const auto &viewer : connected_viewers.viewers()) {
 			mju::strcpy_arr(viewer->load_error, message);
 		}
 	}
@@ -317,7 +318,7 @@ void MujocoEnv::SimPausedPhysics(mjtNum &syncSim)
 		syncSim = data_->time;
 		// Headless / no interactive viewer: drain the full manual-step batch per physics-loop
 		// visit. With a connected viewer, time-slice so Sync/render can take the physics mutex.
-		const bool time_slice_for_viewer = !connected_viewers_.empty();
+		const bool time_slice_for_viewer = HasConnectedViewers();
 		const auto slice_limit           = Seconds(mujoco_ros::Viewer::render_ui_rate_lower_bound_);
 
 		while (HasManualStepRequest()) {
@@ -380,7 +381,7 @@ void MujocoEnv::SimUnpausedPhysics(mjtNum &syncSim, std::chrono::time_point<Cloc
 
 		// If real-time is bound, run until sim steps are in sync with CPU steps, otherwise run as fast as
 		// possible. Time-slice only when an interactive viewer needs periodic mutex access.
-		const bool time_slice_for_viewer = !connected_viewers_.empty();
+		const bool time_slice_for_viewer = HasConnectedViewers();
 		const auto slice_limit           = Seconds(mujoco_ros::Viewer::render_ui_rate_lower_bound_);
 		while ((speed_settings.real_time_index == 0 ||
 		        Seconds((data_->time - syncSim) * slowdown) < Clock::now() - syncCPU) &&

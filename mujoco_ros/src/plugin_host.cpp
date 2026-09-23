@@ -101,14 +101,17 @@ PluginLoadReport PluginHost::LoadGeneration(const mjModel *model, mjData *data, 
 			}
 		}();
 		std::string error;
-		bool loaded = false;
+		bool loaded             = false;
+		IPluginAdapter *adapter = entry.adapter.get();
+		lock.unlock();
 		try {
-			loaded = entry.adapter->Load(model, data, error);
+			loaded = adapter->Load(model, data, error);
 		} catch (const std::exception &exception) {
 			error = exception.what();
 		} catch (...) {
 			error = "plugin adapter Load threw an unknown exception";
 		}
+		lock.lock();
 		if (!loaded) {
 			if (error.empty()) {
 				error = "plugin adapter Load returned false without a diagnostic";
@@ -184,7 +187,9 @@ void PluginHost::RecordFailureLocked(const IPluginAdapter &adapter, const char *
 	diagnostics_.push_back(MakeFailure(&adapter, phase, error));
 }
 
-void PluginHost::DispatchControl(ModelGeneration model_generation, const mjModel *model, mjData *data)
+template <auto MemberFn, typename... Args>
+void PluginHost::DispatchReadyLocked(ModelGeneration model_generation, const char *phase, const char *operation,
+                                     Args &&...args)
 {
 	std::lock_guard<std::mutex> lock(mutex_);
 	if (!ValidateModelGenerationLocked(model_generation))
@@ -192,99 +197,45 @@ void PluginHost::DispatchControl(ModelGeneration model_generation, const mjModel
 	for (auto &entry : entries_) {
 		if (entry.ready) {
 			try {
-				entry.adapter->Control(model, data);
+				(entry.adapter.get()->*MemberFn)(std::forward<Args>(args)...);
 			} catch (...) {
-				RecordFailureLocked(*entry.adapter, "control", ExceptionMessage("Control"));
+				RecordFailureLocked(*entry.adapter, phase, ExceptionMessage(operation));
 				throw;
 			}
 		}
 	}
+}
+
+void PluginHost::DispatchControl(ModelGeneration model_generation, const mjModel *model, mjData *data)
+{
+	DispatchReadyLocked<&IPluginAdapter::Control>(model_generation, "control", "Control", model, data);
 }
 
 void PluginHost::DispatchPassive(ModelGeneration model_generation, const mjModel *model, mjData *data)
 {
-	std::lock_guard<std::mutex> lock(mutex_);
-	if (!ValidateModelGenerationLocked(model_generation))
-		return;
-	for (auto &entry : entries_) {
-		if (entry.ready) {
-			try {
-				entry.adapter->Passive(model, data);
-			} catch (...) {
-				RecordFailureLocked(*entry.adapter, "passive", ExceptionMessage("Passive"));
-				throw;
-			}
-		}
-	}
+	DispatchReadyLocked<&IPluginAdapter::Passive>(model_generation, "passive", "Passive", model, data);
 }
 
 void PluginHost::DispatchRender(ModelGeneration model_generation, const mjModel *model, mjData *data, mjvScene *scene)
 {
-	std::lock_guard<std::mutex> lock(mutex_);
-	if (!ValidateModelGenerationLocked(model_generation))
-		return;
-	for (auto &entry : entries_) {
-		if (entry.ready) {
-			try {
-				entry.adapter->Render(model, data, scene);
-			} catch (...) {
-				RecordFailureLocked(*entry.adapter, "render", ExceptionMessage("Render"));
-				throw;
-			}
-		}
-	}
+	DispatchReadyLocked<&IPluginAdapter::Render>(model_generation, "render", "Render", model, data, scene);
 }
 
 void PluginHost::DispatchLastStage(ModelGeneration model_generation, const mjModel *model, mjData *data)
 {
-	std::lock_guard<std::mutex> lock(mutex_);
-	if (!ValidateModelGenerationLocked(model_generation))
-		return;
-	for (auto &entry : entries_) {
-		if (entry.ready) {
-			try {
-				entry.adapter->LastStage(model, data);
-			} catch (...) {
-				RecordFailureLocked(*entry.adapter, "last_stage", ExceptionMessage("LastStage"));
-				throw;
-			}
-		}
-	}
+	DispatchReadyLocked<&IPluginAdapter::LastStage>(model_generation, "last_stage", "LastStage", model, data);
 }
 
 void PluginHost::Reset(ModelGeneration model_generation)
 {
-	std::lock_guard<std::mutex> lock(mutex_);
-	if (!ValidateModelGenerationLocked(model_generation))
-		return;
-	for (auto &entry : entries_) {
-		if (entry.ready) {
-			try {
-				entry.adapter->Reset();
-			} catch (...) {
-				RecordFailureLocked(*entry.adapter, "reset", ExceptionMessage("Reset"));
-				throw;
-			}
-		}
-	}
+	DispatchReadyLocked<&IPluginAdapter::Reset>(model_generation, "reset", "Reset");
 }
 
 void PluginHost::NotifyGeometryChanged(ModelGeneration model_generation, const mjModel *model, mjData *data,
                                        int geom_id)
 {
-	std::lock_guard<std::mutex> lock(mutex_);
-	if (!ValidateModelGenerationLocked(model_generation))
-		return;
-	for (auto &entry : entries_) {
-		if (entry.ready) {
-			try {
-				entry.adapter->GeometryChanged(model, data, geom_id);
-			} catch (...) {
-				RecordFailureLocked(*entry.adapter, "geometry", ExceptionMessage("GeometryChanged"));
-				throw;
-			}
-		}
-	}
+	DispatchReadyLocked<&IPluginAdapter::GeometryChanged>(model_generation, "geometry", "GeometryChanged", model, data,
+	                                                      geom_id);
 }
 
 std::vector<PluginStat> PluginHost::Statistics() const

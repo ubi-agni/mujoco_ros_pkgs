@@ -151,7 +151,7 @@ jobs:
 
       - id: ici
         name: Run industrial_ci
-        uses: rhaschke/industrial_ci@ros-one
+        uses: rhaschke/industrial_ci@master
 
       - name: Upload test artifacts (on failure)
         uses: actions/upload-artifact@v4

@@ -60,6 +60,7 @@
 #include <cstdint>
 #include <iterator>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <utility>
@@ -100,6 +101,7 @@ using TransformStamped = geometry_msgs::msg::TransformStamped;
 
 #include <mujoco_ros/render_backend.hpp>
 #include <mujoco_ros/common_types.hpp>
+#include <mujoco_ros/detail/viewer_connection_state.hpp>
 #include <mujoco_ros/mesh_uri_prep.hpp>
 #include <mujoco_ros/simulation_control_state.hpp>
 #include <mujoco_ros/runtime_options.hpp>
@@ -225,6 +227,33 @@ struct RosAPISettings
 	rendering::RenderBackpressurePolicy render_backpressure_policy = rendering::RenderBackpressurePolicy::kDrop;
 };
 
+class ConnectedViewersLease
+{
+public:
+	ConnectedViewersLease() = default;
+	ConnectedViewersLease(ConnectedViewersLease &&other) noexcept { *this = std::move(other); }
+	ConnectedViewersLease &operator=(ConnectedViewersLease &&other) noexcept;
+	~ConnectedViewersLease();
+
+	ConnectedViewersLease(const ConnectedViewersLease &)            = delete;
+	ConnectedViewersLease &operator=(const ConnectedViewersLease &) = delete;
+
+	const std::vector<Viewer *> &viewers() const { return viewers_; }
+	const std::vector<std::shared_ptr<ViewerConnectionState>> &connections() const { return connections_; }
+	bool empty() const { return viewers_.empty(); }
+
+private:
+	friend class MujocoEnv;
+	ConnectedViewersLease(std::vector<std::shared_ptr<ViewerConnectionState>> connections,
+	                      std::vector<ViewerOperationLease> operation_leases, std::vector<Viewer *> viewers);
+
+	void Release();
+
+	std::vector<std::shared_ptr<ViewerConnectionState>> connections_;
+	std::vector<ViewerOperationLease> operation_leases_;
+	std::vector<Viewer *> viewers_;
+};
+
 #if MJR_ROS_VERSION == ROS_1
 class MujocoEnv
 {
@@ -273,6 +302,7 @@ public:
 	// Friend declaration of RosAPI for access to private members
 	friend class RosAPI;
 	friend class Viewer;
+	friend class ConnectedViewersLease;
 
 public:
 	virtual ~MujocoEnv();
@@ -333,8 +363,15 @@ public:
 
 	mutable MujocoEnvMutex physics_thread_mutex_;
 
-	void ConnectViewer(Viewer *viewer);
-	void DisconnectViewer(Viewer *viewer);
+	std::shared_ptr<ViewerConnectionState> CreateViewerConnection(Viewer *viewer);
+	void UnregisterViewerConnection(const std::shared_ptr<ViewerConnectionState> &connection);
+	void RemoveViewerConnection(const std::shared_ptr<ViewerConnectionState> &connection,
+	                            std::thread::id except_render_owner = std::thread::id{});
+	void ConnectViewer(Viewer *viewer, const std::shared_ptr<ViewerConnectionState> &connection);
+	void DisconnectViewer(const std::shared_ptr<ViewerConnectionState> &connection);
+	ConnectedViewersLease AcquireConnectedViewersLease() const;
+	bool HasConnectedViewers() const;
+	bool IsHeadless() const;
 
 	char queued_filename_[kMaxFilenameLength] = "\0";
 
@@ -617,7 +654,11 @@ protected:
 	/// Pointer to mjData
 	mjDataPtr data_; // technically could be a unique_ptr, but setting the deleter correctly is not trivial
 
-	std::vector<Viewer *> connected_viewers_;
+	std::vector<std::shared_ptr<ViewerConnectionState>> viewer_connections_;
+	mutable std::mutex viewer_connections_mutex_;
+	bool viewer_connections_closing_ = false;
+
+	void CloseViewerConnections();
 
 	void PublishSimTime(mjtNum time);
 #if MJR_ROS_VERSION == ROS_1

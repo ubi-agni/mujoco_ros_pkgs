@@ -24,14 +24,14 @@ def _sanitize_name(name):
 
 
 def _candidate_names(plugin):
+    # Only raw name + raw last-segment; sanitize() fallbacks dropped.
+    # load_plugin_binding sanitizes registered names, so sanitized candidates are redundant.
     names = []
     for value in (getattr(plugin, "type", ""), getattr(plugin, "name", "")):
         if not value:
             continue
         names.append(value)
-        names.append(_sanitize_name(value))
         names.append(value.split("/")[-1])
-        names.append(_sanitize_name(value.split("/")[-1]))
     return list(dict.fromkeys(names))
 
 
@@ -65,23 +65,19 @@ def load_plugin_binding(name):
     )
 
 
-def _apply_binding(binding, plugin):
-    if hasattr(binding, "bind"):
-        return binding.bind(plugin)
-    if hasattr(binding, "from_mujoco_plugin"):
-        return binding.from_mujoco_plugin(plugin)
-    if callable(binding):
-        return binding(plugin)
-    return plugin
-
-
 def bind_plugin(plugin):
     for candidate in _candidate_names(plugin):
         try:
             binding = load_plugin_binding(candidate)
         except ImportError:
             continue
-        return _apply_binding(binding, plugin)
+        if hasattr(binding, "bind"):
+            return binding.bind(plugin)
+        if hasattr(binding, "from_mujoco_plugin"):
+            return binding.from_mujoco_plugin(plugin)
+        if callable(binding):
+            return binding(plugin)
+        return plugin
     return plugin
 
 

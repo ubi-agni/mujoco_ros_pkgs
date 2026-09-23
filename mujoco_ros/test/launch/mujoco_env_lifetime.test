@@ -6,7 +6,8 @@
        value="$(find mujoco_ros)/config/rosconsole.config"/>
 
   <param name="/use_sim_time" value="true"/>
-  <!-- Child-process lifetime cases run in their own rostest group. -->
-  <test test-name="mujoco_env_test" pkg="mujoco_ros" type="mujoco_env_test"
-        args="--gtest_filter=-*Isolated:*Child" />
+  <!-- Keep _exit()-based child cases out of the regular gtest result stream. -->
+  <test test-name="mujoco_env_lifetime_test"
+        pkg="mujoco_ros" type="mujoco_env_test"
+        args="--gtest_filter=*Isolated" time-limit="240.0"/>
 </launch>

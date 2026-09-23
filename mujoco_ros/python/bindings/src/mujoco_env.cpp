@@ -46,13 +46,24 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <exception>
+#include <future>
+#include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
+
+#if RENDER_BACKEND == GLFW_BACKEND
+#include <mujoco_ros/glfw_adapter.h>
+#include <mujoco_ros/viewer.hpp>
+#endif
 
 #if MJR_ROS_VERSION == ROS_1
 #include <mujoco_ros/ros_one/plugin_utils.hpp>
@@ -180,8 +191,23 @@ void EnsureRosInitialized()
 }
 #endif
 
+class MujocoEnvWrapper;
+class ViewerLock;
+class ViewerHandle;
+class ViewerLock;
+
+[[noreturn]] void ThrowViewerRequiresGui()
+{
+	throw std::runtime_error("mujoco_ros.viewer requires a build configured with WITH_GUI=ON");
+}
+
+constexpr const char kViewerAlreadyRunningError[]   = "a viewer is already running for this MujocoEnv";
+constexpr const char kViewerCloseWhileLockedError[] = "cannot close viewer while holding viewer lock";
+
 class MujocoEnvWrapper : public MujocoEnv
 {
+	friend class ViewerLock;
+
 public:
 #if MJR_ROS_VERSION == ROS_1
 	explicit MujocoEnvWrapper(const std::string &admin_hash = std::string())
@@ -194,7 +220,7 @@ public:
 	}
 #else
 	explicit MujocoEnvWrapper(const std::string &admin_hash = std::string(), bool python_reload_service = false)
-	    : MujocoEnv(MakeExecutor(), admin_hash, false, python_reload_service, false)
+	    : MujocoEnv(MakeExecutor(), admin_hash, true, python_reload_service, false)
 	{
 		GetExecutorPtr()->add_node(get_node_base_interface());
 		executor_spin_exited_.store(false, std::memory_order_release);
@@ -202,12 +228,7 @@ public:
 			GetExecutorPtr()->spin();
 			executor_spin_exited_.store(true, std::memory_order_release);
 		});
-		std::this_thread::sleep_for(std::chrono::milliseconds(10));
-#if RENDER_BACKEND == GLFW_BACKEND
-		prepared_viewer_adapter_ = std::make_unique<mujoco_ros::GlfwAdapter>(false);
-#endif
-		Configure();
-		construction_complete_ = true;
+		construction_complete_  = true;
 	}
 #endif
 
@@ -242,7 +263,15 @@ public:
 	{
 		StartPhysics();
 		StartEvents();
-		return MujocoEnv::LoadModelFromString(model_or_path);
+		bool result = false;
+		{
+			py::gil_scoped_release release;
+			result = MujocoEnv::LoadModelFromString(model_or_path);
+		}
+		if (result) {
+			SyncAutomaticViewer(/*state_only=*/false);
+		}
+		return result;
 	}
 
 	bool LoadPythonModel(py::object model, py::object data, const std::string &filename, double timeout)
@@ -262,64 +291,262 @@ public:
 		                         filename, true);
 
 		const auto deadline = Clock::now() + Seconds(timeout);
-		while (GetControlSnapshot().load_request != 0) {
-			if (Clock::now() > deadline) {
-				RecursiveLock lock(physics_thread_mutex_);
-				RequestLoad(0);
-				settings_.is_python_request.store(0);
-				mnew = nullptr;
-				dnew = nullptr;
-				throw std::runtime_error("Timed out while loading Python-owned MuJoCo model/data");
+		{
+			py::gil_scoped_release release;
+			while (GetControlSnapshot().load_request != 0) {
+				if (Clock::now() > deadline) {
+					RecursiveLock lock(physics_thread_mutex_);
+					RequestLoad(0);
+					settings_.is_python_request.store(0);
+					mnew = nullptr;
+					dnew = nullptr;
+					throw std::runtime_error("Timed out while loading Python-owned MuJoCo model/data");
+				}
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			}
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+		if (sim_state_.model_valid) {
+			SyncAutomaticViewer(/*state_only=*/false);
 		}
 		return sim_state_.model_valid;
 	}
 
-	bool AttachViewer(bool active)
+	void BindSelf(const std::shared_ptr<MujocoEnvWrapper> &self) { self_ = self; }
+
+	void LaunchViewer()
 	{
-		if (!active) {
-			throw std::runtime_error("Passive viewer attachment is not implemented");
-		}
-#if RENDER_BACKEND == GLFW_BACKEND
-		if (viewer_running_) {
-			return false;
-		}
-		viewer_thread_handle_ = std::thread([this]() {
-#if MJR_ROS_VERSION == ROS_2
-			auto adapter = std::move(prepared_viewer_adapter_);
-			if (!adapter) {
-				throw std::runtime_error("Prepared Python viewer context is unavailable");
+#if RENDER_BACKEND != GLFW_BACKEND
+		ThrowViewerRequiresGui();
+#else
+		JoinPriorPassiveViewerThread();
+
+		{
+			std::lock_guard<std::mutex> lock(viewer_lifecycle_mutex_);
+			if (viewer_starting_ || viewer_running_ || viewer_thread_handle_.joinable()) {
+				throw std::runtime_error(kViewerAlreadyRunningError);
 			}
-			adapter->ShowWindow();
-#else
-			auto adapter = std::make_unique<mujoco_ros::GlfwAdapter>();
-#endif
-			auto viewer      = std::make_unique<mujoco_ros::Viewer>(std::move(adapter), this, false);
-			attached_viewer_ = viewer.get();
-			viewer_running_  = true;
+			++viewer_generation_;
+			viewer_starting_ = true;
+		}
+
+		std::unique_ptr<GlfwAdapter> adapter;
+		std::unique_ptr<Viewer> viewer;
+		try {
+			adapter = std::make_unique<GlfwAdapter>(false);
+			viewer  = std::make_unique<Viewer>(std::move(adapter), this, false, false);
+		} catch (...) {
+			std::lock_guard<std::mutex> lock(viewer_lifecycle_mutex_);
+			RestoreIdleViewerLifecycleState();
+			throw;
+		}
+
+		{
+			std::lock_guard<std::mutex> lock(viewer_lifecycle_mutex_);
+			attached_viewer_        = viewer.get();
+			viewer_owner_thread_id_ = std::this_thread::get_id();
+			viewer_starting_        = false;
+			viewer_running_         = true;
+			viewer_is_passive_      = false;
+			viewer_auto_sync_       = false;
+		}
+
+		std::exception_ptr loop_error;
+		try {
+			py::gil_scoped_release release;
 			viewer->RenderLoop();
-			attached_viewer_ = nullptr;
-			viewer_running_  = false;
-		});
-		return true;
-#else
-		throw std::runtime_error("Viewer attachment requires the GLFW render backend");
+		} catch (...) {
+			loop_error = std::current_exception();
+		}
+
+		viewer.reset();
+
+		{
+			std::lock_guard<std::mutex> lock(viewer_lifecycle_mutex_);
+			attached_viewer_        = nullptr;
+			viewer_owner_thread_id_ = std::thread::id{};
+			viewer_running_         = false;
+			viewer_exit_condition_.notify_all();
+		}
+
+		if (loop_error) {
+			std::rethrow_exception(loop_error);
+		}
 #endif
 	}
 
-	bool StepSimulation(int num_steps, bool blocking) { return MujocoEnv::Step(num_steps, blocking); }
+	std::shared_ptr<ViewerHandle> LaunchPassive(bool auto_sync)
+	{
+#if RENDER_BACKEND != GLFW_BACKEND
+		(void)auto_sync;
+		ThrowViewerRequiresGui();
+#else
+		JoinPriorPassiveViewerThread();
 
-	void ResetSimulation() { MujocoEnv::Reset(); }
+		std::uint64_t generation = 0;
+		std::promise<void> startup_promise;
+		std::future<void> startup_future = startup_promise.get_future();
+
+		{
+			std::lock_guard<std::mutex> lock(viewer_lifecycle_mutex_);
+			if (viewer_starting_ || viewer_running_ || viewer_thread_handle_.joinable()) {
+				throw std::runtime_error(kViewerAlreadyRunningError);
+			}
+			++viewer_generation_;
+			generation              = viewer_generation_;
+			viewer_starting_        = true;
+			viewer_error_           = nullptr;
+			viewer_error_delivered_ = false;
+			viewer_thread_exited_   = false;
+			viewer_is_passive_      = true;
+			viewer_auto_sync_       = auto_sync;
+		}
+
+		try {
+			viewer_thread_handle_ =
+			    std::thread([this, generation, auto_sync, promise = std::move(startup_promise)]() mutable {
+				    PassiveViewerThreadMain(generation, auto_sync, std::move(promise));
+			    });
+		} catch (...) {
+			std::lock_guard<std::mutex> lock(viewer_lifecycle_mutex_);
+			RestoreIdleViewerLifecycleState();
+			throw;
+		}
+
+		std::exception_ptr startup_error;
+		{
+			py::gil_scoped_release release;
+			try {
+				startup_future.get();
+			} catch (...) {
+				startup_error = std::current_exception();
+			}
+		}
+
+		if (startup_error) {
+			if (viewer_thread_handle_.joinable()) {
+				py::gil_scoped_release release;
+				viewer_thread_handle_.join();
+			}
+			{
+				std::lock_guard<std::mutex> lock(viewer_lifecycle_mutex_);
+				RestoreIdleViewerLifecycleState();
+			}
+			std::rethrow_exception(startup_error);
+		}
+
+		const auto self = self_.lock();
+		if (!self) {
+			throw std::runtime_error("viewer is not running");
+		}
+		return std::make_shared<ViewerHandle>(std::move(self), generation);
+#endif
+	}
+
+	void CloseViewer(std::uint64_t generation, bool rethrow_error = true)
+	{
+#if RENDER_BACKEND == GLFW_BACKEND
+		ShutdownPassiveViewerSession(generation, rethrow_error, /*gil_already_released=*/false);
+#endif
+	}
+
+	bool IsViewerRunning(std::uint64_t generation) const
+	{
+#if RENDER_BACKEND == GLFW_BACKEND
+		std::lock_guard<std::mutex> lock(viewer_lifecycle_mutex_);
+		return generation == viewer_generation_ && viewer_running_;
+#else
+		(void)generation;
+		return false;
+#endif
+	}
+
+	void SyncViewer(std::uint64_t generation, bool state_only)
+	{
+#if RENDER_BACKEND == GLFW_BACKEND
+		ViewerAccessLease lease(*this, generation);
+		py::gil_scoped_release release;
+		lease.viewer()->Sync(state_only);
+#else
+		(void)generation;
+		(void)state_only;
+		ThrowViewerRequiresGui();
+#endif
+	}
+
+	void ReleaseViewerAccess() const
+	{
+#if RENDER_BACKEND == GLFW_BACKEND
+		std::lock_guard<std::mutex> lock(viewer_lifecycle_mutex_);
+		if (viewer_access_in_flight_ > 0) {
+			--viewer_access_in_flight_;
+		}
+		const auto thread_id = std::this_thread::get_id();
+		const auto depth_it  = viewer_access_depth_.find(thread_id);
+		if (depth_it != viewer_access_depth_.end()) {
+			if (--depth_it->second == 0) {
+				viewer_access_depth_.erase(depth_it);
+			}
+		}
+		viewer_exit_condition_.notify_all();
+#endif
+	}
+
+	void SyncAutomaticViewer(bool state_only = false) const
+	{
+#if RENDER_BACKEND == GLFW_BACKEND
+		ViewerAccessLease lease;
+		{
+			std::lock_guard<std::mutex> lock(viewer_lifecycle_mutex_);
+			if (!viewer_running_ || !viewer_is_passive_ || !viewer_auto_sync_ || attached_viewer_ == nullptr) {
+				return;
+			}
+			lease = ViewerAccessLease(*const_cast<MujocoEnvWrapper *>(this), viewer_generation_, attached_viewer_);
+		}
+		py::gil_scoped_release release;
+		lease.viewer()->Sync(state_only);
+#else
+		(void)state_only;
+#endif
+	}
+
+	bool StepSimulation(int num_steps, bool blocking)
+	{
+		bool result = false;
+		{
+			py::gil_scoped_release release;
+			result = MujocoEnv::Step(num_steps, blocking);
+		}
+		if (result) {
+			SyncAutomaticViewer(/*state_only=*/true);
+		}
+		return result;
+	}
+
+	void ResetSimulation()
+	{
+		{
+			py::gil_scoped_release release;
+			MujocoEnv::Reset();
+		}
+		SyncAutomaticViewer(/*state_only=*/true);
+	}
 
 	bool TogglePausedWrapper(bool paused, const std::string &admin_hash)
 	{
-		return MujocoEnv::TogglePaused(paused, admin_hash);
+		const bool result = MujocoEnv::TogglePaused(paused, admin_hash);
+		if (result) {
+			SyncAutomaticViewer(/*state_only=*/true);
+		}
+		return result;
 	}
 
 	bool SetRealTimeFactorWrapper(float real_time_factor, const std::string &admin_hash)
 	{
-		return MujocoEnv::SetRealTimeFactor(real_time_factor, admin_hash);
+		const bool result = MujocoEnv::SetRealTimeFactor(real_time_factor, admin_hash);
+		if (result) {
+			SyncAutomaticViewer(/*state_only=*/true);
+		}
+		return result;
 	}
 
 	void SetBusywaitWrapper(int busywait)
@@ -327,6 +554,7 @@ public:
 		RecursiveLock lock(physics_thread_mutex_);
 		settings_.busywait = busywait;
 		settings_.settings_changed.store(1);
+		SyncAutomaticViewer(/*state_only=*/true);
 	}
 
 	std::string RenderBackpressurePolicyWrapper() const
@@ -344,6 +572,7 @@ public:
 
 	std::array<double, 3> GetGravityWrapper()
 	{
+		SyncAutomaticViewer();
 		mjtNum gravity[3] = { 0, 0, 0 };
 		char status[MujocoEnv::kErrorLength];
 		if (!MujocoEnv::GetGravity(gravity, "", status, MujocoEnv::kErrorLength)) {
@@ -359,11 +588,16 @@ public:
 		}
 		mjtNum gravity_values[3] = { static_cast<mjtNum>(gravity[0]), static_cast<mjtNum>(gravity[1]),
 			                          static_cast<mjtNum>(gravity[2]) };
-		return MujocoEnv::SetGravity(gravity_values, admin_hash);
+		const bool result        = MujocoEnv::SetGravity(gravity_values, admin_hash);
+		if (result) {
+			SyncAutomaticViewer(/*state_only=*/false);
+		}
+		return result;
 	}
 
 	RuntimeOptionsSnapshot RuntimeOptionsWrapper()
 	{
+		SyncAutomaticViewer();
 		const auto result = MujocoEnv::GetRuntimeOptions();
 		if (!result.ok()) {
 			throw std::runtime_error(result.error->message);
@@ -382,6 +616,7 @@ public:
 			}
 			throw py::value_error(message);
 		}
+		SyncAutomaticViewer(/*state_only=*/false);
 		return *result.effective;
 	}
 
@@ -396,6 +631,7 @@ public:
 
 	int CountFreeJointsOnBody(const std::string &body_name) const
 	{
+		SyncAutomaticViewer();
 		RecursiveLock lock(physics_thread_mutex_);
 		if (!sim_state_.model_valid || model_.get() == nullptr) {
 			throw std::runtime_error("no valid MuJoCo model is loaded");
@@ -416,61 +652,116 @@ public:
 		return count;
 	}
 
-	py::object ModelPy() const { return model_py_; }
+	py::object ModelPy() const
+	{
+		SyncAutomaticViewer();
+		return model_py_;
+	}
 
-	py::object DataPy() const { return data_py_; }
+	py::object DataPy() const
+	{
+		SyncAutomaticViewer();
+		return data_py_;
+	}
 
 	void ShutdownAndJoin()
 	{
+		std::exception_ptr first_error;
 		const bool should_request_shutdown = !shutdown_called_;
 		shutdown_called_                   = true;
+		bool viewer_still_live             = false;
 
-		if (should_request_shutdown) {
+		auto record_error = [&first_error]() {
 			try {
-				MujocoEnv::Shutdown();
+				throw;
 			} catch (...) {
+				if (!first_error) {
+					first_error = std::current_exception();
+				}
+			}
+		};
+
+		{
+			py::gil_scoped_release release;
+			if (should_request_shutdown) {
+				try {
+					MujocoEnv::Shutdown();
+				} catch (...) {
+					record_error();
+				}
+			}
+#if RENDER_BACKEND == GLFW_BACKEND
+			try {
+				ShutdownPassiveViewerSession(/*generation=*/0, /*rethrow_error=*/false,
+				                             /*gil_already_released=*/true, /*ignore_stale_generation=*/true);
+			} catch (const std::runtime_error &error) {
+				if (std::strcmp(error.what(), kViewerCloseWhileLockedError) == 0) {
+					viewer_still_live = true;
+				}
+				record_error();
+			} catch (...) {
+				record_error();
+			}
+			{
+				std::lock_guard<std::mutex> lock(viewer_lifecycle_mutex_);
+				if (!viewer_still_live && viewer_error_ && !viewer_error_delivered_ && !first_error) {
+					first_error = viewer_error_;
+				}
+			}
+#endif
+			try {
+				MujocoEnv::WaitForPhysicsJoin();
+			} catch (...) {
+				record_error();
+			}
+			try {
+				MujocoEnv::WaitForEventsJoin();
+			} catch (...) {
+				record_error();
 			}
 		}
-		try {
-			ShutdownViewer();
-		} catch (...) {
-		}
-		try {
-			MujocoEnv::WaitForPhysicsJoin();
-		} catch (...) {
-		}
-		try {
-			MujocoEnv::WaitForEventsJoin();
-		} catch (...) {
-		}
-		try {
-			DetachPythonOwnedModel();
-		} catch (...) {
+		if (!viewer_still_live) {
+			try {
+				DetachPythonOwnedModel();
+			} catch (...) {
+				record_error();
+			}
 		}
 
 #if MJR_ROS_VERSION == ROS_2
 		const auto executor = GetExecutorPtr();
-		// cancel() before spin() enters is discarded by MultiThreadedExecutor::spin()'s
-		// spinning.exchange(true). Retry cancel until the spin thread exits; a cancel
-		// issued after spin has begun is always honored.
-		if (executor_thread_handle_.joinable()) {
-			constexpr auto kJoinDeadline = std::chrono::seconds(5);
-			const auto deadline          = std::chrono::steady_clock::now() + kJoinDeadline;
-			while (!executor_spin_exited_.load(std::memory_order_acquire)) {
-				if (std::chrono::steady_clock::now() >= deadline) {
-					executor_thread_handle_.detach();
-					throw std::runtime_error("MujocoEnvWrapper::ShutdownAndJoin: executor spin thread did not exit "
-					                         "within 5s after cancel(); abandon thread and fail loud");
+		{
+			py::gil_scoped_release release;
+			if (executor_thread_handle_.joinable()) {
+				constexpr auto kJoinDeadline = std::chrono::seconds(5);
+				const auto deadline          = std::chrono::steady_clock::now() + kJoinDeadline;
+				while (!executor_spin_exited_.load(std::memory_order_acquire)) {
+					if (std::chrono::steady_clock::now() >= deadline) {
+						executor_thread_handle_.detach();
+						if (!first_error) {
+							first_error = std::make_exception_ptr(
+							    std::runtime_error("MujocoEnvWrapper::ShutdownAndJoin: executor spin thread did not exit "
+							                       "within 5s after cancel(); abandon thread and fail loud"));
+						}
+						break;
+					}
+					if (executor != nullptr) {
+						try {
+							executor->cancel();
+						} catch (...) {
+							record_error();
+						}
+					}
+					std::this_thread::sleep_for(std::chrono::milliseconds(1));
 				}
-				if (executor != nullptr) {
+				if (executor_thread_handle_.joinable()) {
 					try {
-						executor->cancel();
+						executor_thread_handle_.join();
 					} catch (...) {
+						record_error();
 					}
 				}
-				std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			}
-			executor_thread_handle_.join();
 		}
 		if (construction_complete_) {
 			try {
@@ -478,10 +769,15 @@ public:
 					executor->remove_node(get_node_base_interface());
 				}
 			} catch (...) {
+				record_error();
 			}
 			construction_complete_ = false;
 		}
 #endif
+
+		if (first_error) {
+			std::rethrow_exception(first_error);
+		}
 	}
 
 	bool ModelValid() const { return sim_state_.model_valid; }
@@ -494,11 +790,23 @@ public:
 		return MujocoEnv::WaitForOperationalStatusIdle(std::chrono::milliseconds(timeout_ms));
 	}
 
-	EnvSettings Settings() const { return MujocoEnv::GetSettings(); }
+	EnvSettings Settings() const
+	{
+		SyncAutomaticViewer();
+		return MujocoEnv::GetSettings();
+	}
 
-	SimState State() const { return MujocoEnv::GetSimState(); }
+	SimState State() const
+	{
+		SyncAutomaticViewer();
+		return MujocoEnv::GetSimState();
+	}
 
-	SimInfo Info() { return MujocoEnv::GetSimInfo(); }
+	SimInfo Info()
+	{
+		SyncAutomaticViewer();
+		return MujocoEnv::GetSimInfo();
+	}
 
 	std::vector<PluginStat> PluginStats() { return MujocoEnv::GetPluginStats(); }
 
@@ -517,7 +825,11 @@ public:
 
 	std::string Filename() const { return std::string(filename_); }
 
-	bool IsRunning() const { return GetControlSnapshot().running; }
+	bool IsRunning() const
+	{
+		SyncAutomaticViewer();
+		return GetControlSnapshot().running;
+	}
 
 	std::string HandleNamespace() const
 	{
@@ -559,7 +871,271 @@ private:
 		retained_python_models_.clear();
 	}
 
-	void ShutdownViewer() {}
+	void ShutdownViewer(bool gil_already_released = false)
+	{
+#if RENDER_BACKEND == GLFW_BACKEND
+		ShutdownPassiveViewerSession(/*generation=*/0, /*rethrow_error=*/true, gil_already_released,
+		                             /*ignore_stale_generation=*/true);
+#endif
+	}
+
+#if RENDER_BACKEND == GLFW_BACKEND
+	class ViewerAccessLease
+	{
+	public:
+		ViewerAccessLease() = default;
+
+		ViewerAccessLease(MujocoEnvWrapper &env, std::uint64_t generation)
+		{
+			std::lock_guard<std::mutex> lock(env.viewer_lifecycle_mutex_);
+			if (generation != env.viewer_generation_ || !env.viewer_running_ || env.attached_viewer_ == nullptr) {
+				throw std::runtime_error("viewer is not running");
+			}
+			adopt_locked(env, env.attached_viewer_);
+		}
+
+		ViewerAccessLease(MujocoEnvWrapper &env, std::uint64_t generation, Viewer *viewer)
+		{
+			(void)generation;
+			adopt_locked(env, viewer);
+		}
+
+		ViewerAccessLease(const ViewerAccessLease &)            = delete;
+		ViewerAccessLease &operator=(const ViewerAccessLease &) = delete;
+		ViewerAccessLease(ViewerAccessLease &&other) noexcept { swap(other); }
+		ViewerAccessLease &operator=(ViewerAccessLease &&other) noexcept
+		{
+			if (this != &other) {
+				release();
+				swap(other);
+			}
+			return *this;
+		}
+
+		~ViewerAccessLease() { release(); }
+
+		Viewer *viewer() const { return viewer_; }
+
+	private:
+		void adopt_locked(MujocoEnvWrapper &env, Viewer *viewer)
+		{
+			env_    = &env;
+			viewer_ = viewer;
+			++env.viewer_access_in_flight_;
+			++env.viewer_access_depth_[std::this_thread::get_id()];
+			active_ = true;
+		}
+
+		void swap(ViewerAccessLease &other)
+		{
+			std::swap(env_, other.env_);
+			std::swap(viewer_, other.viewer_);
+			std::swap(active_, other.active_);
+		}
+
+		void release()
+		{
+			if (active_ && env_ != nullptr) {
+				env_->ReleaseViewerAccess();
+				active_ = false;
+				env_    = nullptr;
+				viewer_ = nullptr;
+			}
+		}
+
+		MujocoEnvWrapper *env_ = nullptr;
+		Viewer *viewer_        = nullptr;
+		bool active_           = false;
+	};
+
+	void AssertViewerCloseAllowedLocked() const
+	{
+		const auto thread_id = std::this_thread::get_id();
+		const auto depth_it  = viewer_access_depth_.find(thread_id);
+		if (depth_it != viewer_access_depth_.end() && depth_it->second > 0) {
+			throw std::runtime_error(kViewerCloseWhileLockedError);
+		}
+	}
+
+	void WaitForViewerAccessRelease(bool manage_gil)
+	{
+		std::unique_lock<std::mutex> lock(viewer_lifecycle_mutex_);
+		AssertViewerCloseAllowedLocked();
+		if (manage_gil) {
+			py::gil_scoped_release release;
+			viewer_exit_condition_.wait(lock, [this]() { return viewer_access_in_flight_ == 0; });
+		} else {
+			viewer_exit_condition_.wait(lock, [this]() { return viewer_access_in_flight_ == 0; });
+		}
+	}
+
+	void JoinThreadMaybeReleaseGIL(std::thread &thread_to_join, bool manage_gil)
+	{
+		if (!thread_to_join.joinable() || thread_to_join.get_id() == std::this_thread::get_id()) {
+			return;
+		}
+		if (manage_gil) {
+			py::gil_scoped_release release;
+			thread_to_join.join();
+		} else {
+			thread_to_join.join();
+		}
+	}
+
+	void ShutdownPassiveViewerSession(std::uint64_t generation, bool rethrow_error, bool gil_already_released,
+	                                  bool ignore_stale_generation = false)
+	{
+		std::thread thread_to_join;
+		bool wait_for_blocking_exit = false;
+		std::exception_ptr retained_error;
+		const bool manage_gil = !gil_already_released;
+
+		{
+			std::lock_guard<std::mutex> lock(viewer_lifecycle_mutex_);
+			if (!ignore_stale_generation && generation != viewer_generation_) {
+				return;
+			}
+			AssertViewerCloseAllowedLocked();
+		}
+		WaitForViewerAccessRelease(manage_gil);
+
+		{
+			std::lock_guard<std::mutex> lock(viewer_lifecycle_mutex_);
+			if (!ignore_stale_generation && generation != viewer_generation_) {
+				return;
+			}
+
+			if (attached_viewer_ != nullptr) {
+				attached_viewer_->exit_request = 1;
+			}
+			if (viewer_thread_handle_.joinable()) {
+				thread_to_join = std::move(viewer_thread_handle_);
+			} else if (viewer_running_ && viewer_owner_thread_id_ != std::this_thread::get_id()) {
+				wait_for_blocking_exit = true;
+			}
+		}
+
+		JoinThreadMaybeReleaseGIL(thread_to_join, manage_gil);
+		if (wait_for_blocking_exit) {
+			std::unique_lock<std::mutex> lock(viewer_lifecycle_mutex_);
+			if (manage_gil) {
+				py::gil_scoped_release release;
+				viewer_exit_condition_.wait(lock, [this]() { return !viewer_running_; });
+			} else {
+				viewer_exit_condition_.wait(lock, [this]() { return !viewer_running_; });
+			}
+		}
+
+		{
+			std::lock_guard<std::mutex> lock(viewer_lifecycle_mutex_);
+			if (!ignore_stale_generation && generation != viewer_generation_) {
+				return;
+			}
+			attached_viewer_        = nullptr;
+			viewer_owner_thread_id_ = std::thread::id{};
+			viewer_running_         = false;
+			viewer_starting_        = false;
+			viewer_thread_exited_   = true;
+			retained_error          = viewer_error_;
+			if (rethrow_error && retained_error) {
+				viewer_error_           = nullptr;
+				viewer_error_delivered_ = true;
+			}
+			viewer_exit_condition_.notify_all();
+		}
+
+		if (rethrow_error && retained_error) {
+			std::rethrow_exception(retained_error);
+		}
+	}
+
+	void JoinPriorPassiveViewerThread()
+	{
+		std::thread thread_to_join;
+		{
+			std::lock_guard<std::mutex> lock(viewer_lifecycle_mutex_);
+			if (viewer_thread_handle_.joinable() && viewer_thread_exited_) {
+				thread_to_join = std::move(viewer_thread_handle_);
+			}
+		}
+		if (thread_to_join.joinable()) {
+			py::gil_scoped_release release;
+			thread_to_join.join();
+		}
+	}
+
+	void RestoreIdleViewerLifecycleState()
+	{
+		viewer_starting_        = false;
+		viewer_running_         = false;
+		viewer_is_passive_      = false;
+		viewer_auto_sync_       = false;
+		attached_viewer_        = nullptr;
+		viewer_owner_thread_id_ = std::thread::id{};
+		viewer_thread_exited_   = true;
+		viewer_access_depth_.clear();
+		viewer_error_delivered_ = false;
+		viewer_exit_condition_.notify_all();
+	}
+
+	void PassiveViewerThreadMain(std::uint64_t generation, bool auto_sync, std::promise<void> startup_promise)
+	{
+		bool startup_reported = false;
+		std::unique_ptr<GlfwAdapter> adapter;
+		std::unique_ptr<Viewer> viewer;
+		try {
+			adapter = std::make_unique<GlfwAdapter>(false);
+			viewer  = std::make_unique<Viewer>(std::move(adapter), this, true, auto_sync);
+
+			{
+				std::lock_guard<std::mutex> lock(viewer_lifecycle_mutex_);
+				attached_viewer_        = viewer.get();
+				viewer_owner_thread_id_ = std::this_thread::get_id();
+				viewer_starting_        = false;
+				viewer_running_         = true;
+				viewer_auto_sync_       = auto_sync;
+			}
+
+			viewer->RenderLoop([&startup_promise, &startup_reported]() {
+				startup_promise.set_value();
+				startup_reported = true;
+			});
+		} catch (...) {
+			const auto error = std::current_exception();
+			if (!startup_reported) {
+				try {
+					startup_promise.set_exception(error);
+				} catch (...) {
+				}
+			}
+			{
+				std::lock_guard<std::mutex> lock(viewer_lifecycle_mutex_);
+				if (!viewer_error_) {
+					viewer_error_ = error;
+				}
+			}
+		}
+
+		{
+			std::unique_lock<std::mutex> lock(viewer_lifecycle_mutex_);
+			attached_viewer_        = nullptr;
+			viewer_owner_thread_id_ = std::thread::id{};
+			viewer_starting_        = false;
+			viewer_exit_condition_.notify_all();
+			viewer_exit_condition_.wait(lock, [this]() { return viewer_access_in_flight_ == 0; });
+		}
+
+		viewer.reset();
+
+		{
+			std::lock_guard<std::mutex> lock(viewer_lifecycle_mutex_);
+			viewer_running_       = false;
+			viewer_thread_exited_ = true;
+			viewer_exit_condition_.notify_all();
+		}
+		(void)generation;
+	}
+#endif
 
 #if MJR_ROS_VERSION == ROS_2
 	static rclcpp::Executor::SharedPtr MakeExecutor()
@@ -572,22 +1148,137 @@ private:
 	bool physics_started_ = false;
 	bool events_started_  = false;
 	bool shutdown_called_ = false;
-	py::object model_py_  = py::none();
-	py::object data_py_   = py::none();
+	std::weak_ptr<MujocoEnvWrapper> self_;
+	py::object model_py_ = py::none();
+	py::object data_py_  = py::none();
 	std::vector<std::pair<py::object, py::object>> retained_python_models_;
-#if RENDER_BACKEND == GLFW_BACKEND
-	std::thread viewer_thread_handle_;
-	std::atomic_bool viewer_running_     = false;
-	mujoco_ros::Viewer *attached_viewer_ = nullptr;
-#if MJR_ROS_VERSION == ROS_2
-	std::unique_ptr<mujoco_ros::GlfwAdapter> prepared_viewer_adapter_;
-#endif
-#endif
 #if MJR_ROS_VERSION == ROS_2
 	bool construction_complete_ = false;
 	std::atomic<bool> executor_spin_exited_{ true };
 	std::thread executor_thread_handle_;
 #endif
+#if RENDER_BACKEND == GLFW_BACKEND
+	mutable std::mutex viewer_lifecycle_mutex_;
+	mutable std::condition_variable viewer_exit_condition_;
+	std::thread viewer_thread_handle_;
+	Viewer *attached_viewer_ = nullptr;
+	std::exception_ptr viewer_error_;
+	std::uint64_t viewer_generation_ = 0;
+	std::thread::id viewer_owner_thread_id_;
+	bool viewer_starting_                        = false;
+	bool viewer_running_                         = false;
+	bool viewer_thread_exited_                   = true;
+	bool viewer_is_passive_                      = false;
+	bool viewer_auto_sync_                       = false;
+	mutable std::size_t viewer_access_in_flight_ = 0;
+	mutable std::unordered_map<std::thread::id, std::size_t> viewer_access_depth_;
+	bool viewer_error_delivered_ = false;
+#endif
+};
+
+class ViewerLock : public std::enable_shared_from_this<ViewerLock>
+{
+public:
+	ViewerLock(std::shared_ptr<MujocoEnvWrapper> env, std::uint64_t generation)
+	    : env_weak_(std::move(env)), generation_(generation)
+	{
+	}
+
+	ViewerLock &Enter()
+	{
+#if RENDER_BACKEND == GLFW_BACKEND
+		env_ = env_weak_.lock();
+		if (!env_) {
+			throw std::runtime_error("viewer is not running");
+		}
+		lease_ = MujocoEnvWrapper::ViewerAccessLease(*env_, generation_);
+		{
+			py::gil_scoped_release release;
+			mtx_lock_ = std::unique_lock<ViewerMutex>(lease_.viewer()->mtx);
+		}
+		entered_ = true;
+		return *this;
+#else
+		ThrowViewerRequiresGui();
+#endif
+	}
+
+	void Exit(py::object, py::object, py::object)
+	{
+#if RENDER_BACKEND == GLFW_BACKEND
+		if (entered_) {
+			mtx_lock_.unlock();
+			lease_   = MujocoEnvWrapper::ViewerAccessLease{};
+			entered_ = false;
+			env_.reset();
+		}
+#else
+		ThrowViewerRequiresGui();
+#endif
+	}
+
+private:
+	std::weak_ptr<MujocoEnvWrapper> env_weak_;
+	std::shared_ptr<MujocoEnvWrapper> env_;
+	std::uint64_t generation_;
+#if RENDER_BACKEND == GLFW_BACKEND
+	MujocoEnvWrapper::ViewerAccessLease lease_;
+	std::unique_lock<ViewerMutex> mtx_lock_;
+#endif
+	bool entered_ = false;
+};
+
+class ViewerHandle : public std::enable_shared_from_this<ViewerHandle>
+{
+public:
+	ViewerHandle(std::shared_ptr<MujocoEnvWrapper> env, std::uint64_t generation)
+	    : env_(std::move(env)), generation_(generation)
+	{
+	}
+
+	void Close()
+	{
+		WithEnv([this](MujocoEnvWrapper &env) { env.CloseViewer(generation_); });
+	}
+
+	bool IsRunning() const
+	{
+		if (auto env = env_.lock()) {
+			return env->IsViewerRunning(generation_);
+		}
+		return false;
+	}
+
+	void Sync(bool state_only)
+	{
+		WithEnv([this, state_only](MujocoEnvWrapper &env) { env.SyncViewer(generation_, state_only); });
+	}
+
+	std::shared_ptr<ViewerLock> Lock()
+	{
+		if (auto env = env_.lock()) {
+			return std::make_shared<ViewerLock>(std::move(env), generation_);
+		}
+		throw std::runtime_error("viewer is not running");
+	}
+
+	ViewerHandle &Enter() { return *this; }
+
+	void Exit(py::object, py::object, py::object) { Close(); }
+
+private:
+	template <typename Fn>
+	void WithEnv(Fn &&fn) const
+	{
+		auto env = env_.lock();
+		if (!env) {
+			throw std::runtime_error("viewer is not running");
+		}
+		fn(*env);
+	}
+
+	std::weak_ptr<MujocoEnvWrapper> env_;
+	std::uint64_t generation_;
 };
 
 } // namespace
@@ -628,9 +1319,22 @@ void InitMujocoEnv(py::module_ &module)
 	           "and notify roscpp of the change. Initializes roscpp (anonymously) first if not already done.");
 #endif
 
+	py::class_<ViewerLock, std::shared_ptr<ViewerLock>>(module, "_ViewerLock")
+	    .def("__enter__", &ViewerLock::Enter, py::return_value_policy::reference_internal)
+	    .def("__exit__", &ViewerLock::Exit);
+
+	py::class_<ViewerHandle, std::shared_ptr<ViewerHandle>>(module, "_ViewerHandle")
+	    .def("close", &ViewerHandle::Close)
+	    .def("is_running", &ViewerHandle::IsRunning)
+	    .def("sync", &ViewerHandle::Sync, py::arg("state_only") = false)
+	    .def("lock", &ViewerHandle::Lock)
+	    .def("__enter__", &ViewerHandle::Enter, py::return_value_policy::reference_internal)
+	    .def("__exit__", &ViewerHandle::Exit);
+
 	py::class_<MujocoEnvWrapper, std::shared_ptr<MujocoEnvWrapper>>(module, "_MujocoEnvWrapper")
 	    .def(py::init([](std::optional<std::string> admin_hash, bool python_reload_service, py::object runtime_options) {
 		         auto wrapper = std::make_shared<MujocoEnvWrapper>(admin_hash.value_or(""), python_reload_service);
+		         wrapper->BindSelf(wrapper);
 		         if (!runtime_options.is_none()) {
 			         wrapper->SetPendingRuntimeOptionsWrapper(runtime_options.cast<py::dict>());
 		         }
@@ -654,7 +1358,8 @@ void InitMujocoEnv(py::module_ &module)
 	    .def("set_busywait", &MujocoEnvWrapper::SetBusywaitWrapper, py::arg("busywait"))
 	    .def_property("render_backpressure_policy", &MujocoEnvWrapper::RenderBackpressurePolicyWrapper,
 	                  &MujocoEnvWrapper::SetRenderBackpressurePolicyWrapper)
-	    .def("attach_viewer", &MujocoEnvWrapper::AttachViewer, py::arg("active") = true)
+	    .def("_launch_viewer", &MujocoEnvWrapper::LaunchViewer)
+	    .def("_launch_passive", &MujocoEnvWrapper::LaunchPassive, py::arg("auto_sync") = false)
 	    .def("get_gravity", &MujocoEnvWrapper::GetGravityWrapper)
 	    .def("set_gravity", &MujocoEnvWrapper::SetGravityWrapper, py::arg("gravity"), py::arg("admin_hash") = "")
 	    .def_property_readonly("runtime_options", &MujocoEnvWrapper::RuntimeOptionsWrapper)

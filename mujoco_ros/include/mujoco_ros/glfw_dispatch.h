@@ -55,6 +55,7 @@ struct Glfw
 	mjGLFW_DECLARE_SYMBOL(glfwSetKeyCallback);
 	mjGLFW_DECLARE_SYMBOL(glfwSetMouseButtonCallback);
 	mjGLFW_DECLARE_SYMBOL(glfwSetScrollCallback);
+	mjGLFW_DECLARE_SYMBOL(glfwSetWindowIcon);
 	mjGLFW_DECLARE_SYMBOL(glfwSetWindowMonitor);
 	mjGLFW_DECLARE_SYMBOL(glfwSetWindowRefreshCallback);
 	mjGLFW_DECLARE_SYMBOL(glfwSetWindowSize);
@@ -66,6 +67,7 @@ struct Glfw
 	mjGLFW_DECLARE_SYMBOL(glfwSwapInterval);
 	mjGLFW_DECLARE_SYMBOL(glfwTerminate);
 	mjGLFW_DECLARE_SYMBOL(glfwWindowHint);
+	mjGLFW_DECLARE_SYMBOL(glfwWindowHintString);
 	mjGLFW_DECLARE_SYMBOL(glfwWindowShouldClose);
 	// go/keep-sorted end
 

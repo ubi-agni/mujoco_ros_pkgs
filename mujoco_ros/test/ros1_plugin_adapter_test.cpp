@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD 3-Clause License)
  *
- *  Copyright (c) 2022-2026, Bielefeld University
+ *  Copyright (c) 2026, Neura Robotics
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -14,7 +14,7 @@
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *   * Neither the name of Bielefeld University nor the names of its
+ *   * Neither the name of Neura Robotics nor the names of its
  *     contributors may be used to endorse or promote products derived
  *     from this software without specific prior written permission.
  *
@@ -32,38 +32,68 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  *********************************************************************/
 
-/* Authors: David P. Leins */
+#include <gtest/gtest.h>
 
-#pragma once
+#include <memory>
+#include <string>
 
-#include <mujoco_ros/common_types.hpp>
-using namespace mujoco_ros;
+#include <ros/ros.h>
+#include <XmlRpcValue.h>
 
-inline void compare_array(const char *label, const double *actual, const std::string &joint_name,
-                          const std::vector<double> &values, const std::vector<double> &tolerances = {})
+#include <mujoco_ros/ros_one/plugin_utils.hpp>
+
+namespace {
+
+class LifetimeTestPlugin final : public mujoco_ros::MujocoPlugin
 {
-	if (tolerances.empty()) {
-		for (size_t i = 0; i < values.size(); i++) {
-			EXPECT_EQ(actual[i], values[i]) << label << " of joint '" << joint_name << "' at index " << i << " is "
-			                                << actual[i] << " instead of " << values[i] << "!";
-		}
-	} else {
-		for (size_t i = 0; i < values.size(); i++) {
-			EXPECT_NEAR(actual[i], values[i], tolerances[i])
-			    << label << " of joint '" << joint_name << "' at index " << i << " is " << actual[i] << " instead of "
-			    << values[i] << " (tolerance: " << tolerances[i] << ")!";
+public:
+	bool Load(const mjModel *, mjData *) override
+	{
+		type_ = "mujoco_ros/TypeChangedDuringLoad";
+		return true;
+	}
+	void Reset() override {}
+};
+
+class RosInitializationEnvironment final : public ::testing::Environment
+{
+public:
+	void SetUp() override
+	{
+		int argc          = 1;
+		char executable[] = "ros1_plugin_adapter_test";
+		char *argv[]      = { executable, nullptr };
+		ros::init(argc, argv, executable, ros::init_options::NoSigintHandler);
+	}
+
+	void TearDown() override
+	{
+		if (ros::isStarted()) {
+			ros::shutdown();
 		}
 	}
-}
+};
 
-inline void compare_qpos(mjData *d, int qpos_adr_int, const std::string &joint_name, const std::vector<double> &values,
-                         const std::vector<double> &tolerances = {})
-{
-	compare_array("qpos", d->qpos + static_cast<uint>(qpos_adr_int), joint_name, values, tolerances);
-}
+} // namespace
 
-inline void compare_qvel(mjData *d, int dof_adr_int, const std::string &joint_name, const std::vector<double> &values,
-                         const std::vector<double> &tolerances = {})
+testing::Environment *const ros_initialization_environment =
+    testing::AddGlobalTestEnvironment(new RosInitializationEnvironment);
+
+TEST(RosPluginAdapter, TypeRemainsStableAcrossPluginLoad)
 {
-	compare_array("qvel", d->qvel + static_cast<uint>(dof_adr_int), joint_name, values, tolerances);
+	constexpr char kConfiguredType[] = "mujoco_ros/LifetimeTestPlugin";
+	constexpr char kTypeAfterLoad[]  = "mujoco_ros/TypeChangedDuringLoad";
+
+	XmlRpc::XmlRpcValue config;
+	config["type"] = kConfiguredType;
+	auto plugin    = std::make_unique<LifetimeTestPlugin>();
+	plugin->Init(config, "~", nullptr);
+	mujoco_ros::plugin_utils::RosPluginAdapter adapter(std::move(plugin));
+
+	std::string error;
+	ASSERT_TRUE(adapter.Load(nullptr, nullptr, error));
+	EXPECT_TRUE(error.empty());
+
+	EXPECT_EQ(adapter.Statistics().type, kTypeAfterLoad);
+	EXPECT_EQ(adapter.Type(), kConfiguredType);
 }
