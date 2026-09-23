@@ -1,0 +1,5 @@
+<robot name="invalid_velocity"><link name="base"/><link name="link"/>
+  <joint name="joint_1" type="revolute"><parent link="base"/><child link="link"/><axis xyz="0 0 1"/>
+    <limit lower="-1" upper="1" effort="1" velocity="0"/></joint>
+  <ros2_control name="system" type="system"><joint name="joint_1"><command_interface name="velocity"/></joint></ros2_control>
+</robot>

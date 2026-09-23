@@ -21,9 +21,18 @@
   <arg name="mujoco_plugin_config" default=""      doc="Optionally provide the path to a yaml with plugin configurations to load." />
   <arg name="mujoco_threads"       default="1"     doc="Deprecated. Number of threads to use in the MuJoCo simulation. Values greater than 1 can increase CPU usage because MuJoCo worker threads busy-wait." />
 
-  <arg name="modelfile"            default="$(find mujoco_ros)/assets/pendulum_world.xml"        doc="MuJoCo xml file to load. Should define robot model and world." />
+  <arg name="modelfile"            default="" doc="Full MuJoCo model when description bundle unused. With urdf_source set: world MJCF to compose into (empty = built-in default_world)." />
   <arg name="initial_joint_states" default="$(find mujoco_ros)/config/initial_joint_states.yaml" doc="Provide a filepath containing initial joint states to load." />
   <arg name="console_config_file"  default="$(find mujoco_ros)/config/rosconsole.config"         doc="Path to ROS console config used when verbose logging is active." />
+
+  <!-- Description bundle. Activation requires urdf_source; SRDF args are optional. -->
+  <arg name="urdf_source"          default="" doc="URDF source kind: 'file' or 'topic'. Empty skips the description bundle." />
+  <arg name="urdf_path"            default="" doc="URDF file path when urdf_source:=file." />
+  <arg name="urdf_topic"           default="" doc="Topic publishing URDF as a latched std_msgs/String when urdf_source:=topic. Server defaults to robot_description if unset." />
+  <arg name="srdf_source"          default="" doc="Optional. SRDF source kind: 'file' or 'topic'." />
+  <arg name="srdf_path"            default="" doc="SRDF file path when srdf_source:=file." />
+  <arg name="srdf_topic"           default="" doc="Topic publishing SRDF as a latched std_msgs/String when srdf_source:=topic. Server defaults to robot_description_semantic if unset." />
+  <arg name="convert_ascii_stl"    default="" doc="Optional. 'true'/'false' for description.convert_ascii_stl (ASCII STL → temp binary cache). Empty = false (OBJ fallback)." />
 
   <arg name="use_sim_time" />
 
@@ -55,6 +64,13 @@
     <param name="wait_for_xml"         value="$(arg wait_for_xml)" />
     <param name="realtime"             value="$(arg realtime)" />
     <param name="num_mj_threads"       value="$(arg mujoco_threads)" />
+    <param if="$(eval arg('urdf_source') != '')" name="urdf.source" value="$(arg urdf_source)" />
+    <param if="$(eval arg('urdf_path') != '')" name="urdf.path" value="$(arg urdf_path)" />
+    <param if="$(eval arg('urdf_topic') != '')" name="urdf.topic" value="$(arg urdf_topic)" />
+    <param if="$(eval arg('srdf_source') != '')" name="srdf.source" value="$(arg srdf_source)" />
+    <param if="$(eval arg('srdf_path') != '')" name="srdf.path" value="$(arg srdf_path)" />
+    <param if="$(eval arg('srdf_topic') != '')" name="srdf.topic" value="$(arg srdf_topic)" />
+    <param if="$(eval arg('convert_ascii_stl') != '')" name="description.convert_ascii_stl" value="$(arg convert_ascii_stl)" />
     <rosparam file="$(arg initial_joint_states)" subst_value="true" />
   </node>
 
