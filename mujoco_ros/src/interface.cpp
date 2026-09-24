@@ -40,6 +40,9 @@
 #include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros/array_safety.h>
 
+#include <cmath>
+#include <stdexcept>
+
 #if MJR_ROS_VERSION == ROS_1
 #include <mujoco_ros/ros_one/plugin_utils.hpp>
 #else // MJR_ROS_VERSION == ROS_2
@@ -415,6 +418,120 @@ bool MujocoEnv::SetBodyState(const std::string &body_name, mjtNum *pose, mjtNum 
 			mju_copy(data_->qvel + jnt_dofadr, twist, 6);
 		}
 	}
+	return true;
+}
+
+bool MujocoEnv::SetBodyInertialProperties(const std::string &body_name, mjtNum mass, const mjtNum *ipos,
+                                          const mjtNum *principal_inertia, const mjtNum *iquat,
+                                          const std::string &admin_hash, char *status_message, const int status_sz)
+{
+	std::string message = "";
+	MJR_DEBUG("Setting body inertial properties requested");
+
+	if (status_message != nullptr && status_sz < 0) {
+		message = "Status buffer size must be non-negative";
+		MJR_ERROR_STREAM(message);
+		return false;
+	}
+
+	auto copy_status = [&](const std::string &msg) {
+		if (status_message != nullptr && status_sz > 0) {
+			std::strncpy(status_message, msg.c_str(), static_cast<std::size_t>(status_sz));
+		}
+	};
+
+	if (!VerifyAdminHash(admin_hash)) {
+		message = "Unauthorized body inertial properties request detected. Ignoring request";
+		MJR_ERROR_STREAM(message);
+		copy_status(message);
+		return false;
+	}
+
+	if (body_name.empty()) {
+		message = "Body name is empty. Cannot set body inertial properties";
+		MJR_ERROR_STREAM(message);
+		copy_status(message);
+		return false;
+	}
+
+	if (ipos == nullptr || principal_inertia == nullptr || iquat == nullptr) {
+		message = "Body inertial property pointers must not be null";
+		MJR_ERROR_STREAM(message);
+		copy_status(message);
+		return false;
+	}
+
+	if (!std::isfinite(mass) || mass <= 0.0) {
+		message = "Body mass must be finite and positive";
+		MJR_ERROR_STREAM(message);
+		copy_status(message);
+		return false;
+	}
+
+	for (int i = 0; i < 3; ++i) {
+		if (!std::isfinite(ipos[i])) {
+			message = "Body center of mass must be finite";
+			MJR_ERROR_STREAM(message);
+			copy_status(message);
+			return false;
+		}
+		if (!std::isfinite(principal_inertia[i]) || principal_inertia[i] <= 0.0) {
+			message = "Body principal inertia must be finite and positive";
+			MJR_ERROR_STREAM(message);
+			copy_status(message);
+			return false;
+		}
+	}
+
+	for (int i = 0; i < 4; ++i) {
+		if (!std::isfinite(iquat[i])) {
+			message = "Body inertial quaternion must be finite";
+			MJR_ERROR_STREAM(message);
+			copy_status(message);
+			return false;
+		}
+	}
+
+	mjtNum quat_norm_sq = 0.0;
+	for (int i = 0; i < 4; ++i) {
+		quat_norm_sq += iquat[i] * iquat[i];
+	}
+	const mjtNum quat_norm = std::sqrt(quat_norm_sq);
+	if (!std::isfinite(quat_norm) || std::abs(quat_norm - 1.0) > 1e-6) {
+		message = "Body inertial quaternion must be normalized";
+		MJR_ERROR_STREAM(message);
+		copy_status(message);
+		return false;
+	}
+
+	RecursiveLock sim_lock(physics_thread_mutex_);
+
+	const int body_id = mj_name2id(model_.get(), mjOBJ_BODY, body_name.c_str());
+	if (body_id < 1) {
+		message = "Could not find body with name " + body_name;
+		MJR_ERROR_STREAM(message);
+		copy_status(message);
+		return false;
+	}
+	MJR_DEBUG_STREAM("\tSetting inertial properties of body '" << body_name << "'");
+
+	MutexLock render_lock(offscreen_.render_mutex);
+	mj_markStack(data_.get());
+	mjtNum *qpos_tmp = mj_stackAllocNum(data_.get(), model_->nq);
+	mju_copy(qpos_tmp, data_->qpos, model_->nq);
+	MJR_DEBUG("Copied current qpos state");
+
+	model_->body_mass[body_id] = mass;
+	mju_copy(model_->body_ipos + body_id * 3, ipos, 3);
+	mju_copy(model_->body_inertia + body_id * 3, principal_inertia, 3);
+	mju_copy(model_->body_iquat + body_id * 4, iquat, 4);
+
+	mj_setConst(model_.get(), data_.get());
+	MJR_DEBUG("Reset constants because of body inertial property change");
+	mju_copy(data_->qpos, qpos_tmp, model_->nq);
+	MJR_DEBUG("Copied qpos state back to data");
+	mj_freeStack(data_.get());
+
 	return true;
 }
 

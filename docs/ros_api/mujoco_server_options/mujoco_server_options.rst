@@ -36,10 +36,81 @@ Runtime Arguments
   Deprecated compatibility option. It is treated as a no-render request when set and should be replaced by ``no_render``.
 
 ``modelfile``
-  MuJoCo XML or MJB file to load. Defaults to ``$(find mujoco_ros)/assets/pendulum_world.xml``.
+  MuJoCo XML or MJB file. Defaults to empty (no implicit ``pendulum_world.xml``).
+
+  **Without a description bundle** (``urdf_source`` unset): ``modelfile`` is the
+  full model to load. An empty value starts an empty simulation with a warning;
+  set a path such as ``$(find mujoco_ros)/assets/pendulum_world.xml`` for a
+  complete robot-and-world model.
+
+  **With a description bundle** (``urdf_source`` set): ``modelfile`` is the
+  world MJCF to compose the URDF robot into. An empty value uses the built-in
+  ``default_world.xml`` (checker ground plane, light, spawn frame). SRDF and
+  Extended Params launch args remain optional.
 
 ``wait_for_xml``
   Waits for model XML on the parameter server instead of immediately loading a file path. Defaults to ``false``.
+
+Description Bundle Arguments
+----------------------------
+
+Optional overrides that load the model from a URDF description bundle instead
+of a standalone ``modelfile``. The bundle activates when ``urdf_source`` is set;
+SRDF args are optional (URDF-only bundles are valid). When active, the server
+reads bundle params (``urdf.*`` / ``srdf.*``),
+converts the URDF (and optional SRDF / Extended Params), and composes the robot
+into the world given by ``modelfile`` (empty ``modelfile`` → built-in
+``default_world.xml``).
+
+``urdf_source``
+  URDF source kind: ``file`` or ``topic``. Empty skips the description bundle.
+
+``urdf_path``
+  URDF file path when ``urdf_source:=file``.
+
+``urdf_topic``
+  Topic publishing the URDF as a latched ``std_msgs/String`` when
+  ``urdf_source:=topic`` (e.g. ``/robot_description``).
+  The publisher must use ``transient_local`` durability (ROS 2) / ``latch=true``
+  (ROS 1) -- a non-latched publisher is not readable through this path. If
+  unset, the server defaults to ``robot_description``.
+
+``srdf_source``
+  Optional. SRDF source kind: ``file`` or ``topic``.
+
+``srdf_path``
+  SRDF file path when ``srdf_source:=file``.
+
+``srdf_topic``
+  Topic publishing the SRDF as a latched ``std_msgs/String`` when
+  ``srdf_source:=topic``. Same latching requirement as ``urdf_topic``. If
+  unset, the server defaults to ``robot_description_semantic``.
+
+``convert_ascii_stl``
+  Optional. Sets ``description.convert_ascii_stl`` to ``true`` or ``false``.
+  When ``true``, ASCII visual/collision STLs are converted to binary under
+  ``/tmp/mujoco_ros_stl_cache/`` (package files are never modified). When
+  unset/empty (default), conversion is off and ASCII STLs use the collision
+  OBJ fallback (``<stem>.obj`` / ``<stem>_convex_hull.obj``) or fail with a
+  hint naming this option.
+
+Example (URDF-only, default world)::
+
+   roslaunch mujoco_ros launch_server.launch use_sim_time:=true \\
+     urdf_source:=file urdf_path:=/path/to/robot.urdf
+
+Example (URDF + SRDF + custom world)::
+
+   roslaunch mujoco_ros launch_server.launch use_sim_time:=true \\
+     urdf_source:=file urdf_path:=/path/to/robot.urdf \\
+     srdf_source:=file srdf_path:=/path/to/robot.srdf \\
+     modelfile:=/path/to/my_world.xml
+
+Example (ASCII STL convert on)::
+
+   roslaunch mujoco_ros launch_server.launch use_sim_time:=true \\
+     urdf_source:=file urdf_path:=/path/to/robot.urdf \\
+     convert_ascii_stl:=true
 
 ``realtime``
   Desired real-time factor. Values in ``(0, 1]`` cap the simulation speed; ``-1`` runs as fast as possible. If unset, the model's MuJoCo realtime value is used.
@@ -94,6 +165,13 @@ Developer Arguments
 ROS 2 Launch Differences
 ------------------------
 
-The ``hybrid-devel`` branch provides a ROS 2 launch file at ``mujoco_ros/launch/ros2/launch/launch_server.launch.xml``.
-It mirrors the ROS 1 arguments but uses ROS 2 launch syntax, ``$(find-pkg-share ...)`` paths, ``exec=`` instead of ``type=``, ROS 2 log-level arguments, and ``<param from=...>`` for YAML loading.
-It also adds ``gdb_term_cmd`` for opening gdb in a terminal.
+The ``hybrid-devel`` branch provides ROS 2 launch files at:
+
+* ``mujoco_ros/launch/ros2/launch/launch_server.launch.xml``
+* ``mujoco_ros/launch/ros2/launch/launch_server.launch.py``
+
+Both mirror the ROS 1 arguments (including the description-bundle overrides)
+but use ROS 2 launch syntax, ``$(find-pkg-share ...)`` / ``get_package_share_directory``
+paths, ``exec=`` instead of ``type=``, ROS 2 log-level arguments, and
+``<param from=...>`` / ``ParameterFile`` for YAML loading.
+They also add ``gdb_term_cmd`` for opening gdb in a terminal.

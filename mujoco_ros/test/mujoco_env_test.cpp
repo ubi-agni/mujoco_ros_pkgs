@@ -2,6 +2,7 @@
  * Software License Agreement (BSD 3-Clause License)
  *
  *  Copyright (c) 2022-2026, Bielefeld University
+ *  Copyright (c) 2026, Neura Robotics
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -14,7 +15,7 @@
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *   * Neither the name of Bielefeld University nor the names of its
+ *   * Neither the name of Bielefeld University nor Neura Robotics nor the names of their
  *     contributors may be used to endorse or promote products derived
  *     from this software without specific prior written permission.
  *
@@ -42,6 +43,8 @@
 #include <mujoco_ros/common_types.hpp>
 #include <mujoco_ros/simulation_control_state.hpp>
 #include <mujoco_ros/util.hpp>
+
+#include <limits>
 
 #if MJR_ROS_VERSION == ROS_1
 #include <ros/ros.h>
@@ -753,4 +756,204 @@ TEST_F(BaseEnvFixture, InitModelFromInvalidQueuedBuffer)
 	ASSERT_FALSE(env_ptr->sim_state_.model_valid);
 
 	env_ptr->shutdown();
+}
+
+TEST_F(BaseEnvFixture, DestructorClearsGlobalInstancePointer)
+{
+	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	ASSERT_EQ(mujoco_ros::MujocoEnv::instance, env_ptr.get());
+	env_ptr->shutdown();
+	env_ptr.reset();
+	EXPECT_EQ(mujoco_ros::MujocoEnv::instance, nullptr)
+	    << "Destroying a MujocoEnv must clear the global instance pointer (and the mjcb_control/mjcb_passive "
+	       "callbacks that read it), otherwise a later mj_step/mj_compile use-after-frees the destroyed env.";
+}
+
+TEST_F(BaseEnvFixture, FromDescriptionProducesARunningEnv)
+{
+	env_ptr.reset(); // BaseEnvFixture's TearDown calls env_ptr->shutdown(); from_description returns a plain
+	                 // MujocoEnv, not a MujocoEnvTestWrapper, so manage its lifetime directly in this test.
+	auto env = mujoco_ros::MujocoEnv::from_description(std::string(TEST_RESOURCES_DIR) + "/two_link_robot.urdf",
+	                                                   std::string(TEST_RESOURCES_DIR) + "/two_link_robot.srdf");
+	ASSERT_NE(env, nullptr);
+	EXPECT_TRUE(env->sim_state_.model_valid);
+}
+
+TEST_F(BaseEnvFixture, FromDescriptionThrowsOnMissingUrdf)
+{
+	env_ptr.reset();
+	EXPECT_THROW(mujoco_ros::MujocoEnv::from_description(std::string(TEST_RESOURCES_DIR) + "/does_not_exist.urdf",
+	                                                     std::string(TEST_RESOURCES_DIR) + "/two_link_robot.srdf"),
+	             std::runtime_error);
+}
+
+namespace {
+
+constexpr mjtNum kValidMass                = 0.5;
+constexpr mjtNum kValidIpos[3]             = { 0.01, 0.02, 0.03 };
+constexpr mjtNum kValidPrincipalInertia[3] = { 1.0e-4, 2.0e-4, 3.0e-4 };
+constexpr mjtNum kValidIquat[4]            = { 0.7071067811865476, 0.7071067811865476, 0.0, 0.0 };
+
+void SetBodyBallQposOffset(MujocoEnvTestWrapper &env)
+{
+	const int body_id     = mj_name2id(env.getModelPtr(), mjOBJ_BODY, "body_ball");
+	const int jnt_adr     = env.getModelPtr()->body_jntadr[body_id];
+	const int jnt_qposadr = env.getModelPtr()->jnt_qposadr[jnt_adr];
+	mjtNum pose[7]        = { 1.1, 0.2, 0.3, 1.0, 0.0, 0.0, 0.0 };
+	mju_normalize4(pose + 3);
+	mju_copy(env.getDataPtr()->qpos + jnt_qposadr, pose, 7);
+}
+
+} // namespace
+
+TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesUpdatesModelAndPreservesQpos)
+{
+	mjModel *m        = env_ptr->getModelPtr();
+	mjData *d         = env_ptr->getDataPtr();
+	const int body_id = mj_name2id(m, mjOBJ_BODY, "immovable");
+	ASSERT_GE(body_id, 1);
+
+	SetBodyBallQposOffset(*env_ptr);
+	std::vector<mjtNum> qpos_before(m->nq);
+	mju_copy(qpos_before.data(), d->qpos, m->nq);
+
+	EXPECT_TRUE(
+	    env_ptr->SetBodyInertialProperties("immovable", kValidMass, kValidIpos, kValidPrincipalInertia, kValidIquat));
+
+	EXPECT_DOUBLE_EQ(m->body_mass[body_id], kValidMass);
+	EXPECT_DOUBLE_EQ(m->body_ipos[body_id * 3 + 0], kValidIpos[0]);
+	EXPECT_DOUBLE_EQ(m->body_ipos[body_id * 3 + 1], kValidIpos[1]);
+	EXPECT_DOUBLE_EQ(m->body_ipos[body_id * 3 + 2], kValidIpos[2]);
+	EXPECT_DOUBLE_EQ(m->body_inertia[body_id * 3 + 0], kValidPrincipalInertia[0]);
+	EXPECT_DOUBLE_EQ(m->body_inertia[body_id * 3 + 1], kValidPrincipalInertia[1]);
+	EXPECT_DOUBLE_EQ(m->body_inertia[body_id * 3 + 2], kValidPrincipalInertia[2]);
+	EXPECT_DOUBLE_EQ(m->body_iquat[body_id * 4 + 0], kValidIquat[0]);
+	EXPECT_DOUBLE_EQ(m->body_iquat[body_id * 4 + 1], kValidIquat[1]);
+	EXPECT_DOUBLE_EQ(m->body_iquat[body_id * 4 + 2], kValidIquat[2]);
+	EXPECT_DOUBLE_EQ(m->body_iquat[body_id * 4 + 3], kValidIquat[3]);
+	for (int i = 0; i < m->nq; ++i) {
+		EXPECT_DOUBLE_EQ(d->qpos[i], qpos_before[i]) << "qpos[" << i << "] changed after mj_setConst";
+	}
+}
+
+TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesRejectsMissingBody)
+{
+	char status[MujocoEnv::kErrorLength] = {};
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties("no_such_body", kValidMass, kValidIpos, kValidPrincipalInertia,
+	                                                kValidIquat, "", status, sizeof(status)));
+	EXPECT_NE(std::string(status).find("no_such_body"), std::string::npos);
+}
+
+TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesRejectsEmptyBodyName)
+{
+	char status[MujocoEnv::kErrorLength] = {};
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties("", kValidMass, kValidIpos, kValidPrincipalInertia, kValidIquat, "",
+	                                                status, sizeof(status)));
+	EXPECT_NE(std::string(status).find("empty"), std::string::npos);
+}
+
+TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesRejectsNullPointers)
+{
+	char status[MujocoEnv::kErrorLength] = {};
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties("immovable", kValidMass, nullptr, kValidPrincipalInertia,
+	                                                kValidIquat, "", status, sizeof(status)));
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties("immovable", kValidMass, kValidIpos, nullptr, kValidIquat, "",
+	                                                status, sizeof(status)));
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties("immovable", kValidMass, kValidIpos, kValidPrincipalInertia, nullptr,
+	                                                "", status, sizeof(status)));
+}
+
+TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesRejectsNonFiniteMass)
+{
+	char status[MujocoEnv::kErrorLength] = {};
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties("immovable", std::numeric_limits<mjtNum>::infinity(), kValidIpos,
+	                                                kValidPrincipalInertia, kValidIquat, "", status, sizeof(status)));
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties("immovable", std::numeric_limits<mjtNum>::quiet_NaN(), kValidIpos,
+	                                                kValidPrincipalInertia, kValidIquat, "", status, sizeof(status)));
+}
+
+TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesRejectsNonPositiveMass)
+{
+	char status[MujocoEnv::kErrorLength] = {};
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties("immovable", 0.0, kValidIpos, kValidPrincipalInertia, kValidIquat,
+	                                                "", status, sizeof(status)));
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties("immovable", -1.0, kValidIpos, kValidPrincipalInertia, kValidIquat,
+	                                                "", status, sizeof(status)));
+}
+
+TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesRejectsNonFiniteCoM)
+{
+	char status[MujocoEnv::kErrorLength] = {};
+	const mjtNum bad_ipos[3]             = { std::numeric_limits<mjtNum>::quiet_NaN(), 0.0, 0.0 };
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties("immovable", kValidMass, bad_ipos, kValidPrincipalInertia,
+	                                                kValidIquat, "", status, sizeof(status)));
+}
+
+TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesRejectsInvalidInertia)
+{
+	char status[MujocoEnv::kErrorLength] = {};
+	const mjtNum zero_inertia[3]         = { 0.0, 1.0e-4, 1.0e-4 };
+	const mjtNum negative_inertia[3]     = { -1.0e-4, 1.0e-4, 1.0e-4 };
+	const mjtNum nan_inertia[3]          = { std::numeric_limits<mjtNum>::quiet_NaN(), 1.0e-4, 1.0e-4 };
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties("immovable", kValidMass, kValidIpos, zero_inertia, kValidIquat, "",
+	                                                status, sizeof(status)));
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties("immovable", kValidMass, kValidIpos, negative_inertia, kValidIquat,
+	                                                "", status, sizeof(status)));
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties("immovable", kValidMass, kValidIpos, nan_inertia, kValidIquat, "",
+	                                                status, sizeof(status)));
+}
+
+TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesRejectsNonNormalizedQuaternion)
+{
+	char status[MujocoEnv::kErrorLength] = {};
+	const mjtNum bad_quat[4]             = { 1.0, 1.0, 0.0, 0.0 };
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties("immovable", kValidMass, kValidIpos, kValidPrincipalInertia,
+	                                                bad_quat, "", status, sizeof(status)));
+}
+
+TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesRejectsNonFiniteQuaternion)
+{
+	char status[MujocoEnv::kErrorLength] = {};
+	const mjtNum bad_quat[4]             = { 1.0, std::numeric_limits<mjtNum>::infinity(), 0.0, 0.0 };
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties("immovable", kValidMass, kValidIpos, kValidPrincipalInertia,
+	                                                bad_quat, "", status, sizeof(status)));
+}
+
+TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesRejectsUnauthorizedHashInEvalMode)
+{
+	env_ptr->setEvalMode(true);
+	env_ptr->setAdminHash("required_hash");
+	char status[MujocoEnv::kErrorLength] = {};
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties("immovable", kValidMass, kValidIpos, kValidPrincipalInertia,
+	                                                kValidIquat, "wrong_hash", status, sizeof(status)));
+	EXPECT_NE(std::string(status).find("Unauthorized"), std::string::npos);
+}
+
+TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesRejectsNegativeStatusBufferSize)
+{
+	char status[MujocoEnv::kErrorLength] = {};
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties("immovable", kValidMass, kValidIpos, kValidPrincipalInertia,
+	                                                kValidIquat, "", status, -1));
+	EXPECT_EQ(status[0], '\0');
+}
+
+TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesResolvesBodyUnderPhysicsLock)
+{
+	mjModel *m        = env_ptr->getModelPtr();
+	const int body_id = mj_name2id(m, mjOBJ_BODY, "immovable");
+	ASSERT_GE(body_id, 1);
+
+	std::unique_lock<MujocoEnvMutex> physics_lock(*env_ptr->getMutexPtr());
+	EXPECT_TRUE(
+	    env_ptr->SetBodyInertialProperties("immovable", kValidMass, kValidIpos, kValidPrincipalInertia, kValidIquat));
+	EXPECT_DOUBLE_EQ(m->body_mass[body_id], kValidMass);
+}
+
+TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesRejectsMissingBodyUnderPhysicsLock)
+{
+	char status[MujocoEnv::kErrorLength] = {};
+	std::unique_lock<MujocoEnvMutex> physics_lock(*env_ptr->getMutexPtr());
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties("no_such_body", kValidMass, kValidIpos, kValidPrincipalInertia,
+	                                                kValidIquat, "", status, sizeof(status)));
+	EXPECT_NE(std::string(status).find("no_such_body"), std::string::npos);
 }

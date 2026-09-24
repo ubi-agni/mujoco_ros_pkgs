@@ -35,6 +35,7 @@ if (ROS_VERSION EQUAL "1")
   # is used, also find other catkin packages
   find_package(catkin REQUIRED COMPONENTS
       roscpp
+      roslib
       actionlib
       pluginlib
       mujoco_ros_msgs
@@ -61,9 +62,11 @@ if (ROS_VERSION EQUAL "1")
 
   # Find MuJoCo
   find_package(mujoco 3.3.5 REQUIRED)
+  find_package(tinyxml2 REQUIRED)
 else()
   find_package(ament_cmake REQUIRED)
   find_package(ament_cmake_python REQUIRED)
+  find_package(ament_index_cpp REQUIRED)
   find_package(rclcpp REQUIRED)
   find_package(rclcpp_lifecycle REQUIRED)
 
@@ -98,6 +101,7 @@ else()
   find_package(lifecycle_msgs REQUIRED)
   find_package(sensor_msgs REQUIRED)
   find_package(std_srvs REQUIRED)
+  find_package(tinyxml2 REQUIRED)
 
   include(InstallMujocoToWorkspace)
 
@@ -165,6 +169,7 @@ if (ROS_VERSION EQUAL "1")
   catkin_package(
     CATKIN_DEPENDS
       roscpp
+      roslib
       actionlib
       pluginlib
       mujoco_ros_msgs
@@ -289,11 +294,13 @@ if (ROS_VERSION EQUAL "1")
     ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   )
 
-  install(FILES launch/launch_server.launch
+  install(FILES
+    launch/launch_server.launch
+    launch/simple_visual_robot.launch
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
   )
 
-  install(DIRECTORY config assets
+  install(DIRECTORY config assets examples
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
   )
 
@@ -373,7 +380,7 @@ else()
     DESTINATION include/${PROJECT_NAME}
   )
 
-  install(DIRECTORY launch/ros2/launch config assets
+  install(DIRECTORY launch/ros2/launch config assets examples
     DESTINATION share/${PROJECT_NAME}
   )
 
