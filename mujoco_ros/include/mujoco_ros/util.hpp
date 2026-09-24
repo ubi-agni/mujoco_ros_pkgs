@@ -1,5 +1,5 @@
 /*********************************************************************
- * Software License Agreement (BSD License)
+ * Software License Agreement (BSD 3-Clause License)
  *
  *  Copyright (c) 2022-2026, Bielefeld University
  *  All rights reserved.
