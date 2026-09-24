@@ -369,13 +369,12 @@ to blocking ``viewer.launch(self)`` and ``active=False`` to
 Known limitations
 ~~~~~~~~~~~~~~~~~
 
-Passive GLFW runs on a dedicated non-process-main viewer thread (ADR-0026).
+Passive GLFW runs on a dedicated non-process-main viewer thread.
 This follows MuJoCo's passive-viewer shape but may be platform- or driver-sensitive
 on some systems.
 
-Hybrid-NVIDIA laptop frozen-frame behavior remains a post-implementation manual
-verification item, not a guaranteed v1 fix. Cooperative ``pump()`` and a
-separate-process GUI remain future options.
+Hybrid-NVIDIA laptop frozen-frame behavior is not guaranteed on all drivers.
+Cooperative ``pump()`` and a separate-process GUI remain future options.
 
 Render failures and capacity limits
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -412,7 +411,6 @@ Current Limitations
 The core plugin packages currently provide specialized wrappers for sensors, laser, mocap, and control when their Python packages are importable.
 The current port intentionally skips direct pixel rendering and MoveIt helpers.
 Cooperative viewer ``pump()`` and a separate-process GUI are not implemented yet.
-Passive GLFW runs on a dedicated non-process-main viewer thread (ADR-0026); this
+Passive GLFW runs on a dedicated non-process-main viewer thread; this
 follows MuJoCo's passive-viewer shape but may be platform- or driver-sensitive.
-Hybrid-NVIDIA laptop frozen-frame behavior is tracked separately and is not
-guaranteed fixed in v1.
+Hybrid-NVIDIA laptop frozen-frame behavior is not guaranteed on all drivers.

@@ -282,13 +282,12 @@ blocking `viewer.launch(self)` and `active=False` to
 
 #### Known limitations
 
-Passive GLFW runs on a dedicated non-process-main viewer thread (see ADR-0026).
+Passive GLFW runs on a dedicated non-process-main viewer thread.
 This follows MuJoCo's passive-viewer shape but may be platform- or driver-sensitive
 on some systems.
 
-Hybrid-NVIDIA laptop frozen-frame behavior remains a post-implementation manual
-verification item, not a guaranteed v1 fix. Cooperative `pump()` and a
-separate-process GUI remain future options.
+Hybrid-NVIDIA laptop frozen-frame behavior is not guaranteed on all drivers.
+Cooperative `pump()` and a separate-process GUI remain future options.
 
 ## Runtime Options
 
@@ -470,7 +469,6 @@ State changes are performed through explicit methods such as `step()`,
 
 The current port intentionally skips MoveIt helpers and direct pixel rendering.
 Cooperative viewer `pump()` and a separate-process GUI are not implemented yet.
-Passive GLFW runs on a dedicated non-process-main viewer thread (ADR-0026); this
+Passive GLFW runs on a dedicated non-process-main viewer thread; this
 follows MuJoCo's passive-viewer shape but may be platform- or driver-sensitive.
-Hybrid-NVIDIA laptop frozen-frame behavior is tracked separately and is not
-guaranteed fixed in v1.
+Hybrid-NVIDIA laptop frozen-frame behavior is not guaranteed on all drivers.

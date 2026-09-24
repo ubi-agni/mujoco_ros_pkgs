@@ -144,9 +144,8 @@ applies it to the joint's **child link** geoms
   geoms keep MuJoCo's default ``1 0.005 0.0001``.
 
 This is distinct from the ``friction_parameters`` Extended Params tag (joint
-dynamics), which core never parses (ADR 0015). The runtime
-``SetGeomProperties`` service still overrides these values, since it writes
-after load.
+dynamics), which core never parses. The runtime ``SetGeomProperties`` service
+still overrides these values, since it writes after load.
 
 Actuator generation
 --------------------

@@ -1,6 +1,9 @@
 <a name="unreleased"></a>
 ## Unreleased
 
+<a name="2.0.0"></a>
+## [2.0.0] - 2026-09-24
+
 ### Added
 * [major] Load robot descriptions from URDF/SRDF bundles into MuJoCo worlds through ROS 1, ROS 2, and Python APIs. URDF-only bundles are supported, with optional world MJCF composition. Python: `MujocoEnv.from_description_topic()` loads from latched ROS topics, mirroring `from_description()`'s file-path API.
 * [minor] Resolve relative, file://, and package:// mesh URIs through the MuJoCo VFS without modifying source descriptions. Add ASCII STL OBJ fallback and optional cached conversion.
@@ -13,6 +16,7 @@
 * [minor] Configurable `render_backpressure_policy` (`drop` default, opt-in `wait_for_slot`) for bounded frame-slot exhaustion.
 * [minor] Architecture and configuration docs for Runtime Options, RenderCore, Plugin Host, and offscreen frame leases.
 * [minor] Plugins and Python open an offscreen camera by name, change geom groups and visual flags, and borrow frame leases without subscribing to image topics.
+* [major] Python interactive viewer module (`mujoco_ros.viewer`): blocking `launch()` and passive `launch_passive()` with optional auto-sync, generation-checked handles, and deprecated `MujocoEnv.attach_viewer()` mapping.
 
 ### Changed
 * [major] Simulation control commands now route through SimulationControlState; remove legacy lifecycle/control fields and settings synchronization from EnvSettings (breaking). Use MujocoEnv or Python control APIs.
@@ -33,10 +37,13 @@
 
 ### Fixed
 * [patch] Fixed Python viewer rendering on hybrid-GPU systems by preparing the GLFW viewer context before offscreen rendering initializes.
+* [patch] Apply the ROS `realtime` factor on every completed model load (`LoadWithModelAndData`), not only during `InitModelFromQueue`, so reloads and non-queue load paths no longer keep a stale speed index.
+* [patch] Keep the process EGL display across offscreen backend teardown (do not `eglTerminate`) and skip `glfwTerminate` when a visible GLFW viewer shares the process with an EGL RenderCore, so later EGL initialize/reload does not fail.
 * [patch] Fixed equality constraint array services returning strings with embedded null characters when individual requests fail.
 * [patch] Fixed ROS 2 runtime parameter sync reapplying stale pause state and causing flaky reset/step action tests.
 * [patch] Clear process-wide MuJoCo control/passive callbacks when their owning environment is destroyed, preventing dangling-instance crashes on later loads or steps.
 * [patch] Refcount the shared pluginlib ClassLoader so overlapping MujocoEnv lifetimes cannot destroy it while plugins are still loaded (fixes double-free crashes under rapid construct/destroy).
+* [patch] Fixed `mujoco_env_test` suite hang: test fixture now uses a bounded SingleThreadedExecutor poll loop with an explicit shutdown flag so constructor exception cleanup cannot deadlock on `join()`.
 
 ### Known limitations
 * GLB conversion still has unresolved scaling differences across some robot descriptions. Textured visuals are stable for the tested descriptions; cross-description scale normalization remains follow-up work.

@@ -6,7 +6,7 @@ The project uses a hybrid ROS 1 / ROS 2 layout where shared MuJoCo behavior
 lives in one implementation and ROS-version-specific code is isolated at the
 boundary.
 
-The 1.0.0 release line supports ROS 1 Noetic/One-style builds and ROS 2
+The 2.0.0 release line supports ROS 1 Noetic/One-style builds and ROS 2
 Humble-style builds from the same repository.
 
 ### Continuous Integration
