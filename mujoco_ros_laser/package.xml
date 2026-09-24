@@ -2,12 +2,12 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>mujoco_ros_laser</name>
-  <version>1.0.0</version>
+  <version>2.0.0</version>
   <description>MuJoCo ROS Laser Plugin</description>
 
   <maintainer email="dleins@techfak.uni-bielefeld.de">David Leins</maintainer>
   <author>David P. Leins</author>
-  <license>BSD</license>
+  <license>BSD 3-Clause</license>
 
   <buildtool_depend condition="$ROS_VERSION == 1">catkin</buildtool_depend>
   <buildtool_depend condition="$ROS_VERSION == 2">ament_cmake</buildtool_depend>

@@ -113,7 +113,7 @@ Example (ASCII STL convert on)::
      convert_ascii_stl:=true
 
 ``realtime``
-  Desired real-time factor. Values in ``(0, 1]`` cap the simulation speed; ``-1`` runs as fast as possible. If unset, the model's MuJoCo realtime value is used.
+  Desired real-time factor. Values in ``(0, 1]`` cap the simulation speed; ``-1`` runs as fast as possible. If unset, the model's MuJoCo realtime value is used. The server reapplies this mapping on every completed model load (including reloads), not only on the first queued init.
 
 ``num_sim_steps``
   Automatically exits after this many MuJoCo simulation steps. ``-1`` disables the limit.

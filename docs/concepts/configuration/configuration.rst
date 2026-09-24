@@ -123,6 +123,12 @@ then OSMesa. With ``WITH_GUI=OFF``, when neither EGL nor OSMesa is available
 and ``DISABLE`` is not selected, offscreen rendering is disabled rather than
 silently falling back to another backend.
 
+When the offscreen backend is EGL, teardown destroys the EGL context and
+surface but does not call ``eglTerminate`` on the process display, so later
+initialize or reload can reuse it. When a visible GLFW viewer shares the
+process with an EGL RenderCore, the last GLFW library release also skips
+``glfwTerminate`` so viewer shutdown does not poison EGL GL state.
+
 The Frame Boundary owns a bounded pool of frame slots and byte storage. Model
 load and camera reconfiguration compute required capacity from camera layout and
 Python history depth. When configured demand exceeds the RenderCore budget,
