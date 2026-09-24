@@ -1,6 +1,9 @@
 <a name="unreleased"></a>
 ## Unreleased
 
+<a name="2.0.0"></a>
+## [2.0.0] - 2026-09-24
+
 ### Added
 * [major] Load robot descriptions from URDF/SRDF bundles into MuJoCo worlds through ROS 1, ROS 2, and Python APIs. URDF-only bundles are supported, with optional world MJCF composition. Python: `MujocoEnv.from_description_topic()` loads from latched ROS topics, mirroring `from_description()`'s file-path API.
 * [minor] Resolve relative, file://, and package:// mesh URIs through the MuJoCo VFS without modifying source descriptions. Add ASCII STL OBJ fallback and optional cached conversion.
@@ -21,11 +24,21 @@
 * [major] Replace `RENDER_BACKEND` with separate `WITH_GUI` (ON|OFF) and `OFFSCREEN_BACKEND` (ANY|EGL|OSMESA|DISABLE); GLFW is not a supported offscreen backend (breaking).
 * [major] Offscreen RenderCore no longer creates or destroys GLFW worker contexts; visible GLFW remains GUI-owned only (breaking for GLFW-as-offscreen builds).
 
+> [!IMPORTANT]
+> #### Breaking Changes
+> * Simulation control no longer uses EnvSettings lifecycle/control fields or settings synchronization. Route control through SimulationControlState / MujocoEnv / Python control APIs.
+> * Extended Params accept only SRDF `<extended_params>`. Standalone XML, `extended_params_path` APIs/fields/ROS parameters, and legacy standalone fixtures are removed.
+> * Built-in Extended Params tags `actuator` and `gravcomp` are renamed to `mujoco_actuator` and `mujoco_gravcomp`. Unregistered custom tags warn and skip instead of entering core parsing.
+> * Description launch sources deliver URDF/SRDF via topics. `modelfile` is the optional composition world; empty selects the built-in default world.
+> * CMake `RENDER_BACKEND` is replaced by `WITH_GUI` (ON|OFF) and `OFFSCREEN_BACKEND` (ANY|EGL|OSMESA|DISABLE). GLFW is not a supported offscreen backend.
+> * Offscreen RenderCore no longer creates or destroys GLFW worker contexts; visible GLFW remains GUI-owned only (breaks GLFW-as-offscreen builds).
+
 ### Fixed
 * [patch] Fixed Python viewer rendering on hybrid-GPU systems by preparing the GLFW viewer context before offscreen rendering initializes.
 * [patch] Fixed equality constraint array services returning strings with embedded null characters when individual requests fail.
 * [patch] Fixed ROS 2 runtime parameter sync reapplying stale pause state and causing flaky reset/step action tests.
 * [patch] Clear process-wide MuJoCo control/passive callbacks when their owning environment is destroyed, preventing dangling-instance crashes on later loads or steps.
+* [patch] Fixed `mujoco_env_test` suite hang: test fixture now uses a bounded SingleThreadedExecutor poll loop with an explicit shutdown flag so constructor exception cleanup cannot deadlock on `join()`.
 
 ### Known limitations
 * GLB conversion still has unresolved scaling differences across some robot descriptions. Textured visuals are stable for the tested descriptions; cross-description scale normalization remains follow-up work.

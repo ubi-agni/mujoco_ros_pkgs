@@ -1,6 +1,9 @@
 include_guard()
 
-include(Utility)
+# generator expression doesn't provide regex match yet, so we manually list all Clang compiler ids
+set(MATCH_CLANG_COMPILER_ID_GENEX
+    $<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:ARMClang>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:FujitsuClang>,$<CXX_COMPILER_ID:ROCMClang>,$<CXX_COMPILER_ID:XLClang>>
+)
 
 function (config_debug_output)
   # we use directory property since we normally want ALL our diagnostic errors of the targets to be colored

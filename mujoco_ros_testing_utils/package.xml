@@ -2,11 +2,11 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>mujoco_ros_testing_utils</name>
-  <version>1.0.0</version>
+  <version>2.0.0</version>
   <description>Shared test utilities and assets for mujoco_ros packages.</description>
 
   <maintainer email="dleins@techfak.uni-bielefeld.de">David P. Leins</maintainer>
-  <license>BSD</license>
+  <license>BSD 3-Clause</license>
   <author>David P. Leins</author>
 
   <url type="repository">https://github.com/DavidPL1/mujoco_ros_pkgs</url>

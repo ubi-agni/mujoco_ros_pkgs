@@ -49,6 +49,7 @@
 
 #include <chrono>
 #include <fstream>
+#include <future>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -100,9 +101,24 @@ std::string ResourcePath(const std::string &name)
 	return std::string(TEST_RESOURCES_DIR) + "/" + name;
 }
 
+std::string DescriptionParam(const std::string &canonical_name)
+{
+#if MJR_ROS_VERSION == ROS_1
+	std::string ros_name = canonical_name;
+	for (char &character : ros_name) {
+		if (character == '.') {
+			character = '/';
+		}
+	}
+	return ros_name;
+#else // MJR_ROS_VERSION == ROS_2
+	return canonical_name;
+#endif
+}
+
 void SetBundleBaseModeFixed(testing::TestNodeHandle *node_handle)
 {
-	node_handle->setParam("description.base_mode", "fixed");
+	node_handle->setParam(DescriptionParam("description.base_mode"), "fixed");
 }
 
 int CountFreeJointsOnBody(const mjModel *model, const std::string &body_name)
@@ -132,11 +148,20 @@ public:
 	{
 		auto qos = rclcpp::QoS(1).transient_local().reliable();
 		pub_     = node_->create_publisher<std_msgs::msg::String>(topic_name, qos);
+		executor_.add_node(node_);
+		spin_thread_        = std::thread([this]() { executor_.spin(); });
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+		while (node_->get_publishers_info_by_topic(topic_name).empty()) {
+			if (std::chrono::steady_clock::now() >= deadline) {
+				executor_.cancel();
+				spin_thread_.join();
+				throw std::runtime_error("description publisher graph discovery timed out");
+			}
+			std::this_thread::yield();
+		}
 		std_msgs::msg::String msg;
 		msg.data = content;
 		pub_->publish(msg);
-		executor_.add_node(node_);
-		spin_thread_ = std::thread([this]() { executor_.spin(); });
 	}
 
 	~FakeDescriptionTopicPublisher()
@@ -166,10 +191,10 @@ private:
 
 TEST_F(BaseEnvFixture, FileSourcedBundleProducesARunningEnv)
 {
-	nh->setParam("urdf.source", "file");
-	nh->setParam("urdf.path", ResourcePath("two_link_robot.urdf"));
-	nh->setParam("srdf.source", "file");
-	nh->setParam("srdf.path", ResourcePath("two_link_robot.srdf"));
+	nh->setParam(DescriptionParam("urdf.source"), "file");
+	nh->setParam(DescriptionParam("urdf.path"), ResourcePath("two_link_robot.urdf"));
+	nh->setParam(DescriptionParam("srdf.source"), "file");
+	nh->setParam(DescriptionParam("srdf.path"), ResourcePath("two_link_robot.srdf"));
 	SetBundleBaseModeFixed(nh.get());
 
 	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
@@ -191,12 +216,8 @@ TEST_F(BaseEnvFixture, FileSourcedBundleProducesARunningEnv)
 	env_ptr->StartPhysicsLoop();
 	env_ptr->StartEventLoop();
 
-	float seconds = 0;
-	while (env_ptr->GetOperationalStatus() != 0 && seconds < 5) { // wait for queued bundle load or timeout
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
-		seconds += 0.005f;
-	}
-	EXPECT_LT(seconds, 5) << "File-sourced description bundle did not finish loading before timeout!";
+	EXPECT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(5)))
+	    << "description bundle did not become idle before timeout!";
 	EXPECT_TRUE(env_ptr->sim_state_.model_valid) << "Model loaded from the file-sourced bundle should be valid!";
 	ASSERT_TRUE(env_ptr->getModelPtr());
 	// Empty modelfile + active bundle -> composed into the default world.
@@ -208,47 +229,60 @@ TEST_F(BaseEnvFixture, FileSourcedBundleProducesARunningEnv)
 	env_ptr->shutdown();
 }
 
-TEST_F(BaseEnvFixture, CustomSrdfTagsDoNotBreakNormalConversionWithoutHandlers)
+#if MJR_ROS_VERSION == ROS_1
+TEST_F(BaseEnvFixture, RosOneSlashParametersMapToCanonicalBundleKeys)
 {
-	nh->setParam("urdf.source", "file");
-	nh->setParam("urdf.path", ResourcePath("two_link_robot.urdf"));
-	nh->setParam("srdf.source", "file");
-	nh->setParam("srdf.path", ResourcePath("srdf_extended_params_with_custom_tags.srdf"));
+	nh->setParam("urdf/source", "file");
+	nh->setParam("urdf/path", ResourcePath("two_link_robot.urdf"));
+	nh->setParam("srdf/source", "file");
+	nh->setParam("srdf/path", ResourcePath("two_link_robot.srdf"));
 	SetBundleBaseModeFixed(nh.get());
 
 	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 	env_ptr->StartPhysicsLoop();
 	env_ptr->StartEventLoop();
 
-	float seconds = 0;
-	while (env_ptr->GetOperationalStatus() != 0 && seconds < 5) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
-		seconds += 0.005f;
-	}
-	EXPECT_LT(seconds, 5);
+	ASSERT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(5)));
+	ASSERT_TRUE(env_ptr->sim_state_.model_valid);
+	ASSERT_NE(mj_name2id(env_ptr->getModelPtr(), mjOBJ_BODY, "base_link"), -1);
+	EXPECT_EQ(env_ptr->getFilename(), ResourcePath("two_link_robot.urdf"));
+	env_ptr->shutdown();
+}
+#endif
+
+TEST_F(BaseEnvFixture, CustomSrdfTagsDoNotBreakNormalConversionWithoutHandlers)
+{
+	nh->setParam(DescriptionParam("urdf.source"), "file");
+	nh->setParam(DescriptionParam("urdf.path"), ResourcePath("two_link_robot.urdf"));
+	nh->setParam(DescriptionParam("srdf.source"), "file");
+	nh->setParam(DescriptionParam("srdf.path"), ResourcePath("srdf_extended_params_with_custom_tags.srdf"));
+	SetBundleBaseModeFixed(nh.get());
+
+	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	env_ptr->StartPhysicsLoop();
+	env_ptr->StartEventLoop();
+
+	EXPECT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(5)))
+	    << "description bundle did not become idle before timeout!";
 	EXPECT_TRUE(env_ptr->sim_state_.model_valid);
 	env_ptr->shutdown();
 }
 
 TEST_F(BaseEnvFixture, SrdfActuatorOverrideAppliesThroughRosParamBundle)
 {
-	nh->setParam("urdf.source", "file");
-	nh->setParam("urdf.path", ResourcePath("ros2_control_two_link_robot.urdf"));
-	nh->setParam("srdf.source", "file");
-	nh->setParam("srdf.path", ResourcePath("srdf_extended_params_actuator_override.srdf"));
-	nh->setParam("description.generate_actuators", "true");
+	nh->setParam(DescriptionParam("urdf.source"), "file");
+	nh->setParam(DescriptionParam("urdf.path"), ResourcePath("ros2_control_two_link_robot.urdf"));
+	nh->setParam(DescriptionParam("srdf.source"), "file");
+	nh->setParam(DescriptionParam("srdf.path"), ResourcePath("srdf_extended_params_actuator_override.srdf"));
+	nh->setParam(DescriptionParam("description.generate_actuators"), "true");
 	SetBundleBaseModeFixed(nh.get());
 
 	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 	env_ptr->StartPhysicsLoop();
 	env_ptr->StartEventLoop();
 
-	float seconds = 0;
-	while (env_ptr->GetOperationalStatus() != 0 && seconds < 5) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
-		seconds += 0.005f;
-	}
-	EXPECT_LT(seconds, 5);
+	EXPECT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(5)))
+	    << "description bundle did not become idle before timeout!";
 	EXPECT_TRUE(env_ptr->sim_state_.model_valid);
 	ASSERT_TRUE(env_ptr->getModelPtr());
 	const int actuator = mj_name2id(env_ptr->getModelPtr(), mjOBJ_ACTUATOR, "joint_1_act_pos");
@@ -262,15 +296,15 @@ TEST_F(BaseEnvFixture, TopicSourcedUrdfProducesARunningEnv)
 	std::string urdf_content = ReadFileToString(ResourcePath("two_link_robot.urdf"));
 	ASSERT_FALSE(urdf_content.empty()) << "Failed to read fixture URDF from disk!";
 
-	std::string topic_name = "topic_sourced_urdf_test/robot_description";
+	std::string topic_name = "/topic_sourced_urdf_test/robot_description";
 #if MJR_ROS_VERSION == ROS_1
 	// ROS 1 topics are latched automatically for any subscriber that connects
 	// after the publish, as long as the publisher set latch=true -- no second
-	// node/spinner is required.
+	// node/spinner is required. Wait for ResolveTopicSource's subscriber before
+	// publishing so this test verifies delivery rather than registration timing.
 	ros::Publisher pub = nh->advertise<std_msgs::String>(topic_name, 1, /*latch=*/true);
 	std_msgs::String msg;
 	msg.data = urdf_content;
-	pub.publish(msg);
 #else // MJR_ROS_VERSION == ROS_2
 	// This is the case that exercises the throwaway-node + transient_local
 	// wait: a real, independently spinning second node latching the message
@@ -279,13 +313,25 @@ TEST_F(BaseEnvFixture, TopicSourcedUrdfProducesARunningEnv)
 	FakeDescriptionTopicPublisher topic_publisher("fake_rdf_publisher", topic_name, urdf_content);
 #endif
 
-	nh->setParam("urdf.source", "topic");
-	nh->setParam("urdf.topic", topic_name);
-	nh->setParam("srdf.source", "file");
-	nh->setParam("srdf.path", ResourcePath("two_link_robot.srdf"));
+	nh->setParam(DescriptionParam("urdf.source"), "topic");
+	nh->setParam(DescriptionParam("urdf.topic"), topic_name);
+	nh->setParam(DescriptionParam("srdf.source"), "file");
+	nh->setParam(DescriptionParam("srdf.path"), ResourcePath("two_link_robot.srdf"));
 	SetBundleBaseModeFixed(nh.get());
 
+#if MJR_ROS_VERSION == ROS_1
+	auto env_future =
+	    std::async(std::launch::async, [&]() { return std::make_unique<MujocoEnvTestWrapper>("", nh.get()); });
+	const auto subscriber_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+	while (pub.getNumSubscribers() == 0 && std::chrono::steady_clock::now() < subscriber_deadline) {
+		ros::WallDuration(0.01).sleep();
+	}
+	ASSERT_GT(pub.getNumSubscribers(), 0U) << "Topic-source subscriber did not connect before timeout!";
+	pub.publish(msg);
+	env_ptr = env_future.get();
+#else
 	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+#endif
 
 	// See FileSourcedBundleProducesARunningEnv for why this must be checked here (before
 	// StartEventLoop() consumes and resets it) rather than after the load completes.
@@ -295,13 +341,8 @@ TEST_F(BaseEnvFixture, TopicSourcedUrdfProducesARunningEnv)
 	env_ptr->StartPhysicsLoop();
 	env_ptr->StartEventLoop();
 
-	float seconds = 0;
-	while (env_ptr->GetOperationalStatus() != 0 && seconds < 5) { // wait for queued bundle load or timeout
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
-		seconds += 0.005f;
-	}
-	EXPECT_LT(seconds, 5) << "Topic-sourced description bundle did not finish loading before timeout! (if this "
-	                         "is consistently the full 5s, the topic subscription is likely never receiving)";
+	EXPECT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(5)))
+	    << "Topic-sourced description bundle did not finish loading before timeout!";
 	EXPECT_TRUE(env_ptr->sim_state_.model_valid) << "Model loaded from the topic-sourced bundle should be valid!";
 	ASSERT_TRUE(env_ptr->getModelPtr());
 	EXPECT_EQ(env_ptr->getModelPtr()->nbody, 3); // world + base_link + link_1
@@ -311,8 +352,8 @@ TEST_F(BaseEnvFixture, TopicSourcedUrdfProducesARunningEnv)
 
 TEST_F(BaseEnvFixture, TopicSourceTimesOutLoudlyWhenNothingIsPublished)
 {
-	nh->setParam("urdf.source", "topic");
-	nh->setParam("urdf.topic", "topic_sourced_urdf_test/nobody_publishes_here");
+	nh->setParam(DescriptionParam("urdf.source"), "topic");
+	nh->setParam(DescriptionParam("urdf.topic"), "topic_sourced_urdf_test/nobody_publishes_here");
 
 	EXPECT_THROW(std::make_unique<MujocoEnvTestWrapper>("", nh.get()), std::runtime_error);
 }
@@ -328,12 +369,8 @@ TEST_F(BaseEnvFixture, AbsentBundleParamsLeavesPlainModelfilePathWorking)
 	env_ptr->StartPhysicsLoop();
 	env_ptr->StartEventLoop();
 
-	float seconds = 0;
-	while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) { // wait for model to be loaded or timeout
-		std::this_thread::sleep_for(std::chrono::milliseconds(3));
-		seconds += 0.003f;
-	}
-	EXPECT_LT(seconds, 2) << "Plain modelfile load did not finish before timeout!";
+	EXPECT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(2)))
+	    << "Plain modelfile load did not finish before timeout!";
 	EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly via the modelfile path!";
 	EXPECT_TRUE(env_ptr->sim_state_.model_valid);
 
@@ -342,8 +379,8 @@ TEST_F(BaseEnvFixture, AbsentBundleParamsLeavesPlainModelfilePathWorking)
 
 TEST_F(BaseEnvFixture, UrdfOnlyBundleUsesDefaultWorld)
 {
-	nh->setParam("urdf.source", "file");
-	nh->setParam("urdf.path", ResourcePath("two_link_robot.urdf"));
+	nh->setParam(DescriptionParam("urdf.source"), "file");
+	nh->setParam(DescriptionParam("urdf.path"), ResourcePath("two_link_robot.urdf"));
 	SetBundleBaseModeFixed(nh.get());
 	// no srdf.*; leave modelfile unset/empty
 
@@ -351,12 +388,8 @@ TEST_F(BaseEnvFixture, UrdfOnlyBundleUsesDefaultWorld)
 	env_ptr->StartPhysicsLoop();
 	env_ptr->StartEventLoop();
 
-	float seconds = 0;
-	while (env_ptr->GetOperationalStatus() != 0 && seconds < 5) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
-		seconds += 0.005f;
-	}
-	EXPECT_LT(seconds, 5);
+	EXPECT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(5)))
+	    << "description bundle did not become idle before timeout!";
 	ASSERT_TRUE(env_ptr->getModelPtr());
 	EXPECT_NE(mj_name2id(env_ptr->getModelPtr(), mjOBJ_BODY, "base_link"), -1);
 	EXPECT_NE(mj_name2id(env_ptr->getModelPtr(), mjOBJ_GEOM, "ground_plane"), -1);
@@ -366,8 +399,8 @@ TEST_F(BaseEnvFixture, UrdfOnlyBundleUsesDefaultWorld)
 
 TEST_F(BaseEnvFixture, BundleWithModelfileUsesThatFileAsWorld)
 {
-	nh->setParam("urdf.source", "file");
-	nh->setParam("urdf.path", ResourcePath("two_link_robot.urdf"));
+	nh->setParam(DescriptionParam("urdf.source"), "file");
+	nh->setParam(DescriptionParam("urdf.path"), ResourcePath("two_link_robot.urdf"));
 	// minimal_world.xml is already under TEST_RESOURCES_DIR (converter tests).
 	nh->setParam("modelfile", std::string(TEST_RESOURCES_DIR) + "/minimal_world.xml");
 	SetBundleBaseModeFixed(nh.get());
@@ -376,12 +409,8 @@ TEST_F(BaseEnvFixture, BundleWithModelfileUsesThatFileAsWorld)
 	env_ptr->StartPhysicsLoop();
 	env_ptr->StartEventLoop();
 
-	float seconds = 0;
-	while (env_ptr->GetOperationalStatus() != 0 && seconds < 5) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
-		seconds += 0.005f;
-	}
-	EXPECT_LT(seconds, 5);
+	EXPECT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(5)))
+	    << "description bundle did not become idle before timeout!";
 	ASSERT_TRUE(env_ptr->getModelPtr());
 	EXPECT_NE(mj_name2id(env_ptr->getModelPtr(), mjOBJ_BODY, "base_link"), -1);
 	// minimal_world has no ground_plane -- absence proves we did not fall back to default_world
@@ -392,20 +421,16 @@ TEST_F(BaseEnvFixture, BundleWithModelfileUsesThatFileAsWorld)
 
 TEST_F(BaseEnvFixture, AutoBaseModeThroughBundleAddsFreeJointForUnanchoredRoot)
 {
-	nh->setParam("urdf.source", "file");
-	nh->setParam("urdf.path", ResourcePath("unanchored_root_robot.urdf"));
-	nh->setParam("description.base_mode", "auto");
+	nh->setParam(DescriptionParam("urdf.source"), "file");
+	nh->setParam(DescriptionParam("urdf.path"), ResourcePath("unanchored_root_robot.urdf"));
+	nh->setParam(DescriptionParam("description.base_mode"), "auto");
 
 	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 	env_ptr->StartPhysicsLoop();
 	env_ptr->StartEventLoop();
 
-	float seconds = 0;
-	while (env_ptr->GetOperationalStatus() != 0 && seconds < 5) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
-		seconds += 0.005f;
-	}
-	EXPECT_LT(seconds, 5) << "auto base_mode bundle did not become idle before timeout!";
+	EXPECT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(5)))
+	    << "auto base_mode bundle did not become idle before timeout!";
 	ASSERT_TRUE(env_ptr->getModelPtr());
 	EXPECT_EQ(CountFreeJointsOnBody(env_ptr->getModelPtr(), "base_link"), 1);
 

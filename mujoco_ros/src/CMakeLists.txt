@@ -49,6 +49,9 @@ if(ROS_VERSION EQUAL "1")
     offscreen_camera.cpp
     offscreen_rendering.cpp
     viewer.cpp
+    viewer_branding.cpp
+    viewer_connection_state.cpp
+    viewer_sync_policy.cpp
     viewer_geom_defaults.cpp
     extended_params.cpp
     description_converter.cpp
@@ -73,6 +76,9 @@ else()
     offscreen_camera.cpp
     offscreen_rendering.cpp
     viewer.cpp
+    viewer_branding.cpp
+    viewer_connection_state.cpp
+    viewer_sync_policy.cpp
     viewer_geom_defaults.cpp
     extended_params.cpp
     description_converter.cpp

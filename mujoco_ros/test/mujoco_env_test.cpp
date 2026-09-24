@@ -37,14 +37,28 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
+#include <climits>
 #include <condition_variable>
+#include <cstring>
+#include <cstdlib>
+#include <limits>
 #include <future>
 #include <mutex>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
+
+#include <spawn.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+extern char **environ;
 
 #include <mujoco_ros_testing_utils/mujoco_env_fixture.hpp>
 
@@ -52,8 +66,10 @@
 #include <mujoco_ros/common_types.hpp>
 #include <mujoco_ros/simulation_control_state.hpp>
 #include <mujoco_ros/util.hpp>
-
-#include <limits>
+#if RENDER_BACKEND == GLFW_BACKEND
+#include <mujoco_ros/detail/viewer_connection_state.hpp>
+#include <mujoco_ros/viewer.hpp>
+#endif
 
 #if MJR_ROS_VERSION == ROS_1
 #include <ros/ros.h>
@@ -139,6 +155,1732 @@ public:
 	using MujocoEnvTestWrapper::SetWarningClockForTesting;
 	using MujocoEnvTestWrapper::WarnFrameSlotDrop;
 };
+
+#if RENDER_BACKEND == GLFW_BACKEND
+TEST_F(BaseEnvFixture, ViewerRenderLoopExceptionalExitRejectsLaterLoads)
+{
+	if (std::getenv("DISPLAY") == nullptr && std::getenv("WAYLAND_DISPLAY") == nullptr) {
+		GTEST_SKIP() << "native display unavailable";
+	}
+
+	env_ptr     = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	auto viewer = std::make_unique<Viewer>(std::make_unique<GlfwAdapter>(), env_ptr.get(), true, false);
+	std::future<std::string> accepted_load;
+
+	try {
+		viewer->RenderLoop([&viewer, &accepted_load]() {
+			accepted_load       = std::async(std::launch::async, [&viewer]() {
+            try {
+               viewer->Load(nullptr, nullptr, "accepted.xml", ModelGeneration(1));
+               return std::string("load unexpectedly succeeded");
+            } catch (const std::runtime_error &error) {
+               return std::string(error.what());
+            }
+         });
+			const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+			while (viewer->loadrequest.load() != 2 && std::chrono::steady_clock::now() < deadline) {
+				std::this_thread::yield();
+			}
+			if (viewer->loadrequest.load() != 2) {
+				throw std::runtime_error("load was not accepted before on-ready failure");
+			}
+			throw std::runtime_error("injected on-ready failure");
+		});
+		FAIL() << "RenderLoop did not preserve its original exception";
+	} catch (const std::runtime_error &error) {
+		EXPECT_STREQ(error.what(), "injected on-ready failure");
+	}
+
+	auto later_load = std::async(std::launch::async, [&viewer]() {
+		try {
+			viewer->Load(nullptr, nullptr, "unused.xml", ModelGeneration(1));
+			return std::string("load unexpectedly succeeded");
+		} catch (const std::runtime_error &error) {
+			return std::string(error.what());
+		}
+	});
+
+	const auto accepted_result = accepted_load.wait_for(std::chrono::milliseconds(500));
+	const auto prompt_result   = later_load.wait_for(std::chrono::milliseconds(500));
+	EXPECT_EQ(accepted_result, std::future_status::ready)
+	    << "RenderLoop did not reject an accepted load promise on exceptional exit";
+	EXPECT_EQ(prompt_result, std::future_status::ready) << "Load accepted a promise after exceptional RenderLoop exit";
+
+	// Let the pre-fix implementation finish the blocked load so RED fails without hanging CTest.
+	if (accepted_result != std::future_status::ready || prompt_result != std::future_status::ready) {
+		viewer->exit_request.store(1);
+		EXPECT_NO_THROW(viewer->RenderLoop());
+	}
+	ASSERT_EQ(accepted_load.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+	ASSERT_EQ(later_load.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+	EXPECT_EQ(accepted_load.get(), "viewer render loop is not accepting load requests");
+	EXPECT_EQ(later_load.get(), "viewer render loop is not accepting load requests");
+
+	viewer.reset();
+	env_ptr->shutdown();
+}
+
+namespace {
+
+constexpr int kScenarioSuccess                  = 0;
+constexpr int kScenarioGlfwStartupFailed        = 1;
+constexpr int kScenarioViewerNotConnected       = 10;
+constexpr int kScenarioDestroyFinishedEarly     = 11;
+constexpr int kScenarioDestroyTimedOut          = 12;
+constexpr int kScenarioLateRegistrationAccepted = 16;
+constexpr int kScenarioLifetimeFailed           = 17;
+constexpr int kScenarioLateActivationRejected   = 18;
+constexpr int kScenarioRenderThreadTimedOut     = 20;
+constexpr int kScenarioLeaseDrainFinishedEarly  = 21;
+constexpr int kScenarioChildExecFailed          = 127;
+constexpr char kViolationMarkerFdEnv[]          = "MUJOCO_ROS_LIFETIME_VIOLATION_MARKER_FD";
+
+struct RenderThreadReadiness
+{
+	const std::atomic_bool *viewer_constructed = nullptr;
+	const std::atomic_bool *glfw_ready         = nullptr;
+	const std::atomic_bool *fully_connected    = nullptr;
+};
+
+int ClassifyPreReadyRenderThreadFailure(const RenderThreadReadiness &readiness)
+{
+	if (readiness.viewer_constructed == nullptr || readiness.glfw_ready == nullptr ||
+	    readiness.fully_connected == nullptr) {
+		return kScenarioLifetimeFailed;
+	}
+	if (readiness.fully_connected->load(std::memory_order_acquire)) {
+		return kScenarioLifetimeFailed;
+	}
+	if (!readiness.viewer_constructed->load(std::memory_order_acquire)) {
+		return kScenarioGlfwStartupFailed;
+	}
+	if (!readiness.glfw_ready->load(std::memory_order_acquire)) {
+		return kScenarioViewerNotConnected;
+	}
+	return kScenarioLifetimeFailed;
+}
+
+int ClassifyGlfwReadyWaitTimeout(const RenderThreadReadiness &readiness)
+{
+	if (readiness.viewer_constructed == nullptr || readiness.glfw_ready == nullptr ||
+	    readiness.fully_connected == nullptr) {
+		return kScenarioLifetimeFailed;
+	}
+	if (!readiness.viewer_constructed->load(std::memory_order_acquire)) {
+		return kScenarioGlfwStartupFailed;
+	}
+	return kScenarioViewerNotConnected;
+}
+
+int ClassifyRenderThreadException(const RenderThreadReadiness &readiness)
+{
+	if (readiness.viewer_constructed == nullptr || readiness.glfw_ready == nullptr ||
+	    readiness.fully_connected == nullptr) {
+		return kScenarioLifetimeFailed;
+	}
+	try {
+		throw;
+	} catch (const std::runtime_error &) {
+		if (readiness.fully_connected->load(std::memory_order_acquire)) {
+			return kScenarioLifetimeFailed;
+		}
+		if (!readiness.viewer_constructed->load(std::memory_order_acquire)) {
+			return kScenarioGlfwStartupFailed;
+		}
+		if (!readiness.glfw_ready->load(std::memory_order_acquire)) {
+			return kScenarioViewerNotConnected;
+		}
+		return kScenarioLifetimeFailed;
+	} catch (...) {
+		return ClassifyPreReadyRenderThreadFailure(readiness);
+	}
+}
+
+void MarkContractViolationCause()
+{
+	const char *fd_env = std::getenv(kViolationMarkerFdEnv);
+	if (fd_env == nullptr || fd_env[0] == '\0') {
+		return;
+	}
+	const int fd = std::atoi(fd_env);
+	if (fd < 0) {
+		return;
+	}
+	const char marker   = 1;
+	const ssize_t bytes = ::write(fd, &marker, 1);
+	(void)bytes;
+}
+
+class LifetimeViolationCausePipe
+{
+public:
+	bool Create()
+	{
+		if (::pipe(pipe_fds_) != 0) {
+			return false;
+		}
+		return true;
+	}
+
+	void ExportTo(std::vector<std::string> &entries) const
+	{
+		entries.emplace_back(std::string(kViolationMarkerFdEnv) + "=" + std::to_string(pipe_fds_[1]));
+	}
+
+	bool CauseWasMarked() const
+	{
+		if (pipe_fds_[0] < 0) {
+			return false;
+		}
+		if (pipe_fds_[1] >= 0) {
+			::close(pipe_fds_[1]);
+		}
+		char marker         = 0;
+		const ssize_t bytes = ::read(pipe_fds_[0], &marker, 1);
+		::close(pipe_fds_[0]);
+		return bytes == 1 && marker == 1;
+	}
+
+	~LifetimeViolationCausePipe()
+	{
+		if (pipe_fds_[0] >= 0) {
+			::close(pipe_fds_[0]);
+		}
+		if (pipe_fds_[1] >= 0) {
+			::close(pipe_fds_[1]);
+		}
+	}
+
+private:
+	int pipe_fds_[2] = { -1, -1 };
+};
+
+bool IsExpectedLateActivationRuntimeError(const std::atomic_bool &teardown_started,
+                                          const std::atomic_bool &fully_connected, const std::runtime_error &error)
+{
+	if (fully_connected.load(std::memory_order_acquire)) {
+		return false;
+	}
+	if (!teardown_started.load(std::memory_order_acquire)) {
+		return false;
+	}
+	const std::string_view message                                 = error.what();
+	static constexpr std::array<const char *, 5> kExpectedMessages = {
+		"viewer render loop activation rejected",
+		"viewer render loop activation rejected: environment unavailable",
+		"viewer connection rejected because environment is closing",
+		"viewer connection canceled before environment became idle",
+		"viewer connection rejected because viewer is not registered",
+	};
+	return std::any_of(kExpectedMessages.begin(), kExpectedMessages.end(),
+	                   [message](const char *expected) { return message == expected; });
+}
+
+class LeaseTestEnv : public MujocoEnvTestWrapper
+{
+public:
+	using MujocoEnvTestWrapper::MujocoEnvTestWrapper;
+	ConnectedViewersLease TakeLease() const { return AcquireConnectedViewersLease(); }
+};
+
+class HeadlessTestEnv : public MujocoEnvTestWrapper
+{
+public:
+	using MujocoEnvTestWrapper::MujocoEnvTestWrapper;
+};
+
+bool NativeDisplayIsAdvertised()
+{
+	return std::getenv("DISPLAY") != nullptr || std::getenv("WAYLAND_DISPLAY") != nullptr;
+}
+
+std::string CurrentTestExecutablePath()
+{
+	char path[PATH_MAX] = {};
+	if (::readlink("/proc/self/exe", path, sizeof(path) - 1) < 0) {
+		return {};
+	}
+	return path;
+}
+
+template <typename Predicate>
+bool WaitUntil(Predicate &&predicate, std::chrono::milliseconds timeout)
+{
+	const auto deadline = std::chrono::steady_clock::now() + timeout;
+	while (std::chrono::steady_clock::now() < deadline) {
+		if (predicate()) {
+			return true;
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+	}
+	return predicate();
+}
+
+class RenderLoopExitMarker
+{
+public:
+	explicit RenderLoopExitMarker(std::atomic_bool &render_loop_exited) : render_loop_exited_(render_loop_exited) {}
+	~RenderLoopExitMarker() { render_loop_exited_.store(true, std::memory_order_release); }
+
+private:
+	std::atomic_bool &render_loop_exited_;
+};
+
+std::shared_ptr<ViewerConnectionState>
+CopyConnectionForExit(const std::shared_ptr<ViewerConnectionState> &connection_for_exit, std::mutex *viewer_mutex)
+{
+	if (viewer_mutex != nullptr) {
+		std::lock_guard<std::mutex> lock(*viewer_mutex);
+		return connection_for_exit;
+	}
+	return connection_for_exit;
+}
+
+void RequestViewerExit(const std::shared_ptr<ViewerConnectionState> &connection_for_exit, std::mutex *viewer_mutex)
+{
+	if (auto connection = CopyConnectionForExit(connection_for_exit, viewer_mutex)) {
+		connection->RequestViewerExit();
+	}
+}
+
+bool JoinRenderThreadBounded(const std::shared_ptr<ViewerConnectionState> &connection_for_exit,
+                             std::mutex *viewer_mutex, std::thread &render_thread,
+                             const std::atomic_bool &render_loop_exited, std::chrono::milliseconds timeout)
+{
+	RequestViewerExit(connection_for_exit, viewer_mutex);
+	const bool exited =
+	    WaitUntil([&render_loop_exited]() { return render_loop_exited.load(std::memory_order_acquire); }, timeout);
+	if (!exited) {
+		return false;
+	}
+	if (render_thread.joinable()) {
+		render_thread.join();
+	}
+	return true;
+}
+
+struct LifetimeChildEnvironment
+{
+	std::vector<std::string> entries;
+	std::vector<char *> envp;
+
+	explicit LifetimeChildEnvironment(const LifetimeViolationCausePipe *violation_pipe = nullptr)
+	{
+		constexpr const char kChildFlagPrefix[] = "MUJOCO_ROS_LIFETIME_CHILD=";
+		constexpr const char kViolationPrefix[] = "MUJOCO_ROS_LIFETIME_VIOLATION_MARKER_FD=";
+		for (char **var = environ; var != nullptr && *var != nullptr; ++var) {
+			if (std::strncmp(*var, kChildFlagPrefix, sizeof(kChildFlagPrefix) - 1) != 0 &&
+			    std::strncmp(*var, kViolationPrefix, sizeof(kViolationPrefix) - 1) != 0) {
+				entries.emplace_back(*var);
+			}
+		}
+		entries.emplace_back("MUJOCO_ROS_LIFETIME_CHILD=1");
+		if (violation_pipe != nullptr) {
+			violation_pipe->ExportTo(entries);
+		}
+		envp.reserve(entries.size() + 1);
+		for (auto &entry : entries) {
+			envp.push_back(entry.data());
+		}
+		envp.push_back(nullptr);
+	}
+};
+
+class ScopedLifetimeParentEnvScrubber
+{
+public:
+	ScopedLifetimeParentEnvScrubber()
+	{
+		if (const char *value = std::getenv("MUJOCO_ROS_LIFETIME_CHILD")) {
+			previous_ = value;
+			::unsetenv("MUJOCO_ROS_LIFETIME_CHILD");
+		}
+	}
+
+	~ScopedLifetimeParentEnvScrubber()
+	{
+		if (previous_) {
+			::setenv("MUJOCO_ROS_LIFETIME_CHILD", previous_->c_str(), 1);
+		}
+	}
+
+private:
+	std::optional<std::string> previous_;
+};
+
+void ExpectChildScenarioSuccess(const char *filter, int expected_result = kScenarioSuccess)
+{
+	ScopedLifetimeParentEnvScrubber scrub_parent_child_mode;
+	const std::string executable = CurrentTestExecutablePath();
+	ASSERT_FALSE(executable.empty()) << "failed to resolve current test executable path";
+
+	std::string filter_arg           = std::string("--gtest_filter=") + filter;
+	std::array<char *, 3> child_args = {
+		const_cast<char *>(executable.c_str()),
+		const_cast<char *>(filter_arg.c_str()),
+		nullptr,
+	};
+
+	LifetimeChildEnvironment child_env;
+	pid_t child = -1;
+	ASSERT_EQ(posix_spawn(&child, executable.c_str(), nullptr, nullptr, child_args.data(), child_env.envp.data()), 0)
+	    << "posix_spawn failed for child scenario";
+
+	int status               = 0;
+	const auto wait_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+	while (std::chrono::steady_clock::now() < wait_deadline) {
+		const pid_t waited = ::waitpid(child, &status, WNOHANG);
+		if (waited == child) {
+			if (WIFEXITED(status) && WEXITSTATUS(status) == kScenarioGlfwStartupFailed) {
+				GTEST_SKIP() << "GLFW startup failed in child (display unavailable)";
+			}
+			ASSERT_TRUE(WIFEXITED(status)) << "child did not exit cleanly";
+			EXPECT_EQ(WEXITSTATUS(status), expected_result) << "child scenario failed with code " << WEXITSTATUS(status);
+			return;
+		}
+		if (waited < 0) {
+			FAIL() << "waitpid failed";
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	}
+
+	::kill(child, SIGKILL);
+	::waitpid(child, &status, 0);
+	FAIL() << "child process timed out";
+}
+
+void ExpectChildScenarioAborts(const char *filter)
+{
+	ScopedLifetimeParentEnvScrubber scrub_parent_child_mode;
+	LifetimeViolationCausePipe violation_pipe;
+	ASSERT_TRUE(violation_pipe.Create()) << "failed to create contract-violation marker pipe";
+
+	const std::string executable = CurrentTestExecutablePath();
+	ASSERT_FALSE(executable.empty()) << "failed to resolve current test executable path";
+
+	std::string filter_arg           = std::string("--gtest_filter=") + filter;
+	std::array<char *, 3> child_args = {
+		const_cast<char *>(executable.c_str()),
+		const_cast<char *>(filter_arg.c_str()),
+		nullptr,
+	};
+
+	LifetimeChildEnvironment child_env(&violation_pipe);
+	pid_t child = -1;
+	ASSERT_EQ(posix_spawn(&child, executable.c_str(), nullptr, nullptr, child_args.data(), child_env.envp.data()), 0)
+	    << "posix_spawn failed for child scenario";
+
+	int status               = 0;
+	const auto wait_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+	while (std::chrono::steady_clock::now() < wait_deadline) {
+		const pid_t waited = ::waitpid(child, &status, WNOHANG);
+		if (waited == child) {
+			if (WIFEXITED(status) && WEXITSTATUS(status) == kScenarioGlfwStartupFailed) {
+				GTEST_SKIP() << "GLFW startup failed in child (display unavailable)";
+			}
+			if (WIFEXITED(status) && WEXITSTATUS(status) == kScenarioViewerNotConnected) {
+				FAIL() << "child reported viewer startup failure instead of expected contract violation";
+			}
+			if (WIFEXITED(status)) {
+				FAIL() << "child exited with code " << WEXITSTATUS(status) << " instead of expected abort";
+			}
+			ASSERT_TRUE(WIFSIGNALED(status)) << "child did not abort as expected";
+			const int signal = WTERMSIG(status);
+			if (signal != SIGABRT) {
+				FAIL() << "child terminated with unexpected signal " << signal << " (expected SIGABRT contract violation)";
+			}
+			EXPECT_TRUE(violation_pipe.CauseWasMarked())
+			    << "child aborted without publishing the contract-violation cause marker";
+			EXPECT_EQ(signal, SIGABRT);
+			return;
+		}
+		if (waited < 0) {
+			FAIL() << "waitpid failed";
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	}
+
+	::kill(child, SIGKILL);
+	::waitpid(child, &status, 0);
+	FAIL() << "child process timed out";
+}
+
+int RunConnectedViewerLeaseReleaseScenario(testing::TestNodeHandle *nh)
+{
+	auto env                    = std::make_unique<LeaseTestEnv>("", nh);
+	LeaseTestEnv *const env_raw = env.get();
+	env_raw->StartEventLoop();
+
+	std::mutex viewer_mutex;
+	std::shared_ptr<ViewerConnectionState> connection_for_exit;
+	std::atomic_bool glfw_ready{ false };
+	std::atomic_bool viewer_constructed{ false };
+	std::atomic_bool viewer_connected{ false };
+	std::optional<ConnectedViewersLease> lease;
+	std::atomic_bool destroy_finished{ false };
+	std::atomic_bool teardown_started{ false };
+	std::atomic_bool render_loop_exited{ false };
+	std::atomic_int render_result{ kScenarioSuccess };
+
+	std::thread render_thread([env_raw, &viewer_mutex, &connection_for_exit, &viewer_constructed, &viewer_connected,
+	                           &glfw_ready, &render_loop_exited, &render_result]() {
+		RenderLoopExitMarker exit_marker(render_loop_exited);
+		try {
+			auto local_viewer = std::make_unique<Viewer>(std::make_unique<GlfwAdapter>(), env_raw, true, false);
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				connection_for_exit = local_viewer->connection_state_;
+			}
+			viewer_constructed.store(true, std::memory_order_release);
+			local_viewer->RenderLoop([&viewer_connected, &glfw_ready]() {
+				glfw_ready.store(true, std::memory_order_release);
+				viewer_connected.store(true, std::memory_order_release);
+			});
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				connection_for_exit.reset();
+			}
+			render_loop_exited.store(true, std::memory_order_release);
+		} catch (...) {
+			render_result.store(ClassifyRenderThreadException({ &viewer_constructed, &glfw_ready, &viewer_connected }),
+			                    std::memory_order_release);
+		}
+	});
+
+	const auto cleanup_render_thread = [&]() {
+		JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+		                        std::chrono::seconds(10));
+	};
+
+	if (!WaitUntil([&glfw_ready]() { return glfw_ready.load(std::memory_order_acquire); }, std::chrono::seconds(5))) {
+		cleanup_render_thread();
+		return ClassifyGlfwReadyWaitTimeout({ &viewer_constructed, &glfw_ready, &viewer_connected });
+	}
+	if (!WaitUntil([&viewer_connected]() { return viewer_connected.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5))) {
+		cleanup_render_thread();
+		return kScenarioViewerNotConnected;
+	}
+
+	lease.emplace(env_raw->TakeLease());
+	std::thread destroy_thread([&env, &destroy_finished, &teardown_started]() {
+		teardown_started.store(true, std::memory_order_release);
+		env.reset();
+		destroy_finished.store(true, std::memory_order_release);
+	});
+
+	if (WaitUntil([&destroy_finished]() { return destroy_finished.load(std::memory_order_acquire); },
+	              std::chrono::milliseconds(300))) {
+		if (!render_loop_exited.load(std::memory_order_acquire)) {
+			lease.reset();
+			if (destroy_thread.joinable()) {
+				destroy_thread.join();
+			}
+			cleanup_render_thread();
+			return kScenarioLeaseDrainFinishedEarly;
+		}
+		lease.reset();
+		if (destroy_thread.joinable()) {
+			destroy_thread.join();
+		}
+		if (render_thread.joinable()) {
+			render_thread.join();
+		}
+		return kScenarioSuccess;
+	}
+
+	lease.reset();
+	if (destroy_thread.joinable()) {
+		destroy_thread.join();
+	}
+	if (!JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+	                             std::chrono::seconds(10))) {
+		if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+			return render_result.load(std::memory_order_acquire);
+		}
+		return kScenarioRenderThreadTimedOut;
+	}
+	if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+		return render_result.load(std::memory_order_acquire);
+	}
+	if (!destroy_finished.load(std::memory_order_acquire)) {
+		return kScenarioDestroyTimedOut;
+	}
+	return kScenarioSuccess;
+}
+
+int RunExternallyOwnedViewerSurvivesScenario(testing::TestNodeHandle *nh)
+{
+	auto env                            = std::make_unique<MujocoEnvTestWrapper>("", nh);
+	MujocoEnvTestWrapper *const env_raw = env.get();
+	env_raw->StartEventLoop();
+
+	std::mutex viewer_mutex;
+	std::shared_ptr<ViewerConnectionState> connection_for_exit;
+	std::atomic_bool glfw_ready{ false };
+	std::atomic_bool viewer_constructed{ false };
+	std::atomic_bool viewer_connected{ false };
+	std::atomic_bool render_finished{ false };
+	std::atomic_bool render_loop_exited{ false };
+	std::atomic_int render_result{ kScenarioSuccess };
+
+	std::thread render_thread([env_raw, &viewer_mutex, &connection_for_exit, &viewer_constructed, &viewer_connected,
+	                           &glfw_ready, &render_finished, &render_loop_exited, &render_result]() {
+		RenderLoopExitMarker exit_marker(render_loop_exited);
+		try {
+			auto local_viewer = std::make_unique<Viewer>(std::make_unique<GlfwAdapter>(), env_raw, true, false);
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				connection_for_exit = local_viewer->connection_state_;
+			}
+			viewer_constructed.store(true, std::memory_order_release);
+			local_viewer->RenderLoop([&viewer_connected, &glfw_ready]() {
+				glfw_ready.store(true, std::memory_order_release);
+				viewer_connected.store(true, std::memory_order_release);
+			});
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				connection_for_exit.reset();
+			}
+			if (local_viewer->exit_request.load() != 2) {
+				throw std::runtime_error("viewer did not disconnect cleanly after environment teardown");
+			}
+			render_finished.store(true, std::memory_order_release);
+		} catch (const std::runtime_error &error) {
+			if (viewer_connected.load(std::memory_order_acquire)) {
+				render_result.store(kScenarioLifetimeFailed, std::memory_order_release);
+			} else {
+				render_result.store(ClassifyRenderThreadException({ &viewer_constructed, &glfw_ready, &viewer_connected }),
+				                    std::memory_order_release);
+				(void)error;
+			}
+		} catch (...) {
+			render_result.store(ClassifyRenderThreadException({ &viewer_constructed, &glfw_ready, &viewer_connected }),
+			                    std::memory_order_release);
+		}
+	});
+
+	const auto cleanup_render_thread = [&]() {
+		JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+		                        std::chrono::seconds(10));
+	};
+
+	if (!WaitUntil([&glfw_ready]() { return glfw_ready.load(std::memory_order_acquire); }, std::chrono::seconds(5))) {
+		cleanup_render_thread();
+		return ClassifyGlfwReadyWaitTimeout({ &viewer_constructed, &glfw_ready, &viewer_connected });
+	}
+	if (!WaitUntil([&viewer_connected]() { return viewer_connected.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5))) {
+		cleanup_render_thread();
+		return kScenarioViewerNotConnected;
+	}
+
+	env.reset();
+
+	if (!JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+	                             std::chrono::seconds(10))) {
+		if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+			return render_result.load(std::memory_order_acquire);
+		}
+		return kScenarioRenderThreadTimedOut;
+	}
+	if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+		return render_result.load(std::memory_order_acquire);
+	}
+	if (!render_finished.load(std::memory_order_acquire)) {
+		return kScenarioLifetimeFailed;
+	}
+	return kScenarioSuccess;
+}
+
+int RunViewerDestructorDuringRenderLoopScenario(testing::TestNodeHandle *nh)
+{
+	auto env                            = std::make_unique<MujocoEnvTestWrapper>("", nh);
+	MujocoEnvTestWrapper *const env_raw = env.get();
+	env_raw->StartEventLoop();
+
+	std::shared_ptr<Viewer> viewer_owner;
+	std::mutex viewer_mutex;
+	std::condition_variable viewer_cv;
+	std::atomic_bool glfw_ready{ false };
+	std::atomic_bool viewer_constructed{ false };
+	std::atomic_bool held_in_on_ready{ false };
+	std::atomic_bool release_on_ready{ false };
+	std::atomic_bool render_loop_exited{ false };
+	std::atomic_int render_result{ kScenarioSuccess };
+
+	std::thread render_thread([&]() {
+		RenderLoopExitMarker exit_marker(render_loop_exited);
+		try {
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				viewer_owner = std::make_shared<Viewer>(std::make_unique<GlfwAdapter>(), env_raw, true, false);
+				viewer_constructed.store(true, std::memory_order_release);
+			}
+			viewer_cv.notify_all();
+			viewer_owner->RenderLoop([&glfw_ready, &held_in_on_ready, &release_on_ready]() {
+				glfw_ready.store(true, std::memory_order_release);
+				held_in_on_ready.store(true, std::memory_order_release);
+				WaitUntil([&release_on_ready]() { return release_on_ready.load(std::memory_order_acquire); },
+				          std::chrono::seconds(5));
+			});
+		} catch (...) {
+			render_result.store(ClassifyRenderThreadException({ &viewer_constructed, &glfw_ready, &held_in_on_ready }),
+			                    std::memory_order_release);
+		}
+	});
+
+	const auto cleanup_render_thread = [&]() {
+		std::shared_ptr<ViewerConnectionState> connection;
+		{
+			std::lock_guard<std::mutex> lock(viewer_mutex);
+			connection = viewer_owner ? viewer_owner->connection_state_ : nullptr;
+		}
+		JoinRenderThreadBounded(connection, &viewer_mutex, render_thread, render_loop_exited, std::chrono::seconds(10));
+	};
+
+	{
+		std::unique_lock<std::mutex> lock(viewer_mutex);
+		if (!viewer_cv.wait_for(lock, std::chrono::seconds(5), [&viewer_owner]() { return viewer_owner != nullptr; })) {
+			release_on_ready.store(true, std::memory_order_release);
+			cleanup_render_thread();
+			return kScenarioGlfwStartupFailed;
+		}
+	}
+	if (!WaitUntil([&glfw_ready]() { return glfw_ready.load(std::memory_order_acquire); }, std::chrono::seconds(5))) {
+		release_on_ready.store(true, std::memory_order_release);
+		cleanup_render_thread();
+		return ClassifyGlfwReadyWaitTimeout({ &viewer_constructed, &glfw_ready, &held_in_on_ready });
+	}
+	if (!WaitUntil([&held_in_on_ready]() { return held_in_on_ready.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5))) {
+		release_on_ready.store(true, std::memory_order_release);
+		cleanup_render_thread();
+		return kScenarioViewerNotConnected;
+	}
+	if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+		release_on_ready.store(true, std::memory_order_release);
+		cleanup_render_thread();
+		return render_result.load(std::memory_order_acquire);
+	}
+
+	std::shared_ptr<Viewer> doomed;
+	{
+		std::lock_guard<std::mutex> lock(viewer_mutex);
+		doomed = std::move(viewer_owner);
+	}
+	MarkContractViolationCause();
+	doomed.reset();
+	std::terminate();
+}
+
+int RunEnvironmentDestructorFromViewerThreadScenario(testing::TestNodeHandle *nh)
+{
+	auto env                            = std::make_unique<MujocoEnvTestWrapper>("", nh);
+	MujocoEnvTestWrapper *const env_raw = env.get();
+	env_raw->StartEventLoop();
+
+	std::mutex viewer_mutex;
+	std::shared_ptr<ViewerConnectionState> connection_for_exit;
+	std::atomic_bool glfw_ready{ false };
+	std::atomic_bool viewer_constructed{ false };
+	std::atomic_bool viewer_connected{ false };
+	std::atomic_bool render_loop_exited{ false };
+	std::atomic_int render_result{ kScenarioSuccess };
+
+	std::thread render_thread([&env, env_raw, &viewer_mutex, &connection_for_exit, &viewer_constructed, &glfw_ready,
+	                           &viewer_connected, &render_loop_exited, &render_result]() {
+		RenderLoopExitMarker exit_marker(render_loop_exited);
+		try {
+			auto local_viewer = std::make_unique<Viewer>(std::make_unique<GlfwAdapter>(), env_raw, true, false);
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				connection_for_exit = local_viewer->connection_state_;
+			}
+			viewer_constructed.store(true, std::memory_order_release);
+			local_viewer->RenderLoop([&env, &glfw_ready]() {
+				glfw_ready.store(true, std::memory_order_release);
+				MarkContractViolationCause();
+				env.reset();
+			});
+		} catch (...) {
+			render_result.store(ClassifyRenderThreadException({ &viewer_constructed, &glfw_ready, &viewer_connected }),
+			                    std::memory_order_release);
+		}
+	});
+
+	const auto cleanup_render_thread = [&]() {
+		JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+		                        std::chrono::seconds(10));
+	};
+
+	if (!WaitUntil([&glfw_ready]() { return glfw_ready.load(std::memory_order_acquire); }, std::chrono::seconds(5))) {
+		cleanup_render_thread();
+		return ClassifyGlfwReadyWaitTimeout({ &viewer_constructed, &glfw_ready, &viewer_connected });
+	}
+	cleanup_render_thread();
+	if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+		return render_result.load(std::memory_order_acquire);
+	}
+	return kScenarioSuccess;
+}
+
+int RunLeaseBlocksEnvironmentModelResetScenario(testing::TestNodeHandle *nh)
+{
+	auto env                            = std::make_unique<MujocoEnvTestWrapper>("", nh);
+	MujocoEnvTestWrapper *const env_raw = env.get();
+	env_raw->StartEventLoop();
+
+	std::shared_ptr<Viewer> viewer;
+	std::mutex viewer_mutex;
+	std::shared_ptr<ViewerConnectionState> connection_for_exit;
+	std::atomic_bool glfw_ready{ false };
+	std::atomic_bool viewer_constructed{ false };
+	std::atomic_bool viewer_connected{ false };
+	std::atomic_bool held_in_on_ready{ false };
+	std::atomic_bool release_on_ready{ false };
+	std::atomic_bool destroy_finished{ false };
+	std::atomic_bool teardown_started{ false };
+	std::atomic_bool render_loop_exited{ false };
+	std::atomic_int render_result{ kScenarioSuccess };
+
+	std::thread render_thread([&]() {
+		RenderLoopExitMarker exit_marker(render_loop_exited);
+		try {
+			viewer = std::make_shared<Viewer>(std::make_unique<GlfwAdapter>(), env_raw, true, false);
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				connection_for_exit = viewer->connection_state_;
+			}
+			viewer_constructed.store(true, std::memory_order_release);
+			viewer->RenderLoop([&viewer_connected, &glfw_ready, &held_in_on_ready, &release_on_ready]() {
+				glfw_ready.store(true, std::memory_order_release);
+				viewer_connected.store(true, std::memory_order_release);
+				held_in_on_ready.store(true, std::memory_order_release);
+				WaitUntil([&release_on_ready]() { return release_on_ready.load(std::memory_order_acquire); },
+				          std::chrono::seconds(10));
+			});
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				connection_for_exit.reset();
+			}
+			viewer.reset();
+		} catch (...) {
+			render_result.store(ClassifyRenderThreadException({ &viewer_constructed, &glfw_ready, &viewer_connected }),
+			                    std::memory_order_release);
+		}
+	});
+
+	const auto cleanup_render_thread = [&]() {
+		release_on_ready.store(true, std::memory_order_release);
+		JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+		                        std::chrono::seconds(10));
+	};
+
+	if (!WaitUntil([&glfw_ready]() { return glfw_ready.load(std::memory_order_acquire); }, std::chrono::seconds(5))) {
+		cleanup_render_thread();
+		return ClassifyGlfwReadyWaitTimeout({ &viewer_constructed, &glfw_ready, &viewer_connected });
+	}
+	if (!WaitUntil([&viewer_connected]() { return viewer_connected.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5))) {
+		cleanup_render_thread();
+		return kScenarioViewerNotConnected;
+	}
+	if (!WaitUntil([&held_in_on_ready]() { return held_in_on_ready.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5))) {
+		cleanup_render_thread();
+		return kScenarioViewerNotConnected;
+	}
+
+	const auto observe_connection_for_exit = [&]() {
+		std::shared_ptr<ViewerConnectionState> connection_observed;
+		{
+			std::lock_guard<std::mutex> lock(viewer_mutex);
+			connection_observed = connection_for_exit;
+		}
+		return connection_observed;
+	};
+
+	if (const auto connection_observed = observe_connection_for_exit();
+	    !connection_observed || !connection_observed->RenderLoopActive()) {
+		cleanup_render_thread();
+		return kScenarioLifetimeFailed;
+	}
+
+	std::thread destroy_thread([&env, &destroy_finished, &teardown_started]() {
+		teardown_started.store(true, std::memory_order_release);
+		env.reset();
+		destroy_finished.store(true, std::memory_order_release);
+	});
+
+	if (WaitUntil([&destroy_finished]() { return destroy_finished.load(std::memory_order_acquire); },
+	              std::chrono::milliseconds(300))) {
+		if (const auto connection_observed = observe_connection_for_exit();
+		    connection_observed && connection_observed->RenderLoopActive()) {
+			release_on_ready.store(true, std::memory_order_release);
+			if (destroy_thread.joinable()) {
+				destroy_thread.join();
+			}
+			cleanup_render_thread();
+			return kScenarioDestroyFinishedEarly;
+		}
+		release_on_ready.store(true, std::memory_order_release);
+		if (destroy_thread.joinable()) {
+			destroy_thread.join();
+		}
+		if (!JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+		                             std::chrono::seconds(10))) {
+			if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+				return render_result.load(std::memory_order_acquire);
+			}
+			return kScenarioRenderThreadTimedOut;
+		}
+		if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+			return render_result.load(std::memory_order_acquire);
+		}
+		return kScenarioSuccess;
+	}
+
+	if (const auto connection_observed = observe_connection_for_exit();
+	    !connection_observed || !connection_observed->RenderLoopActive()) {
+		release_on_ready.store(true, std::memory_order_release);
+		if (destroy_thread.joinable()) {
+			destroy_thread.join();
+		}
+		cleanup_render_thread();
+		return kScenarioLifetimeFailed;
+	}
+
+	release_on_ready.store(true, std::memory_order_release);
+	if (destroy_thread.joinable()) {
+		destroy_thread.join();
+	}
+	if (!JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+	                             std::chrono::seconds(10))) {
+		if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+			return render_result.load(std::memory_order_acquire);
+		}
+		return kScenarioRenderThreadTimedOut;
+	}
+	if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+		return render_result.load(std::memory_order_acquire);
+	}
+	if (!destroy_finished.load(std::memory_order_acquire)) {
+		return kScenarioDestroyTimedOut;
+	}
+	return kScenarioSuccess;
+}
+
+int RunLateViewerActivationRejectedScenario(testing::TestNodeHandle *nh)
+{
+	auto env                            = std::make_unique<MujocoEnvTestWrapper>("", nh);
+	MujocoEnvTestWrapper *const env_raw = env.get();
+	env_raw->StartEventLoop();
+	env_raw->requestLoad(1);
+
+	std::mutex viewer_mutex;
+	std::shared_ptr<ViewerConnectionState> connection_for_exit;
+	std::atomic_bool viewer_registered{ false };
+	std::atomic_bool viewer_fully_connected{ false };
+	std::atomic_bool glfw_ready{ false };
+	std::atomic_bool teardown_started{ false };
+	std::atomic_bool render_loop_exited{ false };
+	std::atomic_int render_result{ kScenarioSuccess };
+
+	std::thread render_thread([env_raw, &viewer_mutex, &connection_for_exit, &viewer_registered, &viewer_fully_connected,
+	                           &glfw_ready, &teardown_started, &render_loop_exited, &render_result]() {
+		RenderLoopExitMarker exit_marker(render_loop_exited);
+		try {
+			auto local_viewer = std::make_unique<Viewer>(std::make_unique<GlfwAdapter>(), env_raw, true, false);
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				connection_for_exit = local_viewer->connection_state_;
+			}
+			viewer_registered.store(true, std::memory_order_release);
+			local_viewer->RenderLoop([&viewer_fully_connected, &glfw_ready]() {
+				glfw_ready.store(true, std::memory_order_release);
+				viewer_fully_connected.store(true, std::memory_order_release);
+			});
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				connection_for_exit.reset();
+			}
+		} catch (const std::runtime_error &error) {
+			if (viewer_fully_connected.load(std::memory_order_acquire)) {
+				render_result.store(kScenarioLifetimeFailed, std::memory_order_release);
+			} else if (!IsExpectedLateActivationRuntimeError(teardown_started, viewer_fully_connected, error)) {
+				render_result.store(
+				    ClassifyPreReadyRenderThreadFailure({ &viewer_registered, &glfw_ready, &viewer_fully_connected }),
+				    std::memory_order_release);
+			}
+		} catch (...) {
+			render_result.store(
+			    ClassifyRenderThreadException({ &viewer_registered, &glfw_ready, &viewer_fully_connected }),
+			    std::memory_order_release);
+		}
+	});
+
+	const auto cleanup_render_thread = [&]() {
+		JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+		                        std::chrono::seconds(10));
+	};
+
+	if (!WaitUntil([&viewer_registered]() { return viewer_registered.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5))) {
+		cleanup_render_thread();
+		return kScenarioGlfwStartupFailed;
+	}
+
+	std::thread destroy_thread([&env, &teardown_started]() {
+		teardown_started.store(true, std::memory_order_release);
+		env.reset();
+	});
+	destroy_thread.join();
+
+	if (!JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+	                             std::chrono::seconds(10))) {
+		if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+			return render_result.load(std::memory_order_acquire);
+		}
+		return kScenarioRenderThreadTimedOut;
+	}
+	if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+		return render_result.load(std::memory_order_acquire);
+	}
+	return viewer_fully_connected.load(std::memory_order_acquire) ? kScenarioLateRegistrationAccepted : kScenarioSuccess;
+}
+
+int RunShutdownAdmissionClosesBeforeWorkerJoinScenario(testing::TestNodeHandle *nh)
+{
+	auto env = std::make_unique<MujocoEnvTestWrapper>("", nh);
+	env->StartPhysicsLoop();
+	env->StartEventLoop();
+
+	std::mutex viewer_mutex;
+	std::shared_ptr<ViewerConnectionState> connection_for_exit;
+	std::atomic_bool viewer_registered{ false };
+	std::atomic_bool glfw_ready{ false };
+	std::atomic_bool late_connect_rejected{ false };
+	std::atomic_bool viewer_fully_connected{ false };
+	std::atomic_bool teardown_started{ false };
+	std::atomic_bool render_loop_exited{ false };
+	std::atomic_int render_result{ kScenarioSuccess };
+
+	std::thread late_connect_thread([&env, &viewer_mutex, &connection_for_exit, &viewer_registered, &glfw_ready,
+	                                 &late_connect_rejected, &viewer_fully_connected, &teardown_started,
+	                                 &render_loop_exited, &render_result]() {
+		RenderLoopExitMarker exit_marker(render_loop_exited);
+		try {
+			auto viewer = std::make_unique<Viewer>(std::make_unique<GlfwAdapter>(), env.get(), true, false);
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				connection_for_exit = viewer->connection_state_;
+			}
+			viewer_registered.store(true, std::memory_order_release);
+			viewer->RenderLoop(
+			    [&viewer_fully_connected]() { viewer_fully_connected.store(true, std::memory_order_release); });
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				connection_for_exit.reset();
+			}
+			late_connect_rejected.store(false, std::memory_order_release);
+		} catch (const std::runtime_error &error) {
+			if (IsExpectedLateActivationRuntimeError(teardown_started, viewer_fully_connected, error)) {
+				late_connect_rejected.store(true, std::memory_order_release);
+			} else {
+				render_result.store(kScenarioLifetimeFailed, std::memory_order_release);
+			}
+		} catch (...) {
+			render_result.store(
+			    ClassifyRenderThreadException({ &viewer_registered, &glfw_ready, &viewer_fully_connected }),
+			    std::memory_order_release);
+		}
+	});
+
+	const auto cleanup_render_thread = [&]() {
+		JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, late_connect_thread, render_loop_exited,
+		                        std::chrono::seconds(10));
+	};
+
+	if (!WaitUntil([&viewer_registered]() { return viewer_registered.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5))) {
+		cleanup_render_thread();
+		return kScenarioGlfwStartupFailed;
+	}
+
+	teardown_started.store(true, std::memory_order_release);
+	env.reset();
+
+	if (!JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, late_connect_thread, render_loop_exited,
+	                             std::chrono::seconds(10))) {
+		if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+			return render_result.load(std::memory_order_acquire);
+		}
+		return kScenarioRenderThreadTimedOut;
+	}
+	if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+		return render_result.load(std::memory_order_acquire);
+	}
+	return late_connect_rejected.load(std::memory_order_acquire) ? kScenarioSuccess : kScenarioLateRegistrationAccepted;
+}
+
+int RunViewerCreatedBeforeCloseRejectsLaterRenderLoopScenario(testing::TestNodeHandle *nh)
+{
+	auto env    = std::make_unique<MujocoEnvTestWrapper>("", nh);
+	auto viewer = std::make_unique<Viewer>(std::make_unique<GlfwAdapter>(), env.get(), true, false);
+	env.reset();
+	const std::atomic_bool teardown_started{ true };
+	const std::atomic_bool fully_connected{ false };
+	try {
+		viewer->RenderLoop();
+		return kScenarioLateRegistrationAccepted;
+	} catch (const std::runtime_error &error) {
+		return IsExpectedLateActivationRuntimeError(teardown_started, fully_connected, error) ? kScenarioSuccess :
+		                                                                                        kScenarioLifetimeFailed;
+	} catch (...) {
+		return kScenarioLifetimeFailed;
+	}
+}
+
+int RunGenericLateActivationRuntimeErrorScenario(testing::TestNodeHandle * /*nh*/)
+{
+	const std::atomic_bool viewer_constructed{ true };
+	const std::atomic_bool glfw_ready{ false };
+	const std::atomic_bool fully_connected{ false };
+	const std::atomic_bool teardown_started{ true };
+	try {
+		throw std::runtime_error("unexpected generic failure");
+	} catch (const std::runtime_error &error) {
+		if (IsExpectedLateActivationRuntimeError(teardown_started, fully_connected, error)) {
+			return kScenarioSuccess;
+		}
+		return kScenarioLifetimeFailed;
+	} catch (...) {
+		return ClassifyRenderThreadException({ &viewer_constructed, &glfw_ready, &fully_connected });
+	}
+}
+
+int RunReconnectedViewerDisablesHeadlessScenario(testing::TestNodeHandle *nh)
+{
+	auto env                            = std::make_unique<HeadlessTestEnv>("", nh);
+	MujocoEnvTestWrapper *const env_raw = env.get();
+	env_raw->StartEventLoop();
+
+	std::mutex viewer_mutex;
+	std::shared_ptr<ViewerConnectionState> connection_for_exit;
+	std::atomic_bool glfw_ready{ false };
+	std::atomic_bool viewer_constructed{ false };
+	std::atomic_bool viewer_connected{ false };
+	std::atomic_bool render_loop_exited{ false };
+	std::atomic_int render_result{ kScenarioSuccess };
+
+	std::thread render_thread([env_raw, &viewer_mutex, &connection_for_exit, &viewer_constructed, &viewer_connected,
+	                           &glfw_ready, &render_loop_exited, &render_result]() {
+		RenderLoopExitMarker exit_marker(render_loop_exited);
+		try {
+			auto local_viewer = std::make_unique<Viewer>(std::make_unique<GlfwAdapter>(), env_raw, true, false);
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				connection_for_exit = local_viewer->connection_state_;
+			}
+			viewer_constructed.store(true, std::memory_order_release);
+			local_viewer->RenderLoop([&viewer_connected, &glfw_ready]() {
+				glfw_ready.store(true, std::memory_order_release);
+				viewer_connected.store(true, std::memory_order_release);
+			});
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				connection_for_exit.reset();
+			}
+		} catch (...) {
+			render_result.store(ClassifyRenderThreadException({ &viewer_constructed, &glfw_ready, &viewer_connected }),
+			                    std::memory_order_release);
+		}
+	});
+
+	const auto cleanup_render_thread = [&]() {
+		JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+		                        std::chrono::seconds(10));
+	};
+
+	if (!WaitUntil([&viewer_constructed]() { return viewer_constructed.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5))) {
+		cleanup_render_thread();
+		return kScenarioGlfwStartupFailed;
+	}
+	if (!WaitUntil([&glfw_ready]() { return glfw_ready.load(std::memory_order_acquire); }, std::chrono::seconds(5))) {
+		cleanup_render_thread();
+		return ClassifyGlfwReadyWaitTimeout({ &viewer_constructed, &glfw_ready, &viewer_connected });
+	}
+	if (!WaitUntil([&viewer_connected]() { return viewer_connected.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5))) {
+		cleanup_render_thread();
+		return kScenarioViewerNotConnected;
+	}
+
+	RequestViewerExit(connection_for_exit, &viewer_mutex);
+	if (!WaitUntil([&render_loop_exited]() { return render_loop_exited.load(std::memory_order_acquire); },
+	               std::chrono::seconds(10))) {
+		cleanup_render_thread();
+		if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+			return render_result.load(std::memory_order_acquire);
+		}
+		return kScenarioRenderThreadTimedOut;
+	}
+	if (render_thread.joinable()) {
+		render_thread.join();
+	}
+	if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+		return render_result.load(std::memory_order_acquire);
+	}
+	if (!env->IsHeadless()) {
+		return kScenarioLifetimeFailed;
+	}
+
+	{
+		auto replacement = std::make_unique<Viewer>(std::make_unique<GlfwAdapter>(), env_raw, true, false);
+		if (env->IsHeadless()) {
+			return kScenarioLifetimeFailed;
+		}
+	}
+
+	return kScenarioSuccess;
+}
+
+// A render thread can still be mid GL-context creation (slow on this CI box)
+// while holding a pointer into the environment. We cannot join it (it is stuck)
+// and we cannot let the environment be destroyed while it runs (use-after-free).
+// These child scenarios exit right after they return, so terminate the process
+// directly with the failure code instead of returning -- returning would destroy
+// the live thread and trigger std::terminate (the "terminate called without an
+// active exception" crash).
+[[noreturn]] static void ExitChildScenario(int code)
+{
+	::_exit(code);
+}
+
+int RunConcurrentVoluntaryDisconnectHeadlessScenario(testing::TestNodeHandle *nh)
+{
+	auto env                            = std::make_unique<HeadlessTestEnv>("", nh);
+	MujocoEnvTestWrapper *const env_raw = env.get();
+	env_raw->StartEventLoop();
+
+	std::mutex viewer_mutex;
+	std::shared_ptr<ViewerConnectionState> first_connection_for_exit;
+	std::shared_ptr<ViewerConnectionState> second_connection_for_exit;
+	std::atomic_bool first_glfw_ready{ false };
+	std::atomic_bool second_glfw_ready{ false };
+	std::atomic_bool first_viewer_constructed{ false };
+	std::atomic_bool second_viewer_constructed{ false };
+	std::atomic_bool first_viewer_connected{ false };
+	std::atomic_bool second_viewer_connected{ false };
+	std::atomic_bool first_render_loop_exited{ false };
+	std::atomic_bool second_render_loop_exited{ false };
+	std::atomic_int first_render_result{ kScenarioSuccess };
+	std::atomic_int second_render_result{ kScenarioSuccess };
+
+	auto run_viewer = [&](std::shared_ptr<ViewerConnectionState> *connection_slot, std::atomic_bool *viewer_constructed,
+	                      std::atomic_bool *viewer_connected, std::atomic_bool *glfw_ready,
+	                      std::atomic_bool *render_loop_exited, std::atomic_int *render_result) {
+		RenderLoopExitMarker exit_marker(*render_loop_exited);
+		try {
+			auto local_viewer = std::make_unique<Viewer>(std::make_unique<GlfwAdapter>(), env_raw, true, false);
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				*connection_slot = local_viewer->connection_state_;
+			}
+			viewer_constructed->store(true, std::memory_order_release);
+			local_viewer->RenderLoop([viewer_connected, glfw_ready]() {
+				viewer_connected->store(true, std::memory_order_release);
+				glfw_ready->store(true, std::memory_order_release);
+			});
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				connection_slot->reset();
+			}
+		} catch (...) {
+			render_result->store(ClassifyRenderThreadException({ viewer_constructed, glfw_ready, viewer_connected }),
+			                     std::memory_order_release);
+		}
+	};
+
+	std::thread first_render_thread(run_viewer, &first_connection_for_exit, &first_viewer_constructed,
+	                                &first_viewer_connected, &first_glfw_ready, &first_render_loop_exited,
+	                                &first_render_result);
+	if (!WaitUntil([&first_viewer_constructed]() { return first_viewer_constructed.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5)) ||
+	    !WaitUntil([&first_glfw_ready]() { return first_glfw_ready.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5)) ||
+	    !WaitUntil([&first_viewer_connected]() { return first_viewer_connected.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5))) {
+		JoinRenderThreadBounded(first_connection_for_exit, &viewer_mutex, first_render_thread, first_render_loop_exited,
+		                        std::chrono::seconds(10));
+		ExitChildScenario(kScenarioGlfwStartupFailed);
+	}
+
+	std::thread second_render_thread(run_viewer, &second_connection_for_exit, &second_viewer_constructed,
+	                                 &second_viewer_connected, &second_glfw_ready, &second_render_loop_exited,
+	                                 &second_render_result);
+	if (!WaitUntil([&second_viewer_constructed]() { return second_viewer_constructed.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5)) ||
+	    !WaitUntil([&second_glfw_ready]() { return second_glfw_ready.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5)) ||
+	    !WaitUntil([&second_viewer_connected]() { return second_viewer_connected.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5))) {
+		RequestViewerExit(second_connection_for_exit, &viewer_mutex);
+		JoinRenderThreadBounded(first_connection_for_exit, &viewer_mutex, first_render_thread, first_render_loop_exited,
+		                        std::chrono::seconds(10));
+		JoinRenderThreadBounded(second_connection_for_exit, &viewer_mutex, second_render_thread,
+		                        second_render_loop_exited, std::chrono::seconds(10));
+		ExitChildScenario(kScenarioGlfwStartupFailed);
+	}
+
+	std::thread first_disconnect([&]() {
+		std::shared_ptr<ViewerConnectionState> connection;
+		{
+			std::lock_guard<std::mutex> lock(viewer_mutex);
+			connection = first_connection_for_exit;
+		}
+		RequestViewerExit(connection, nullptr);
+	});
+	std::thread second_disconnect([&]() {
+		std::shared_ptr<ViewerConnectionState> connection;
+		{
+			std::lock_guard<std::mutex> lock(viewer_mutex);
+			connection = second_connection_for_exit;
+		}
+		RequestViewerExit(connection, nullptr);
+	});
+	first_disconnect.join();
+	second_disconnect.join();
+
+	if (!JoinRenderThreadBounded(first_connection_for_exit, &viewer_mutex, first_render_thread, first_render_loop_exited,
+	                             std::chrono::seconds(10)) ||
+	    !JoinRenderThreadBounded(second_connection_for_exit, &viewer_mutex, second_render_thread,
+	                             second_render_loop_exited, std::chrono::seconds(10))) {
+		if (first_render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+			ExitChildScenario(first_render_result.load(std::memory_order_acquire));
+		}
+		if (second_render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+			ExitChildScenario(second_render_result.load(std::memory_order_acquire));
+		}
+		ExitChildScenario(kScenarioRenderThreadTimedOut);
+	}
+	if (first_render_result.load(std::memory_order_acquire) != kScenarioSuccess ||
+	    second_render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+		return kScenarioLifetimeFailed;
+	}
+	if (!WaitUntil([&env]() { return !env->HasConnectedViewers(); }, std::chrono::seconds(5))) {
+		return kScenarioLifetimeFailed;
+	}
+	if (!WaitUntil([&env]() { return env->IsHeadless(); }, std::chrono::seconds(5))) {
+		return kScenarioLifetimeFailed;
+	}
+	return kScenarioSuccess;
+}
+
+int RunConnectedViewersLeasePinsViewerStorageScenario(testing::TestNodeHandle *nh)
+{
+	auto env                    = std::make_unique<LeaseTestEnv>("", nh);
+	LeaseTestEnv *const env_raw = env.get();
+	env_raw->StartEventLoop();
+
+	std::mutex viewer_mutex;
+	std::shared_ptr<ViewerConnectionState> connection_for_exit;
+	std::atomic_bool glfw_ready{ false };
+	std::atomic_bool viewer_constructed{ false };
+	std::atomic_bool viewer_connected{ false };
+	std::atomic_bool render_loop_exited{ false };
+	std::optional<ConnectedViewersLease> lease;
+	std::atomic_int render_result{ kScenarioSuccess };
+
+	std::thread render_thread([env_raw, &viewer_mutex, &connection_for_exit, &viewer_constructed, &viewer_connected,
+	                           &glfw_ready, &render_loop_exited, &render_result]() {
+		RenderLoopExitMarker exit_marker(render_loop_exited);
+		try {
+			auto local_viewer = std::make_unique<Viewer>(std::make_unique<GlfwAdapter>(), env_raw, true, false);
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				connection_for_exit = local_viewer->connection_state_;
+			}
+			viewer_constructed.store(true, std::memory_order_release);
+			local_viewer->RenderLoop([&viewer_connected, &glfw_ready]() {
+				glfw_ready.store(true, std::memory_order_release);
+				viewer_connected.store(true, std::memory_order_release);
+			});
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				connection_for_exit.reset();
+			}
+		} catch (...) {
+			render_result.store(ClassifyRenderThreadException({ &viewer_constructed, &glfw_ready, &viewer_connected }),
+			                    std::memory_order_release);
+		}
+	});
+
+	if (!WaitUntil([&viewer_constructed]() { return viewer_constructed.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5))) {
+		JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+		                        std::chrono::seconds(10));
+		return kScenarioGlfwStartupFailed;
+	}
+	if (!WaitUntil([&glfw_ready]() { return glfw_ready.load(std::memory_order_acquire); }, std::chrono::seconds(5))) {
+		JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+		                        std::chrono::seconds(10));
+		return ClassifyGlfwReadyWaitTimeout({ &viewer_constructed, &glfw_ready, &viewer_connected });
+	}
+	if (!WaitUntil([&viewer_connected]() { return viewer_connected.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5))) {
+		JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+		                        std::chrono::seconds(10));
+		return kScenarioViewerNotConnected;
+	}
+
+	lease.emplace(env_raw->TakeLease());
+	if (lease->empty()) {
+		lease.reset();
+		JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+		                        std::chrono::seconds(10));
+		return kScenarioViewerNotConnected;
+	}
+
+	RequestViewerExit(connection_for_exit, &viewer_mutex);
+	if (WaitUntil([&render_loop_exited]() { return render_loop_exited.load(std::memory_order_acquire); },
+	              std::chrono::milliseconds(300))) {
+		lease.reset();
+		JoinRenderThreadBounded(nullptr, nullptr, render_thread, render_loop_exited, std::chrono::seconds(10));
+		return kScenarioLeaseDrainFinishedEarly;
+	}
+
+	lease.reset();
+	if (!JoinRenderThreadBounded(nullptr, nullptr, render_thread, render_loop_exited, std::chrono::seconds(10))) {
+		if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+			return render_result.load(std::memory_order_acquire);
+		}
+		return kScenarioRenderThreadTimedOut;
+	}
+	if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+		return render_result.load(std::memory_order_acquire);
+	}
+	return kScenarioSuccess;
+}
+
+int RunViewerDisconnectsBeforeEnvironmentDestructionScenario(testing::TestNodeHandle *nh)
+{
+	auto env                            = std::make_unique<MujocoEnvTestWrapper>("", nh);
+	MujocoEnvTestWrapper *const env_raw = env.get();
+	env_raw->StartEventLoop();
+
+	std::mutex viewer_mutex;
+	std::shared_ptr<ViewerConnectionState> connection_for_exit;
+	std::atomic_bool glfw_ready{ false };
+	std::atomic_bool viewer_constructed{ false };
+	std::atomic_bool viewer_connected{ false };
+	std::atomic_bool render_loop_exited{ false };
+	std::atomic_bool env_destroyed{ false };
+	std::atomic_bool scenario_finished{ false };
+	std::atomic_int render_result{ kScenarioSuccess };
+
+	std::thread render_thread([env_raw, &viewer_mutex, &connection_for_exit, &viewer_constructed, &viewer_connected,
+	                           &glfw_ready, &render_loop_exited, &env_destroyed, &scenario_finished, &render_result]() {
+		RenderLoopExitMarker exit_marker(render_loop_exited);
+		try {
+			auto local_viewer = std::make_unique<Viewer>(std::make_unique<GlfwAdapter>(), env_raw, true, false);
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				connection_for_exit = local_viewer->connection_state_;
+			}
+			viewer_constructed.store(true, std::memory_order_release);
+			local_viewer->RenderLoop([&viewer_connected, &glfw_ready]() {
+				glfw_ready.store(true, std::memory_order_release);
+				viewer_connected.store(true, std::memory_order_release);
+			});
+			{
+				std::lock_guard<std::mutex> lock(viewer_mutex);
+				connection_for_exit.reset();
+			}
+			render_loop_exited.store(true, std::memory_order_release);
+			if (!WaitUntil([&env_destroyed]() { return env_destroyed.load(std::memory_order_acquire); },
+			               std::chrono::seconds(10))) {
+				render_result.store(kScenarioDestroyTimedOut, std::memory_order_release);
+				return;
+			}
+			local_viewer.reset();
+			scenario_finished.store(true, std::memory_order_release);
+		} catch (...) {
+			render_result.store(ClassifyRenderThreadException({ &viewer_constructed, &glfw_ready, &viewer_connected }),
+			                    std::memory_order_release);
+		}
+	});
+
+	if (!WaitUntil([&viewer_constructed]() { return viewer_constructed.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5))) {
+		JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+		                        std::chrono::seconds(10));
+		return kScenarioGlfwStartupFailed;
+	}
+	if (!WaitUntil([&glfw_ready]() { return glfw_ready.load(std::memory_order_acquire); }, std::chrono::seconds(5))) {
+		JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+		                        std::chrono::seconds(10));
+		return ClassifyGlfwReadyWaitTimeout({ &viewer_constructed, &glfw_ready, &viewer_connected });
+	}
+	if (!WaitUntil([&viewer_connected]() { return viewer_connected.load(std::memory_order_acquire); },
+	               std::chrono::seconds(5))) {
+		JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+		                        std::chrono::seconds(10));
+		return kScenarioViewerNotConnected;
+	}
+
+	RequestViewerExit(connection_for_exit, &viewer_mutex);
+	if (!WaitUntil([&render_loop_exited]() { return render_loop_exited.load(std::memory_order_acquire); },
+	               std::chrono::seconds(10))) {
+		JoinRenderThreadBounded(connection_for_exit, &viewer_mutex, render_thread, render_loop_exited,
+		                        std::chrono::seconds(10));
+		if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+			return render_result.load(std::memory_order_acquire);
+		}
+		return kScenarioRenderThreadTimedOut;
+	}
+
+	env.reset();
+	env_destroyed.store(true, std::memory_order_release);
+
+	if (!WaitUntil([&scenario_finished]() { return scenario_finished.load(std::memory_order_acquire); },
+	               std::chrono::seconds(10))) {
+		JoinRenderThreadBounded(nullptr, nullptr, render_thread, render_loop_exited, std::chrono::seconds(10));
+		if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+			return render_result.load(std::memory_order_acquire);
+		}
+		return kScenarioDestroyTimedOut;
+	}
+	if (render_thread.joinable()) {
+		render_thread.join();
+	}
+	if (render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
+		return render_result.load(std::memory_order_acquire);
+	}
+	return kScenarioSuccess;
+}
+
+#define LIFETIME_CHILD_SCENARIO(Name, Runner)                      \
+	TEST_F(BaseEnvFixture, Name##Child)                             \
+	{                                                               \
+		if (std::getenv("MUJOCO_ROS_LIFETIME_CHILD") == nullptr) {   \
+			GTEST_SKIP() << "child-only scenario entrypoint";         \
+		}                                                            \
+		if (!NativeDisplayIsAdvertised()) {                          \
+			::_exit(kScenarioGlfwStartupFailed);                      \
+		}                                                            \
+		try {                                                        \
+			const int result = Runner(nh.get());                      \
+			::_exit(result);                                          \
+		} catch (...) {                                              \
+			::_exit(kScenarioLifetimeFailed);                         \
+		}                                                            \
+	}                                                               \
+	TEST_F(BaseEnvFixture, Name##Isolated)                          \
+	{                                                               \
+		if (!NativeDisplayIsAdvertised()) {                          \
+			GTEST_SKIP() << "native display unavailable";             \
+		}                                                            \
+		ExpectChildScenarioSuccess("BaseEnvFixture." #Name "Child"); \
+	}
+
+#define LIFETIME_CHILD_ABORT_SCENARIO(Name, Runner)               \
+	TEST_F(BaseEnvFixture, Name##Child)                            \
+	{                                                              \
+		if (std::getenv("MUJOCO_ROS_LIFETIME_CHILD") == nullptr) {  \
+			GTEST_SKIP() << "child-only scenario entrypoint";        \
+		}                                                           \
+		if (!NativeDisplayIsAdvertised()) {                         \
+			::_exit(kScenarioGlfwStartupFailed);                     \
+		}                                                           \
+		try {                                                       \
+			const int result = Runner(nh.get());                     \
+			if (result == kScenarioGlfwStartupFailed) {              \
+				::_exit(kScenarioGlfwStartupFailed);                  \
+			}                                                        \
+			if (result == kScenarioViewerNotConnected) {             \
+				::_exit(kScenarioViewerNotConnected);                 \
+			}                                                        \
+			if (result != kScenarioSuccess) {                        \
+				::_exit(kScenarioLifetimeFailed);                     \
+			}                                                        \
+			::_exit(kScenarioLifetimeFailed);                        \
+		} catch (...) {                                             \
+			::_exit(kScenarioLifetimeFailed);                        \
+		}                                                           \
+	}                                                              \
+	TEST_F(BaseEnvFixture, Name##Isolated)                         \
+	{                                                              \
+		if (!NativeDisplayIsAdvertised()) {                         \
+			GTEST_SKIP() << "native display unavailable";            \
+		}                                                           \
+		ExpectChildScenarioAborts("BaseEnvFixture." #Name "Child"); \
+	}
+
+LIFETIME_CHILD_SCENARIO(ConnectedViewerLeaseReleaseAfterEnvironmentCloseIsBounded,
+                        RunConnectedViewerLeaseReleaseScenario)
+LIFETIME_CHILD_SCENARIO(ExternallyOwnedViewerSurvivesEnvironmentDestruction, RunExternallyOwnedViewerSurvivesScenario)
+LIFETIME_CHILD_SCENARIO(ViewerDisconnectsBeforeEnvironmentDestruction,
+                        RunViewerDisconnectsBeforeEnvironmentDestructionScenario)
+LIFETIME_CHILD_ABORT_SCENARIO(ViewerDestructorDuringRenderLoopTerminates, RunViewerDestructorDuringRenderLoopScenario)
+LIFETIME_CHILD_ABORT_SCENARIO(EnvironmentDestructorFromViewerThreadTerminates,
+                              RunEnvironmentDestructorFromViewerThreadScenario)
+LIFETIME_CHILD_SCENARIO(LeaseBlocksEnvironmentModelReset, RunLeaseBlocksEnvironmentModelResetScenario)
+LIFETIME_CHILD_SCENARIO(LateViewerActivationIsRejectedAndRolledBack, RunLateViewerActivationRejectedScenario)
+LIFETIME_CHILD_SCENARIO(ShutdownAdmissionClosesBeforeWorkerJoin, RunShutdownAdmissionClosesBeforeWorkerJoinScenario)
+LIFETIME_CHILD_SCENARIO(ViewerCreatedBeforeCloseRejectsLaterRenderLoop,
+                        RunViewerCreatedBeforeCloseRejectsLaterRenderLoopScenario)
+LIFETIME_CHILD_SCENARIO(ReconnectedViewerDisablesHeadless, RunReconnectedViewerDisablesHeadlessScenario)
+LIFETIME_CHILD_SCENARIO(ConcurrentVoluntaryDisconnectHeadless, RunConcurrentVoluntaryDisconnectHeadlessScenario)
+LIFETIME_CHILD_SCENARIO(ConnectedViewersLeasePinsViewerStorage, RunConnectedViewersLeasePinsViewerStorageScenario)
+
+TEST_F(BaseEnvFixture, GenericLateActivationRuntimeErrorRejectedChild)
+{
+	if (std::getenv("MUJOCO_ROS_LIFETIME_CHILD") == nullptr) {
+		GTEST_SKIP() << "child-only scenario entrypoint";
+	}
+	if (!NativeDisplayIsAdvertised()) {
+		::_exit(kScenarioGlfwStartupFailed);
+	}
+	try {
+		const int result = RunGenericLateActivationRuntimeErrorScenario(nh.get());
+		::_exit(result);
+	} catch (...) {
+		::_exit(kScenarioLifetimeFailed);
+	}
+}
+
+TEST_F(BaseEnvFixture, GenericLateActivationRuntimeErrorRejectedIsolated)
+{
+	if (!NativeDisplayIsAdvertised()) {
+		GTEST_SKIP() << "native display unavailable";
+	}
+	ExpectChildScenarioSuccess("BaseEnvFixture.GenericLateActivationRuntimeErrorRejectedChild", kScenarioLifetimeFailed);
+}
+
+#undef LIFETIME_CHILD_SCENARIO
+#undef LIFETIME_CHILD_ABORT_SCENARIO
+
+class LateViewerConnectDuringReloadEnv : public MujocoEnvTestWrapper
+{
+public:
+	using MujocoEnvTestWrapper::MujocoEnvTestWrapper;
+	using MujocoEnvTestWrapper::RequestReload;
+	ConnectedViewersLease TakeLeaseForTest() const { return AcquireConnectedViewersLease(); }
+	bool ReloadInProgressForTest() const { return reload_in_progress_.load(std::memory_order_acquire); }
+};
+
+// Regression test for a deadlock between a viewer's own first-connect
+// handshake and a concurrently in-flight reload's tail notification:
+//
+//   - LoadWithModelAndData() sets reload_in_progress_ = true, then (at its
+//     tail) hands an async Load() to every viewer AcquireConnectedViewersLease()
+//     considers "connected" -- blocking until that viewer's RenderLoop services it.
+//   - MujocoEnv::ConnectViewer()'s own retry loop refuses to proceed with its
+//     first-time InitializeModel() while reload_in_progress_ is true, and just
+//     keeps retrying.
+//
+// Before the fix, a viewer that was merely *registered* (via CreateViewerConnection)
+// but still stuck inside its own ConnectViewer() retry loop was nonetheless handed
+// the async Load() -- and nothing could ever service it, since that viewer's
+// RenderLoop() hadn't reached its main frame loop yet. Both sides waited on each
+// other forever. The fix (ViewerConnectionState::render_loop_ready_, set only once
+// ConnectViewer() has resolved) makes AcquireConnectedViewersLease() skip such a
+// viewer -- it doesn't need the notification anyway, since it will pick up the
+// current model itself via InitializeModel() as soon as reload_in_progress_ clears.
+TEST_F(BaseEnvFixture, LateConnectingViewerDuringReloadDoesNotDeadlock)
+{
+	if (!NativeDisplayIsAdvertised()) {
+		GTEST_SKIP() << "native display unavailable";
+	}
+
+	// Racing the very first model load against the very first viewer
+	// connection is a faithful reproduction of the original bug, which was
+	// specifically about server-startup ordering.
+	auto env = std::make_unique<LateViewerConnectDuringReloadEnv>("", nh.get());
+
+	std::mutex sync_mutex;
+	std::condition_variable sync_cv;
+	bool reload_reached_tail = false;
+	bool release_reload      = false;
+	std::promise<void> reload_finished;
+	auto reload_finished_future = reload_finished.get_future();
+
+	// kRenderReconfigureStarted fires right before LoadWithModelAndData()'s tail
+	// (AcquireConnectedViewersLease + viewer->Load()) -- block there so the
+	// about-to-be-created viewer below has time to reach ConnectViewer()'s retry
+	// loop while reload_in_progress_ is still true, exactly as in the real race.
+	env->SetReloadObserver([&](MujocoEnv::ReloadPhase phase) {
+		if (phase == MujocoEnv::ReloadPhase::kRenderReconfigureStarted) {
+			std::unique_lock<std::mutex> lock(sync_mutex);
+			reload_reached_tail = true;
+			sync_cv.notify_all();
+			sync_cv.wait(lock, [&] { return release_reload; });
+		} else if (phase == MujocoEnv::ReloadPhase::kNewGenerationLoaded) {
+			reload_finished.set_value();
+		}
+	});
+
+	// Non-blocking: this is the very first model load, racing the very first
+	// viewer connection below -- exactly the server-startup ordering that
+	// triggered the original deadlock.
+	env->StartWithXML(testing::get_test_model_path("empty_world.xml"), false);
+	{
+		std::unique_lock<std::mutex> lock(sync_mutex);
+		ASSERT_TRUE(sync_cv.wait_for(lock, std::chrono::seconds(2), [&] { return reload_reached_tail; }))
+		    << "initial load did not reach kRenderReconfigureStarted";
+	}
+	ASSERT_TRUE(env->ReloadInProgressForTest());
+
+	// The viewer itself: its ConnectViewer() must retry against
+	// reload_in_progress_ == true right now, exactly like the real bug.
+	// RenderLoop() runs on THIS (the test's main) thread below, matching
+	// main.cpp's own usage -- running it on a spawned thread instead fails
+	// GLFW context creation in this environment. A background "releaser"
+	// thread does the lease inspection and unblocks the reload while
+	// RenderLoop() is stuck retrying here.
+	auto viewer = std::make_unique<Viewer>(std::make_unique<GlfwAdapter>(), env.get(), true, false);
+
+	bool lease_excluded_connecting_viewer = false;
+	std::thread releaser_thread([&] {
+		// Give the viewer's ConnectViewer() retry loop a moment to actually
+		// start spinning against the still-open reload before inspecting it.
+		std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+		const auto lease                 = env->TakeLeaseForTest();
+		const auto matches               = std::any_of(lease.viewers().begin(), lease.viewers().end(),
+		                                               [&](Viewer *leased_viewer) { return leased_viewer == viewer.get(); });
+		lease_excluded_connecting_viewer = !matches;
+
+		// Release the reload. Before the fix, its tail would have blocked
+		// forever on this viewer's Load() future, and this viewer's
+		// ConnectViewer() would never see reload_in_progress_ clear -- the
+		// RenderLoop() call below would then never return.
+		{
+			std::lock_guard<std::mutex> lock(sync_mutex);
+			release_reload = true;
+		}
+		sync_cv.notify_all();
+	});
+
+	// on_ready fires once ConnectViewer() has actually resolved -- exit right
+	// away, there is nothing else for this test to do with a running viewer.
+	ASSERT_NO_THROW(viewer->RenderLoop([&] { viewer->exit_request.store(1); }));
+
+	releaser_thread.join();
+	EXPECT_TRUE(lease_excluded_connecting_viewer)
+	    << "a viewer still inside its own ConnectViewer() handshake must not be handed an async Load() -- nothing "
+	       "can service it yet, and doing so deadlocks the reload against this viewer's own connect";
+	ASSERT_EQ(reload_finished_future.wait_for(std::chrono::seconds(2)), std::future_status::ready)
+	    << "reload did not complete -- deadlocked against the connecting viewer";
+
+	env->shutdown();
+}
+
+} // namespace
+#endif
 
 namespace mujoco_ros {
 

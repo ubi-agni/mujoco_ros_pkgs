@@ -2,8 +2,11 @@
 
 from pathlib import Path
 from contextlib import contextmanager
+import faulthandler
 import itertools
+import os
 import sys
+import threading
 import time
 import unittest
 
@@ -12,6 +15,7 @@ import pymujoco_ros
 
 from mujoco_ros import MujocoEnv
 from mujoco_ros import RosCore
+from mujoco_ros import viewer
 
 _service_client_ids = itertools.count()
 
@@ -65,6 +69,17 @@ def require_python_mujoco():
         raise unittest.SkipTest("Python mujoco package is not available")
 
 
+def native_display_is_advertised():
+    return bool(os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY'))
+
+
+def require_visible_viewer():
+    if pymujoco_ros.__viewer_backend__ != 'GLFW':
+        raise unittest.SkipTest('visible viewer requires WITH_GUI=ON')
+    if not native_display_is_advertised():
+        raise unittest.SkipTest('native display is unavailable')
+
+
 def service_name(env, name):
     return f"{env.handle_namespace}/{name}"
 
@@ -74,7 +89,29 @@ def wait_for_idle(env, timeout=5.0):
     while env.operational_status != 0 and time.monotonic() < deadline:
         time.sleep(0.01)
     if env.operational_status != 0:
-        raise AssertionError("environment did not become idle before timeout")
+        raise AssertionError('environment did not become idle before timeout')
+
+
+def assert_other_thread_runs_during_blocking_call(blocking_call):
+    worker_at_barrier = threading.Event()
+    continue_worker = threading.Event()
+    progress = threading.Event()
+
+    def worker():
+        worker_at_barrier.set()
+        continue_worker.wait(timeout=2.0)
+        progress.set()
+
+    worker_thread = threading.Thread(target=worker)
+    worker_thread.start()
+    assert worker_at_barrier.wait(timeout=2.0), 'worker did not reach blocked section'
+    blocking_thread = threading.Thread(target=blocking_call)
+    blocking_thread.start()
+    continue_worker.set()
+    blocking_thread.join(timeout=10.0)
+    worker_thread.join(timeout=2.0)
+    assert not blocking_thread.is_alive(), 'blocking call did not finish'
+    assert progress.is_set(), 'expected another Python thread to run during blocking call'
 
 
 def call_service(env, name, srv_type, client_node=None, **fields):
@@ -132,6 +169,15 @@ def shutdown_rclpy_if_needed():
 
 
 class PythonBindingsTest(unittest.TestCase):
+    def _arm_close_watchdog(self, seconds: float = 10.0) -> None:
+        """Arm a faulthandler watchdog for a blocking call.
+
+        Under ROS 1 rostest, ``sys.stderr`` is a pipe/StringIO without a real file
+        descriptor, so the default target raises ``UnsupportedOperation: fileno``.
+        Target the original stderr (``sys.__stderr__``), which always has a fileno.
+        """
+        faulthandler.dump_traceback_later(seconds, exit=True, file=sys.__stderr__)
+
     def test_native_module_exposes_version(self):
         self.assertTrue(pymujoco_ros.__mujoco_version__)
 
@@ -193,6 +239,40 @@ class PythonBindingsTest(unittest.TestCase):
 
             self.assertTrue(env.set_gravity([0.0, 0.0, -3.21]))
             self.assertSequenceAlmostEqual(env.get_gravity(), [0.0, 0.0, -3.21])
+
+            import mujoco
+
+            original_energy = env.runtime_options.energy
+            original_sensor_disabled = env.runtime_options.sensor_disabled
+            try:
+                env.set_enableflag(mujoco.mjtEnableBit.mjENBL_ENERGY, True)
+                self.assertTrue(env.runtime_options.energy)
+                unchanged = env.runtime_options
+                env.set_enableflag(mujoco.mjtEnableBit.mjENBL_ENERGY, True)
+                self.assertEqual(env.runtime_options, unchanged)
+                env.set_enableflag(mujoco.mjtEnableBit.mjENBL_ENERGY, False)
+                self.assertFalse(env.runtime_options.energy)
+                env.toggle_enableflag(mujoco.mjtEnableBit.mjENBL_ENERGY)
+                self.assertTrue(env.runtime_options.energy)
+
+                env.set_disableflag(mujoco.mjtDisableBit.mjDSBL_SENSOR, True)
+                self.assertTrue(env.runtime_options.sensor_disabled)
+                unchanged = env.runtime_options
+                env.set_disableflag(mujoco.mjtDisableBit.mjDSBL_SENSOR, True)
+                self.assertEqual(env.runtime_options, unchanged)
+                env.set_disableflag(mujoco.mjtDisableBit.mjDSBL_SENSOR, False)
+                self.assertFalse(env.runtime_options.sensor_disabled)
+                env.toggle_disableflag(mujoco.mjtDisableBit.mjDSBL_SENSOR)
+                self.assertTrue(env.runtime_options.sensor_disabled)
+                env.toggle_disableflag(mujoco.mjtDisableBit.mjDSBL_SENSOR)
+                self.assertFalse(env.runtime_options.sensor_disabled)
+            finally:
+                env.apply_runtime_options(
+                    {
+                        'energy': original_energy,
+                        'sensor_disabled': original_sensor_disabled,
+                    }
+                )
 
             self.assertTrue(env.step(100))
             self.assertTrue(env.sim_info.model_valid)
@@ -415,49 +495,582 @@ class PythonBindingsTest(unittest.TestCase):
 
                 self.assertTrue(env.set_rt_factor(0.5))
                 sim_info_response = call_service(
-                    env, "get_sim_info", GetSimInfo, client_node=client_node
+                    env, 'get_sim_info', GetSimInfo, client_node=client_node
                 )
                 self.assertAlmostEqual(sim_info_response.state.rt_setting, 0.5, delta=0.01)
 
                 gravity_response = call_service(
                     env,
-                    "set_gravity",
+                    'set_gravity',
                     SetGravity,
                     client_node=client_node,
                     gravity=[0.0, 0.0, -1.23],
-                    admin_hash="",
+                    admin_hash='',
                 )
                 self.assertTrue(gravity_response.success)
                 self.assertSequenceAlmostEqual(env.get_gravity(), [0.0, 0.0, -1.23])
 
                 self.assertTrue(env.set_gravity([0.0, 0.0, -2.34]))
                 get_gravity_response = call_service(
-                    env, "get_gravity", GetGravity, client_node=client_node, admin_hash=""
+                    env, 'get_gravity', GetGravity, client_node=client_node, admin_hash=''
                 )
                 self.assertSequenceAlmostEqual(get_gravity_response.gravity, env.get_gravity())
 
                 previous_load_count = env.sim_info.load_count
                 reload_response = call_service(
                     env,
-                    "reload",
+                    'reload',
                     Reload,
                     client_node=client_node,
                     model=str(empty_world),
-                    admin_hash="",
+                    admin_hash='',
                 )
                 self.assertTrue(reload_response.success)
                 wait_for_idle(env)
-                self.assertIn("empty_world.xml", env.sim_info.model_path)
+                self.assertIn('empty_world.xml', env.sim_info.model_path)
                 self.assertGreater(env.sim_info.load_count, previous_load_count)
 
-    def test_viewer_binding_reports_unsupported_modes_without_blocking(self):
+    def test_public_viewer_module_exports_mujoco_shaped_calls(self):
+        self.assertTrue(callable(viewer.launch))
+        self.assertTrue(callable(viewer.launch_passive))
+
+    def test_public_passive_viewer_lifecycle_and_environment_shutdown(self):
+        require_visible_viewer()
         with MujocoEnv() as env:
-            with self.assertRaises(RuntimeError):
-                env.attach_viewer(active=False)
-            with self.assertRaisesRegex(
-                RuntimeError, "visible GLFW must remain owned by its GUI thread"
-            ):
-                env.attach_viewer(active=True)
+            handle = viewer.launch_passive(env, auto_sync=True)
+            self.assertTrue(handle.is_running())
+        self.assertFalse(handle.is_running())
+
+    def test_auto_sync_viewer_allows_unpaused_binding_mutations(self):
+        require_visible_viewer()
+        model_path = get_package_share_directory('mujoco_ros') / 'assets' / 'pendulum_world.xml'
+        with MujocoEnv(model_path=model_path) as env:
+            wait_for_idle(env)
+            with viewer.launch_passive(env, auto_sync=True) as handle:
+                self.assertTrue(env.unpause())
+                data = env.data
+                start_time = data.time
+                deadline = time.monotonic() + 2.0
+                while data.time <= start_time and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertGreater(data.time, start_time)
+
+                self.assertTrue(env.pause())
+                self.assertTrue(env.set_gravity([0.0, 0.0, -3.21]))
+                self.assertSequenceAlmostEqual(env.get_gravity(), [0.0, 0.0, -3.21])
+                env.apply_runtime_options({'timestep': 0.003})
+                self.assertAlmostEqual(env.runtime_options.timestep, 0.003)
+                self.assertTrue(env.step(5))
+                self.assertTrue(handle.is_running())
+
+    def test_manual_passive_viewer_keeps_explicit_sync(self):
+        require_visible_viewer()
+        model_path = get_package_share_directory('mujoco_ros') / 'assets' / 'pendulum_world.xml'
+        with MujocoEnv(model_path=model_path) as env:
+            wait_for_idle(env)
+            with viewer.launch_passive(env, auto_sync=False) as handle:
+                self.assertTrue(env.set_gravity([0.0, 0.0, -3.21]))
+                self.assertSequenceAlmostEqual(env.get_gravity(), [0.0, 0.0, -3.21])
+                with handle.lock():
+                    handle.sync()
+                self.assertTrue(handle.is_running())
+
+    def test_attach_viewer_is_a_deprecated_alias(self):
+        require_visible_viewer()
+        with MujocoEnv() as env:
+            with self.assertWarnsRegex(DeprecationWarning, 'mujoco_ros.viewer'):
+                handle = env.attach_viewer(active=False)
+            self.assertTrue(handle.is_running())
+            handle.close()
+
+    def test_viewer_backend_reports_visible_gui_independently_from_offscreen(self):
+        self.assertIn(pymujoco_ros.__viewer_backend__, ('GLFW', 'NONE'))
+
+    def test_viewer_launch_refuses_build_without_gui(self):
+        if pymujoco_ros.__viewer_backend__ == 'GLFW':
+            raise unittest.SkipTest('refusal contract requires WITH_GUI=OFF')
+        with MujocoEnv() as env:
+            with self.assertRaisesRegex(RuntimeError, 'WITH_GUI=ON'):
+                env.binding._launch_viewer()
+            with self.assertRaisesRegex(RuntimeError, 'WITH_GUI=ON'):
+                env.binding._launch_passive()
+
+    def test_passive_launch_propagates_missing_display(self):
+        if pymujoco_ros.__viewer_backend__ != 'GLFW':
+            raise unittest.SkipTest('startup propagation requires WITH_GUI=ON')
+        if native_display_is_advertised():
+            raise unittest.SkipTest('missing-display contract requires no display')
+        with MujocoEnv() as env:
+            with self.assertRaisesRegex(RuntimeError, 'GLFW|display|monitor'):
+                env.binding._launch_passive()
+
+    def test_native_passive_handle_lifecycle(self):
+        require_visible_viewer()
+        model_path = get_package_share_directory('mujoco_ros') / 'assets' / 'pendulum_world.xml'
+        with MujocoEnv(model_path=model_path) as env:
+            handle = viewer.launch_passive(env, auto_sync=False)
+            self.assertTrue(handle.is_running())
+            with handle.lock():
+                handle.sync()
+            self._arm_close_watchdog()
+            try:
+                handle.close()
+            finally:
+                faulthandler.cancel_dump_traceback_later()
+            self.assertFalse(handle.is_running())
+            handle.close()
+
+    def test_native_passive_handle_context_and_double_launch(self):
+        require_visible_viewer()
+        with MujocoEnv() as env:
+            self._arm_close_watchdog()
+            try:
+                with viewer.launch_passive(env, auto_sync=True) as handle:
+                    self.assertTrue(handle.is_running())
+                    with self.assertRaisesRegex(
+                        RuntimeError, 'a viewer is already running for this MujocoEnv'
+                    ):
+                        viewer.launch_passive(env, auto_sync=True)
+                    with self.assertRaisesRegex(
+                        RuntimeError, 'a viewer is already running for this MujocoEnv'
+                    ):
+                        viewer.launch(env)
+            finally:
+                faulthandler.cancel_dump_traceback_later()
+            self.assertFalse(handle.is_running())
+            self.assertTrue(env.settings.headless)
+            self.assertIsNotNone(env.settings)
+
+    def test_passive_relaunch_waits_for_prior_teardown(self):
+        require_visible_viewer()
+        with MujocoEnv() as env:
+            first = env.binding._launch_passive(auto_sync=False)
+            self.assertTrue(first.is_running())
+            first.close()
+            self.assertFalse(first.is_running())
+            second = env.binding._launch_passive(auto_sync=False)
+            try:
+                self.assertTrue(second.is_running())
+            finally:
+                second.close()
+
+    def test_close_while_holding_viewer_lock_fails_loud(self):
+        require_visible_viewer()
+        with MujocoEnv() as env:
+            handle = env.binding._launch_passive(auto_sync=False)
+            with handle.lock():
+                with self.assertRaisesRegex(
+                    RuntimeError, 'cannot close viewer while holding viewer lock'
+                ):
+                    handle.close()
+            handle.close()
+
+    def test_shutdown_rethrows_retained_passive_viewer_error(self):
+        if pymujoco_ros.__viewer_backend__ != 'GLFW':
+            raise unittest.SkipTest('startup propagation requires WITH_GUI=ON')
+        if native_display_is_advertised():
+            raise unittest.SkipTest('missing-display contract requires no display')
+        env = MujocoEnv()
+        try:
+            with self.assertRaisesRegex(RuntimeError, 'GLFW|display|monitor'):
+                env.binding._launch_passive()
+            with self.assertRaisesRegex(RuntimeError, 'GLFW|display|monitor'):
+                env.shutdown()
+        finally:
+            if getattr(env, '_env', None) is not None:
+                try:
+                    env.shutdown()
+                except RuntimeError:
+                    pass
+
+    def test_sync_releases_gil_for_other_python_threads(self):
+        require_visible_viewer()
+        with MujocoEnv() as env:
+            handle = env.binding._launch_passive(auto_sync=False)
+            try:
+                assert_other_thread_runs_during_blocking_call(lambda: handle.sync())
+            finally:
+                handle.close()
+
+    def test_nested_viewer_lock_close_fails_loud(self):
+        require_visible_viewer()
+        with MujocoEnv() as env:
+            handle = env.binding._launch_passive(auto_sync=False)
+            lock1 = handle.lock()
+            lock2 = handle.lock()
+            lock1.__enter__()
+            lock2.__enter__()
+            try:
+                with self.assertRaisesRegex(
+                    RuntimeError, 'cannot close viewer while holding viewer lock'
+                ):
+                    handle.close()
+            finally:
+                lock2.__exit__(None, None, None)
+                lock1.__exit__(None, None, None)
+                handle.close()
+
+    def test_shutdown_while_holding_nested_viewer_lock_preserves_model(self):
+        require_visible_viewer()
+        model_path = (
+            get_package_share_directory('mujoco_ros_testing_utils')
+            / 'assets'
+            / 'pendulum_world.xml'
+        )
+        env = MujocoEnv(model_path=str(model_path))
+        try:
+            self.assertTrue(env.binding.model_valid)
+            handle = env.binding._launch_passive(auto_sync=False)
+            lock1 = handle.lock()
+            lock2 = handle.lock()
+            lock1.__enter__()
+            lock2.__enter__()
+            try:
+                with self.assertRaisesRegex(
+                    RuntimeError, 'cannot close viewer while holding viewer lock'
+                ):
+                    env.binding.shutdown()
+                self.assertTrue(env.binding.model_valid)
+            finally:
+                lock2.__exit__(None, None, None)
+                lock1.__exit__(None, None, None)
+                handle.close()
+        finally:
+            env.shutdown()
+
+    def test_passive_viewer_model_reload_completes_without_deadlock(self):
+        require_visible_viewer()
+        pendulum_path = (
+            get_package_share_directory('mujoco_ros_testing_utils')
+            / 'assets'
+            / 'pendulum_world.xml'
+        )
+        empty_path = (
+            get_package_share_directory('mujoco_ros_testing_utils') / 'assets' / 'empty_world.xml'
+        )
+        with MujocoEnv(model_path=str(pendulum_path)) as env:
+            handle = env.binding._launch_passive(auto_sync=False)
+            try:
+                self.assertTrue(handle.is_running())
+                reload_error = []
+
+                def reload_model():
+                    try:
+                        self.assertTrue(env.load_model_from_string(str(empty_path)))
+                        wait_for_idle(env)
+                    except Exception as exc:  # noqa: BLE001 - capture for assertion
+                        reload_error.append(exc)
+
+                reload_thread = threading.Thread(target=reload_model)
+                reload_thread.start()
+                reload_thread.join(timeout=10.0)
+                self.assertFalse(
+                    reload_thread.is_alive(),
+                    'model reload deadlocked with passive viewer',
+                )
+                self.assertEqual(reload_error, [])
+                self.assertTrue(handle.is_running())
+                self.assertTrue(env.binding.model_valid)
+            finally:
+                handle.close()
+
+    def test_model_reload_during_passive_viewer_close_does_not_deadlock(self):
+        require_visible_viewer()
+        pendulum_path = (
+            get_package_share_directory('mujoco_ros_testing_utils')
+            / 'assets'
+            / 'pendulum_world.xml'
+        )
+        empty_path = (
+            get_package_share_directory('mujoco_ros_testing_utils') / 'assets' / 'empty_world.xml'
+        )
+        with MujocoEnv(model_path=str(pendulum_path)) as env:
+            handle = env.binding._launch_passive(auto_sync=False)
+            reload_errors = []
+            reload_results = []
+            close_errors = []
+
+            def reload_model():
+                try:
+                    reload_results.append(env.load_model_from_string(str(empty_path)))
+                    wait_for_idle(env)
+                except Exception as exc:  # noqa: BLE001 - capture for assertion
+                    reload_errors.append(exc)
+
+            def close_viewer():
+                try:
+                    handle.close()
+                except Exception as exc:  # noqa: BLE001 - capture for assertion
+                    close_errors.append(exc)
+
+            reload_thread = threading.Thread(target=reload_model)
+            close_thread = threading.Thread(target=close_viewer)
+            reload_thread.start()
+            close_thread.start()
+            reload_thread.join(timeout=10.0)
+            close_thread.join(timeout=10.0)
+            self.assertFalse(reload_thread.is_alive(), "reload deadlocked during viewer close")
+            self.assertFalse(close_thread.is_alive(), "viewer close deadlocked during reload")
+            self.assertEqual(reload_errors, [])
+            self.assertEqual(reload_results, [True])
+            self.assertEqual(close_errors, [])
+            self.assertFalse(handle.is_running())
+            self.assertTrue(env.binding.model_valid)
+            self.assertIn("empty_world.xml", env.sim_info.model_path)
+
+    def test_passive_launch_waits_for_inflight_model_reload(self):
+        require_visible_viewer()
+        pendulum_path = (
+            get_package_share_directory("mujoco_ros_testing_utils")
+            / "assets"
+            / "pendulum_world.xml"
+        )
+        empty_path = (
+            get_package_share_directory("mujoco_ros_testing_utils") / "assets" / "empty_world.xml"
+        )
+        with MujocoEnv(model_path=str(pendulum_path)) as env:
+            reload_done = threading.Event()
+            reload_errors = []
+
+            def reload_model():
+                try:
+                    self.assertTrue(env.load_model_from_string(str(empty_path)))
+                    wait_for_idle(env)
+                    reload_done.set()
+                except Exception as exc:  # noqa: BLE001 - capture for assertion
+                    reload_errors.append(exc)
+
+            reload_thread = threading.Thread(target=reload_model)
+            reload_thread.start()
+            handle = env.binding._launch_passive(auto_sync=False)
+            try:
+                reload_thread.join(timeout=10.0)
+                self.assertFalse(
+                    reload_thread.is_alive(), "model reload did not finish before viewer launch"
+                )
+                self.assertEqual(reload_errors, [])
+                self.assertTrue(reload_done.is_set())
+                self.assertTrue(handle.is_running())
+                self.assertTrue(env.binding.model_valid)
+                self.assertIn("empty_world.xml", env.sim_info.model_path)
+            finally:
+                handle.close()
+
+    def test_close_from_other_thread_waits_for_viewer_lock_release(self):
+        require_visible_viewer()
+        with MujocoEnv() as env:
+            handle = env.binding._launch_passive(auto_sync=False)
+            closed = threading.Event()
+            close_error = []
+
+            def close_worker():
+                try:
+                    handle.close()
+                    closed.set()
+                except Exception as exc:  # noqa: BLE001 - capture for assertion
+                    close_error.append(exc)
+
+            with handle.lock():
+                worker = threading.Thread(target=close_worker)
+                worker.start()
+                time.sleep(0.2)
+                self.assertFalse(closed.is_set())
+            worker.join(timeout=5.0)
+            self.assertEqual(close_error, [])
+            self.assertTrue(closed.is_set())
+            self.assertFalse(handle.is_running())
+
+    def test_auto_passive_viewer_model_reload_completes_without_deadlock(self):
+        require_visible_viewer()
+        pendulum_path = (
+            get_package_share_directory('mujoco_ros_testing_utils')
+            / 'assets'
+            / 'pendulum_world.xml'
+        )
+        empty_path = (
+            get_package_share_directory('mujoco_ros_testing_utils') / 'assets' / 'empty_world.xml'
+        )
+        with MujocoEnv(model_path=str(pendulum_path)) as env:
+            handle = env.binding._launch_passive(auto_sync=True)
+            try:
+                self.assertTrue(handle.is_running())
+                reload_error = []
+
+                def reload_model():
+                    try:
+                        self.assertTrue(env.load_model_from_string(str(empty_path)))
+                        wait_for_idle(env)
+                    except Exception as exc:  # noqa: BLE001 - capture for assertion
+                        reload_error.append(exc)
+
+                reload_thread = threading.Thread(target=reload_model)
+                reload_thread.start()
+                reload_thread.join(timeout=10.0)
+                self.assertFalse(
+                    reload_thread.is_alive(),
+                    'auto-passive model reload deadlocked with passive viewer',
+                )
+                self.assertEqual(reload_error, [])
+                self.assertTrue(handle.is_running())
+                self.assertTrue(env.binding.model_valid)
+            finally:
+                handle.close()
+
+    def test_passive_viewer_without_model_can_close(self):
+        require_visible_viewer()
+        with MujocoEnv() as env:
+            handle = viewer.launch_passive(env, auto_sync=True)
+            try:
+                self.assertTrue(handle.is_running())
+            finally:
+                handle.close()
+            self.assertFalse(handle.is_running())
+
+    def test_environment_shutdown_during_passive_launch_does_not_hang(self):
+        require_visible_viewer()
+        model_path = (
+            get_package_share_directory('mujoco_ros_testing_utils')
+            / 'assets'
+            / 'pendulum_world.xml'
+        )
+        env = MujocoEnv(model_path=str(model_path))
+        wait_for_idle(env)
+        launch_errors = []
+        try:
+
+            def launch_worker():
+                try:
+                    viewer.launch_passive(env, auto_sync=True)
+                except Exception as exc:  # noqa: BLE001 - capture for assertion
+                    launch_errors.append(exc)
+
+            launch_thread = threading.Thread(target=launch_worker)
+            launch_thread.start()
+            time.sleep(0.05)
+            try:
+                env.shutdown()
+            except Exception as exc:  # noqa: BLE001 - capture for assertion
+                launch_errors.append(exc)
+            launch_thread.join(timeout=10.0)
+            self.assertFalse(
+                launch_thread.is_alive(), 'passive launch hung during environment shutdown'
+            )
+        finally:
+            if getattr(env, '_env', None) is not None:
+                try:
+                    env.shutdown()
+                except RuntimeError:
+                    pass
+
+    def test_passive_launch_during_model_reload_and_shutdown_completes(self):
+        require_visible_viewer()
+        pendulum_path = (
+            get_package_share_directory('mujoco_ros_testing_utils')
+            / 'assets'
+            / 'pendulum_world.xml'
+        )
+        empty_path = (
+            get_package_share_directory('mujoco_ros_testing_utils') / 'assets' / 'empty_world.xml'
+        )
+        env = MujocoEnv(model_path=str(pendulum_path))
+        wait_for_idle(env)
+        errors = []
+        handle = None
+        try:
+            reload_thread = threading.Thread(
+                target=lambda: env.load_model_from_string(str(empty_path))
+            )
+            reload_thread.start()
+            try:
+                handle = viewer.launch_passive(env, auto_sync=True)
+            except Exception as exc:  # noqa: BLE001 - capture for assertion
+                errors.append(exc)
+            reload_thread.join(timeout=10.0)
+            self.assertFalse(reload_thread.is_alive(), 'reload hung during passive launch')
+            if handle is not None:
+                handle.close()
+            try:
+                env.shutdown()
+            except Exception as exc:  # noqa: BLE001 - capture for assertion
+                errors.append(exc)
+        finally:
+            if getattr(env, '_env', None) is not None:
+                try:
+                    env.shutdown()
+                except RuntimeError:
+                    pass
+
+    def test_stale_viewer_handle_lifecycle_after_relaunch(self):
+        require_visible_viewer()
+        with MujocoEnv() as env:
+            first = viewer.launch_passive(env, auto_sync=False)
+            first.close()
+            self.assertFalse(first.is_running())
+            first.close()
+            with self.assertRaisesRegex(RuntimeError, 'viewer is not running'):
+                first.sync()
+            with self.assertRaisesRegex(RuntimeError, 'viewer is not running'):
+                with first.lock():
+                    pass
+            second = viewer.launch_passive(env, auto_sync=False)
+            try:
+                self.assertTrue(second.is_running())
+            finally:
+                second.close()
+
+    def test_repeated_close_after_viewer_join_is_idempotent(self):
+        require_visible_viewer()
+        with MujocoEnv() as env:
+            handle = viewer.launch_passive(env, auto_sync=False)
+            handle.close()
+            self.assertFalse(handle.is_running())
+            handle.close()
+
+    def test_load_model_releases_gil_for_other_python_threads(self):
+        require_visible_viewer()
+        model_path = (
+            get_package_share_directory('mujoco_ros_testing_utils')
+            / 'assets'
+            / 'pendulum_world.xml'
+        )
+        with MujocoEnv() as env:
+            handle = viewer.launch_passive(env, auto_sync=True)
+            try:
+                assert_other_thread_runs_during_blocking_call(
+                    lambda: env.load_from_path(str(model_path))
+                )
+            finally:
+                handle.close()
+
+    def test_step_releases_gil_for_other_python_threads(self):
+        require_visible_viewer()
+        model_path = (
+            get_package_share_directory('mujoco_ros_testing_utils')
+            / 'assets'
+            / 'pendulum_world.xml'
+        )
+        with MujocoEnv(model_path=str(model_path)) as env:
+            wait_for_idle(env)
+            handle = viewer.launch_passive(env, auto_sync=True)
+            try:
+                assert_other_thread_runs_during_blocking_call(lambda: env.step(5))
+            finally:
+                handle.close()
+
+    def test_reset_releases_gil_for_other_python_threads(self):
+        require_visible_viewer()
+        model_path = (
+            get_package_share_directory('mujoco_ros_testing_utils')
+            / 'assets'
+            / 'pendulum_world.xml'
+        )
+        with MujocoEnv(model_path=str(model_path)) as env:
+            wait_for_idle(env)
+            handle = viewer.launch_passive(env, auto_sync=True)
+            try:
+                assert_other_thread_runs_during_blocking_call(env.reset)
+            finally:
+                handle.close()
 
     def test_offscreen_camera_bindings_expose_camera_metadata_and_buffers(self):
         if pymujoco_ros.__render_backend__ == "NONE":
@@ -535,7 +1148,7 @@ class PythonBindingsTest(unittest.TestCase):
                 generation = view.frame_generation
                 view_copy = view.copy()
 
-            snapshot = cam.buffer(last_n=2)[0]
+            snapshot = cam.get_buffered_frames(last_n=2)[0]
             self.assertIsNotNone(snapshot)
             self.assertLessEqual(snapshot.shape[0], 2)
             self.assertFalse(snapshot.flags.writeable)
@@ -554,11 +1167,11 @@ class PythonBindingsTest(unittest.TestCase):
             with cam.borrow_latest_rgb() as reloaded_view:
                 self.assertNotEqual(generation, reloaded_view.frame_generation)
                 self.assertGreater(reloaded_view.capture_id, 0)
-            self.assertIsNotNone(cam.buffer(last_n=1)[0])
+            self.assertIsNotNone(cam.get_buffered_frames(last_n=1)[0])
 
             manager.close()
             for accessor in (
-                lambda: cam.buffer(last_n=1),
+                lambda: cam.get_buffered_frames(last_n=1),
                 cam.borrow_latest_rgb,
                 cam.borrow_latest_depth,
                 cam.borrow_latest_segment,
@@ -633,15 +1246,15 @@ class PythonBindingsTest(unittest.TestCase):
             second_camera = second_manager.cam(0)
             self.assertTrue(env.pause())
             self.assertTrue(env.step(3))
-            self.assertIsNotNone(first_camera.buffer(last_n=1)[0])
-            self.assertIsNotNone(second_camera.buffer(last_n=1)[0])
+            self.assertIsNotNone(first_camera.get_buffered_frames(last_n=1)[0])
+            self.assertIsNotNone(second_camera.get_buffered_frames(last_n=1)[0])
             with first_camera.borrow_latest_rgb() as first_view:
                 with second_camera.borrow_latest_rgb() as second_view:
                     self.assertEqual(first_view.capture_id, second_view.capture_id)
 
             first_manager.close()
             self.assertTrue(env.step(2))
-            self.assertIsNotNone(second_camera.buffer(last_n=1)[0])
+            self.assertIsNotNone(second_camera.get_buffered_frames(last_n=1)[0])
             second_manager.close()
 
     def test_offscreen_camera_legacy_accessors_skip_missing_planes(self):
@@ -665,46 +1278,44 @@ class PythonBindingsTest(unittest.TestCase):
             self.assertTrue(env.pause())
             self.assertTrue(env.step(2))
 
-            handles = cam.buffer.getBufferHandles()
+            handles = cam._buffer.getBufferHandles()
             self.assertEqual(3, len(handles))
             self.assertIsNotNone(handles[0])
             self.assertIsNone(handles[1])
             self.assertIsNone(handles[2])
-            rgb, depth, segment = cam.buffer()
+            rgb, depth, segment = cam.get_buffered_frames()
             self.assertIsNotNone(rgb)
             self.assertIsNone(depth)
             self.assertIsNone(segment)
-            self.assertGreater(cam.buffer._rgb_frame_count, 0)
-            self.assertEqual(0, cam.buffer._depth_frame_count)
-            self.assertEqual(0, cam.buffer._segment_frame_count)
+            self.assertGreater(cam._buffer._rgb_frame_count, 0)
+            self.assertEqual(0, cam._buffer._depth_frame_count)
+            self.assertEqual(0, cam._buffer._segment_frame_count)
 
             for accessor in (
-                cam.buffer.borrow_latest_depth,
-                cam.buffer.borrow_latest_segment,
-                lambda: cam.buffer.copy_depth(1),
-                lambda: cam.buffer.copy_segment(1),
+                cam._buffer.borrow_latest_depth,
+                cam._buffer.borrow_latest_segment,
+                lambda: cam._buffer.copy_depth(1),
+                lambda: cam._buffer.copy_segment(1),
             ):
                 with self.assertRaisesRegex(RuntimeError, "not configured"):
                     accessor()
 
             for accessor in (
-                lambda: cam.buffer._rgb_buf_idx,
-                lambda: cam.buffer._depth_buf_idx,
-                lambda: cam.buffer._segment_buf_idx,
-                lambda: setattr(cam.buffer, "_rgb_frame_count", 1),
-                lambda: setattr(cam.buffer, "_depth_frame_count", 1),
-                lambda: setattr(cam.buffer, "_segment_frame_count", 1),
-                lambda: cam.buffer.set_buffers_read(),
+                lambda: cam._buffer._rgb_buf_idx,
+                lambda: cam._buffer._depth_buf_idx,
+                lambda: cam._buffer._segment_buf_idx,
+                lambda: setattr(cam._buffer, "_rgb_frame_count", 1),
+                lambda: setattr(cam._buffer, "_depth_frame_count", 1),
+                lambda: setattr(cam._buffer, "_segment_frame_count", 1),
+                lambda: cam._buffer.set_buffers_read(),
             ):
                 with self.assertRaisesRegex(RuntimeError, "legacy"):
                     accessor()
 
-            self.assertIs(cam.buffer, cam.buffer)
-            self.assertTrue(callable(cam.buffer))
-            self.assertIsNotNone(cam.buffer(last_n=1)[0])
+            self.assertIsNotNone(cam.get_buffered_frames(last_n=1)[0])
 
             with self.assertRaisesRegex(RuntimeError, "legacy"):
-                with cam.buffer:
+                with cam._buffer:
                     pass
 
     def assertSequenceAlmostEqual(self, actual, expected, delta=1e-6):

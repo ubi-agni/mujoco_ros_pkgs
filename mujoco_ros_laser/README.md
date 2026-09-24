@@ -10,4 +10,4 @@ https://github.com/ubi-agni/mujoco_ros/blob/noetic-devel/mujoco_ros_laser/config
 
 ## License
 
-This repository is licensed under the [BSD License](../mujoco_ros/LICENSE).
+This repository is licensed under the [BSD 3-Clause License](../mujoco_ros/LICENSE).

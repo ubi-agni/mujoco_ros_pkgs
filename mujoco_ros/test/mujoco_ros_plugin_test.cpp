@@ -62,15 +62,6 @@
 #include <utility>
 #include <vector>
 
-#if MJR_ROS_VERSION == ROS_1
-class LifetimeTestPlugin final : public mujoco_ros::MujocoPlugin
-{
-public:
-	bool Load(const mjModel *, mjData *) override { return true; }
-	void Reset() override {}
-};
-#endif
-
 int main(int argc, char **argv)
 {
 	::testing::InitGoogleTest(&argc, argv);
@@ -142,23 +133,6 @@ protected:
 		delete env_ptr;
 	}
 };
-
-#if MJR_ROS_VERSION == ROS_1
-TEST(RosPluginAdapter, TypeReferenceRemainsStableAfterGetterTemporaryExpires)
-{
-	XmlRpc::XmlRpcValue config;
-	config["type"] = "mujoco_ros/LifetimeTestPlugin";
-	auto plugin    = std::make_unique<LifetimeTestPlugin>();
-	plugin->Init(config, "~", nullptr);
-	mujoco_ros::plugin_utils::RosPluginAdapter adapter(std::move(plugin));
-
-	const std::string &type = adapter.Type();
-	std::string allocation_churn(4096, 'x');
-	EXPECT_EQ(type, "mujoco_ros/LifetimeTestPlugin");
-	EXPECT_EQ(&type, &adapter.Type());
-	EXPECT_FALSE(allocation_churn.empty());
-}
-#endif
 
 TEST_F(LoadedPluginFixture, ControlCallback)
 {

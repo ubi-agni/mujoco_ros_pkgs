@@ -258,9 +258,124 @@ mutators raise ``RuntimeError``.
 ``getBufferHandles()`` follows the same three-slot shape and returns ``None``
 for a missing plane.
 
-``attach_viewer(active=True)`` is unsupported and raises ``RuntimeError``.
-Visible GLFW remains owned by the GUI path. Passive viewer attachment is also
-unsupported and raises ``RuntimeError``.
+Interactive Viewer
+------------------
+
+Import the viewer module from the package root:
+
+.. code-block:: python
+
+   from mujoco_ros import MujocoEnv, viewer
+
+Blocking mode
+~~~~~~~~~~~~~
+
+``viewer.launch(env)`` blocks the calling thread and owns GLFW on that thread
+until the user closes the window. It returns only after the window closes.
+
+.. code-block:: python
+
+   with MujocoEnv(model_path="/path/to/model.xml") as env:
+       viewer.launch(env)
+
+Passive mode
+~~~~~~~~~~~~
+
+``viewer.launch_passive(env, auto_sync=False)`` returns immediately with a
+native lifetime handle. The viewer runs on a dedicated GUI thread. Only one live
+viewer is allowed per environment; a second launch raises
+``RuntimeError("a viewer is already running for this MujocoEnv")``.
+
+The handle supports ``close()``, ``is_running()``, ``sync(state_only=False)``,
+``lock()`` (reentrant context manager), and context-manager exit (which calls
+``close()``). Stale handles from an earlier viewer generation are
+generation-checked: ``close()`` on a stale or already-closed handle is an
+idempotent no-op; ``is_running()`` returns ``False``; ``sync()`` and ``lock()``
+raise ``RuntimeError("viewer is not running")``.
+
+Closing a passive window (Exit button, ``handle.close()``, or handle context
+exit) stops only that viewer. The environment and physics loop stay available.
+
+Automatic passive mode (``auto_sync=True``) synchronizes the viewer on each
+rendered frame and around supported binding access while Python is idle.
+Manual passive mode (the default) never auto-syncs; call ``handle.sync()`` after
+binding changes, typically while holding ``handle.lock()``:
+
+.. code-block:: python
+
+   with MujocoEnv(model_path="/path/to/model.xml") as env:
+       with viewer.launch_passive(env, auto_sync=True) as handle:
+           env.unpause()
+           env.set_gravity([0.0, 0.0, -9.81])
+
+.. code-block:: python
+
+   with MujocoEnv(model_path="/path/to/model.xml") as env:
+       with viewer.launch_passive(env) as handle:
+           with handle.lock():
+               env.pause()
+           handle.sync()
+
+Covered auto-sync operations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When ``auto_sync=True``, these binding reads pull viewer-side state into Python
+before returning:
+
+* gravity (``get_gravity()``)
+* Runtime Options (``runtime_options``, ``apply_runtime_options()`` reads)
+* settings (``settings``, ``settings.snapshot()``)
+* simulation state/info (``sim_state``, ``sim_info``)
+* model/data snapshots (``model``, ``data``)
+* running state (``is_running``, ``settings.running``)
+
+These binding writes push Python-side state to the viewer after succeeding:
+
+* load (``load_model_from_string()``, ``load_from_path()``, ``load_from_string()``)
+* step, reset
+* pause/unpause (``pause()``, ``unpause()``, ``toggle_paused()``)
+* real-time factor (``set_rt_factor()``, ``settings.rt_factor``)
+* busywait (``settings.busywait``)
+* gravity (``set_gravity()``, ``settings.gravity``)
+* Runtime Options (``apply_runtime_options()``)
+* enable/disable flag helpers (``set_enableflag()``, ``set_disableflag()``,
+  ``toggle_enableflag()``, ``toggle_disableflag()``)
+
+Raw writes through ``env.model`` or ``env.data`` are unsupported and do not sync
+the viewer.
+
+Build requirement and backend reporting
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Interactive viewing requires a build configured with ``WITH_GUI=ON``. Builds
+with ``WITH_GUI=OFF`` raise
+``RuntimeError("mujoco_ros.viewer requires a build configured with WITH_GUI=ON")``.
+Missing-display and GLFW initialization errors propagate; they are not swallowed.
+
+Visible GLFW and offscreen RenderCore are independent:
+
+* ``WITH_GUI`` controls the visible GLFW viewer backend.
+* ``OFFSCREEN_BACKEND`` controls RenderCore offscreen capture.
+* ``pymujoco_ros.__viewer_backend__`` reports the first (``"GLFW"`` or ``"NONE"``).
+* ``pymujoco_ros.__render_backend__`` reports the second.
+
+Deprecation
+~~~~~~~~~~~
+
+``MujocoEnv.attach_viewer(active=True)`` is deprecated. It maps ``active=True``
+to blocking ``viewer.launch(self)`` and ``active=False`` to
+``viewer.launch_passive(self, auto_sync=True)``.
+
+Known limitations
+~~~~~~~~~~~~~~~~~
+
+Passive GLFW runs on a dedicated non-process-main viewer thread (ADR-0026).
+This follows MuJoCo's passive-viewer shape but may be platform- or driver-sensitive
+on some systems.
+
+Hybrid-NVIDIA laptop frozen-frame behavior remains a post-implementation manual
+verification item, not a guaranteed v1 fix. Cooperative ``pump()`` and a
+separate-process GUI remain future options.
 
 Render failures and capacity limits
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -294,4 +409,9 @@ Current Limitations
 -------------------
 
 The core plugin packages currently provide specialized wrappers for sensors, laser, mocap, and control when their Python packages are importable.
-The current port intentionally skips direct pixel rendering, passive viewer attachment, and MoveIt helpers.
+The current port intentionally skips direct pixel rendering and MoveIt helpers.
+Cooperative viewer ``pump()`` and a separate-process GUI are not implemented yet.
+Passive GLFW runs on a dedicated non-process-main viewer thread (ADR-0026); this
+follows MuJoCo's passive-viewer shape but may be platform- or driver-sensitive.
+Hybrid-NVIDIA laptop frozen-frame behavior is tracked separately and is not
+guaranteed fixed in v1.

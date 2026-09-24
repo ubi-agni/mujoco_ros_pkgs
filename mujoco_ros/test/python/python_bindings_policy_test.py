@@ -34,7 +34,9 @@ class PythonBindingsPolicyTest(unittest.TestCase):
         iterations = 50
         for i in range(iterations):
             env = MujocoEnv(parameters={"render_backpressure_policy": "wait_for_slot"})
-            faulthandler.dump_traceback_later(10, exit=True)
+            # Target sys.__stderr__ (real fd): the default sys.stderr may lack a
+            # fileno under test harnesses, raising "UnsupportedOperation: fileno".
+            faulthandler.dump_traceback_later(10, exit=True, file=sys.__stderr__)
             try:
                 env.shutdown()
             finally:

@@ -38,6 +38,7 @@
 #include <mujoco/mujoco.h>
 
 #include <cstdio>
+#include <thread>
 
 #include <mujoco_ros/ros_version.hpp>
 #include <mujoco_ros/render_backend.hpp>
@@ -81,6 +82,36 @@ static std::string render_backend = "NONE. No offscreen rendering available.";
 
 namespace mujoco_ros {
 namespace mju = ::mujoco::sample_util;
+
+ConnectedViewersLease &ConnectedViewersLease::operator=(ConnectedViewersLease &&other) noexcept
+{
+	if (this != &other) {
+		Release();
+		connections_      = std::move(other.connections_);
+		operation_leases_ = std::move(other.operation_leases_);
+		viewers_          = std::move(other.viewers_);
+	}
+	return *this;
+}
+
+ConnectedViewersLease::~ConnectedViewersLease()
+{
+	Release();
+}
+
+ConnectedViewersLease::ConnectedViewersLease(std::vector<std::shared_ptr<ViewerConnectionState>> connections,
+                                             std::vector<ViewerOperationLease> operation_leases,
+                                             std::vector<Viewer *> viewers)
+    : connections_(std::move(connections)), operation_leases_(std::move(operation_leases)), viewers_(std::move(viewers))
+{
+}
+
+void ConnectedViewersLease::Release()
+{
+	operation_leases_.clear();
+	connections_.clear();
+	viewers_.clear();
+}
 
 namespace {
 class TempMjbFileGuard
@@ -295,7 +326,7 @@ void MujocoEnv::Configure()
 
 	if (!settings_.headless && create_gui_adapter_) {
 #if RENDER_BACKEND == GLFW_BACKEND
-		gui_adapter_ = new mujoco_ros::GlfwAdapter();
+		gui_adapter_ = new mujoco_ros::GlfwAdapter(false);
 #else
 		MJR_ERROR("Compiled without GLFW support. Cannot run in non-headless mode.");
 #endif
@@ -494,8 +525,13 @@ void MujocoEnv::EventLoop()
 			}
 
 			if (control_snapshot.load_request == 1) {
-				MJR_DEBUG("Load request received");
-				complete_model_load = true;
+				if (IsShutdownRequested()) {
+					MJR_DEBUG("Ignoring pending model load because environment shutdown was requested");
+					control_state_.CompleteFailedLoad();
+				} else {
+					MJR_DEBUG("Load request received");
+					complete_model_load = true;
+				}
 			} else if (control_snapshot.load_request >= 2) { // Loading mnew and dnew requested
 				MJR_DEBUG("Initializing queued model and data");
 				if (InitModelFromQueue()) {
@@ -522,40 +558,56 @@ void MujocoEnv::EventLoop()
 		}
 
 		if (complete_model_load) {
-			MJR_DEBUG("Loading model outside the physics lock while render resources quiesce");
-			try {
-				LoadWithModelAndData();
-				MJR_DEBUG("Done loading");
+			if (IsShutdownRequested()) {
+				MJR_DEBUG("Skipping model load because environment shutdown was requested");
+				WithControlState([this]() {
+					reload_in_progress_.store(false, std::memory_order_release);
+					control_state_.CompleteFailedLoad();
+				});
+			} else {
+				MJR_DEBUG("Loading model outside the physics lock while render resources quiesce");
+				WithControlState([this]() { reload_in_progress_.store(true, std::memory_order_release); });
+				try {
+					LoadWithModelAndData();
+					MJR_DEBUG("Done loading");
 
-				RecursiveLock lock(physics_thread_mutex_);
-				mnew                   = nullptr;
-				dnew                   = nullptr;
-				sim_state_.model_valid = true;
-				sim_state_.load_count += 1;
-				reload_in_progress_.store(false, std::memory_order_release);
-				OpenRenderTurnAdmission();
-				control_state_.PublishOperationalIdle();
-				OnReloadPhase(ReloadPhase::kNewGenerationLoaded);
-			} catch (const std::exception &error) {
-				try {
-					MJR_ERROR_STREAM("Model reload failed; entering no-model state: " << error.what());
+					{
+						RecursiveLock lock(physics_thread_mutex_);
+						mnew                   = nullptr;
+						dnew                   = nullptr;
+						sim_state_.model_valid = true;
+						sim_state_.load_count += 1;
+						OpenRenderTurnAdmission();
+					}
+					WithControlState([this]() {
+						reload_in_progress_.store(false, std::memory_order_release);
+						control_state_.PublishOperationalIdle();
+					});
+					OnReloadPhase(ReloadPhase::kNewGenerationLoaded);
+				} catch (const std::exception &error) {
+					try {
+						MJR_ERROR_STREAM("Model reload failed; entering no-model state: " << error.what());
+					} catch (...) {
+					}
+					HandleReloadFailure(error.what());
 				} catch (...) {
+					try {
+						MJR_ERROR("Model reload failed with an unknown exception; entering no-model state");
+					} catch (...) {
+					}
+					HandleReloadFailure("unknown model reload failure");
 				}
-				HandleReloadFailure(error.what());
-			} catch (...) {
-				try {
-					MJR_ERROR("Model reload failed with an unknown exception; entering no-model state");
-				} catch (...) {
-				}
-				HandleReloadFailure("unknown model reload failure");
 			}
 		}
 
 		std::this_thread::sleep_for(fps_cap - now.time_since_epoch());
 	}
 	MJR_DEBUG("Closing all connected viewers");
-	for (const auto viewer : connected_viewers_) {
-		viewer->exit_request.store(1);
+	{
+		const auto connected_viewers = AcquireConnectedViewersLease();
+		for (const auto &connection : connected_viewers.connections()) {
+			connection->RequestViewerExit();
+		}
 	}
 	MJR_DEBUG("Exiting event loop");
 	is_event_running_ = 0;
@@ -713,7 +765,7 @@ void MujocoEnv::HandleReloadFailure(const char *message) noexcept
 
 	attempt("close reload admission", [this, &render_core] {
 		RecursiveLock physics_lock(physics_thread_mutex_);
-		reload_in_progress_.store(true, std::memory_order_release);
+		WithControlState([this]() { reload_in_progress_.store(true, std::memory_order_release); });
 		CloseRenderTurnAdmission();
 		render_core = render_core_;
 	});
@@ -797,13 +849,13 @@ void MujocoEnv::HandleReloadFailure(const char *message) noexcept
 		RecursiveLock physics_lock(physics_thread_mutex_);
 		sim_state_.model_valid = false;
 		mju::strcpy_arr(load_error_, diagnostics.c_str());
-		for (const auto viewer : connected_viewers_) {
+		const auto connected_viewers = AcquireConnectedViewersLease();
+		for (const auto viewer : connected_viewers.viewers()) {
 			mju::strcpy_arr(viewer->load_error, load_error_);
 		}
 	});
 	attempt("reload admission state", [this, &resources_safe] {
 		RecursiveLock physics_lock(physics_thread_mutex_);
-		reload_in_progress_.store(false, std::memory_order_release);
 		if (resources_safe) {
 			OpenRenderTurnAdmission();
 		} else {
@@ -812,10 +864,10 @@ void MujocoEnv::HandleReloadFailure(const char *message) noexcept
 			} catch (...) {
 			}
 		}
-	});
-	attempt("no-model lifecycle state", [this] {
-		RecursiveLock physics_lock(physics_thread_mutex_);
-		control_state_.CompleteFailedLoad();
+		WithControlState([this]() {
+			reload_in_progress_.store(false, std::memory_order_release);
+			control_state_.CompleteFailedLoad();
+		});
 	});
 	attempt("reload failure observer", [this] { OnReloadPhase(ReloadPhase::kReloadFailed); });
 	try {
@@ -879,8 +931,11 @@ mjtNum MujocoEnv::ResetSim()
 
 	plugin_host_->Reset(model_generation_);
 
-	for (const auto viewer : connected_viewers_) {
-		viewer->reset_request.store(1);
+	{
+		const auto connected_viewers = AcquireConnectedViewersLease();
+		for (const auto viewer : connected_viewers.viewers()) {
+			viewer->reset_request.store(1);
+		}
 	}
 	return reset_time;
 }
@@ -973,43 +1028,169 @@ void MujocoEnv::LoadInitialJointStates()
 	mj_forward(model_.get(), data_.get());
 }
 
-void MujocoEnv::ConnectViewer(Viewer *viewer)
+std::shared_ptr<ViewerConnectionState> MujocoEnv::CreateViewerConnection(Viewer *viewer)
 {
-	if (connected_viewers_.empty()) {
+	std::lock_guard<std::mutex> lock(viewer_connections_mutex_);
+	if (viewer_connections_closing_) {
+		throw std::runtime_error("viewer connection rejected because environment is closing");
+	}
+	const bool first_active_viewer = std::none_of(viewer_connections_.begin(), viewer_connections_.end(),
+	                                              [](const auto &entry) { return entry->viewer() != nullptr; });
+	auto connection                = std::make_shared<ViewerConnectionState>(this, viewer);
+	viewer_connections_.emplace_back(connection);
+	if (first_active_viewer) {
 		MJR_INFO("Connected first viewer, disabling headless mode");
-		settings_.headless = false;
 	}
-	while (GetOperationalStatus() != 0) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	settings_.headless = false;
+	return connection;
+}
+
+void MujocoEnv::UnregisterViewerConnection(const std::shared_ptr<ViewerConnectionState> &connection)
+{
+	if (!connection) {
+		return;
 	}
-	MJR_DEBUG("Adding viewer to connected viewers and issuing viewer load request");
-	if (std::find(connected_viewers_.begin(), connected_viewers_.end(), viewer) == connected_viewers_.end()) {
-		connected_viewers_.emplace_back(viewer);
-		if (sim_state_.model_valid) {
-			viewer->mnew_ = model_;
-			viewer->dnew_ = data_;
-			mju::strcmp_arr(viewer->filename, filename_);
-			viewer->loadrequest = true;
+	{
+		std::lock_guard<std::mutex> lock(viewer_connections_mutex_);
+		const auto it = std::find(viewer_connections_.begin(), viewer_connections_.end(), connection);
+		if (it == viewer_connections_.end()) {
+			return;
+		}
+		const bool has_active_viewer = std::any_of(viewer_connections_.begin(), viewer_connections_.end(),
+		                                           [](const auto &entry) { return entry->viewer() != nullptr; });
+		if (!has_active_viewer) {
+			MJR_INFO_COND(!GetControlSnapshot().shutdown_requested, "Disconnected last viewer, enabling headless mode");
+			settings_.headless = true;
+		}
+	}
+}
+
+void MujocoEnv::RemoveViewerConnection(const std::shared_ptr<ViewerConnectionState> &connection,
+                                       std::thread::id except_render_owner)
+{
+	if (!connection) {
+		return;
+	}
+	connection->DetachViewer();
+	UnregisterViewerConnection(connection);
+	connection->WaitForDrain(except_render_owner);
+}
+
+void MujocoEnv::CloseViewerConnections()
+{
+	std::lock_guard<std::mutex> lock(viewer_connections_mutex_);
+	viewer_connections_closing_ = true;
+}
+
+void MujocoEnv::ConnectViewer(Viewer *viewer, const std::shared_ptr<ViewerConnectionState> &connection)
+{
+	if (!connection || connection->viewer() != viewer) {
+		throw std::runtime_error("viewer connection state does not match viewer");
+	}
+
+	const auto viewer_connection_canceled = [this, connection]() -> bool {
+		if (!roscpp::ok() || IsShutdownRequested()) {
+			return true;
+		}
+		if (connection->StopRequested()) {
+			return true;
+		}
+		return is_event_running_.load(std::memory_order_acquire) == 0 && GetOperationalStatus() != 0;
+	};
+
+	for (;;) {
+		if (viewer_connection_canceled()) {
+			throw std::runtime_error("viewer connection canceled before environment became idle");
+		}
+		WaitForOperationalStatusIdle(std::chrono::milliseconds(10));
+		if (viewer_connection_canceled()) {
+			throw std::runtime_error("viewer connection canceled before environment became idle");
+		}
+		RecursiveLock physics_lock(physics_thread_mutex_);
+
+		mjModelPtr initial_model;
+		mjDataPtr initial_data;
+		std::string initial_filename;
+		ModelGeneration initial_generation;
+		bool initial_model_valid = false;
+		{
+			std::lock_guard<std::mutex> boundary_lock(control_state_boundary_mutex_);
+			if (GetOperationalStatus() != 0 || reload_in_progress_.load(std::memory_order_acquire)) {
+				continue;
+			}
+			{
+				std::lock_guard<std::mutex> viewers_lock(viewer_connections_mutex_);
+				if (viewer_connections_closing_) {
+					throw std::runtime_error("viewer connection rejected because environment is closing");
+				}
+				const auto already_connected =
+				    std::any_of(viewer_connections_.begin(), viewer_connections_.end(),
+				                [&connection](const auto &entry) { return entry.get() == connection.get(); });
+				if (!already_connected) {
+					throw std::runtime_error("viewer connection rejected because viewer is not registered");
+				}
+			}
+
+			initial_model       = std::atomic_load(&model_);
+			initial_data        = std::atomic_load(&data_);
+			initial_filename    = filename_;
+			initial_generation  = model_generation_;
+			initial_model_valid = sim_state_.model_valid;
+		}
+
+		if (initial_model_valid) {
+			viewer->InitializeModel(std::move(initial_model), std::move(initial_data), initial_filename.c_str(),
+			                        initial_generation);
 		}
 		return;
 	}
-	MJR_WARN("Viewer already connected!");
 }
 
-void MujocoEnv::DisconnectViewer(Viewer *viewer)
+void MujocoEnv::DisconnectViewer(const std::shared_ptr<ViewerConnectionState> &connection)
 {
-	auto it = std::find(connected_viewers_.begin(), connected_viewers_.end(), viewer);
-	if (it != connected_viewers_.end()) {
-		MJR_DEBUG("Removing viewer from connected viewers");
-		connected_viewers_.erase(it);
-	} else {
-		MJR_WARN("Viewer not connected!");
+	if (!connection) {
+		return;
 	}
+	RemoveViewerConnection(connection);
+}
 
-	if (connected_viewers_.empty()) {
-		MJR_INFO_COND(!GetControlSnapshot().shutdown_requested, "Disconnected last viewer, enabling headless mode");
-		settings_.headless = true;
+ConnectedViewersLease MujocoEnv::AcquireConnectedViewersLease() const
+{
+	std::lock_guard<std::mutex> lock(viewer_connections_mutex_);
+	std::vector<std::shared_ptr<ViewerConnectionState>> connections;
+	std::vector<ViewerOperationLease> operation_leases;
+	std::vector<Viewer *> viewers;
+	for (const auto &connection : viewer_connections_) {
+		// A registered-but-not-yet-ready connection is still inside its own
+		// initial ConnectViewer() handshake (possibly waiting on this very
+		// reload to finish, see reload_in_progress_ in LoadWithModelAndData's
+		// caller) -- it cannot service an async Load() yet, and doesn't need
+		// to: it will pick up the current model itself via InitializeModel()
+		// once ConnectViewer() resolves. Handing it a Load() anyway would
+		// deadlock this reload against that viewer's own connect handshake.
+		if (!connection->RenderLoopReady()) {
+			continue;
+		}
+		if (ViewerOperationLease operation_lease = connection->TryAcquireViewerOperation()) {
+			viewers.push_back(operation_lease.get());
+			operation_leases.push_back(std::move(operation_lease));
+			connections.push_back(connection);
+		}
 	}
+	return ConnectedViewersLease(std::move(connections), std::move(operation_leases), std::move(viewers));
+}
+
+bool MujocoEnv::HasConnectedViewers() const
+{
+	std::lock_guard<std::mutex> lock(viewer_connections_mutex_);
+	return std::any_of(viewer_connections_.begin(), viewer_connections_.end(),
+	                   [](const auto &connection) { return connection->viewer() != nullptr; });
+}
+
+bool MujocoEnv::IsHeadless() const
+{
+	std::lock_guard<std::mutex> lock(viewer_connections_mutex_);
+	return settings_.headless;
 }
 
 void MujocoEnv::NotifyGeomChanged(const int geom_id)
@@ -1044,19 +1225,43 @@ MujocoEnv::~MujocoEnv()
 	MJR_DEBUG("Destructor called");
 	is_rendering_running_.store(0);
 	plugin_lifetime_.reset();
-	// mjcb_control/mjcb_passive are process-wide MuJoCo globals that read MujocoEnv::instance
-	// (see ProxyControlCB/ProxyPassiveCB). Left set, a later mj_step/mj_compile call (e.g. from
-	// a subsequently-constructed env, or mj_compile's internal warm-up step) would dereference
-	// this now-destroyed instance.
 	if (MujocoEnv::instance == this) {
 		MujocoEnv::instance = nullptr;
 		mjcb_control        = nullptr;
 		mjcb_passive        = nullptr;
 	}
+
+	std::vector<std::shared_ptr<ViewerConnectionState>> connections;
+	CloseViewerConnections();
+	{
+		std::lock_guard<std::mutex> lock(viewer_connections_mutex_);
+		connections = std::move(viewer_connections_);
+		viewer_connections_.clear();
+	}
+
+	for (const auto &connection : connections) {
+		if (connection->IsRenderThread(std::this_thread::get_id())) {
+			MJR_ERROR("MujocoEnv destruction from a connected Viewer render thread is not supported");
+			std::terminate();
+		}
+	}
+
 	RequestShutdown();
+
+	for (const auto &connection : connections) {
+		connection->RequestViewerExit();
+		connection->CloseEnvironment();
+		connection->RequestStop();
+	}
+
+	for (const auto &connection : connections) {
+		connection->WaitForDrain();
+	}
+
 	if (physics_thread_handle_.joinable()) {
 		if (physics_thread_handle_.get_id() == std::this_thread::get_id()) {
-			physics_thread_handle_.detach();
+			MJR_ERROR("MujocoEnv destruction from physics thread is not supported");
+			std::terminate();
 		} else {
 			MJR_DEBUG("Joining physics thread from destructor");
 			physics_thread_handle_.join();
@@ -1064,16 +1269,21 @@ MujocoEnv::~MujocoEnv()
 	}
 	if (event_thread_handle_.joinable()) {
 		if (event_thread_handle_.get_id() == std::this_thread::get_id()) {
-			event_thread_handle_.detach();
+			MJR_ERROR("MujocoEnv destruction from event thread is not supported");
+			std::terminate();
 		} else {
 			MJR_DEBUG("Joining event thread from destructor");
 			event_thread_handle_.join();
 		}
 	}
 
+	for (const auto &connection : connections) {
+		connection->DetachEnvironment();
+		connection->DetachViewer();
+	}
+
 	model_.reset();
 	data_.reset();
-	connected_viewers_.clear();
 	free(this->ctrlnoise_);
 	mj_deleteVFS(&vfs_);
 

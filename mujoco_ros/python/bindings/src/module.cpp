@@ -38,6 +38,7 @@
 
 #include <mujoco/mujoco.h>
 #include <mujoco_ros/render_backend.hpp>
+#include <mujoco_ros/ros_version.hpp>
 
 namespace {
 
@@ -49,6 +50,12 @@ constexpr const char *kRenderBackend = "EGL";
 constexpr const char *kRenderBackend = "NONE";
 #endif
 
+#if RENDER_BACKEND == GLFW_BACKEND
+constexpr const char *kViewerBackend = "GLFW";
+#else
+constexpr const char *kViewerBackend = "NONE";
+#endif
+
 } // namespace
 
 namespace mujoco_ros::python {
@@ -56,7 +63,9 @@ namespace mujoco_ros::python {
 PYBIND11_MODULE(pymujoco_ros, module)
 {
 	module.attr("__mujoco_version__") = mj_versionString();
+	module.attr("__ros_version__")    = MJR_ROS_VERSION; // 1 or 2
 	module.attr("__render_backend__") = kRenderBackend;
+	module.attr("__viewer_backend__") = kViewerBackend;
 
 	InitEnvStructs(module);
 	InitPlugins(module);

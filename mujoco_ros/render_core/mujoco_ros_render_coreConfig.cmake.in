@@ -1,15 +1,34 @@
 @PACKAGE_INIT@
 
 include(CMakeFindDependencyMacro)
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
-find_dependency(mujoco 3.3.5)
+set(_MUJOCO_ROS_CONFIGURED_MUJOCO_DIR "@MUJOCO_DIR@")
+if(NOT _MUJOCO_ROS_CONFIGURED_MUJOCO_DIR STREQUAL "")
+  list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
+  set(_MUJOCO_ROS_MODULE_PATH_POSITION "front")
+  # Direct consumers have no catkin extras scope to carry this path.
+  set(MUJOCO_DIR "${_MUJOCO_ROS_CONFIGURED_MUJOCO_DIR}")
+  unset(mujoco_FOUND)
+  unset(mujoco_FOUND CACHE)
+  # Force the installed Findmujoco module so caller package state and
+  # CMAKE_FIND_PACKAGE_PREFER_CONFIG cannot replace the configured root.
+  find_package(mujoco 3.3.5 MODULE REQUIRED)
+else()
+  list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
+  set(_MUJOCO_ROS_MODULE_PATH_POSITION "back")
+  find_dependency(mujoco 3.3.5)
+endif()
 
 if("@_MUJOCO_RESOLVED_OFFSCREEN_BACKEND@" STREQUAL "EGL")
   find_dependency(OpenGL COMPONENTS OpenGL EGL)
 elseif("@_MUJOCO_RESOLVED_OFFSCREEN_BACKEND@" STREQUAL "OSMESA")
   find_dependency(OSMesa)
 endif()
-list(POP_BACK CMAKE_MODULE_PATH)
+if(_MUJOCO_ROS_MODULE_PATH_POSITION STREQUAL "front")
+  list(POP_FRONT CMAKE_MODULE_PATH)
+else()
+  list(POP_BACK CMAKE_MODULE_PATH)
+endif()
+unset(_MUJOCO_ROS_MODULE_PATH_POSITION)
 
 include("${CMAKE_CURRENT_LIST_DIR}/mujoco_ros_render_coreTargets.cmake")
 check_required_components(mujoco_ros_render_core)

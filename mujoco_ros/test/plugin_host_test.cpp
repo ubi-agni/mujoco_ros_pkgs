@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <condition_variable>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -275,6 +277,95 @@ private:
 	ThrowingLifecyclePhase phase_;
 };
 
+class ReentrantLoadAdapter final : public IPluginAdapter
+{
+public:
+	ReentrantLoadAdapter(PluginHost &host, ModelGeneration model_generation)
+	    : host_(host), model_generation_(model_generation)
+	{
+	}
+
+	const std::string &Name() const override { return name_; }
+	const std::string &Type() const override { return type_; }
+
+	bool Load(const mjModel *, mjData *, std::string &) override
+	{
+		host_.NotifyGeometryChanged(model_generation_, nullptr, nullptr, 0);
+		return true;
+	}
+
+	void Activate() override {}
+	void Control(const mjModel *, mjData *) override {}
+	void Passive(const mjModel *, mjData *) override {}
+	void Render(const mjModel *, mjData *, mjvScene *) override {}
+	void LastStage(const mjModel *, mjData *) override {}
+	void Reset() override {}
+	void GeometryChanged(const mjModel *, mjData *, int) override {}
+	PluginStat Statistics() const override { return {}; }
+
+private:
+	PluginHost &host_;
+	ModelGeneration model_generation_;
+	std::string name_ = "reentrant";
+	std::string type_ = "test/ReentrantLoadAdapter";
+};
+
+class ReentrantLoadFactory final : public IPluginAdapterFactory
+{
+public:
+	void SetHost(PluginHost *host) { host_ = host; }
+	void SetModelGeneration(ModelGeneration model_generation) { model_generation_ = model_generation; }
+
+	std::vector<std::unique_ptr<IPluginAdapter>> CreateAdapters() override
+	{
+		std::vector<std::unique_ptr<IPluginAdapter>> adapters;
+		adapters.emplace_back(std::make_unique<ReentrantLoadAdapter>(*host_, model_generation_));
+		return adapters;
+	}
+
+private:
+	PluginHost *host_ = nullptr;
+	ModelGeneration model_generation_{ 1 };
+};
+
+TEST(PluginHost, LoadGenerationDoesNotDeadlockWhenLoadReentersPluginHost)
+{
+	ReentrantLoadFactory factory;
+	auto host = std::make_unique<PluginHost>(factory);
+	factory.SetHost(host.get());
+	factory.SetModelGeneration(ModelGeneration(1));
+
+	std::optional<PluginLoadReport> report;
+	std::mutex report_mutex;
+	std::condition_variable report_ready;
+	bool load_finished = false;
+
+	std::thread load_thread([&]() {
+		const auto loaded = host->LoadGeneration(nullptr, nullptr, ModelGeneration(1), PluginGeneration(1));
+		{
+			std::lock_guard<std::mutex> lock(report_mutex);
+			report        = loaded;
+			load_finished = true;
+		}
+		report_ready.notify_one();
+	});
+
+	{
+		std::unique_lock<std::mutex> lock(report_mutex);
+		const bool finished = report_ready.wait_for(lock, std::chrono::seconds(2), [&]() { return load_finished; });
+		if (!finished) {
+			load_thread.detach();
+			// The detached thread still holds PluginHost::mutex_; avoid running ~PluginHost().
+			(void)host.release();
+			FAIL() << "PluginHost::LoadGeneration deadlocked when a plugin's Load() re-entered PluginHost";
+		}
+	}
+	load_thread.join();
+	ASSERT_TRUE(report.has_value());
+	EXPECT_TRUE(report->failures.empty());
+	EXPECT_EQ(host->ReadyCount(), 1u);
+}
+
 TEST(PluginHost, ActivatesSuccessfulAdaptersOnlyAfterCompleteLoadPass)
 {
 	EventLog log;
@@ -285,7 +376,7 @@ TEST(PluginHost, ActivatesSuccessfulAdaptersOnlyAfterCompleteLoadPass)
 	ASSERT_EQ(report.statistics.size(), 3u);
 	EXPECT_EQ(log.Events(), (std::vector<std::string>{ "load:0", "load:1", "load:2", "activate:0", "activate:2" }));
 
-	host.DispatchControl(nullptr, nullptr);
+	host.DispatchControl(ModelGeneration(7), nullptr, nullptr);
 	const auto events = log.Events();
 	EXPECT_EQ(std::vector<std::string>(events.end() - 2, events.end()),
 	          (std::vector<std::string>{ "control:0", "control:2" }));
@@ -298,11 +389,11 @@ TEST(PluginHost, DispatchesEveryLifecycleOperationInConfiguredOrder)
 	PluginHost host(factory);
 	host.LoadGeneration(nullptr, nullptr, ModelGeneration(1), PluginGeneration(2));
 
-	host.DispatchPassive(nullptr, nullptr);
-	host.DispatchRender(nullptr, nullptr, nullptr);
-	host.DispatchLastStage(nullptr, nullptr);
-	host.Reset();
-	host.NotifyGeometryChanged(nullptr, nullptr, 9);
+	host.DispatchPassive(ModelGeneration(1), nullptr, nullptr);
+	host.DispatchRender(ModelGeneration(1), nullptr, nullptr, nullptr);
+	host.DispatchLastStage(ModelGeneration(1), nullptr, nullptr);
+	host.Reset(ModelGeneration(1));
+	host.NotifyGeometryChanged(ModelGeneration(1), nullptr, nullptr, 9);
 
 	const auto events = log.Events();
 	EXPECT_EQ(std::vector<std::string>(events.end() - 10, events.end()),
@@ -377,22 +468,22 @@ TEST(PluginHost, ReportsLifecycleExceptionsWithoutSwallowingFailures)
 			    [&]() {
 				    switch (phase) {
 					    case ThrowingLifecyclePhase::Control:
-						    host.DispatchControl(nullptr, nullptr);
+						    host.DispatchControl(ModelGeneration(1), nullptr, nullptr);
 						    break;
 					    case ThrowingLifecyclePhase::Passive:
-						    host.DispatchPassive(nullptr, nullptr);
+						    host.DispatchPassive(ModelGeneration(1), nullptr, nullptr);
 						    break;
 					    case ThrowingLifecyclePhase::Render:
-						    host.DispatchRender(nullptr, nullptr, nullptr);
+						    host.DispatchRender(ModelGeneration(1), nullptr, nullptr, nullptr);
 						    break;
 					    case ThrowingLifecyclePhase::LastStage:
-						    host.DispatchLastStage(nullptr, nullptr);
+						    host.DispatchLastStage(ModelGeneration(1), nullptr, nullptr);
 						    break;
 					    case ThrowingLifecyclePhase::Reset:
-						    host.Reset();
+						    host.Reset(ModelGeneration(1));
 						    break;
 					    case ThrowingLifecyclePhase::Geometry:
-						    host.NotifyGeometryChanged(nullptr, nullptr, 1);
+						    host.NotifyGeometryChanged(ModelGeneration(1), nullptr, nullptr, 1);
 						    break;
 					    case ThrowingLifecyclePhase::Statistics:
 						    break;
@@ -434,7 +525,7 @@ TEST(PluginHost, QuiescenceWaitsForCallbackBeforeDestroyingGeneration)
 	PluginHost host(factory);
 	host.LoadGeneration(nullptr, nullptr, ModelGeneration(1), PluginGeneration(1));
 
-	std::thread callback([&host]() { host.DispatchControl(nullptr, nullptr); });
+	std::thread callback([&host]() { host.DispatchControl(ModelGeneration(1), nullptr, nullptr); });
 	factory.WaitForControlEntered();
 	std::thread quiesce([&host]() { host.QuiesceAndDestroy(); });
 

@@ -615,25 +615,21 @@ public:
 	{
 		GetExecutorPtr()->add_node(this->get_node_base_interface());
 
-		// Start executor thread BEFORE Configure() so services and callbacks have a spinning executor
-		executor_thread_handle_ = std::thread([this]() {
-			while (!shutdown_called_.load()) {
-				GetExecutorPtr()->spin_once(std::chrono::milliseconds(10));
-			}
-		});
-
-		// Give executor thread a moment to start spinning
-		std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
 		try {
 			test_nh_->setNode(this);
 			Configure();
-			construction_complete_ = true;
+			executor_thread_handle_ = std::thread([this]() {
+				while (!shutdown_called_.load()) {
+					GetExecutorPtr()->spin_once(std::chrono::milliseconds(10));
+				}
+			});
+			construction_complete_  = true;
 		} catch (...) {
 			MJR_ERROR("Exception thrown during MujocoEnvTestWrapper construction! Cleaning up executor...");
 			// Stop executor and join thread BEFORE removing node to avoid races.
 			// Must set shutdown_called_ first: the executor thread's poll loop only
-			// exits on that flag, not on cancel() alone.
+			// exits on that flag, not on cancel() alone. executor_thread_handle_ is
+			// only joinable here if the thread was created above before the throw.
 			shutdown_called_.store(true);
 			GetExecutorPtr()->cancel();
 			if (executor_thread_handle_.joinable()) {

@@ -64,7 +64,6 @@ public:
 		if (initialized_) {
 			return RenderStatus::Failure(RenderStatusCode::kBackendFailure, "backend initialized twice");
 		}
-		configuration_ = configuration;
 		if (!InitializeContext(configuration.frame_layout.width, configuration.frame_layout.height)) {
 			ShutdownOnRenderThread();
 			return RenderStatus::Failure(RenderStatusCode::kBackendFailure, "graphics context initialization failed");
@@ -87,7 +86,6 @@ public:
 		if (!initialized_) {
 			return RenderStatus::Failure(RenderStatusCode::kNotInitialized, "backend is not initialized");
 		}
-		configuration_ = configuration;
 #if defined(MJR_RENDER_BACKEND_OSMESA)
 		osmesa_buffer_.resize(static_cast<std::size_t>(configuration.frame_layout.width) *
 		                      static_cast<std::size_t>(configuration.frame_layout.height) * 4U);
@@ -283,7 +281,6 @@ private:
 		return status.ok() ? RenderStatus::Ok() : FromFrameStatus(status);
 	}
 
-	RenderConfiguration configuration_;
 	mjrContext context_{};
 	mjvScene scene_{};
 	mjvCamera camera_{};

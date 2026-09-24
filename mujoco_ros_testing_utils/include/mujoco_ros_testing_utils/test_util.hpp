@@ -39,38 +39,31 @@
 #include <mujoco_ros/common_types.hpp>
 using namespace mujoco_ros;
 
-void compare_qpos(mjData *d, int qpos_adr_int, const std::string &joint_name, const std::vector<double> &values,
-                  const std::vector<double> &tolerances = {})
+inline void compare_array(const char *label, const double *actual, const std::string &joint_name,
+                          const std::vector<double> &values, const std::vector<double> &tolerances = {})
 {
-	uint qpos_adr = static_cast<uint>(qpos_adr_int);
 	if (tolerances.empty()) {
 		for (size_t i = 0; i < values.size(); i++) {
-			EXPECT_EQ(d->qpos[qpos_adr + i], values[i]) << "qpos of joint '" << joint_name << "' at index " << i << " is "
-			                                            << d->qpos[qpos_adr + i] << " instead of " << values[i] << "!";
+			EXPECT_EQ(actual[i], values[i]) << label << " of joint '" << joint_name << "' at index " << i << " is "
+			                                << actual[i] << " instead of " << values[i] << "!";
 		}
 	} else {
 		for (size_t i = 0; i < values.size(); i++) {
-			EXPECT_NEAR(d->qpos[qpos_adr + i], values[i], tolerances[i])
-			    << "qpos of joint '" << joint_name << "' at index " << i << " is " << d->qpos[qpos_adr + i]
-			    << " instead of " << values[i] << " (tolerance: " << tolerances[i] << ")!";
+			EXPECT_NEAR(actual[i], values[i], tolerances[i])
+			    << label << " of joint '" << joint_name << "' at index " << i << " is " << actual[i] << " instead of "
+			    << values[i] << " (tolerance: " << tolerances[i] << ")!";
 		}
 	}
 }
 
-void compare_qvel(mjData *d, int dof_adr_int, const std::string &joint_name, const std::vector<double> &values,
-                  const std::vector<double> &tolerances = {})
+inline void compare_qpos(mjData *d, int qpos_adr_int, const std::string &joint_name, const std::vector<double> &values,
+                         const std::vector<double> &tolerances = {})
 {
-	uint dof_adr = static_cast<uint>(dof_adr_int);
-	if (tolerances.empty()) {
-		for (size_t i = 0; i < values.size(); i++) {
-			EXPECT_EQ(d->qvel[dof_adr + i], values[i]) << "qvel of joint '" << joint_name << "' at index " << i << " is "
-			                                           << d->qvel[dof_adr + i] << " instead of " << values[i] << "!";
-		}
-	} else {
-		for (size_t i = 0; i < values.size(); i++) {
-			EXPECT_NEAR(d->qvel[dof_adr + i], values[i], tolerances[i])
-			    << "qvel of joint '" << joint_name << "' at index " << i << " is " << d->qvel[dof_adr + i]
-			    << " instead of " << values[i] << " (tolerance: " << tolerances[i] << ")!";
-		}
-	}
+	compare_array("qpos", d->qpos + static_cast<uint>(qpos_adr_int), joint_name, values, tolerances);
+}
+
+inline void compare_qvel(mjData *d, int dof_adr_int, const std::string &joint_name, const std::vector<double> &values,
+                         const std::vector<double> &tolerances = {})
+{
+	compare_array("qvel", d->qvel + static_cast<uint>(dof_adr_int), joint_name, values, tolerances);
 }
