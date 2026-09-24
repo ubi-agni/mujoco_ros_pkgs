@@ -51,8 +51,8 @@ namespace mujoco_ros {
 class TestPlugin : public MujocoPlugin
 {
 public:
-	TestPlugin()           = default;
-	~TestPlugin() override = default;
+	TestPlugin() = default;
+	~TestPlugin() override;
 	bool Load(const mjModel *m, mjData *d) override;
 	void Reset() override;
 	void ControlCallback(const mjModel *model, mjData *data) override;
@@ -77,5 +77,8 @@ public:
 	std::atomic_int got_lvl2_nested_array  = { false };
 	std::atomic_int got_lvl2_nested_struct = { false };
 	std::atomic_int should_fail            = { false };
+
+	static std::atomic_int load_count;
+	static std::atomic_int destruction_count;
 };
 } // namespace mujoco_ros

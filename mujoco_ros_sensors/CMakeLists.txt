@@ -60,6 +60,8 @@ if(ROS_VERSION EQUAL 1)
 
   target_include_directories(${PROJECT_NAME} PUBLIC
     include
+  )
+  target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC
     ${catkin_INCLUDE_DIRS}
   )
 
@@ -83,6 +85,10 @@ if(ROS_VERSION EQUAL 1)
 
   install(DIRECTORY launch config assets
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+  )
+
+  install(FILES test/sensors_world.xml
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/test
   )
 
   if(BUILD_PYTHON_BINDINGS)

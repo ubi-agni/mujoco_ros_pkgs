@@ -18,7 +18,7 @@ if(ROS_VERSION EQUAL 1)
     ${catkin_LIBRARIES}
   )
 
-  target_include_directories(mocap_test
+  target_include_directories(mocap_test SYSTEM
     PRIVATE
       ${catkin_INCLUDE_DIRS}
       ${mujoco_ros_testing_utils_INCLUDE_DIRS}

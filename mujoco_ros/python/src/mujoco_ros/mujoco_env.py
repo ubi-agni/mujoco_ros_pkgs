@@ -29,6 +29,61 @@ def _is_ros1():
     return True
 
 
+# Loggers touched by verbose=True. Core entries mirror launch_server.launch.py/.xml;
+# the plugin-package entries target the plugins directly, at package granularity
+# (ROS 1 rosconsole loggers are log4cxx-hierarchical, so "ros.<pkg>" also covers any
+# NAMED sub-loggers a plugin uses internally, e.g. mujoco_ros_sensors' "sensors").
+# Deliberately excludes generic pluginlib/class_loader loggers -- they only log
+# load/unload noise, not anything plugin-specific.
+_DEFAULT_VERBOSE_LOGGERS_ROS2 = {
+    "mujoco_server": "debug",
+    "mujoco_ros_plugin_loader": "debug",
+    "Viewer": "debug",
+    "mujoco_ros_control": "debug",
+    "sensors": "debug",
+    "lasers": "debug",
+}
+_DEFAULT_VERBOSE_LOGGERS_ROS1 = {
+    "ros.mujoco_ros": "debug",
+    "ros.mujoco_ros_control": "debug",
+    "ros.mujoco_ros_sensors": "debug",
+    "ros.mujoco_ros_laser": "debug",
+    "ros.mujoco_ros_mocap": "debug",
+}
+
+
+def _resolve_log_levels(verbose, log_levels):
+    defaults = _DEFAULT_VERBOSE_LOGGERS_ROS1 if _is_ros1() else _DEFAULT_VERBOSE_LOGGERS_ROS2
+    resolved = dict(defaults) if verbose else {}
+    resolved.update(log_levels or {})
+    return resolved
+
+
+def _apply_ros2_log_levels(log_levels):
+    # rclcpp has no post-init logger-level API exposed here, so this must run
+    # before EnsureRosInitialized() (mujoco_env.cpp) consumes sys.argv -- i.e.
+    # before _MujocoEnvWrapper is constructed. Mirrors _prepare_parameters's
+    # --params-file injection below.
+    if not log_levels:
+        return
+    if "--ros-args" not in sys.argv:
+        sys.argv.append("--ros-args")
+    for name, level in log_levels.items():
+        sys.argv.extend(["--log-level", f"{name}:={level}"])
+
+
+def _apply_ros1_log_levels(log_levels):
+    # roscpp has no --log-level CLI equivalent, so this runs the other way
+    # around: after roscpp is initialized, via the ros::console::set_logger_level
+    # wrapper exposed as pymujoco_ros.set_ros1_logger_level (mujoco_env.cpp).
+    if not log_levels:
+        return
+    from pymujoco_ros import set_ros1_logger_level
+
+    for name, level in log_levels.items():
+        set_ros1_logger_level(name, level)
+
+
 def _deep_merge(base, update):
     result = copy.deepcopy(base)
     for key, value in update.items():
@@ -95,21 +150,14 @@ def _fetch_topic_content(topic, timeout):
             rospy.init_node(
                 "mujoco_ros_python_description_reader", anonymous=True, disable_signals=True
             )
-        result = {}
-        sub = rospy.Subscriber(topic, String, lambda msg: result.setdefault("data", msg.data))
         try:
-            deadline = time.monotonic() + timeout
-            while "data" not in result:
-                if time.monotonic() > deadline:
-                    raise RuntimeError(
-                        f"Timed out after {timeout:.1f}s waiting for a message on topic "
-                        f"'{topic}'. The publisher must publish std_msgs/String with "
-                        "latch=True (a latched publisher)."
-                    )
-                time.sleep(0.01)
-        finally:
-            sub.unregister()
-        return result["data"]
+            return rospy.wait_for_message(topic, String, timeout=timeout).data
+        except rospy.ROSException as exc:
+            raise RuntimeError(
+                f"Timed out after {timeout:.1f}s waiting for a message on topic "
+                f"'{topic}'. The publisher must publish std_msgs/String with "
+                "latch=True (a latched publisher)."
+            ) from exc
 
     import rclpy
     from rclpy.qos import DurabilityPolicy
@@ -168,7 +216,7 @@ class RuntimeSettings:
         return getattr(self._snapshot(), name)
 
     def __setattr__(self, name, value):
-        writable = {"running", "run", "rt_factor", "busywait", "gravity"}
+        writable = {"running", "rt_factor", "busywait", "gravity", "render_backpressure_policy"}
         if name == "_env":
             object.__setattr__(self, name, value)
             return
@@ -184,14 +232,6 @@ class RuntimeSettings:
     @running.setter
     def running(self, value):
         self._env.toggle_paused(not bool(value))
-
-    @property
-    def run(self):
-        return self.running
-
-    @run.setter
-    def run(self, value):
-        self.running = value
 
     @property
     def rt_factor(self):
@@ -217,6 +257,14 @@ class RuntimeSettings:
     def gravity(self, value):
         self._env.set_gravity(value)
 
+    @property
+    def render_backpressure_policy(self):
+        return self._env.render_backpressure_policy
+
+    @render_backpressure_policy.setter
+    def render_backpressure_policy(self, value):
+        self._env.render_backpressure_policy = str(value)
+
 
 class MujocoEnv:
     def __init__(
@@ -231,6 +279,9 @@ class MujocoEnv:
         plugin_config=None,
         model_path=None,
         python_reload_service=False,
+        verbose=False,
+        log_levels=None,
+        runtime_options=None,
     ):
         self._ros_initialized = False
         self._ros_core = RosCore(
@@ -247,11 +298,20 @@ class MujocoEnv:
 
         self._prepare_parameters(config_files or [], parameters or {}, plugin_config)
 
+        resolved_log_levels = _resolve_log_levels(verbose, log_levels)
+        if not _is_ros1():
+            _apply_ros2_log_levels(resolved_log_levels)
+
         if initialize_ros:
             self._ros_initialized = ensure_ros_initialized("mujoco_server")
 
+        if _is_ros1():
+            _apply_ros1_log_levels(resolved_log_levels)
+
         self._env = _MujocoEnvWrapper(
-            admin_hash=admin_hash, python_reload_service=python_reload_service
+            admin_hash=admin_hash,
+            python_reload_service=python_reload_service,
+            runtime_options=runtime_options,
         )
         self._settings = RuntimeSettings(self)
 
@@ -269,6 +329,7 @@ class MujocoEnv:
         generate_actuators=False,
         attach_prefix="",
         ros_params=None,
+        **launch_kw_args,
     ):
         from pymujoco_ros import load_model_from_description
 
@@ -278,7 +339,7 @@ class MujocoEnv:
             generate_actuators=generate_actuators,
             attach_prefix=attach_prefix,
         )
-        env = cls(parameters=ros_params)
+        env = cls(parameters=ros_params, **launch_kw_args)
         env._load_python_model(model, data, filename=urdf_path)
         return env
 
@@ -292,6 +353,7 @@ class MujocoEnv:
         generate_actuators=False,
         attach_prefix="",
         ros_params=None,
+        **launch_kw_args,
     ):
         """Same as from_description, but reads URDF content off a ROS topic
         instead of a file path. srdf_path (a plain filesystem path, e.g. for
@@ -325,7 +387,7 @@ class MujocoEnv:
             if temp_srdf_path:
                 os.unlink(temp_srdf_path)
 
-        env = cls(parameters=ros_params)
+        env = cls(parameters=ros_params, **launch_kw_args)
         env._load_python_model(model, data, filename=urdf_topic)
         return env
 
@@ -341,7 +403,9 @@ class MujocoEnv:
 
                 master = rosgraph.Master("/mujoco_ros_python")
                 for key, value in config.items():
-                    master.setParam("/" + key.strip("/"), value)
+                    normalized_key = key.strip("/")
+                    master.setParam("/" + normalized_key, value)
+                    master.setParam("/mujoco_server/" + normalized_key, value)
             return
 
         config = {}
@@ -430,11 +494,26 @@ class MujocoEnv:
     def set_rt_factor(self, rt_factor, admin_hash=""):
         return self._env.set_rt_factor(rt_factor, admin_hash)
 
+    @property
+    def render_backpressure_policy(self):
+        return self._env.render_backpressure_policy
+
+    @render_backpressure_policy.setter
+    def render_backpressure_policy(self, value):
+        self._env.render_backpressure_policy = str(value)
+
     def get_gravity(self):
         return self._env.get_gravity()
 
     def set_gravity(self, gravity, admin_hash=""):
         return self._env.set_gravity(gravity, admin_hash)
+
+    @property
+    def runtime_options(self):
+        return self._env.runtime_options
+
+    def apply_runtime_options(self, values):
+        return self._env.apply_runtime_options(values)
 
     def _start_reload_service(self):
         if _is_ros1():
@@ -520,8 +599,9 @@ class MujocoEnv:
             # is deleted (RCLError: "Couldn't parse params file").
             pair = ["--params-file", self._temp_param_file]
             for i in range(len(sys.argv) - 1):
-                if sys.argv[i : i + 2] == pair:  # noqa: E203
-                    del sys.argv[i : i + 2]  # noqa: E203
+                if sys.argv[i] == pair[0] and sys.argv[i + 1] == pair[1]:
+                    sys.argv.pop(i)
+                    sys.argv.pop(i)
                     break
             try:
                 os.unlink(self._temp_param_file)
@@ -546,6 +626,10 @@ class MujocoEnv:
     @property
     def operational_status(self):
         return self._env.operational_status
+
+    def wait_for_operational_status_idle(self, timeout=5.0):
+        if not self._env.wait_for_operational_status_idle(int(timeout * 1000)):
+            raise RuntimeError("environment did not become idle before timeout")
 
     @property
     def settings(self):

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 320" font-family="Arial, Helvetica, sans-serif" role="img" aria-label="One shared core implementation -- mujoco_env.cpp, physics.cpp, loading.cpp, interface.cpp, offscreen_camera.cpp, viewer.cpp -- compiles against exactly one of two adapter layers selected by the ROS_VERSION header at compile time: ros_one adapters feeding the ROS 1 ecosystem, or ros_two adapters feeding the ROS 2 ecosystem. Only one branch exists in any given build.">
+  <defs>
+    <marker id="hy-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0e6b58"></path>
+    </marker>
+  </defs>
+
+  <rect x="110" y="10" width="480" height="70" rx="9" fill="#e7ece9" stroke="#084d3f" stroke-width="1.4"></rect>
+  <text x="350" y="34" text-anchor="middle" font-size="12" font-weight="700" fill="#17211d">shared core -- one implementation</text>
+  <text x="350" y="54" text-anchor="middle" font-size="10.5" fill="#52625a">mujoco_env.cpp &#183; physics.cpp &#183; loading.cpp &#183; interface.cpp</text>
+  <text x="350" y="70" text-anchor="middle" font-size="10.5" fill="#52625a">offscreen_camera.cpp &#183; viewer.cpp</text>
+
+  <text x="350" y="98" text-anchor="middle" font-size="11" font-weight="700" fill="#a8461f">ROS_VERSION selected at compile time -- exactly one branch per build</text>
+
+  <line x1="300" y1="106" x2="180" y2="140" stroke="#0e6b58" marker-end="url(#hy-a)"></line>
+  <line x1="400" y1="106" x2="520" y2="140" stroke="#0e6b58" marker-end="url(#hy-a)"></line>
+
+  <rect x="40" y="144" width="280" height="60" rx="8" fill="#dcefe8" stroke="#0e6b58"></rect>
+  <text x="180" y="167" text-anchor="middle" font-size="11.5" font-weight="600" fill="#17211d">ros_one adapters</text>
+  <text x="180" y="185" text-anchor="middle" font-size="10" fill="#52625a">src/ros_one, mujoco_ros/ros_one/*.hpp</text>
+
+  <rect x="380" y="144" width="280" height="60" rx="8" fill="#dcefe8" stroke="#0e6b58"></rect>
+  <text x="520" y="167" text-anchor="middle" font-size="11.5" font-weight="600" fill="#17211d">ros_two adapters</text>
+  <text x="520" y="185" text-anchor="middle" font-size="10" fill="#52625a">src/ros_two, mujoco_ros/ros_two/*.hpp</text>
+
+  <line x1="180" y1="204" x2="180" y2="228" stroke="#0e6b58" marker-end="url(#hy-a)"></line>
+  <line x1="520" y1="204" x2="520" y2="228" stroke="#0e6b58" marker-end="url(#hy-a)"></line>
+
+  <rect x="40" y="232" width="280" height="60" rx="8" fill="none" stroke="#b9c4bd"></rect>
+  <text x="180" y="256" text-anchor="middle" font-size="11.5" fill="#17211d">ROS 1 ecosystem</text>
+  <text x="180" y="274" text-anchor="middle" font-size="10" fill="#52625a">topics, services, dynamic_reconfigure</text>
+
+  <rect x="380" y="232" width="280" height="60" rx="8" fill="none" stroke="#b9c4bd"></rect>
+  <text x="520" y="256" text-anchor="middle" font-size="11.5" fill="#17211d">ROS 2 ecosystem</text>
+  <text x="520" y="274" text-anchor="middle" font-size="10" fill="#52625a">topics, services, node parameters</text>
+</svg>

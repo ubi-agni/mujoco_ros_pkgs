@@ -18,7 +18,15 @@ The ROS 1 side of ``hybrid-devel`` preserves the user-facing feature set from ``
 Architecture
 ------------
 
-The branch generates a ROS-version header from ``ROS_VERSION`` and uses it to select ROS 1 or ROS 2 code paths at compile time. Public headers are renamed to ``.hpp`` and include ROS-specific APIs through:
+The branch generates a ROS-version header from ``ROS_VERSION`` and uses it to select ROS 1 or ROS 2 code paths at compile time.
+
+.. figure:: images/hybrid-architecture.svg
+   :alt: One shared core implementation compiles against exactly one of two adapter layers, selected by the ROS_VERSION header at compile time -- ros_one adapters feeding the ROS 1 ecosystem, or ros_two adapters feeding the ROS 2 ecosystem.
+   :width: 85%
+
+   Any given build contains exactly one adapter layer, not both -- the branch happens at compile time, not at runtime.
+
+Public headers are renamed to ``.hpp`` and include ROS-specific APIs through:
 
 * ``mujoco_ros/ros_one/ros_api.hpp``
 * ``mujoco_ros/ros_two/ros_api.hpp``

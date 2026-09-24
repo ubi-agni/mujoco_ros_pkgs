@@ -58,9 +58,9 @@
 
 #include <mujoco_ros/viewer.hpp>
 
+#include <lodepng.h>
 #include <mujoco/mujoco.h>
 #include <mujoco/mjxmacro.h>
-#include <mujoco_ros/lodepng.h>
 #include <mujoco_ros/util.hpp>
 
 #if MJR_ROS_VERSION == ROS_1
@@ -1883,14 +1883,6 @@ void UiEvent(mjuiState *state)
 namespace mujoco_ros {
 namespace mju = ::mujoco::sample_util;
 
-void ApplyInteractiveViewerGeomDefaults(mjvOption *opt)
-{
-	if (opt == nullptr) {
-		return;
-	}
-	opt->geomgroup[2] = 0;
-}
-
 Viewer::Viewer(std::unique_ptr<PlatformUIAdapter> platform_ui_adapter, MujocoEnv *env, bool is_passive)
     : env_(env)
     , pert(env->pert_)
@@ -2025,7 +2017,7 @@ void Viewer::Sync(bool state_only)
 		env_->SetViewerRealTimeIndex(real_time_index);
 		pending_.ui_update_speed = false;
 	} else {
-		real_time_index = env_->settings_.real_time_index;
+		real_time_index = env_->GetControlSnapshot().real_time_index;
 	}
 
 	if (pending_.save_xml) {
@@ -2675,7 +2667,7 @@ void Viewer::Render()
 	}
 
 	// Get desired and actual percent-of-realtime
-	float desired_real_time = MujocoEnv::percentRealTime[env_->settings_.real_time_index];
+	float desired_real_time = MujocoEnv::percentRealTime[env_->GetControlSnapshot().real_time_index];
 	float actual_real_time  = 100.f / env_->sim_state_.measured_slowdown;
 
 	// If running, check for misalignment of more than 10%

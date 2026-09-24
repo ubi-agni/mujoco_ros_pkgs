@@ -57,15 +57,26 @@ namespace {
 
 constexpr const char *kCacheDir = "/tmp/mujoco_ros_glb_cache";
 
+std::string HashFileContents(const std::filesystem::path &path)
+{
+	std::ifstream in(path, std::ios::binary);
+	std::string bytes(std::filesystem::file_size(path), '\0');
+	in.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+	return std::to_string(std::hash<std::string>{}(bytes));
+}
+
+// Content-addressed, not mtime-addressed: these mesh files are Git LFS
+// tracked, and LFS's smudge filter rewrites mtime on every checkout even
+// when content is byte-identical -- an mtime-keyed cache would silently
+// miss (and reconvert) on every fresh checkout of unchanged assets.
 std::string CacheDirName(const std::filesystem::path &path)
 {
-	const auto abs   = std::filesystem::absolute(path);
-	const auto mtime = std::filesystem::last_write_time(path);
-	const auto size  = std::filesystem::file_size(path);
+	const auto abs  = std::filesystem::absolute(path);
+	const auto size = std::filesystem::file_size(path);
 
 	// Salt bumps invalidate stale OBJ caches when extract rules change.
 	std::ostringstream key;
-	key << "uv_vflip1_untex_all1" << '\0' << abs.string() << '\0' << mtime.time_since_epoch().count() << '\0' << size;
+	key << "uv_vflip1_untex_all1" << '\0' << abs.string() << '\0' << size << '\0' << HashFileContents(path);
 	const auto digest = std::hash<std::string>{}(key.str());
 
 	std::ostringstream hex;
@@ -266,14 +277,6 @@ struct CgltfDataDeleter
 	}
 };
 
-std::filesystem::path CachedUniqueObjPath(const std::filesystem::path &glb_abs)
-{
-	const std::string cache_key   = CacheDirName(glb_abs);
-	const auto cache_dir          = std::filesystem::path(kCacheDir) / cache_key;
-	const std::string unique_stem = glb_abs.stem().string() + "_" + cache_key;
-	return cache_dir / (unique_stem + ".obj");
-}
-
 } // namespace
 
 GlbVisualExtractResult ExtractGlbVisual(const std::filesystem::path &glb_abs)
@@ -283,6 +286,26 @@ GlbVisualExtractResult ExtractGlbVisual(const std::filesystem::path &glb_abs)
 	if (!std::filesystem::exists(glb_abs))
 		return result;
 
+	// VFS keys meshes by basename only — filenames must be unique across all
+	// GLBs (maira has many Link*_body.glb that would otherwise all become
+	// mesh.obj). Cache identity depends only on file content, not on parsed
+	// cgltf structure, so it can be resolved before touching cgltf at all.
+	const std::string cache_key   = CacheDirName(glb_abs);
+	const auto cache_dir          = std::filesystem::path(kCacheDir) / cache_key;
+	const std::string unique_stem = glb_abs.stem().string() + "_" + cache_key;
+	const auto obj_path           = cache_dir / (unique_stem + ".obj");
+	const auto png_path           = cache_dir / (unique_stem + ".png");
+	const bool obj_cached         = std::filesystem::exists(obj_path);
+
+	if (obj_cached && std::filesystem::exists(png_path)) {
+		// Full hit: previously written as a textured OBJ+PNG pair. This kind
+		// carries no rgba override, so no cgltf work is needed at all.
+		result.kind     = GlbVisualKind::TexturedObj;
+		result.obj_path = obj_path;
+		result.png_path = png_path;
+		return result;
+	}
+
 	cgltf_options options{};
 	cgltf_data *raw_data = nullptr;
 	if (cgltf_parse_file(&options, glb_abs.string().c_str(), &raw_data) != cgltf_result_success || !raw_data) {
@@ -291,6 +314,17 @@ GlbVisualExtractResult ExtractGlbVisual(const std::filesystem::path &glb_abs)
 	}
 	std::unique_ptr<cgltf_data, CgltfDataDeleter> data(raw_data);
 
+	if (obj_cached) {
+		// Partial hit: previously written as an untextured OBJ. Its rgba
+		// override (if any) comes from material structure alone, available
+		// from cgltf_parse_file -- no need to load geometry/image buffers.
+		result.kind     = GlbVisualKind::UntexturedObj;
+		result.obj_path = obj_path;
+		TryFillRgbaFromMaterials(data.get(), result);
+		return result;
+	}
+
+	// True miss: need the actual geometry/image bytes.
 	if (cgltf_load_buffers(&options, data.get(), glb_abs.string().c_str()) != cgltf_result_success) {
 		std::cerr << "GLB extract: failed to load buffers for '" << glb_abs.string() << "'\n";
 		return result;
@@ -322,25 +356,8 @@ GlbVisualExtractResult ExtractGlbVisual(const std::filesystem::path &glb_abs)
 	const bool has_texture   = image && image->buffer_view && IsPngImage(image);
 
 	if (has_texture && uv_acc) {
-		// VFS keys meshes by basename only — filenames must be unique across all
-		// GLBs (maira has many Link*_body.glb that would otherwise all become mesh.obj).
-		const std::string cache_key   = CacheDirName(glb_abs);
-		const auto cache_dir          = std::filesystem::path(kCacheDir) / cache_key;
-		const std::string unique_stem = glb_abs.stem().string() + "_" + cache_key;
-		const auto obj_path           = cache_dir / (unique_stem + ".obj");
-		const auto png_path           = cache_dir / (unique_stem + ".png");
-
-		if (std::filesystem::exists(obj_path) && std::filesystem::exists(png_path)) {
-			result.kind     = GlbVisualKind::TexturedObj;
-			result.obj_path = obj_path;
-			result.png_path = png_path;
-			return result;
-		}
-
 		const auto png_bytes = ReadImageBytes(image);
-		if (png_bytes.empty()) {
-			// Fall through to untextured geometry.
-		} else {
+		if (!png_bytes.empty()) {
 			WritePng(png_path, png_bytes);
 			WriteObjFromPrimitive(prim0, obj_path, /*emit_uv=*/true);
 
@@ -349,17 +366,10 @@ GlbVisualExtractResult ExtractGlbVisual(const std::filesystem::path &glb_abs)
 			result.png_path = png_path;
 			return result;
 		}
+		// Fall through to untextured geometry.
 	}
 
 	// No usable baseColor texture: merge all triangle prims into one untextured OBJ.
-	const auto obj_path = CachedUniqueObjPath(glb_abs);
-	if (std::filesystem::exists(obj_path)) {
-		result.kind     = GlbVisualKind::UntexturedObj;
-		result.obj_path = obj_path;
-		TryFillRgbaFromMaterials(data.get(), result);
-		return result;
-	}
-
 	if (!WriteUntexturedObjFromData(data.get(), obj_path))
 		return result;
 

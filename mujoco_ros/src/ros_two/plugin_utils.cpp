@@ -39,6 +39,8 @@
 #include <mujoco_ros/logging.hpp>
 #include <mujoco_ros/mujoco_env.hpp>
 
+#include <utility>
+
 namespace mujoco_ros::plugin_utils {
 
 namespace {
@@ -60,6 +62,39 @@ std::string GetPluginType(MujocoEnv *env_ptr, const std::string &plugin_name)
 	}
 	return env_ptr->get_parameter(type_param).as_string();
 }
+
+} // namespace
+
+namespace {
+
+class FailedPluginAdapter final : public IPluginAdapter
+{
+public:
+	FailedPluginAdapter(std::string name, std::string type, std::string error)
+	    : name_(std::move(name)), type_(std::move(type)), error_(std::move(error))
+	{
+	}
+
+	const std::string &Name() const override { return name_; }
+	const std::string &Type() const override { return type_; }
+	bool Load(const mjModel *, mjData *, std::string &error) override
+	{
+		error = error_;
+		return false;
+	}
+	void Control(const mjModel *, mjData *) override {}
+	void Passive(const mjModel *, mjData *) override {}
+	void Render(const mjModel *, mjData *, mjvScene *) override {}
+	void LastStage(const mjModel *, mjData *) override {}
+	void Reset() override {}
+	void GeometryChanged(const mjModel *, mjData *, int) override {}
+	PluginStat Statistics() const override { return { name_, type_ }; }
+
+private:
+	std::string name_;
+	std::string type_;
+	std::string error_;
+};
 
 } // namespace
 
@@ -109,6 +144,40 @@ void RegisterPlugins(const std::vector<std::string> &plugin_names, std::vector<M
 			                       "Plugin " << plugin_name << " of type " << type << " failed to load: " << ex.what());
 		}
 	}
+}
+
+RosPluginAdapterFactory::~RosPluginAdapterFactory()
+{
+	UnloadPluginloader();
+}
+
+std::vector<std::unique_ptr<IPluginAdapter>> RosPluginAdapterFactory::CreateAdapters()
+{
+	std::vector<std::unique_ptr<IPluginAdapter>> adapters;
+	std::vector<std::string> plugin_names;
+	if (!ParsePlugins(env_, plugin_names)) {
+		return adapters;
+	}
+
+	for (const auto &plugin_name : plugin_names) {
+		const std::string type = GetPluginType(env_, plugin_name);
+		if (type.empty()) {
+			adapters.emplace_back(std::make_unique<FailedPluginAdapter>(
+			    plugin_name, "", "ROS 2 plugin configuration entry is missing type"));
+			continue;
+		}
+
+		try {
+			auto plugin = MujocoPluginPtr(plugin_loader_ptr_->createUnmanagedInstance(type));
+			plugin->Init(plugin_name, env_, type);
+			env_->AddNodeToExecutor(plugin->get_node()->get_node_base_interface());
+			plugin->get_node()->configure();
+			adapters.emplace_back(std::make_unique<RosPluginAdapter>(std::move(plugin)));
+		} catch (const pluginlib::PluginlibException &ex) {
+			adapters.emplace_back(std::make_unique<FailedPluginAdapter>(plugin_name, type, ex.what()));
+		}
+	}
+	return adapters;
 }
 
 void InitPluginLoader()

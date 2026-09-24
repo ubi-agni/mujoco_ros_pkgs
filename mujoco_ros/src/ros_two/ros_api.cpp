@@ -2,6 +2,7 @@
  * Software License Agreement (BSD License)
  *
  *  Copyright (c) 2022-2026, Bielefeld University
+ *  Copyright (c) 2026, Neura Robotics
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -14,7 +15,7 @@
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *   * Neither the name of Bielefeld University nor the names of its
+ *   * Neither the name of Bielefeld University nor Neura Robotics nor the names of their
  *     contributors may be used to endorse or promote products derived
  *     from this software without specific prior written permission.
  *
@@ -101,64 +102,11 @@ private:
 	bool &flag_;
 };
 
-void ValidateIntegerRange(const rclcpp::Parameter &parameter, int64_t lower_bound, int64_t upper_bound)
-{
-	if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_INTEGER) {
-		throw std::runtime_error("'" + parameter.get_name() + "' must be an integer parameter");
-	}
-
-	const auto value = parameter.as_int();
-	if (value < lower_bound || value > upper_bound) {
-		throw std::runtime_error("'" + parameter.get_name() + "' must be between " + std::to_string(lower_bound) +
-		                         " and " + std::to_string(upper_bound));
-	}
-}
-
 std::string ArrayToString(const mjtNum *array, int size)
 {
 	std::string value;
 	util::arr_to_string(array, size, value);
 	return value;
-}
-
-bool ParseMjtNumArray(const std::string &value, mjtNum *array, uint8_t size, std::string &reason)
-{
-	std::istringstream stream(value);
-	std::string token;
-	uint8_t count = 0;
-	std::vector<mjtNum> parsed_values(size, 0);
-	while (stream >> token) {
-		if (count >= size) {
-			MJR_WARN_STREAM("Too many values in string '" << value << "' expected " << static_cast<int>(size)
-			                                              << ". Ignoring the rest.");
-			continue;
-		}
-
-		try {
-			size_t parsed        = 0;
-			parsed_values[count] = std::stod(token, &parsed);
-			if (parsed != token.size()) {
-				reason = "Invalid numeric token '" + token + "' in '" + value + "'";
-				return false;
-			}
-		} catch (const std::exception &) {
-			reason = "Invalid numeric token '" + token + "' in '" + value + "'";
-			return false;
-		}
-		++count;
-	}
-
-	if (count < size - 1) {
-		MJR_WARN_STREAM("Too few values in string '" << value << "' expected " << static_cast<int>(size)
-		                                             << ". Filling with zeros.");
-		for (uint8_t i = count; i < size; i++) {
-			parsed_values[i] = 0;
-		}
-	}
-	for (uint8_t i = 0; i < size; ++i) {
-		array[i] = parsed_values[i];
-	}
-	return true;
 }
 
 } // namespace
@@ -180,6 +128,8 @@ RosAPI::RosAPI(MujocoEnvPtr env_ptr) : env_ptr_(env_ptr)
 	declare_parameter_if_not_declared(env_ptr_, "wait_for_xml", rclcpp::ParameterValue(false));
 	declare_parameter_if_not_declared(env_ptr_, "mujoco_xml", rclcpp::ParameterValue(std::string("")));
 	declare_parameter_if_not_declared(env_ptr_, "use_sim_time", rclcpp::ParameterValue(true));
+	declare_parameter_if_not_declared(env_ptr_, "render_backpressure_policy",
+	                                  rclcpp::ParameterValue(std::string("drop")));
 
 	DeclareRuntimeParameter(env_ptr_, "running", true, "Runtime pause state.");
 	DeclareRuntimeParameter(env_ptr_, "admin_hash", std::string(""),
@@ -237,9 +187,9 @@ RosAPI::RosAPI(MujocoEnvPtr env_ptr) : env_ptr_(env_ptr)
 	DeclareRuntimeParameter(env_ptr_, "island", false);
 
 	DeclareRuntimeParameter(env_ptr_, "margin", 0.0);
-	DeclareRuntimeParameter(env_ptr_, "solimp", std::string("0.9 0.95 0.00"));
+	DeclareRuntimeParameter(env_ptr_, "solimp", std::string("0.9 0.95 0.001 0.5 2"));
 	DeclareRuntimeParameter(env_ptr_, "solref", std::string("0.02 1.0"));
-	DeclareRuntimeParameter(env_ptr_, "friction", std::string("1 1 0.05 0."));
+	DeclareRuntimeParameter(env_ptr_, "friction", std::string("1 1 0.005 0.0001 0.0001"));
 
 	dynamic_params_callback_handle_ =
 	    env_ptr_->add_on_set_parameters_callback(std::bind(&RosAPI::DynamicParamsCallback, this, std::placeholders::_1));
@@ -327,6 +277,8 @@ void RosAPI::UpdateDynamicParams()
 		const auto &opt = env_ptr_->model_->opt;
 		parameters.emplace_back("running", env_ptr_->GetControlSnapshot().running);
 		parameters.emplace_back("admin_hash", std::string(env_ptr_->settings_.admin_hash));
+		parameters.emplace_back("render_backpressure_policy",
+		                        rendering::RenderBackpressurePolicyToString(env_ptr_->GetRenderBackpressurePolicy()));
 
 		parameters.emplace_back("integrator", opt.integrator);
 		parameters.emplace_back("cone", opt.cone);
@@ -389,7 +341,8 @@ void RosAPI::UpdateDynamicParams()
 	}
 }
 
-rcl_interfaces::msg::SetParametersResult RosAPI::DynamicParamsCallback(const std::vector<rclcpp::Parameter> &parameters)
+#if 0
+rcl_interfaces::msg::SetParametersResult RosAPI::DynamicParamsCallbackLegacy(const std::vector<rclcpp::Parameter> &parameters)
 {
 	rcl_interfaces::msg::SetParametersResult result;
 	result.successful = true;
@@ -609,6 +562,175 @@ rcl_interfaces::msg::SetParametersResult RosAPI::DynamicParamsCallback(const std
 
 	return result;
 }
+#endif
+
+rcl_interfaces::msg::SetParametersResult RosAPI::DynamicParamsCallback(const std::vector<rclcpp::Parameter> &parameters)
+{
+	rcl_interfaces::msg::SetParametersResult result;
+	result.successful = true;
+	if (syncing_dynamic_params) {
+		return result;
+	}
+
+	static const std::unordered_set<std::string> model_backed_parameters = { "integrator",
+		                                                                      "cone",
+		                                                                      "jacobian",
+		                                                                      "solver",
+		                                                                      "timestep",
+		                                                                      "iterations",
+		                                                                      "tolerance",
+		                                                                      "ls_iter",
+		                                                                      "ls_tol",
+		                                                                      "noslip_iter",
+		                                                                      "noslip_tol",
+		                                                                      "ccd_iter",
+		                                                                      "ccd_tol",
+		                                                                      "sdf_iter",
+		                                                                      "sdf_init",
+		                                                                      "gravity",
+		                                                                      "wind",
+		                                                                      "magnetic",
+		                                                                      "density",
+		                                                                      "viscosity",
+		                                                                      "impratio",
+		                                                                      "constraint_disabled",
+		                                                                      "equality_disabled",
+		                                                                      "frictionloss_disabled",
+		                                                                      "limit_disabled",
+		                                                                      "contact_disabled",
+		                                                                      "passive_disabled",
+		                                                                      "gravity_disabled",
+		                                                                      "clampctrl_disabled",
+		                                                                      "warmstart_disabled",
+		                                                                      "filterparent_disabled",
+		                                                                      "actuation_disabled",
+		                                                                      "refsafe_disabled",
+		                                                                      "sensor_disabled",
+		                                                                      "midphase_disabled",
+		                                                                      "eulerdamp_disabled",
+		                                                                      "override_contacts",
+		                                                                      "energy",
+		                                                                      "fwd_inv",
+		                                                                      "inv_discrete",
+		                                                                      "multiccd",
+		                                                                      "island",
+		                                                                      "margin",
+		                                                                      "solimp",
+		                                                                      "solref",
+		                                                                      "friction" };
+	bool touches_model                                                   = false;
+	bool handles_runtime                                                 = false;
+	for (const auto &parameter : parameters) {
+		if (parameter.get_name() == "running" || parameter.get_name() == "admin_hash") {
+			handles_runtime = true;
+		} else if (model_backed_parameters.count(parameter.get_name()) != 0 ||
+		           parameter.get_name() == "render_backpressure_policy") {
+			handles_runtime = true;
+			touches_model   = touches_model || model_backed_parameters.count(parameter.get_name()) != 0;
+		}
+	}
+	if (!handles_runtime) {
+		return result;
+	}
+
+	std::vector<RuntimeOptionInput> input;
+	std::optional<bool> running;
+	std::optional<std::string> admin_hash;
+	std::optional<rendering::RenderBackpressurePolicy> render_backpressure_policy;
+	const auto reject = [&result](const std::string &reason) {
+		result.successful = false;
+		result.reason     = reason;
+	};
+	const auto canonical_name = [](const std::string &name) {
+		if (name == "ls_iter")
+			return std::string("ls_iterations");
+		if (name == "ls_tol")
+			return std::string("ls_tolerance");
+		if (name == "noslip_iter")
+			return std::string("noslip_iterations");
+		if (name == "noslip_tol")
+			return std::string("noslip_tolerance");
+		if (name == "ccd_iter")
+			return std::string("ccd_iterations");
+		if (name == "ccd_tol")
+			return std::string("ccd_tolerance");
+		if (name == "sdf_iter")
+			return std::string("sdf_iterations");
+		if (name == "sdf_init")
+			return std::string("sdf_initpoints");
+		return name;
+	};
+	for (const auto &parameter : parameters) {
+		const auto &name = parameter.get_name();
+		try {
+			if (name == "running") {
+				if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_BOOL)
+					throw std::runtime_error("'running' must be a boolean parameter");
+				running = parameter.as_bool();
+			} else if (name == "admin_hash") {
+				if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_STRING)
+					throw std::runtime_error("'admin_hash' must be a string parameter");
+				admin_hash = parameter.as_string();
+			} else if (name == "render_backpressure_policy") {
+				if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_STRING)
+					throw std::runtime_error("'render_backpressure_policy' must be a string parameter");
+				const auto parsed = rendering::RenderBackpressurePolicyFromString(parameter.as_string());
+				if (!parsed.has_value())
+					throw std::runtime_error("render_backpressure_policy must be 'drop' or 'wait_for_slot'");
+				render_backpressure_policy = *parsed;
+			} else if (model_backed_parameters.count(name) != 0) {
+				const auto field = canonical_name(name);
+				if (name == "integrator" || name == "cone" || name == "jacobian" || name == "solver" ||
+				    name == "iterations" || name == "ls_iter" || name == "noslip_iter" || name == "ccd_iter" ||
+				    name == "sdf_iter" || name == "sdf_init") {
+					if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_INTEGER)
+						throw std::runtime_error("must be an integer parameter");
+					input.push_back({ field, parameter.as_int() });
+				} else if (name == "timestep" || name == "tolerance" || name == "ls_tol" || name == "noslip_tol" ||
+				           name == "ccd_tol" || name == "density" || name == "viscosity" || name == "impratio" ||
+				           name == "margin") {
+					if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE)
+						throw std::runtime_error("must be a double parameter");
+					input.push_back({ field, parameter.as_double() });
+				} else if (name == "gravity" || name == "wind" || name == "magnetic" || name == "solimp" ||
+				           name == "solref" || name == "friction") {
+					if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_STRING)
+						throw std::runtime_error("must be a space-delimited string parameter");
+					input.push_back({ field, parameter.as_string() });
+				} else {
+					if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_BOOL)
+						throw std::runtime_error("must be a boolean parameter");
+					input.push_back({ field, parameter.as_bool() });
+				}
+			}
+		} catch (const std::exception &error) {
+			reject("Failed to validate parameter '" + name + "': " + error.what());
+			return result;
+		}
+	}
+
+	if (touches_model) {
+		const auto transaction = env_ptr_->ApplyRuntimeOptions(input);
+		if (!transaction.ok()) {
+			const auto &error = *transaction.error;
+			reject((error.field.empty() ? std::string() : error.field + ": ") + error.message);
+			return result;
+		}
+	}
+	if (running) {
+		env_ptr_->ApplyPauseState(!*running, false);
+	}
+	if (admin_hash) {
+		mju::strcpy_arr(env_ptr_->settings_.admin_hash, admin_hash->c_str());
+	}
+	if (render_backpressure_policy) {
+		const auto policy_status = env_ptr_->SetRenderBackpressurePolicy(*render_backpressure_policy);
+		if (!policy_status.ok()) {
+			reject(policy_status.message);
+		}
+	}
+	return result;
+}
 
 void RosAPI::OnStepGoal(
     const std::shared_ptr<rclcpp_action::ServerGoalHandle<mujoco_ros_msgs::action::Step>> &goal_handle)
@@ -619,43 +741,47 @@ void RosAPI::OnStepGoal(
 void RosAPI::ExecuteStepGoal(
     const std::shared_ptr<rclcpp_action::ServerGoalHandle<mujoco_ros_msgs::action::Step>> &goal_handle)
 {
-	const auto goal  = goal_handle->get_goal();
-	auto feedback    = std::make_shared<mujoco_ros_msgs::action::Step::Feedback>();
-	auto &steps_left = feedback->steps_left;
-	auto result      = std::make_shared<mujoco_ros_msgs::action::Step::Result>();
-
-	if (!env_ptr_->RequestManualSteps(goal->num_steps)) {
-		MJR_WARN("Simulation is currently unpaused. Stepping makes no sense right now.");
+	const auto goal    = goal_handle->get_goal();
+	auto feedback      = std::make_shared<mujoco_ros_msgs::action::Step::Feedback>();
+	auto result        = std::make_shared<mujoco_ros_msgs::action::Step::Result>();
+	const auto request = env_ptr_->RequestManualStepsWithToken(goal->num_steps);
+	if (!request.accepted) {
+		MJR_WARN("Manual step action rejected: no active model or an incompatible control request is pending");
 		result->success = false;
 		goal_handle->abort(result);
-		MJR_DEBUG("Aborted step goal");
 		return;
 	}
 
-	steps_left = goal->num_steps;
-
 	result->success = true;
-	while (env_ptr_->GetControlSnapshot().pending_steps > 0) {
-		const auto control_snapshot = env_ptr_->GetControlSnapshot();
-		if (goal_handle->is_canceling() || !rclcpp::ok() || control_snapshot.shutdown_requested ||
-		    control_snapshot.load_request > 0 || control_snapshot.reset_requested) {
-			MJR_WARN("Simulation step action preempted");
-			steps_left = util::as_unsigned(control_snapshot.pending_steps);
-			goal_handle->publish_feedback(feedback);
-			result->success = false;
-			goal_handle->canceled(result);
-			env_ptr_->CancelManualSteps();
+	while (true) {
+		auto step_snapshot = env_ptr_->GetManualStepSnapshot(request.token);
+		if (step_snapshot.status != ManualStepTerminalStatus::kPending) {
+			if (step_snapshot.status == ManualStepTerminalStatus::kCompleted) {
+				feedback->steps_left = 0;
+				goal_handle->publish_feedback(feedback);
+				goal_handle->succeed(result);
+			} else {
+				feedback->steps_left = util::as_unsigned(step_snapshot.pending_steps);
+				result->success      = false;
+				goal_handle->publish_feedback(feedback);
+				goal_handle->canceled(result);
+			}
+			env_ptr_->AcknowledgeManualStep(request.token);
 			return;
 		}
 
-		steps_left = util::as_unsigned(control_snapshot.pending_steps);
-		goal_handle->publish_feedback(feedback);
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
-	}
+		if (goal_handle->is_canceling() || !rclcpp::ok()) {
+			MJR_WARN("Simulation step action preempted");
+			if (!env_ptr_->CancelManualSteps(request.token)) {
+				continue;
+			}
+			continue;
+		}
 
-	steps_left = util::as_unsigned(env_ptr_->GetControlSnapshot().pending_steps);
-	goal_handle->publish_feedback(feedback);
-	goal_handle->succeed(result);
+		feedback->steps_left = util::as_unsigned(step_snapshot.pending_steps);
+		goal_handle->publish_feedback(feedback);
+		env_ptr_->WaitForManualStepUpdate(request.token, step_snapshot.pending_steps);
+	}
 }
 
 void RosAPI::SetPauseCB(const mujoco_ros_msgs::srv::SetPause::Request::SharedPtr &req,

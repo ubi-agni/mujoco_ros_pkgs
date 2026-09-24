@@ -35,10 +35,12 @@
 /* Authors: David P. Leins */
 
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 
 #include <memory>
 
 #include <mujoco_ros/ros_version.hpp>
+#include <mujoco_ros/mujoco_env.hpp>
 
 #if MJR_ROS_VERSION == ROS_1
 #include <mujoco_ros_control/mujoco_ros_control_plugin.hpp>
@@ -51,13 +53,19 @@ namespace py = pybind11;
 namespace mujoco_ros::python::control {
 namespace {
 
-mujoco_ros::control::MujocoRosControlPlugin *Bind(mujoco_ros::MujocoPlugin *plugin)
+struct ControlPluginHandle
 {
-	auto *typed_plugin = dynamic_cast<mujoco_ros::control::MujocoRosControlPlugin *>(plugin);
-	if (typed_plugin == nullptr) {
+	explicit ControlPluginHandle(mujoco_ros::PluginHandle handle) : handle(std::move(handle)) {}
+	mujoco_ros::PluginHandle handle;
+};
+
+std::shared_ptr<ControlPluginHandle> Bind(py::object plugin)
+{
+	auto handle = py::cast<mujoco_ros::PluginHandle>(plugin);
+	if (handle.Type() != "mujoco_ros_control/MujocoRosControlPlugin") {
 		throw py::type_error("plugin is not a MujocoRosControlPlugin");
 	}
-	return typed_plugin;
+	return std::make_shared<ControlPluginHandle>(std::move(handle));
 }
 
 } // namespace
@@ -66,32 +74,65 @@ PYBIND11_MODULE(pymujoco_ros_control, module)
 {
 	py::module_::import("pymujoco_ros");
 
-	auto cls =
-	    py::class_<mujoco_ros::control::MujocoRosControlPlugin, mujoco_ros::MujocoPlugin,
-	               std::shared_ptr<mujoco_ros::control::MujocoRosControlPlugin>>(module, "MujocoRosControlPlugin");
+	py::class_<ControlPluginHandle, std::shared_ptr<ControlPluginHandle>> cls(module, "MujocoRosControlPlugin");
 
 	cls.def_property_readonly("robot_description_param",
-	                          &mujoco_ros::control::MujocoRosControlPlugin::GetRobotDescriptionParam)
-	    .def_property_readonly("control_period", &mujoco_ros::control::MujocoRosControlPlugin::GetControlPeriodSec)
+	                          [](const ControlPluginHandle &handle) {
+		                          return handle.handle.WithBackend<mujoco_ros::control::MujocoRosControlPlugin>(
+		                              [](const auto &plugin) { return std::string(plugin.GetRobotDescriptionParam()); });
+	                          })
+	    .def_property_readonly("control_period",
+	                           [](const ControlPluginHandle &handle) {
+		                           return handle.handle.WithBackend<mujoco_ros::control::MujocoRosControlPlugin>(
+		                               [](const auto &plugin) { return plugin.GetControlPeriodSec(); });
+	                           })
 	    .def_property_readonly("has_controller_manager",
-	                           &mujoco_ros::control::MujocoRosControlPlugin::HasControllerManager)
-	    .def("__repr__", [](const mujoco_ros::control::MujocoRosControlPlugin &plugin) {
-		    return "<MujocoRosControlPlugin name='" + plugin.get_name() + "' type='" + plugin.get_type() + "'>";
+	                           [](const ControlPluginHandle &handle) {
+		                           return handle.handle.WithBackend<mujoco_ros::control::MujocoRosControlPlugin>(
+		                               [](const auto &plugin) { return plugin.HasControllerManager(); });
+	                           })
+	    .def("__repr__", [](const ControlPluginHandle &plugin) {
+		    return "<MujocoRosControlPlugin name='" + plugin.handle.Name() + "' type='" + plugin.handle.Type() + "'>";
 	    });
 
 #if MJR_ROS_VERSION == ROS_1
-	cls.def_property_readonly("robot_namespace", &mujoco_ros::control::MujocoRosControlPlugin::GetRobotNamespace)
-	    .def_property_readonly("robot_hw_sim_type", &mujoco_ros::control::MujocoRosControlPlugin::GetRobotHWSimType)
-	    .def_property_readonly("transmission_count", &mujoco_ros::control::MujocoRosControlPlugin::GetTransmissionCount)
-	    .def_property_readonly("has_robot_hw_sim", &mujoco_ros::control::MujocoRosControlPlugin::HasRobotHWSim)
-	    .def_property_readonly("e_stop_active", &mujoco_ros::control::MujocoRosControlPlugin::IsEStopActive);
+	cls.def_property_readonly("robot_namespace",
+	                          [](const ControlPluginHandle &handle) {
+		                          return handle.handle.WithBackend<mujoco_ros::control::MujocoRosControlPlugin>(
+		                              [](const auto &plugin) { return std::string(plugin.GetRobotNamespace()); });
+	                          })
+	    .def_property_readonly("robot_hw_sim_type",
+	                           [](const ControlPluginHandle &handle) {
+		                           return handle.handle.WithBackend<mujoco_ros::control::MujocoRosControlPlugin>(
+		                               [](const auto &plugin) { return std::string(plugin.GetRobotHWSimType()); });
+	                           })
+	    .def_property_readonly("transmission_count",
+	                           [](const ControlPluginHandle &handle) {
+		                           return handle.handle.WithBackend<mujoco_ros::control::MujocoRosControlPlugin>(
+		                               [](const auto &plugin) { return plugin.GetTransmissionCount(); });
+	                           })
+	    .def_property_readonly("has_robot_hw_sim",
+	                           [](const ControlPluginHandle &handle) {
+		                           return handle.handle.WithBackend<mujoco_ros::control::MujocoRosControlPlugin>(
+		                               [](const auto &plugin) { return plugin.HasRobotHWSim(); });
+	                           })
+	    .def_property_readonly("e_stop_active", [](const ControlPluginHandle &handle) {
+		    return handle.handle.WithBackend<mujoco_ros::control::MujocoRosControlPlugin>(
+		        [](const auto &plugin) { return plugin.IsEStopActive(); });
+	    });
 #else
 	cls.def_property_readonly("robot_description_node",
-	                          &mujoco_ros::control::MujocoRosControlPlugin::GetRobotDescriptionNode)
-	    .def_property_readonly("update_rate", &mujoco_ros::control::MujocoRosControlPlugin::GetUpdateRate);
+	                          [](const ControlPluginHandle &handle) {
+		                          return handle.handle.WithBackend<mujoco_ros::control::MujocoRosControlPlugin>(
+		                              [](const auto &plugin) { return std::string(plugin.GetRobotDescriptionNode()); });
+	                          })
+	    .def_property_readonly("update_rate", [](const ControlPluginHandle &handle) {
+		    return handle.handle.WithBackend<mujoco_ros::control::MujocoRosControlPlugin>(
+		        [](const auto &plugin) { return plugin.GetUpdateRate(); });
+	    });
 #endif
 
-	module.def("bind", &Bind, py::arg("plugin"), py::return_value_policy::reference);
+	module.def("bind", &Bind, py::arg("plugin"));
 }
 
 } // namespace mujoco_ros::python::control

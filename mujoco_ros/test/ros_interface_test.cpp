@@ -188,6 +188,22 @@ TEST_F(PendulumEnvFixture, Clock)
 	                         std::string("Simulation time should have increased by 10 steps!"), env_ptr.get());
 }
 
+TEST_F(BaseEnvFixture, RenderBackpressurePolicyStartupReader)
+{
+	nh->setParam("render_backpressure_policy", "wait_for_slot");
+	auto sync_env = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	EXPECT_EQ(sync_env->GetRenderBackpressurePolicy(), rendering::RenderBackpressurePolicy::kWaitForSlot);
+	sync_env->shutdown();
+}
+
+TEST_F(PendulumEnvFixture, RenderBackpressurePolicyRuntimeValidation)
+{
+	ASSERT_TRUE(env_ptr->SetRenderBackpressurePolicy("wait_for_slot").ok());
+	const auto rejected = env_ptr->SetRenderBackpressurePolicy("invalid");
+	EXPECT_EQ(rejected.code, rendering::FrameStatusCode::kInvalidPolicy);
+	EXPECT_EQ(env_ptr->GetRenderBackpressurePolicy(), rendering::RenderBackpressurePolicy::kWaitForSlot);
+}
+
 TEST_F(PendulumEnvFixture, ShutdownCallback)
 {
 	EXPECT_FALSE(env_ptr->GetControlSnapshot().running) << "Simulation should be paused!";
@@ -429,8 +445,7 @@ TEST_F(PendulumEnvFixture, StepGoalPreemptUnpaused)
 	ac.sendGoal(goal);
 
 	EXPECT_TRUE(ac.waitForResult(ros::Duration(1.0))) << "Step action did not finish in time!";
-	EXPECT_EQ(ac.getState(), actionlib::SimpleClientGoalState::PREEMPTED)
-	    << "Step action must be preempted when unpaused!";
+	EXPECT_EQ(ac.getState(), actionlib::SimpleClientGoalState::ABORTED) << "Step action must be aborted when unpaused!";
 	EXPECT_FALSE(ac.getResult()->success) << "Step action should have failed!";
 #else // MJR_ROS_VERSION == ROS_2
 	auto goal          = mujoco_ros_msgs::action::Step::Goal();
@@ -2445,7 +2460,7 @@ TEST_F(PendulumEnvFixture, SetRTFactor_NotAllowed)
 	env_ptr->setEvalMode(true);
 	env_ptr->setAdminHash("right_hash");
 
-	int initial_rt_index = env_ptr->settings_.real_time_index;
+	int initial_rt_index = env_ptr->GetControlSnapshot().real_time_index;
 
 	mujoco_ros_msgs::SetFloat srv;
 	srv.request.value      = 1.5; // Increase real-time factor
@@ -2458,7 +2473,8 @@ TEST_F(PendulumEnvFixture, SetRTFactor_NotAllowed)
 	    << "Set RT factor service call failed!";
 	EXPECT_FALSE(srv.response.success) << "Service call should not be successful!";
 
-	EXPECT_EQ(env_ptr->settings_.real_time_index, initial_rt_index) << "Real-time factor should not have changed!";
+	EXPECT_EQ(env_ptr->GetControlSnapshot().real_time_index, initial_rt_index)
+	    << "Real-time factor should not have changed!";
 }
 
 TEST_F(PendulumEnvFixture, SetRTFactor_Increase)
@@ -2472,7 +2488,7 @@ TEST_F(PendulumEnvFixture, SetRTFactor_Increase)
 	    << "Set RT factor service call failed!";
 	EXPECT_TRUE(srv.response.success) << "Service call was not successful!";
 
-	EXPECT_FLOAT_EQ(env_ptr->percentRealTime[env_ptr->settings_.real_time_index], 150.f)
+	EXPECT_FLOAT_EQ(env_ptr->percentRealTime[env_ptr->GetControlSnapshot().real_time_index], 150.f)
 	    << "Real-time factor should be set to 1.5!";
 }
 
@@ -2486,7 +2502,7 @@ TEST_F(PendulumEnvFixture, SetRTFactor_Decrease)
 	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
 	    << "Set RT factor service call failed!";
 	EXPECT_TRUE(srv.response.success) << "Service call was not successful!";
-	EXPECT_FLOAT_EQ(env_ptr->percentRealTime[env_ptr->settings_.real_time_index], 50.f)
+	EXPECT_FLOAT_EQ(env_ptr->percentRealTime[env_ptr->GetControlSnapshot().real_time_index], 50.f)
 	    << "Real-time factor should be set to 0.5!";
 }
 
@@ -2500,7 +2516,7 @@ TEST_F(PendulumEnvFixture, SetRTFactor_UnboundMode)
 	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
 	    << "Set RT factor service call failed!";
 	EXPECT_TRUE(srv.response.success) << "Service call was not successful!";
-	EXPECT_EQ(env_ptr->settings_.real_time_index, 0) << "Real-time factor should be set to unbound mode!";
+	EXPECT_EQ(env_ptr->GetControlSnapshot().real_time_index, 0) << "Real-time factor should be set to unbound mode!";
 }
 
 TEST_F(PendulumEnvFixture, SetRTFactor_OutOfBounds)
@@ -2511,7 +2527,7 @@ TEST_F(PendulumEnvFixture, SetRTFactor_OutOfBounds)
 	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
 	    << "Set RT factor service call failed!";
 	EXPECT_TRUE(srv.response.success) << "Service call was not successful!";
-	EXPECT_FLOAT_EQ(env_ptr->percentRealTime[env_ptr->settings_.real_time_index], 2000.0f)
+	EXPECT_FLOAT_EQ(env_ptr->percentRealTime[env_ptr->GetControlSnapshot().real_time_index], 2000.0f)
 	    << "Real-time factor should be clipped to the maximum boundary value!";
 }
 
@@ -2523,7 +2539,7 @@ TEST_F(PendulumEnvFixture, SetRTFactor_RoundUpClosest)
 	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
 	    << "Set RT factor service call failed!";
 	EXPECT_TRUE(srv.response.success) << "Service call was not successful!";
-	EXPECT_FLOAT_EQ(env_ptr->percentRealTime[env_ptr->settings_.real_time_index], 50.0f)
+	EXPECT_FLOAT_EQ(env_ptr->percentRealTime[env_ptr->GetControlSnapshot().real_time_index], 50.0f)
 	    << "Real-time factor should be clipped to the maximum boundary value!";
 }
 
@@ -2535,7 +2551,7 @@ TEST_F(PendulumEnvFixture, SetRTFactor_RoundDownClosest)
 	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_rt_factor", srv))
 	    << "Set RT factor service call failed!";
 	EXPECT_TRUE(srv.response.success) << "Service call was not successful!";
-	EXPECT_FLOAT_EQ(env_ptr->percentRealTime[env_ptr->settings_.real_time_index], 40.0f)
+	EXPECT_FLOAT_EQ(env_ptr->percentRealTime[env_ptr->GetControlSnapshot().real_time_index], 40.0f)
 	    << "Real-time factor should be clipped to the maximum boundary value!";
 }
 
@@ -2640,6 +2656,57 @@ TEST_F(PendulumEnvFixture, DynamicReconfigureServiceExists)
 	    << "Service should be available!";
 }
 
+#if MJR_ROS_VERSION == ROS_1
+TEST_F(BaseEnvFixture, DynamicReconfigureNoModelPreservesRenderBackpressurePolicy)
+{
+	auto sync_env = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	dynamic_reconfigure::ReconfigureRequest req;
+	dynamic_reconfigure::ReconfigureResponse res;
+	dynamic_reconfigure::StrParameter policy;
+	policy.name  = "render_backpressure_policy";
+	policy.value = "wait_for_slot";
+	req.config.strs.emplace_back(policy);
+
+	ASSERT_TRUE(ros::service::call(sync_env->GetHandleNamespace() + "/set_parameters", req, res));
+	EXPECT_EQ(sync_env->GetRenderBackpressurePolicy(), rendering::RenderBackpressurePolicy::kWaitForSlot);
+	sync_env->shutdown();
+}
+
+TEST_F(PendulumEnvFixture, DynamicReconfigureRenderBackpressurePolicy)
+{
+	dynamic_reconfigure::ReconfigureRequest req;
+	dynamic_reconfigure::ReconfigureResponse res;
+	dynamic_reconfigure::StrParameter policy;
+	policy.name  = "render_backpressure_policy";
+	policy.value = "wait_for_slot";
+	req.config.strs.emplace_back(policy);
+
+	ASSERT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_parameters", req, res));
+	EXPECT_EQ(env_ptr->GetRenderBackpressurePolicy(), rendering::RenderBackpressurePolicy::kWaitForSlot);
+
+	policy.value = "invalid";
+	req.config.strs.clear();
+	req.config.strs.emplace_back(policy);
+	// Native ROS 1 dynamic_reconfigure catches callback exceptions and still
+	// reports a successful service transport response. The callback restores
+	// the current configuration before the server publishes it.
+	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_parameters", req, res));
+	EXPECT_EQ(env_ptr->GetRenderBackpressurePolicy(), rendering::RenderBackpressurePolicy::kWaitForSlot);
+}
+#else
+TEST_F(PendulumEnvFixture, RuntimeParameterRenderBackpressurePolicy)
+{
+	auto result =
+	    env_ptr->set_parameters_atomically({ rclcpp::Parameter("render_backpressure_policy", "wait_for_slot") });
+	ASSERT_TRUE(result.successful) << result.reason;
+	EXPECT_EQ(env_ptr->GetRenderBackpressurePolicy(), rendering::RenderBackpressurePolicy::kWaitForSlot);
+
+	result = env_ptr->set_parameters_atomically({ rclcpp::Parameter("render_backpressure_policy", "invalid") });
+	EXPECT_FALSE(result.successful);
+	EXPECT_EQ(env_ptr->GetRenderBackpressurePolicy(), rendering::RenderBackpressurePolicy::kWaitForSlot);
+}
+#endif
+
 TEST_F(PendulumEnvFixture, DynamicReconfigureSingleParam)
 {
 	// Test dynamic reconfigure
@@ -2656,6 +2723,34 @@ TEST_F(PendulumEnvFixture, DynamicReconfigureSingleParam)
 	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_parameters", req, res))
 	    << "Service call should not fail!";
 	EXPECT_DOUBLE_EQ(env_ptr->getModelPtr()->opt.timestep, 0.002) << "Timestep should have been updated!";
+}
+
+TEST_F(PendulumEnvFixture, DynamicReconfigureInvalidValueRollsBackWithNativeSuccess)
+{
+	const auto before = env_ptr->GetRuntimeOptions();
+	ASSERT_TRUE(before.ok());
+
+	dynamic_reconfigure::ReconfigureRequest req;
+	dynamic_reconfigure::ReconfigureResponse res;
+	dynamic_reconfigure::DoubleParameter timestep;
+	dynamic_reconfigure::StrParameter solimp;
+	dynamic_reconfigure::Config conf;
+
+	timestep.name  = "timestep";
+	timestep.value = 0.002;
+	conf.doubles.emplace_back(timestep);
+	solimp.name  = "solimp";
+	solimp.value = "0.9 0.95";
+	conf.strs.emplace_back(solimp);
+	req.config = conf;
+
+	// Native ROS 1 dynamic_reconfigure catches callback exceptions and returns
+	// success. The callback restores the current runtime options first.
+	EXPECT_TRUE(ros::service::call(env_ptr->GetHandleNamespace() + "/set_parameters", req, res));
+	const auto after = env_ptr->GetRuntimeOptions();
+	ASSERT_TRUE(after.ok());
+	EXPECT_EQ(after.effective, before.effective);
+	EXPECT_EQ(after.epoch, before.epoch);
 }
 
 TEST_F(PendulumEnvFixture, DynamicReconfigureAllParams)
@@ -2852,7 +2947,7 @@ TEST_F(PendulumEnvFixture, DynamicReconfigureAllParams)
 	conf.doubles.emplace_back(double_param);
 
 	string_param.name  = "solimp";
-	string_param.value = "0.8 0.9 0.1";
+	string_param.value = "0.8 0.9 0.1 0.5 2";
 	conf.strs.emplace_back(string_param);
 
 	string_param.name  = "solref";
@@ -2860,7 +2955,7 @@ TEST_F(PendulumEnvFixture, DynamicReconfigureAllParams)
 	conf.strs.emplace_back(string_param);
 
 	string_param.name  = "friction";
-	string_param.value = "0.5 0.5 0.1 0.1";
+	string_param.value = "0.5 0.5 0.1 0.1 0.1";
 	conf.strs.emplace_back(string_param);
 
 	req.config = conf;
@@ -3149,9 +3244,9 @@ TEST_F(PendulumEnvFixture, RuntimeParameterAllParams)
 	    rclcpp::Parameter("multiccd", true),
 	    rclcpp::Parameter("island", true),
 	    rclcpp::Parameter("margin", 0.5),
-	    rclcpp::Parameter("solimp", std::string("0.8 0.9 0.1")),
+	    rclcpp::Parameter("solimp", std::string("0.8 0.9 0.1 0.5 2")),
 	    rclcpp::Parameter("solref", std::string("0.03 1.1")),
-	    rclcpp::Parameter("friction", std::string("0.5 0.5 0.1 0.1")),
+	    rclcpp::Parameter("friction", std::string("0.5 0.5 0.1 0.1 0.1")),
 	});
 
 	ASSERT_TRUE(result.successful) << result.reason;
@@ -3234,5 +3329,28 @@ TEST_F(PendulumEnvFixture, RuntimeParameterRejectsInvalidValues)
 
 	result = env_ptr->set_parameters_atomically({ rclcpp::Parameter("timestep", std::string("not_a_double")) });
 	EXPECT_FALSE(result.successful);
+}
+
+TEST_F(PendulumEnvFixture, RuntimeParameterBatchRollsBackAllState)
+{
+	const auto before = env_ptr->GetRuntimeOptions();
+	ASSERT_TRUE(before.ok());
+	const bool running_before = env_ptr->GetControlSnapshot().running;
+	const std::string admin_before(env_ptr->settings_.admin_hash);
+
+	const auto result = env_ptr->set_parameters_atomically({
+	    rclcpp::Parameter("timestep", 0.003),
+	    rclcpp::Parameter("running", true),
+	    rclcpp::Parameter("admin_hash", std::string("must_not_apply")),
+	    rclcpp::Parameter("solimp", std::string("0.9 0.95")),
+	});
+
+	EXPECT_FALSE(result.successful);
+	const auto after = env_ptr->GetRuntimeOptions();
+	ASSERT_TRUE(after.ok());
+	EXPECT_EQ(after.effective, before.effective);
+	EXPECT_EQ(after.epoch, before.epoch);
+	EXPECT_EQ(env_ptr->GetControlSnapshot().running, running_before);
+	EXPECT_STREQ(env_ptr->settings_.admin_hash, admin_before.c_str());
 }
 #endif

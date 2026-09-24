@@ -49,6 +49,7 @@ if (ROS_VERSION EQUAL "1")
       rosgraph_msgs
       dynamic_reconfigure
   )
+  find_package(Boost REQUIRED COMPONENTS program_options)
 
   if(BUILD_PYTHON_BINDINGS)
     find_package(py_binding_tools QUIET)
@@ -63,6 +64,7 @@ if (ROS_VERSION EQUAL "1")
   # Find MuJoCo
   find_package(mujoco 3.3.5 REQUIRED)
   find_package(tinyxml2 REQUIRED)
+  include(InstallMujocoToWorkspace)
 else()
   find_package(ament_cmake REQUIRED)
   find_package(ament_cmake_python REQUIRED)
@@ -102,16 +104,8 @@ else()
   find_package(sensor_msgs REQUIRED)
   find_package(std_srvs REQUIRED)
   find_package(tinyxml2 REQUIRED)
-
+  find_package(mujoco 3.3.5 REQUIRED)
   include(InstallMujocoToWorkspace)
-
-  if(NOT TARGET mujoco::mujoco)
-    add_library(mujoco::mujoco SHARED IMPORTED GLOBAL)
-    set_target_properties(mujoco::mujoco PROPERTIES
-      IMPORTED_LOCATION "${MUJOCO_DIR}/lib/libmujoco.so"
-      INTERFACE_INCLUDE_DIRECTORIES "${MUJOCO_DIR}/include"
-    )
-  endif()
 endif()
 
 # cmake-format: off
@@ -133,6 +127,19 @@ configure_project_option(
     LAUNCHER ccache
 )
 
+if(ROS_VERSION EQUAL "1" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  # ROS 1 headers are intentionally consumed as SYSTEM includes, but GCC and
+  # Clang still promote several legacy diagnostics from those headers under
+  # -Werror. Keep the diagnostics enabled while making them non-fatal for ROS
+  # 1 consumers. ROS 2 retains the full project warning-as-error policy.
+  target_compile_options(project_warning INTERFACE
+    -Wno-error=old-style-cast
+    -Wno-error=useless-cast
+    -Wno-error=non-virtual-dtor
+    -Wno-error=format
+  )
+endif()
+
 # ###############################################
 # # Declare ROS dynamic reconfigure parameters ##
 # ###############################################
@@ -153,6 +160,36 @@ if (ROS_VERSION EQUAL "1")
   ## Dynamic Reconfigure
   generate_dynamic_reconfigure_options(
     cfg/SimParams.cfg
+  )
+endif()
+
+if (ROS_VERSION EQUAL "1")
+  # Ensure generated header path exists both with catkin and colcon
+  # catkin defines CATKIN_DEVEL_PREFIX, colcon does not define it
+  if(NOT DEFINED CATKIN_DEVEL_PREFIX)
+    set(CATKIN_DEVEL_PREFIX ${CMAKE_CURRENT_BINARY_DIR})
+  endif()
+
+  set(GENERATED_HEADERS_DIR "${CATKIN_DEVEL_PREFIX}/include")
+  set(GENERATED_HEADERS_INSTALL_DIR "${CATKIN_PACKAGE_INCLUDE_DESTINATION}")
+else()
+  set(GENERATED_HEADERS_DIR "${CMAKE_BINARY_DIR}/include")
+  set(GENERATED_HEADERS_INSTALL_DIR "include/${PROJECT_NAME}")
+endif()
+
+include(ConfigureRenderBackend)
+
+if(ROS_VERSION EQUAL 2)
+  configure_file(
+    cmake/mujoco_ros-extras.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/mujoco_ros-extras.cmake
+    @ONLY
+  )
+else()
+  configure_file(
+    cmake/FindOSMesa.cmake
+    ${CATKIN_DEVEL_PREFIX}/share/${PROJECT_NAME}/cmake/FindOSMesa.cmake
+    COPYONLY
   )
 endif()
 
@@ -186,27 +223,15 @@ if (ROS_VERSION EQUAL "1")
       include
     LIBRARIES
       ${PROJECT_NAME}
+      mujoco_ros_render_core
     DEPENDS
       mujoco
+    CFG_EXTRAS
+      mujoco_ros-extras
   )
 endif()
 
-if (ROS_VERSION EQUAL "1")
-  # Ensure generated header path exists both with catkin and colcon
-  # catkin defines CATKIN_DEVEL_PREFIX, colcon does not define it
-  if(NOT DEFINED CATKIN_DEVEL_PREFIX)
-    set(CATKIN_DEVEL_PREFIX ${CMAKE_CURRENT_BINARY_DIR})
-  endif()
-
-  set(GENERATED_HEADERS_DIR "${CATKIN_DEVEL_PREFIX}/include")
-  set(GENERATED_HEADERS_INSTALL_DIR "${CATKIN_PACKAGE_INCLUDE_DESTINATION}")
-else()
-  set(GENERATED_HEADERS_DIR "${CMAKE_BINARY_DIR}/include")
-  set(GENERATED_HEADERS_INSTALL_DIR "include/${PROJECT_NAME}")
-endif()
-
-include(ConfigureRenderBackend)
-
+add_subdirectory(render_core)
 add_subdirectory(src)
 
 ### Generate configured headers
@@ -289,9 +314,21 @@ if (ROS_VERSION EQUAL "1")
   )
 
   install(TARGETS ${PROJECT_NAME} mujoco_node
+    EXPORT export_${PROJECT_NAME}
     RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
     LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
     ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  )
+
+  install(EXPORT export_${PROJECT_NAME}
+    FILE ${PROJECT_NAME}Targets.cmake
+    NAMESPACE mujoco_ros::
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/cmake
+  )
+
+  install(FILES
+    cmake/FindOSMesa.cmake
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/cmake
   )
 
   install(FILES
@@ -306,8 +343,11 @@ if (ROS_VERSION EQUAL "1")
 
   catkin_install_python(PROGRAMS
     test/python/python_bindings_test.py
+    test/python/python_bindings_reload_test.py
     test/python/python_bindings_config_test.py
+    test/python/python_bindings_policy_test.py
     test/python/python_bindings_plugin_test.py
+    test/python/description_converter_bindings_test.py
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
   )
 
@@ -388,7 +428,9 @@ else()
 
   install(PROGRAMS
     test/python/python_bindings_test.py
+    test/python/python_bindings_reload_test.py
     test/python/python_bindings_config_test.py
+    test/python/python_bindings_policy_test.py
     test/python/python_bindings_plugin_test.py
     DESTINATION lib/${PROJECT_NAME}
   )
@@ -401,7 +443,8 @@ else()
   )
 
   install(FILES
-    cmake/mujoco_ros-extras.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/mujoco_ros-extras.cmake
+    cmake/FindOSMesa.cmake
     DESTINATION share/${PROJECT_NAME}/cmake
   )
 
@@ -412,6 +455,6 @@ else()
   )
 
   ament_package(
-    CONFIG_EXTRAS cmake/mujoco_ros-extras.cmake
+    CONFIG_EXTRAS ${CMAKE_CURRENT_BINARY_DIR}/mujoco_ros-extras.cmake
   )
 endif()

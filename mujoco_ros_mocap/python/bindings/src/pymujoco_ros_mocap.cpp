@@ -39,6 +39,7 @@
 
 #include <memory>
 
+#include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros_mocap/mocap_plugin.hpp>
 
 namespace py = pybind11;
@@ -46,20 +47,28 @@ namespace py = pybind11;
 namespace mujoco_ros::python::mocap {
 namespace {
 
-mujoco_ros::mocap::MocapPlugin *Bind(mujoco_ros::MujocoPlugin *plugin)
+struct MocapPluginHandle
 {
-	auto *typed_plugin = dynamic_cast<mujoco_ros::mocap::MocapPlugin *>(plugin);
-	if (typed_plugin == nullptr) {
+	explicit MocapPluginHandle(mujoco_ros::PluginHandle handle) : handle(std::move(handle)) {}
+	mujoco_ros::PluginHandle handle;
+};
+
+std::shared_ptr<MocapPluginHandle> Bind(py::object plugin)
+{
+	auto handle = py::cast<mujoco_ros::PluginHandle>(plugin);
+	if (handle.Type() != "mujoco_ros_mocap/MocapPlugin") {
 		throw py::type_error("plugin is not a MocapPlugin");
 	}
-	return typed_plugin;
+	return std::make_shared<MocapPluginHandle>(std::move(handle));
 }
 
-void SetLastMocapState(mujoco_ros::mocap::MocapPlugin &plugin, const mujoco_ros::mocap::MocapState &state)
+void SetLastMocapState(MocapPluginHandle &handle, const mujoco_ros::mocap::MocapState &state)
 {
-	if (!plugin.SetLastMocapState(state)) {
-		throw py::value_error("invalid MocapState");
-	}
+	handle.handle.WithBackend<mujoco_ros::mocap::MocapPlugin>([&state](auto &plugin) {
+		if (!plugin.SetLastMocapState(state)) {
+			throw py::value_error("invalid MocapState");
+		}
+	});
 }
 
 } // namespace
@@ -68,17 +77,24 @@ PYBIND11_MODULE(pymujoco_ros_mocap, module)
 {
 	py::module_::import("pymujoco_ros");
 
-	py::class_<mujoco_ros::mocap::MocapPlugin, mujoco_ros::MujocoPlugin,
-	           std::shared_ptr<mujoco_ros::mocap::MocapPlugin>>(module, "MocapPlugin")
-	    .def("get_current_mocaps_as_msg", &mujoco_ros::mocap::MocapPlugin::GetCurrentMocapsAsMsg)
+	py::class_<MocapPluginHandle, std::shared_ptr<MocapPluginHandle>>(module, "MocapPlugin")
+	    .def("get_current_mocaps_as_msg",
+	         [](const MocapPluginHandle &handle) {
+		         return handle.handle.WithBackend<mujoco_ros::mocap::MocapPlugin>(
+		             [](const auto &plugin) { return plugin.GetCurrentMocapsAsMsg(); });
+	         })
 	    .def_property(
-	        "mocap_state", [](const mujoco_ros::mocap::MocapPlugin &plugin) { return plugin.GetLastMocapState(); },
+	        "mocap_state",
+	        [](const MocapPluginHandle &handle) {
+		        return handle.handle.WithBackend<mujoco_ros::mocap::MocapPlugin>(
+		            [](const auto &plugin) { return plugin.GetLastMocapState(); });
+	        },
 	        &SetLastMocapState)
-	    .def("__repr__", [](const mujoco_ros::mocap::MocapPlugin &plugin) {
-		    return "<MocapPlugin name='" + plugin.get_name() + "' type='" + plugin.get_type() + "'>";
+	    .def("__repr__", [](const MocapPluginHandle &plugin) {
+		    return "<MocapPlugin name='" + plugin.handle.Name() + "' type='" + plugin.handle.Type() + "'>";
 	    });
 
-	module.def("bind", &Bind, py::arg("plugin"), py::return_value_policy::reference);
+	module.def("bind", &Bind, py::arg("plugin"));
 }
 
 } // namespace mujoco_ros::python::mocap

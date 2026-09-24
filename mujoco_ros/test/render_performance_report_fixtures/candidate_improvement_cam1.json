@@ -1,0 +1,8 @@
+{
+  "backend": "OSMESA",
+  "camera_count": 1,
+  "iterations_per_trial": 1000,
+  "median_trial_renders_per_second": 110.0,
+  "median_frame_latency_ms": 8.0,
+  "median_physics_step_duration_ms": 1.5
+}

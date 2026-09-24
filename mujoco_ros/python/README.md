@@ -172,14 +172,29 @@ objects. The public Python class keeps the surface small:
 - Inspect `settings`, `sim_info`, `plugin_stats`, `plugins`,
   `plugin_names`, `filename`, `handle_namespace`, and `is_running`.
 - Read and update model gravity with `get_gravity()` and `set_gravity()`.
-- Attach the GLFW viewer with `attach_viewer(active=True)` when the package is
-  built with the GLFW render backend.
+- `attach_viewer(active=True)` is not supported and raises `RuntimeError`.
+  Visible GLFW remains owned by the GUI path. Passive attachment is also
+  unsupported and raises `RuntimeError`.
 
-`settings` is a runtime proxy. It reads from the latest `_EnvSettings`
-snapshot, but writable fields such as `running`, `run`, `rt_factor`,
-`busywait`, and `gravity` call thread-safe C++ binding methods. Other
-snapshot fields remain read-only. Use `env.settings.snapshot()` when a raw
-read-only `_EnvSettings` value object is needed for debugging or tests.
+The settings proxy is a runtime facade. Writable fields such as running, rt_factor, busywait, and gravity call thread-safe C++ binding methods.
+The raw _EnvSettings snapshot exposes configuration and internal loading
+markers only. Lifecycle requests are not writable or mirrored through settings.
+Use env.settings.snapshot() for read-only configuration inspection.
+
+## Runtime Options
+
+`env.runtime_options` returns an immutable snapshot of active MuJoCo option
+fields. `env.apply_runtime_options(dict)` applies a partial patch through the
+same transaction path as ROS dynamic reconfigure and ROS 2 parameters. Field
+names match `RuntimeOptionsSnapshot` (integrator, solver, timestep, iterations,
+gravity, solimp, disable/enable flags, and related arrays).
+
+Rejected patches leave the previous snapshot unchanged and do not advance the
+Options Epoch. Validation failures raise `ValueError` with
+`field + ": " + message`. During the Loading Window, reads and writes raise
+`RuntimeError("Runtime Options unavailable during Loading Window")`. Constructor
+keyword `runtime_options={...}` applies startup-only patches before the first
+model load.
 
 Plugin configuration can be supplied before native construction:
 
@@ -217,6 +232,12 @@ or `rclpy`, but service-client convenience wrappers are not part of the public
 `env.plugins` returns generic `_MujocoPlugin` objects for the loaded plugins.
 Each object exposes the plugin name, type, load/reset timing, and callback
 timing EMAs. `env.plugin_names` provides the old name-list convenience view.
+
+Each plugin belongs to the current **Plugin Generation**. Reload replaces the
+generation. Python handles reacquire the host on every access; a handle kept
+from before reload raises
+`RuntimeError("plugin handle belongs to an inactive Plugin Generation")`.
+
 Downstream packages can provide richer Python plugin wrappers by calling
 `mujoco_ros.plugins.register_plugin_binding()` when imported, or through Python
 entry points in the `mujoco_ros.plugins` group. Entry point names may match the
@@ -243,27 +264,88 @@ The hybrid plugin packages register specialized wrappers when imported:
 - `mujoco_ros_mocap.MocapPlugin`
 - `mujoco_ros_control.MujocoRosControlPlugin`
 
-Offscreen camera metadata and image ring buffers are exposed through
+Offscreen camera metadata and frame access are exposed through
 `mujoco_ros.rendering`:
 
 ```python
 from mujoco_ros.rendering import OffcamManager
 
 with MujocoEnv(model_path="/path/to/camera_model.xml") as env:
-    cameras = OffcamManager(env.binding._offscreen_context, env.model, cam_buff_size=2)
-    rgb, depth, segment = cameras.buffer(0)
+    with OffcamManager(env.binding._camera_publication_transport, env.model, cam_buff_size=2) as cameras:
+        rgb, depth, segment = cameras.buffer(0)
 ```
 
-The offscreen helpers subscribe to the ROS image topics published by the core
-offscreen renderer. RGB and segmentation buffers are exposed as read-only
-`uint8` NumPy arrays, depth buffers as read-only `float` arrays.
+Python consumers read the same committed `RenderCore` capture as ROS camera
+publishers. The Python path does not subscribe to ROS image topics and does
+not keep a private image ring. Python demand is registered independently, so a
+Python consumer can request a capture without changing the configured ROS
+publication cadence.
+
+`buffer(last_n=...)` returns stable copied NumPy arrays. RGB and segmentation
+arrays have dtype `uint8`; depth arrays have dtype `float32`. For zero-copy
+access, use a borrowed view as a context manager:
+
+```python
+with cameras.camera(0).borrow_latest_rgb() as rgb:
+    assert not rgb.flags.writeable
+    capture_id = rgb.capture_id
+```
+
+The borrowed view is read-only and remains valid until its context exits. A
+copy remains valid after later captures, resize operations, and reloads.
+Borrowed and copied frames carry one camera-specific capture identity. ROS and
+Python consumers therefore observe one shared capture rather than separate
+render results.
+
+Call `OffcamManager.close()`, or use it as a context manager, to release
+Python's continuous render demand. Manager destruction performs the same
+cleanup.
+
+Reloads advance the frame generation. Existing managers rebind their Python
+demand to the new generation, while a borrowed view already acquired keeps its
+old lease and remains readable. Acquire a new borrowed view after reload.
+
+Camera wrappers are also rebound by camera ID after reload. Their `width`,
+`height`, `cam_name`, `fps`, and plane metadata describe the active camera
+descriptor. A native camera descriptor held separately is an old-layout
+snapshot. Name lookups are refreshed: an old camera name is removed and the
+new name is available after the next manager lookup.
+
+`cam.buffer` remains a stable compatibility object for legacy code. It still
+delegates native names such as `getBufferHandles()` and legacy frame-count
+properties, and it is callable as `cam.buffer(last_n=2)` for copied aggregate
+snapshots. Legacy ring indices, lock methods, reset mutators, and counter
+setters are unsupported and raise `RuntimeError`; an unconfigured plane's
+read-only frame count remains `0` for compatibility.
+
+The aggregate `buffer()` result always has three elements and uses `None` for
+an unconfigured plane. Its explicit `borrow_latest_*()` and `copy_*()`
+accessors raise `RuntimeError` for an unconfigured plane. They never return an
+empty or fabricated frame. For a configured plane with no committed frame yet,
+`borrow_latest_*()` raises `RuntimeError`; `copy_*()` and aggregate `buffer()`
+snapshots may return `None`. The old native ring-buffer indices, lock methods,
+counter setters, and reset mutators raise `RuntimeError`. `getBufferHandles()` follows the same
+three-slot shape and returns `None` for missing planes.
+
+Offscreen rendering uses the shared `mujoco_ros_render_core` library. The
+offscreen backend is selected at build time through `OFFSCREEN_BACKEND` (ANY,
+EGL, OSMesa, or DISABLE). Visible GLFW GUI is controlled independently by
+`WITH_GUI=ON` or `WITH_GUI=OFF`. When configured camera history or byte demand exceeds
+the RenderCore budget, model setup fails loudly with an explicit error rather
+than shrinking history or returning empty placeholders. At runtime, slot or
+generation-capacity exhaustion surfaces as non-terminal `FrameStatusCode` values
+such as `kFrameSlotsExhausted` and `kGenerationCapacityExhausted`. Backend
+disabled, initialization failure, and other context-integrity loss
+(`kTerminalError`, `kBackendFailure`, `kBackendUnavailable`) are terminal rather
+than empty or fabricated frames.
 
 ## Exposed Data
 
 The Python API exposes read-only value objects:
 
-- `EnvSettings`: runtime settings such as headless/offscreen mode, real-time
-  index, run state, load/reset requests, and thread count.
+- `EnvSettings`: a low-level snapshot of headless/offscreen and simulation-time
+  configuration, busy-wait mode, thread count, and internal runtime markers.
+  Lifecycle requests are not exposed through this object.
 - `SimInfo`: model path, loading status, pause state, pending steps, and
   real-time factor information.
 - `SimState`: low-level compatibility object for measured slowdown, model

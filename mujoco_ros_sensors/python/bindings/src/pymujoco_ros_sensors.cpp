@@ -39,6 +39,9 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <memory>
+
+#include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros_sensors/mujoco_sensor_handler_plugin.hpp>
 
 namespace py = pybind11;
@@ -51,25 +54,33 @@ std::array<double, 3> CopyArray(const double values[3])
 	return { values[0], values[1], values[2] };
 }
 
-py::dict ConfigsDict(mujoco_ros::sensors::MujocoRosSensorsPlugin &plugin)
+struct SensorsPluginHandle
 {
-	py::dict configs;
-	for (const auto &pair : plugin.GetSensorConfigs()) {
-		configs[py::str(pair.first)] = py::cast(pair.second.get(), py::return_value_policy::reference);
+	explicit SensorsPluginHandle(mujoco_ros::PluginHandle handle) : handle(std::move(handle)) {}
+	mujoco_ros::PluginHandle handle;
+};
+
+py::dict ConfigsDict(const SensorsPluginHandle &handle)
+{
+	return handle.handle.WithBackend<mujoco_ros::sensors::MujocoRosSensorsPlugin>([](const auto &plugin) {
+		py::dict configs;
+		for (const auto &pair : plugin.GetSensorConfigs()) {
+			configs[py::str(pair.first)] = py::cast(*pair.second);
+		}
+		return configs;
+	});
+}
+
+std::shared_ptr<SensorsPluginHandle> Bind(py::object plugin)
+{
+	auto handle = py::cast<mujoco_ros::PluginHandle>(plugin);
+	if (handle.Type() != "mujoco_ros_sensors/MujocoRosSensorsPlugin") {
+		throw py::type_error("plugin is not a MujocoRosSensorsPlugin");
 	}
-	return configs;
+	return std::make_shared<SensorsPluginHandle>(std::move(handle));
 }
 
 } // namespace
-
-mujoco_ros::sensors::MujocoRosSensorsPlugin *Bind(mujoco_ros::MujocoPlugin *plugin)
-{
-	auto *typed_plugin = dynamic_cast<mujoco_ros::sensors::MujocoRosSensorsPlugin *>(plugin);
-	if (typed_plugin == nullptr) {
-		throw py::type_error("plugin is not a MujocoRosSensorsPlugin");
-	}
-	return typed_plugin;
-}
 
 PYBIND11_MODULE(pymujoco_ros_sensors, module)
 {
@@ -92,18 +103,19 @@ PYBIND11_MODULE(pymujoco_ros_sensors, module)
 		    return stream.str();
 	    });
 
-	py::class_<mujoco_ros::sensors::MujocoRosSensorsPlugin, mujoco_ros::MujocoPlugin,
-	           std::shared_ptr<mujoco_ros::sensors::MujocoRosSensorsPlugin>>(module, "MujocoRosSensorsPlugin")
+	py::class_<SensorsPluginHandle, std::shared_ptr<SensorsPluginHandle>>(module, "MujocoRosSensorsPlugin")
 	    .def_property_readonly("configs", &ConfigsDict)
 	    .def("configs_dict", &ConfigsDict)
-	    .def_property_readonly(
-	        "config_count",
-	        [](const mujoco_ros::sensors::MujocoRosSensorsPlugin &plugin) { return plugin.GetSensorConfigs().size(); })
-	    .def("__repr__", [](const mujoco_ros::sensors::MujocoRosSensorsPlugin &plugin) {
-		    return "<MujocoRosSensorsPlugin name='" + plugin.get_name() + "' type='" + plugin.get_type() + "'>";
+	    .def_property_readonly("config_count",
+	                           [](const SensorsPluginHandle &handle) {
+		                           return handle.handle.WithBackend<mujoco_ros::sensors::MujocoRosSensorsPlugin>(
+		                               [](const auto &plugin) { return plugin.GetSensorConfigs().size(); });
+	                           })
+	    .def("__repr__", [](const SensorsPluginHandle &plugin) {
+		    return "<MujocoRosSensorsPlugin name='" + plugin.handle.Name() + "' type='" + plugin.handle.Type() + "'>";
 	    });
 
-	module.def("bind", &Bind, py::arg("plugin"), py::return_value_policy::reference);
+	module.def("bind", &Bind, py::arg("plugin"));
 }
 
 } // namespace mujoco_ros::python::sensors

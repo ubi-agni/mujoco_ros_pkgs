@@ -2,6 +2,7 @@
  * Software License Agreement (BSD 3-Clause License)
  *
  *  Copyright (c) 2022-2026, Bielefeld University
+ *  Copyright (c) 2026, Neura Robotics
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -14,7 +15,7 @@
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *   * Neither the name of Bielefeld University nor the names of its
+ *   * Neither the name of Bielefeld University nor Neura Robotics nor the names of their
  *     contributors may be used to endorse or promote products derived
  *     from this software without specific prior written permission.
  *
@@ -70,11 +71,12 @@ void MujocoEnv::SetPaused(bool paused)
 
 void MujocoEnv::ApplyPauseState(bool paused, bool notify_settings_changed)
 {
-	control_state_.SetPaused(paused);
-	if (notify_settings_changed) {
-		settings_.settings_changed.store(1);
-	}
-	SyncSettingsFromControlState();
+	WithControlState([this, paused, notify_settings_changed]() {
+		control_state_.SetPaused(paused);
+		if (notify_settings_changed) {
+			settings_.settings_changed.store(1);
+		}
+	});
 }
 
 SimulationControlSnapshot MujocoEnv::GetControlSnapshot() const
@@ -82,28 +84,139 @@ SimulationControlSnapshot MujocoEnv::GetControlSnapshot() const
 	return control_state_.Snapshot();
 }
 
-bool MujocoEnv::RequestManualSteps(int num_steps)
+RuntimeOptionsTransactionResult MujocoEnv::GetRuntimeOptions()
 {
-	const bool accepted = control_state_.RequestSteps(num_steps);
-	SyncSettingsFromControlState();
-	return accepted;
+	const auto admission_epoch = runtime_options_admission_epoch_.load();
+	RecursiveLock lock(physics_thread_mutex_);
+	const auto lifecycle = GetControlSnapshot().model_lifecycle;
+	if (lifecycle != ModelLifecyclePhase::kOperational || model_ == nullptr ||
+	    admission_epoch != runtime_options_admission_epoch_.load()) {
+		return RuntimeOptionsTransactionResult::Rejected({ "", "Runtime Options unavailable during Loading Window" },
+		                                                 options_epoch_);
+	}
+	return RuntimeOptionsTransactionResult::Applied(ReadRuntimeOptions(model_->opt), options_epoch_);
 }
 
-void MujocoEnv::CancelManualSteps()
+RuntimeOptionsTransactionResult MujocoEnv::ApplyRuntimeOptions(const std::vector<RuntimeOptionInput> &input)
 {
-	control_state_.CancelPendingSteps();
-	SyncSettingsFromControlState();
+	const auto admission_epoch = runtime_options_admission_epoch_.load();
+	RecursiveLock lock(physics_thread_mutex_);
+	const auto lifecycle = GetControlSnapshot().model_lifecycle;
+	if (lifecycle != ModelLifecyclePhase::kOperational || model_ == nullptr ||
+	    admission_epoch != runtime_options_admission_epoch_.load()) {
+		return RuntimeOptionsTransactionResult::Rejected({ "", "Runtime Options unavailable during Loading Window" },
+		                                                 options_epoch_);
+	}
+	const auto parsed = ParseRuntimeOptionsPatch(input);
+	if (!parsed.ok()) {
+		return RuntimeOptionsTransactionResult::Rejected(*parsed.error, options_epoch_);
+	}
+	const auto candidate = MergeRuntimeOptions(ReadRuntimeOptions(model_->opt), *parsed.patch);
+	const auto valid     = ValidateRuntimeOptions(candidate);
+	if (!valid.ok()) {
+		return RuntimeOptionsTransactionResult::Rejected(*valid.error, options_epoch_);
+	}
+	mjOption candidate_option = model_->opt;
+	WriteRuntimeOptions(candidate, candidate_option);
+	model_->opt = candidate_option;
+	settings_.settings_changed.store(1);
+	options_epoch_ = OptionsEpoch(options_epoch_.value() + 1);
+	return RuntimeOptionsTransactionResult::Applied(candidate, options_epoch_);
+}
+
+void MujocoEnv::SetPendingRuntimeOptions(const std::vector<RuntimeOptionInput> &input)
+{
+	RecursiveLock lock(physics_thread_mutex_);
+	if (!startup_runtime_options_open_ || GetControlSnapshot().model_lifecycle != ModelLifecyclePhase::kNoModel ||
+	    model_ != nullptr) {
+		throw std::runtime_error("Runtime Options startup options are unavailable after loading begins");
+	}
+
+	const auto parsed = ParseRuntimeOptionsPatch(input);
+	if (!parsed.ok()) {
+		throw std::invalid_argument(parsed.error->field + ": " + parsed.error->message);
+	}
+	const auto candidate = MergeRuntimeOptions(RuntimeOptionsSnapshot{}, *parsed.patch);
+	const auto valid     = ValidateRuntimeOptions(candidate);
+	if (!valid.ok()) {
+		throw std::invalid_argument(valid.error->field + ": " + valid.error->message);
+	}
+	pending_runtime_options_     = *parsed.patch;
+	has_pending_runtime_options_ = true;
+}
+
+bool MujocoEnv::RequestManualSteps(int num_steps)
+{
+	RecursiveLock physics_lock(physics_thread_mutex_);
+	return WithControlState([this, num_steps]() {
+		if (model_ == nullptr) {
+			MJR_ERROR("No model loaded. Cannot admit manual steps");
+			return false;
+		}
+		return control_state_.RequestSteps(num_steps);
+	});
+}
+
+MujocoEnv::ManualStepRequest MujocoEnv::RequestManualStepsWithToken(int num_steps)
+{
+	// Keep model ownership validation in the same physics -> control admission boundary as lifecycle requests.
+	RecursiveLock physics_lock(physics_thread_mutex_);
+	return WithControlState([this, num_steps]() {
+		if (model_ == nullptr) {
+			MJR_ERROR("No model loaded. Cannot admit manual steps");
+			return ManualStepRequest{};
+		}
+		ManualStepToken token = 0;
+		if (!control_state_.RequestSteps(num_steps, &token)) {
+			return ManualStepRequest{};
+		}
+		return ManualStepRequest{ true, token };
+	});
+}
+
+ManualStepSnapshot MujocoEnv::GetManualStepSnapshot(ManualStepToken token) const
+{
+	return control_state_.GetManualStepSnapshot(token);
+}
+
+ManualStepSnapshot MujocoEnv::WaitForManualStepUpdate(ManualStepToken token, int observed_pending_steps) const
+{
+	return control_state_.WaitForManualStepUpdate(token, observed_pending_steps);
+}
+
+bool MujocoEnv::CancelManualSteps(ManualStepToken token)
+{
+	return WithControlState([this, token]() { return control_state_.CancelPendingSteps(token); });
+}
+
+void MujocoEnv::AcknowledgeManualStep(ManualStepToken token)
+{
+	WithControlState([this, token]() { control_state_.AcknowledgeManualStep(token); });
 }
 
 void MujocoEnv::RequestReload()
 {
-	RequestLoad(3);
+	PublishLoadRequest(3, []() {});
 }
 
 void MujocoEnv::RequestModelLoad(const std::string &filename)
 {
-	mju::strcpy_arr(queued_filename_, filename.c_str());
-	RequestReload();
+	QueueModelFilenameForLoad(filename, 3);
+}
+
+void MujocoEnv::QueueModelFilenameForLoad(const std::string &filename, int load_request)
+{
+	PublishLoadRequest(load_request, [this, &filename]() { mju::strcpy_arr(queued_filename_, filename.c_str()); });
+}
+
+void MujocoEnv::QueueModelAndDataForLoad(mjModel *model, mjData *data, const std::string &filename, bool python_owned)
+{
+	PublishLoadRequest(1, [this, model, data, &filename, python_owned]() {
+		mnew = model;
+		dnew = data;
+		mju::strcpy_arr(filename_, filename.c_str());
+		settings_.is_python_request.store(python_owned ? 1 : 0);
+	});
 }
 
 void MujocoEnv::RequestViewerReset()
@@ -116,10 +229,17 @@ void MujocoEnv::RequestViewerShutdown()
 	RequestShutdown();
 }
 
+void MujocoEnv::SetRealTimeIndex(int real_time_index)
+{
+	WithControlState([this, real_time_index]() {
+		control_state_.SetRealTimeIndex(real_time_index);
+		control_state_.MarkSpeedChanged();
+	});
+}
+
 void MujocoEnv::SetViewerRealTimeIndex(int real_time_index)
 {
-	settings_.real_time_index = real_time_index;
-	MarkSpeedChanged();
+	SetRealTimeIndex(real_time_index);
 }
 
 bool MujocoEnv::HasManualStepRequest() const
@@ -129,8 +249,7 @@ bool MujocoEnv::HasManualStepRequest() const
 
 void MujocoEnv::RecordCompletedManualStep()
 {
-	control_state_.RecordCompletedStep();
-	SyncSettingsFromControlState();
+	WithControlState([this]() { control_state_.RecordCompletedStep(); });
 }
 
 bool MujocoEnv::IsShutdownRequested() const
@@ -140,50 +259,50 @@ bool MujocoEnv::IsShutdownRequested() const
 
 void MujocoEnv::RequestShutdown()
 {
-	control_state_.RequestShutdown();
-	SyncSettingsFromControlState();
+	WithControlState([this]() { control_state_.RequestShutdown(); });
+	// Publish the stopped state after the shutdown request. This prevents a
+	// concurrent render reconfiguration from observing a stale control state.
+	is_rendering_running_.store(0);
 }
 
 void MujocoEnv::RequestLoad(int load_request)
 {
-	control_state_.SetLoadRequest(load_request);
-	SyncSettingsFromControlState();
+	RecursiveLock physics_lock(physics_thread_mutex_);
+	WithControlState([this, load_request]() {
+		control_state_.SetLoadRequest(load_request);
+		if (load_request > 0) {
+			startup_runtime_options_open_ = false;
+			runtime_options_admission_epoch_.fetch_add(1);
+		}
+	});
 }
 
 void MujocoEnv::RequestReset()
 {
-	control_state_.RequestReset();
-	SyncSettingsFromControlState();
+	WithControlState([this]() { control_state_.RequestReset(); });
 }
 
 void MujocoEnv::ClearResetRequest()
 {
-	control_state_.ClearResetRequest();
-	SyncSettingsFromControlState();
+	WithControlState([this]() { control_state_.ClearResetRequest(); });
 }
 
 void MujocoEnv::MarkSpeedChanged()
 {
-	control_state_.MarkSpeedChanged();
-	SyncSettingsFromControlState();
+	WithControlState([this]() { control_state_.MarkSpeedChanged(); });
 }
 
 bool MujocoEnv::ConsumeSpeedChange()
 {
-	const bool consumed = control_state_.ConsumeSpeedChange();
-	SyncSettingsFromControlState();
-	return consumed;
+	return WithControlState([this]() { return control_state_.ConsumeSpeedChange(); });
 }
 
-void MujocoEnv::SyncSettingsFromControlState()
+MujocoEnv::ControlSpeedSnapshot MujocoEnv::ConsumeSpeedSettingsSnapshot()
 {
-	const auto snapshot = control_state_.Snapshot();
-	settings_.run.store(snapshot.running);
-	settings_.env_steps_request.store(snapshot.pending_steps);
-	settings_.exit_request.store(snapshot.shutdown_requested);
-	settings_.load_request.store(snapshot.load_request);
-	settings_.reset_request.store(snapshot.reset_requested);
-	settings_.speed_changed.store(snapshot.speed_changed);
+	return WithControlState([this]() {
+		const auto snapshot = control_state_.Snapshot();
+		return ControlSpeedSnapshot{ snapshot.real_time_index, control_state_.ConsumeSpeedChange() };
+	});
 }
 
 int MujocoEnv::GetOperationalStatus()
@@ -191,6 +310,17 @@ int MujocoEnv::GetOperationalStatus()
 	const auto snapshot = control_state_.Snapshot();
 	return mju_max(snapshot.load_request,
 	               mju_max(settings_.visual_init_request.load(), snapshot.reset_requested ? 1 : 0));
+}
+
+bool MujocoEnv::WaitForOperationalStatusIdle(std::chrono::milliseconds timeout)
+{
+	const auto deadline = std::chrono::steady_clock::now() + timeout;
+	while (GetOperationalStatus() != 0) {
+		if (!control_state_.WaitForChangeUntil(deadline) && GetOperationalStatus() != 0) {
+			return false;
+		}
+	}
+	return true;
 }
 
 bool MujocoEnv::Step(int num_steps /* = 1*/, bool blocking /* = true*/)
@@ -273,6 +403,7 @@ void MujocoEnv::Reset()
 void MujocoEnv::Shutdown()
 {
 	MJR_DEBUG("Shutdown requested");
+	is_rendering_running_.store(0);
 	RequestShutdown();
 }
 
@@ -284,10 +415,8 @@ bool MujocoEnv::LoadModelFromString(const std::string &model, char *load_error, 
 		                                                          << ")");
 		return false;
 	}
-	mju::strcpy_arr(queued_filename_, model.c_str());
-
 	MJR_DEBUG("Issuing model load");
-	RequestLoad(2);
+	QueueModelFilenameForLoad(model, 2);
 	while (GetOperationalStatus() > 0) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(5));
 	}
@@ -346,7 +475,7 @@ bool MujocoEnv::SetBodyState(const std::string &body_name, mjtNum *pose, mjtNum 
 		model_->body_mass[body_id] = mass;
 
 		// Prevent rendering the reset to q0
-		MutexLock render_lock(offscreen_.render_mutex);
+		MutexLock render_lock(camera_publication_transport_.render_mutex);
 		mj_markStack(data_.get());
 		mjtNum *qpos_tmp = mj_stackAllocNum(data_.get(), model_->nq);
 		mju_copy(qpos_tmp, data_->qpos, model_->nq);
@@ -515,7 +644,7 @@ bool MujocoEnv::SetBodyInertialProperties(const std::string &body_name, mjtNum m
 	}
 	MJR_DEBUG_STREAM("\tSetting inertial properties of body '" << body_name << "'");
 
-	MutexLock render_lock(offscreen_.render_mutex);
+	MutexLock render_lock(camera_publication_transport_.render_mutex);
 	mj_markStack(data_.get());
 	mjtNum *qpos_tmp = mj_stackAllocNum(data_.get(), model_->nq);
 	mju_copy(qpos_tmp, data_->qpos, model_->nq);
@@ -725,7 +854,7 @@ bool MujocoEnv::SetGeomProperties(const std::string &geom_name, const mjtNum bod
 
 	if (set_type || set_mass) {
 		// Prevent rendering the reset to q0
-		MutexLock render_lock(offscreen_.render_mutex);
+		MutexLock render_lock(camera_publication_transport_.render_mutex);
 		mj_markStack(data_.get());
 		mjtNum *qpos_tmp = mj_stackAllocNum(data_.get(), model_->nq);
 		mju_copy(qpos_tmp, data_->qpos, model_->nq);
@@ -1072,6 +1201,7 @@ void MujocoEnv::GetSimInfo(std::string &model_path, bool &model_valid, int &load
 
 EnvSettings MujocoEnv::GetSettings() const
 {
+	std::lock_guard<std::mutex> lock(render_policy_mutex_);
 	return settings_;
 }
 
@@ -1091,7 +1221,7 @@ SimInfo MujocoEnv::GetSimInfo()
 	info.paused            = !control_snapshot.running;
 	info.pending_sim_steps = control_snapshot.pending_steps;
 	info.rt_measured       = 1.f / sim_state_.measured_slowdown;
-	info.rt_setting        = percentRealTime[settings_.real_time_index] / 100.f;
+	info.rt_setting        = percentRealTime[control_snapshot.real_time_index] / 100.f;
 	return info;
 }
 
@@ -1129,8 +1259,7 @@ bool MujocoEnv::SetRealTimeFactor(const float &rt_factor, const std::string &adm
 
 	if (rt_factor < 0) {
 		MJR_DEBUG("Setting to unbound rt mode");
-		settings_.real_time_index = 0;
-		MarkSpeedChanged();
+		SetRealTimeIndex(0);
 		return true;
 	}
 
@@ -1143,30 +1272,27 @@ bool MujocoEnv::SetRealTimeFactor(const float &rt_factor, const std::string &adm
 	                                                   << closest_rt / 100.f);
 
 	// get index of closest real-time factor
-	auto it                   = std::find(std::begin(percentRealTime), std::end(percentRealTime), closest_rt);
-	settings_.real_time_index = std::distance(std::begin(percentRealTime), it);
-	MarkSpeedChanged();
+	auto it = std::find(std::begin(percentRealTime), std::end(percentRealTime), closest_rt);
+	SetRealTimeIndex(static_cast<int>(std::distance(std::begin(percentRealTime), it)));
 	return true;
 }
 
-std::vector<PluginStat> MujocoEnv::GetPluginStats()
+std::vector<PluginStat> MujocoEnv::GetPluginStats() const
 {
-	std::vector<PluginStat> stats;
-
 	RecursiveLock sim_lock(physics_thread_mutex_);
-	for (const auto &plugin : plugins_) {
-		PluginStat stat;
-		stat.name                    = plugin->get_name();
-		stat.type                    = plugin->get_type();
-		stat.load_time               = plugin->get_load_time();
-		stat.reset_time              = plugin->get_reset_time();
-		stat.ema_steptime_control    = plugin->get_ema_steptime_control();
-		stat.ema_steptime_passive    = plugin->get_ema_steptime_passive();
-		stat.ema_steptime_render     = plugin->get_ema_steptime_render();
-		stat.ema_steptime_last_stage = plugin->get_ema_steptime_last_stage();
-		stats.emplace_back(std::move(stat));
-	}
-	return stats;
+	return plugin_host_->Statistics();
+}
+
+std::vector<PluginHandle> MujocoEnv::GetPluginHandles() const
+{
+	return WithPluginAccess([this](const ScopedPluginAccess &access) {
+		std::vector<PluginHandle> handles;
+		for (const auto &stat : access.Statistics()) {
+			handles.push_back(PluginHandle(const_cast<MujocoEnv *>(this), plugin_lifetime_, model_generation_,
+			                               access.Generation(), stat.name, stat.type));
+		}
+		return handles;
+	});
 }
 
 int MujocoEnv::GetPluginStats(std::vector<std::string> &names, std::vector<std::string> &types,

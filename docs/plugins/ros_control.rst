@@ -60,6 +60,12 @@ The current supported actuator mapping uses suffix conventions:
 * ``<joint>_act_pos`` for position commands.
 * ``<joint>_act_vel`` for velocity commands.
 
+.. figure:: images/actuator-mapping.svg
+   :alt: A ROS controller command checks whether a matching MuJoCo actuator exists and ignore_actuators is false. If so, it writes to mjData.ctrl. Otherwise it falls back to mjData.qfrc_applied -- effort commands apply directly, while position and velocity commands require configured gains and are a configuration error without them.
+   :width: 90%
+
+   Directly setting ``qpos`` or ``qvel`` is never part of this path, in either branch.
+
 If a matching MuJoCo actuator exists and ``ignore_actuators`` is false, commands are written to ``mjData.ctrl`` for that actuator.
 This lets MuJoCo's actuator model apply the actual generalized forces.
 
@@ -70,7 +76,6 @@ In ROS 1, use the existing ``mujoco_ros_control/pid_gains/<joint>`` parameters.
 In ROS 2, provide ``kp`` for position fallback and ``kv`` for velocity fallback as joint parameters in the ``ros2_control`` description.
 ROS 2 fallback efforts can be limited with an optional per-joint ``effort_limit`` parameter.
 
-Directly setting ``qpos`` or ``qvel`` is not part of the default behavior.
 A missing position or velocity actuator without fallback gains is treated as a configuration error.
 
 Example

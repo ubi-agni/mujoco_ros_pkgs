@@ -1,0 +1,254 @@
+name: CI render performance advisory
+
+on:
+  workflow_call:
+    inputs:
+      baseline_sha:
+        required: false
+        type: string
+        default: ""
+      candidate_sha:
+        required: false
+        type: string
+        default: ""
+      pull_request_number:
+        required: false
+        type: number
+        default: 0
+  workflow_dispatch:
+    inputs:
+      baseline_sha:
+        description: Optional baseline commit SHA; defaults to hybrid-devel.
+        required: false
+        type: string
+      candidate_sha:
+        description: Optional candidate commit SHA; defaults to the selected ref.
+        required: false
+        type: string
+      pull_request_number:
+        description: Optional pull request number for the advisory comment.
+        required: false
+        type: number
+        default: 0
+
+permissions:
+  contents: read
+
+# Do not use ${{ github.workflow }} here: under workflow_call it resolves to the
+# *caller* name ("CI ROS 2"), so parent and callee share one concurrency group
+# and GitHub cancels with a deadlock. Hard-code a callee-unique prefix.
+concurrency:
+  group: ci-render-performance-advisory-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  ROS_DISTRO: humble
+  MUJOCO_VERSION: "3.3.5"
+  DOCKER_IMAGE: ubiagni/mujoco_ros:humble-ci
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  # Share object keys across baseline/candidate workspace paths in one campaign.
+  CCACHE_NOHASHDIR: "1"
+
+jobs:
+  benchmark:
+    name: OSMesa advisory benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    container:
+      image: ubiagni/mujoco_ros:humble-ci
+      env:
+        MUJOCO_DIR: /root/mujoco/3.3.5
+        CCACHE_DIR: ${{ github.workspace }}/.ccache
+        CCACHE_NOHASHDIR: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Resolve baseline and candidate SHAs
+        id: refs
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline_sha="${{ inputs.baseline_sha }}"
+          candidate_sha="${{ inputs.candidate_sha }}"
+          if [[ -z "${candidate_sha}" ]]; then
+            candidate_sha="${GITHUB_SHA}"
+          fi
+          if [[ -z "${baseline_sha}" || "${baseline_sha}" == "0000000000000000000000000000000000000000" ]]; then
+            git fetch origin hybrid-devel --depth=1
+            baseline_sha="$(git merge-base "${candidate_sha}" origin/hybrid-devel)"
+          fi
+          echo "baseline_sha=${baseline_sha}" >> "${GITHUB_OUTPUT}"
+          echo "candidate_sha=${candidate_sha}" >> "${GITHUB_OUTPUT}"
+
+      # Prefer the ROS 2 matrix ccache (ci.ros2 plain prefix ccache-${ROS_DISTRO}),
+      # which the advisory job waits on via needs: default. Keep the private
+      # render-perf key as a fallback when no matrix object matches.
+      - name: Restore matrix ccache
+        id: ccache-matrix
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ env.ROS_DISTRO }}-${{ github.sha }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ env.ROS_DISTRO }}-${{ github.sha }}
+            ccache-${{ env.ROS_DISTRO }}
+
+      - name: Restore advisory ccache fallback
+        id: ccache-advisory
+        if: steps.ccache-matrix.outputs.cache-matched-key == ''
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-render-perf-${{ env.ROS_DISTRO }}-${{ env.MUJOCO_VERSION }}-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt', '**/package.xml') }}
+          restore-keys: |
+            ccache-render-perf-${{ env.ROS_DISTRO }}-${{ env.MUJOCO_VERSION }}-${{ runner.os }}-
+
+      - name: Zero ccache stats
+        run: |
+          mkdir -p "${CCACHE_DIR}"
+          ccache --zero-stats --max-size=10G
+          ccache --show-config | head -n 40 || true
+          echo "matrix_cache_key=${{ steps.ccache-matrix.outputs.cache-matched-key }}"
+          echo "advisory_cache_key=${{ steps.ccache-advisory.outputs.cache-matched-key }}"
+
+      - name: Run OSMesa interleaved advisory campaign
+        shell: bash
+        env:
+          CCACHE_DIR: ${{ env.CCACHE_DIR }}
+          CCACHE_NOHASHDIR: "1"
+        run: |
+          set -euo pipefail
+          chmod +x mujoco_ros/test/run_render_performance_advisory_ci.sh
+          chmod +x mujoco_ros/test/run_render_performance_interleaved_bccb.sh
+          mujoco_ros/test/run_render_performance_advisory_ci.sh \
+            --repo-root "${GITHUB_WORKSPACE}" \
+            --baseline-sha "${{ steps.refs.outputs.baseline_sha }}" \
+            --candidate-sha "${{ steps.refs.outputs.candidate_sha }}" \
+            --artifacts-dir "${RUNNER_TEMP}/render-performance"
+
+      - name: Show ccache stats
+        if: always()
+        run: ccache --show-stats
+
+      # Save into both namespaces even on failure so matrix and later advisory
+      # runs can reuse this job's compiles.
+      - name: Save matrix ccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ env.ROS_DISTRO }}-${{ github.sha }}-${{ github.run_id }}-advisory
+
+      - name: Save advisory ccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-render-perf-${{ env.ROS_DISTRO }}-${{ env.MUJOCO_VERSION }}-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt', '**/package.xml') }}-${{ github.run_id }}
+
+      # Absolute ${{ runner.temp }}/** globs make upload-artifact LCA=/ and nest
+      # paths as __w/_temp/...; stage under the workspace so download is flat.
+      - name: Stage benchmark artifacts
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="${RUNNER_TEMP}/render-performance"
+          dst="${GITHUB_WORKSPACE}/render-performance-out"
+          rm -rf "${dst}"
+          mkdir -p "${dst}"
+          for sub in raw logs reports; do
+            if [[ -d "${src}/${sub}" ]]; then
+              cp -a "${src}/${sub}" "${dst}/"
+            fi
+          done
+          find "${dst}" -type f | head -n 20 || true
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-performance-${{ github.run_id }}
+          path: render-performance-out
+          if-no-files-found: warn
+
+  advisory-report:
+    name: Publish advisory report
+    needs: benchmark
+    if: needs.benchmark.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Download benchmark artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: render-performance-${{ github.run_id }}
+          path: artifacts
+
+      - name: Load summary markdown
+        id: summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Prefer flat stage layout; fall back to nested upload leftovers.
+          summary_path="$(find artifacts -name summary.md -print -quit)"
+          if [[ -z "${summary_path}" || ! -f "${summary_path}" ]]; then
+            echo "missing summary report artifact" >&2
+            find artifacts -type f | head -n 50 >&2 || true
+            exit 1
+          fi
+          {
+            echo "path=${summary_path}"
+            echo "body<<EOF"
+            cat "${summary_path}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Write branch push summary
+        if: inputs.pull_request_number == 0
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## Render performance advisory report"
+            echo
+            cat "${{ steps.summary.outputs.path }}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          python3 - <<'PY' "${{ steps.summary.outputs.path }}"
+          import json, pathlib, sys
+          summary_json = pathlib.Path(sys.argv[1]).with_name("summary.json")
+          payload = json.loads(summary_json.read_text(encoding="utf-8"))
+          if payload.get("mode") == "candidate_only":
+              print("::notice title=Render performance advisory::candidate-only (no baseline harness)")
+              raise SystemExit(0)
+          for report in payload.get("camera_reports", []):
+              camera_count = report["camera_count"]
+              for metric, value in report.get("regressions", {}).items():
+                  if value > 0.0:
+                      print(
+                          f"::warning title=Render performance advisory (cam{camera_count})::"
+                          f"{metric}={value:.3f}%"
+                      )
+          PY
+
+      - name: Update pull request comment
+        if: inputs.pull_request_number != 0
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ inputs.pull_request_number }}
+          comment-tag: render-performance-advisory
+          edit-mode: replace
+          body: |
+            ## Render performance advisory report
+
+            OSMesa Release campaign (camera counts 1/2/4, 1000 iterations).
+
+            ${{ steps.summary.outputs.body }}
+
+            Raw receipts, logs, and per-camera reports are attached to workflow artifacts.
+            Positive normalized regressions (when a baseline exists) are advisory warnings only; this job stays green unless build, harness, timeout, or receipt validation fails.

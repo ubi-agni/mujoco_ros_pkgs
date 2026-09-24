@@ -11,6 +11,7 @@ Start with the installation guide if you want to run the simulator, then use the
 
    tutorials/tutorials
    concepts/concepts
+   architecture/architecture
    ros_api/ros_api
    plugins/plugins
    branches/branches

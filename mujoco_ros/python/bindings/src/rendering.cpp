@@ -38,271 +38,248 @@
 
 #include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros/offscreen_camera.hpp>
+#include <mujoco_ros/rendering/frame_capacity.hpp>
 
 #include <pybind11/numpy.h>
 
 #include <algorithm>
-#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <memory>
 #include <mutex>
-#include <shared_mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
-#include <thread>
-
-#if MJR_ROS_VERSION == ROS_1
-#include <ros/ros.h>
-#include <sensor_msgs/Image.h>
-using ImageConstSharedPtr = sensor_msgs::ImageConstPtr;
-#else
-#include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/msg/image.hpp>
-using ImageConstSharedPtr = sensor_msgs::msg::Image::ConstSharedPtr;
-#endif
+#include <vector>
 
 namespace mujoco_ros::python {
 namespace {
 
-std::string ImageTopic(const mujoco_ros::rendering::OffscreenCamera &cam, const char *image_type)
+using namespace mujoco_ros::rendering;
+
+py::array MakeCopiedArray(const std::vector<FrameLease> &leases, PlaneKind plane)
 {
-#if MJR_ROS_VERSION == ROS_1
-	return cam.topic_ + "/" + image_type + "/image_raw";
-#else
-	return std::string(cam.nh_->get_effective_namespace()) + "/" + image_type + "/image_raw";
-#endif
+	if (leases.empty()) {
+		return py::array();
+	}
+	const auto &layout = leases.front().layout();
+	const auto count   = static_cast<py::ssize_t>(leases.size());
+	py::array result;
+	if (plane == PlaneKind::kDepth) {
+		py::array::ShapeContainer shape(std::vector<py::ssize_t>{ count, static_cast<py::ssize_t>(layout.height),
+		                                                          static_cast<py::ssize_t>(layout.width) });
+		result = py::array_t<float>(shape);
+	} else {
+		py::array::ShapeContainer shape(std::vector<py::ssize_t>{ count, static_cast<py::ssize_t>(layout.height),
+		                                                          static_cast<py::ssize_t>(layout.width), 3 });
+		result = py::array_t<std::uint8_t>(shape);
+	}
+	for (py::ssize_t index = 0; index < count; ++index) {
+		const auto &source = leases[static_cast<std::size_t>(index)];
+		if (source.layout().byte_length != layout.byte_length) {
+			throw std::runtime_error("frame snapshot contains inconsistent plane layouts");
+		}
+		std::memcpy(static_cast<std::uint8_t *>(result.mutable_data()) +
+		                static_cast<std::size_t>(index) * layout.byte_length,
+		            source.bytes().data(), layout.byte_length);
+	}
+	result.attr("setflags")(false);
+	return result;
 }
+
+class BorrowedFrame
+{
+public:
+	BorrowedFrame(std::optional<FrameLease> lease, PlaneKind plane)
+	{
+		if (!lease) {
+			throw std::runtime_error("requested render plane has no committed frame");
+		}
+		lease_             = std::make_shared<FrameLease>(std::move(*lease));
+		const auto &layout = lease_->layout();
+		auto holder        = new std::shared_ptr<FrameLease>(lease_);
+		py::capsule capsule(holder, [](void *value) { delete static_cast<std::shared_ptr<FrameLease> *>(value); });
+		if (plane == PlaneKind::kDepth) {
+			py::array::ShapeContainer shape(std::vector<py::ssize_t>{ static_cast<py::ssize_t>(layout.height),
+			                                                          static_cast<py::ssize_t>(layout.width) });
+			py::array::StridesContainer strides(std::vector<py::ssize_t>{ static_cast<py::ssize_t>(layout.stride_bytes),
+			                                                              static_cast<py::ssize_t>(sizeof(float)) });
+			view_ =
+			    py::array_t<float>(shape, strides, reinterpret_cast<const float *>((*holder)->bytes().data()), capsule);
+		} else {
+			py::array::ShapeContainer shape(std::vector<py::ssize_t>{ static_cast<py::ssize_t>(layout.height),
+			                                                          static_cast<py::ssize_t>(layout.width), 3 });
+			py::array::StridesContainer strides(
+			    std::vector<py::ssize_t>{ static_cast<py::ssize_t>(layout.stride_bytes), 3, 1 });
+			view_ = py::array_t<std::uint8_t>(shape, strides,
+			                                  reinterpret_cast<const std::uint8_t *>((*holder)->bytes().data()), capsule);
+		}
+		view_.attr("setflags")(false);
+	}
+
+	py::array Enter() const { return view_; }
+	void Exit() { view_ = py::array(); }
+	std::uint64_t CaptureId() const { return lease_->capture_id(); }
+	std::uint64_t FrameGeneration() const { return lease_->generation().value(); }
+	std::size_t Size() const { return lease_->bytes().size(); }
+
+private:
+	std::shared_ptr<FrameLease> lease_;
+	py::array view_;
+};
 
 class OffscreenCameraBuffer
 {
 public:
-	OffscreenCameraBuffer(mujoco_ros::rendering::OffscreenCamera *cam, std::uint8_t buffer_size)
-	    : cam_(cam), buffer_size_(std::max<std::uint8_t>(buffer_size, 1))
+	struct ActiveCamera
 	{
-		const auto pixel_count =
-		    static_cast<size_t>(buffer_size_) * static_cast<size_t>(cam_->width_) * static_cast<size_t>(cam_->height_);
-		if (cam_->stream_type_ & mujoco_ros::rendering::StreamType::RGB) {
-			rgb_buffer_ = std::make_unique<std::uint8_t[]>(pixel_count * 3);
-			SubscribeRgb();
+		std::shared_ptr<mujoco_ros::rendering::RenderCore> core;
+		std::shared_ptr<mujoco_ros::rendering::OffscreenCamera> camera;
+		mujoco_ros::FrameGeneration generation;
+	};
+
+	OffscreenCameraBuffer(mujoco_ros::CameraPublicationTransport *state, std::uint8_t camera_id,
+	                      std::uint8_t buffer_size)
+	    : state_(state), camera_id_(camera_id), buffer_size_(std::max<std::uint8_t>(buffer_size, 1))
+	{
+		if (state_ == nullptr) {
+			throw std::runtime_error("Python rendering context is unavailable");
 		}
-		if (cam_->stream_type_ & mujoco_ros::rendering::StreamType::DEPTH) {
-			depth_buffer_ = std::make_unique<float[]>(pixel_count);
-			SubscribeDepth();
-		}
-		if (cam_->stream_type_ & mujoco_ros::rendering::StreamType::SEGMENTED) {
-			segment_buffer_ = std::make_unique<std::uint8_t[]>(pixel_count * 3);
-			SubscribeSegment();
-		}
-#if MJR_ROS_VERSION == ROS_2
-		if (node_) {
-			executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
-			executor_->add_node(node_);
-			executor_thread_ = std::thread([this]() { executor_->spin(); });
-		}
-#endif
+		mujoco_ros::rendering::ValidatePythonHistoryDepth(buffer_size_);
+		Active();
+		python_registration_id_ = state_->RegisterPythonConsumer(camera_id_, buffer_size_);
 	}
 
-	~OffscreenCameraBuffer()
+	~OffscreenCameraBuffer() { Close(); }
+
+	void Close()
 	{
-#if MJR_ROS_VERSION == ROS_2
-		if (executor_) {
-			try {
-				executor_->cancel();
-			} catch (...) {
-			}
+		if (closed_)
+			return;
+		closed_ = true;
+		if (state_ != nullptr) {
+			state_->UnregisterPythonConsumer(python_registration_id_);
 		}
-		if (executor_thread_.joinable()) {
-			executor_thread_.join();
-		}
-		if (executor_ && node_) {
-			try {
-				executor_->remove_node(node_);
-			} catch (...) {
-			}
-		}
-#endif
 	}
 
-	void SetFlag(int flag_idx, bool enable) { cam_->vopt_.flags[flag_idx] = enable ? 1 : 0; }
+	void SetFlag(int flag_idx, bool enable)
+	{
+		auto active = Active();
+		active.camera->SetVisualFlag(flag_idx, enable);
+	}
+	void ToggleFlag(int flag_idx)
+	{
+		auto active = Active();
+		active.camera->ToggleVisualFlag(flag_idx);
+	}
+	int GetFlag(int flag_idx) const { return Active().camera->GetVisualFlag(flag_idx); }
 
-	void ToggleFlag(int flag_idx) { cam_->vopt_.flags[flag_idx] ^= 1; }
+	BorrowedFrame Borrow(PlaneKind plane) { return BorrowedFrame(AcquireLatest(plane), plane); }
 
-	int GetFlag(int flag_idx) const { return cam_->vopt_.flags[flag_idx]; }
+	py::object Copy(PlaneKind plane, std::size_t count)
+	{
+		const auto leases = AcquireRecent(plane, count);
+		if (leases.empty()) {
+			return py::none();
+		}
+		return MakeCopiedArray(leases, plane);
+	}
 
 	py::tuple GetBufferHandles()
 	{
-		const py::ssize_t buffer_size = static_cast<py::ssize_t>(buffer_size_);
-		const py::ssize_t height      = static_cast<py::ssize_t>(cam_->height_);
-		const py::ssize_t width       = static_cast<py::ssize_t>(cam_->width_);
-		const py::ssize_t channels    = 3;
-
-		py::object rgb     = py::none();
-		py::object depth   = py::none();
-		py::object segment = py::none();
-
-		if (rgb_buffer_) {
-			py::capsule capsule(rgb_buffer_.get(), [](void *) {});
-			rgb = py::array_t<std::uint8_t>({ buffer_size, height, width, channels }, rgb_buffer_.get(), capsule);
-			rgb.attr("flags").attr("writeable") = false;
-		}
-		if (depth_buffer_) {
-			py::capsule capsule(depth_buffer_.get(), [](void *) {});
-			depth = py::array_t<float>({ buffer_size, height, width }, depth_buffer_.get(), capsule);
-			depth.attr("flags").attr("writeable") = false;
-		}
-		if (segment_buffer_) {
-			py::capsule capsule(segment_buffer_.get(), [](void *) {});
-			segment = py::array_t<std::uint8_t>({ buffer_size, height, width, channels }, segment_buffer_.get(), capsule);
-			segment.attr("flags").attr("writeable") = false;
-		}
-		return py::make_tuple(rgb, depth, segment);
+		const auto planes = Active().camera->descriptor().planes;
+		return py::make_tuple(HasPlane(planes, PlaneKind::kRgb) ? Copy(PlaneKind::kRgb, buffer_size_) : py::none(),
+		                      HasPlane(planes, PlaneKind::kDepth) ? Copy(PlaneKind::kDepth, buffer_size_) : py::none(),
+		                      HasPlane(planes, PlaneKind::kSegmentation) ? Copy(PlaneKind::kSegmentation, buffer_size_) :
+		                                                                   py::none());
 	}
 
-	void ResetFrameCounts()
-	{
-		rgb_frame_count_.store(0);
-		depth_frame_count_.store(0);
-		segment_frame_count_.store(0);
-	}
-
-	void Lock() { buffer_mutex_.lock(); }
-
-	void Unlock() { buffer_mutex_.unlock(); }
-
-	int RgbIndex() const { return current_rgb_index_.load(); }
-
-	int DepthIndex() const { return current_depth_index_.load(); }
-
-	int SegmentIndex() const { return current_segment_index_.load(); }
-
-	int RgbFrameCount() const { return rgb_frame_count_.load(); }
-
-	void SetRgbFrameCount(int count) { rgb_frame_count_.store(count); }
-
-	int DepthFrameCount() const { return depth_frame_count_.load(); }
-
-	void SetDepthFrameCount(int count) { depth_frame_count_.store(count); }
-
-	int SegmentFrameCount() const { return segment_frame_count_.load(); }
-
-	void SetSegmentFrameCount(int count) { segment_frame_count_.store(count); }
+	int RgbIndex() const { return LegacyUnsupported<int>(); }
+	int DepthIndex() const { return LegacyUnsupported<int>(); }
+	int SegmentIndex() const { return LegacyUnsupported<int>(); }
+	int RgbFrameCount() const { return FrameCount(PlaneKind::kRgb); }
+	int DepthFrameCount() const { return FrameCount(PlaneKind::kDepth); }
+	int SegmentFrameCount() const { return FrameCount(PlaneKind::kSegmentation); }
+	void SetRgbFrameCount(int) { LegacyUnsupported<void>(); }
+	void SetDepthFrameCount(int) { LegacyUnsupported<void>(); }
+	void SetSegmentFrameCount(int) { LegacyUnsupported<void>(); }
+	void ResetFrameCounts() { LegacyUnsupported<void>(); }
+	void Lock() { LegacyUnsupported<void>(); }
+	void Unlock() { LegacyUnsupported<void>(); }
 
 private:
-	void CopyRgb(const ImageConstSharedPtr &msg)
+	template <typename ReturnType>
+	static ReturnType LegacyUnsupported()
 	{
-		CopyBytes(msg, rgb_buffer_.get(), current_rgb_index_, rgb_frame_count_, 3 * sizeof(std::uint8_t));
+		throw std::runtime_error(
+		    "legacy Python ring-buffer accessors are unsupported; use buffer() or borrow_latest_*()");
 	}
 
-	void CopyDepth(const ImageConstSharedPtr &msg)
+	ActiveCamera Active() const
 	{
-		CopyBytes(msg, depth_buffer_.get(), current_depth_index_, depth_frame_count_, sizeof(float));
-	}
-
-	void CopySegment(const ImageConstSharedPtr &msg)
-	{
-		CopyBytes(msg, segment_buffer_.get(), current_segment_index_, segment_frame_count_, 3 * sizeof(std::uint8_t));
-	}
-
-	template <typename T>
-	void CopyBytes(const ImageConstSharedPtr &msg, T *target, std::atomic<int> &index, std::atomic<int> &frame_count,
-	               size_t bytes_per_pixel)
-	{
-		if (target == nullptr) {
-			return;
+		if (closed_) {
+			throw std::runtime_error("Python camera buffer is closed");
 		}
-		const size_t frame_bytes =
-		    static_cast<size_t>(cam_->width_) * static_cast<size_t>(cam_->height_) * bytes_per_pixel;
-		if (msg->data.size() < frame_bytes) {
-			return;
+		if (state_ == nullptr) {
+			throw std::runtime_error("Python rendering context is unavailable");
 		}
+		std::lock_guard<std::mutex> lock(state_->lifecycle_mutex);
+		return ActiveLocked();
+	}
 
-		std::unique_lock lock(buffer_mutex_);
-		std::memcpy(reinterpret_cast<std::uint8_t *>(target) + static_cast<size_t>(index.load()) * frame_bytes,
-		            msg->data.data(), frame_bytes);
-		if (index.load() < static_cast<int>(buffer_size_) - 1) {
-			++index;
-		} else {
-			index.store(0);
+	ActiveCamera ActiveLocked() const
+	{
+		if (closed_) {
+			throw std::runtime_error("Python camera buffer is closed");
 		}
-		frame_count.store(std::min(frame_count.load() + 1, static_cast<int>(buffer_size_)));
-	}
-
-	void SubscribeRgb()
-	{
-#if MJR_ROS_VERSION == ROS_1
-		rgb_sub_ =
-		    ros::NodeHandle("~").subscribe(ImageTopic(*cam_, "rgb"), buffer_size_, &OffscreenCameraBuffer::CopyRgb, this);
-#else
-		EnsureNode();
-		rgb_sub_ = node_->create_subscription<sensor_msgs::msg::Image>(
-		    ImageTopic(*cam_, "rgb"), static_cast<size_t>(buffer_size_),
-		    [this](const ImageConstSharedPtr msg) { CopyRgb(msg); });
-#endif
-	}
-
-	void SubscribeDepth()
-	{
-#if MJR_ROS_VERSION == ROS_1
-		depth_sub_ = ros::NodeHandle("~").subscribe(ImageTopic(*cam_, "depth"), buffer_size_,
-		                                            &OffscreenCameraBuffer::CopyDepth, this);
-#else
-		EnsureNode();
-		depth_sub_ = node_->create_subscription<sensor_msgs::msg::Image>(
-		    ImageTopic(*cam_, "depth"), static_cast<size_t>(buffer_size_),
-		    [this](const ImageConstSharedPtr msg) { CopyDepth(msg); });
-#endif
-	}
-
-	void SubscribeSegment()
-	{
-#if MJR_ROS_VERSION == ROS_1
-		segment_sub_ = ros::NodeHandle("~").subscribe(ImageTopic(*cam_, "segmented"), buffer_size_,
-		                                              &OffscreenCameraBuffer::CopySegment, this);
-#else
-		EnsureNode();
-		segment_sub_ = node_->create_subscription<sensor_msgs::msg::Image>(
-		    ImageTopic(*cam_, "segmented"), static_cast<size_t>(buffer_size_),
-		    [this](const ImageConstSharedPtr msg) { CopySegment(msg); });
-#endif
-	}
-
-#if MJR_ROS_VERSION == ROS_2
-	void EnsureNode()
-	{
-		if (!node_) {
-			node_ = std::make_shared<rclcpp::Node>("pymujoco_ros_offscreen_buffer_" + std::to_string(cam_->cam_id_));
+		if (state_->retirement_pending) {
+			throw std::runtime_error("Python camera buffer is unavailable while camera retirement is pending");
 		}
+		if (!state_->ActiveRenderCore()) {
+			throw std::runtime_error("Python camera handle is stale after RenderCore reload");
+		}
+		for (const auto &camera : state_->cams) {
+			if (camera->cam_id_ == camera_id_) {
+				return ActiveCamera{ state_->ActiveRenderCore(), camera, state_->ActiveFrameGenerationLocked() };
+			}
+		}
+		throw std::runtime_error("Python camera handle is stale after camera-layout change");
 	}
-#endif
 
-	mujoco_ros::rendering::OffscreenCamera *cam_;
-	std::shared_mutex buffer_mutex_;
+	int FrameCount(PlaneKind plane) const
+	{
+		const auto active = Active();
+		if (!HasPlane(active.camera->descriptor().planes, plane))
+			return 0;
+		return static_cast<int>(AcquireRecent(plane, buffer_size_).size());
+	}
 
-	std::atomic<int> current_rgb_index_     = { 0 };
-	std::atomic<int> rgb_frame_count_       = { 0 };
-	std::atomic<int> current_depth_index_   = { 0 };
-	std::atomic<int> depth_frame_count_     = { 0 };
-	std::atomic<int> current_segment_index_ = { 0 };
-	std::atomic<int> segment_frame_count_   = { 0 };
+	ActiveCamera ActiveForPlane(PlaneKind plane) const
+	{
+		const auto active = Active();
+		if (!HasPlane(active.camera->descriptor().planes, plane)) {
+			throw std::runtime_error("requested render plane is not configured for this camera");
+		}
+		return active;
+	}
 
-	std::unique_ptr<std::uint8_t[]> rgb_buffer_;
-	std::unique_ptr<float[]> depth_buffer_;
-	std::unique_ptr<std::uint8_t[]> segment_buffer_;
+	std::optional<FrameLease> AcquireLatest(PlaneKind plane) const
+	{
+		(void)ActiveForPlane(plane);
+		return state_->AcquirePythonLatest(python_registration_id_, plane);
+	}
+
+	std::vector<FrameLease> AcquireRecent(PlaneKind plane, std::size_t count) const
+	{
+		(void)ActiveForPlane(plane);
+		return state_->AcquirePythonRecent(python_registration_id_, plane, count);
+	}
+
+	mujoco_ros::CameraPublicationTransport *state_;
+	std::uint8_t camera_id_;
 	std::uint8_t buffer_size_;
-
-#if MJR_ROS_VERSION == ROS_1
-	ros::Subscriber rgb_sub_;
-	ros::Subscriber depth_sub_;
-	ros::Subscriber segment_sub_;
-#else
-	rclcpp::Node::SharedPtr node_;
-	rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr rgb_sub_;
-	rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr depth_sub_;
-	rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr segment_sub_;
-	rclcpp::executors::SingleThreadedExecutor::SharedPtr executor_;
-	std::thread executor_thread_;
-#endif
+	std::uint64_t python_registration_id_ = 0;
+	bool closed_                          = false;
 };
 
 } // namespace
@@ -318,10 +295,27 @@ void InitRendering(py::module_ &module)
 	    .value("DEPTH_S", mujoco_ros::rendering::StreamType::DEPTH_S)
 	    .value("RGB_D_S", mujoco_ros::rendering::StreamType::RGB_D_S);
 
+	py::class_<BorrowedFrame>(module, "_BorrowedFrame")
+	    .def("__enter__", &BorrowedFrame::Enter)
+	    .def("__exit__", [](BorrowedFrame &self, py::object, py::object, py::object) { self.Exit(); })
+	    .def_property_readonly("capture_id", &BorrowedFrame::CaptureId)
+	    .def_property_readonly("frame_generation", &BorrowedFrame::FrameGeneration)
+	    .def_property_readonly("size", &BorrowedFrame::Size);
+
 	py::class_<OffscreenCameraBuffer>(module, "_OffscreenCameraBuffer")
-	    .def(py::init<mujoco_ros::rendering::OffscreenCamera *, std::uint8_t>(), py::arg("camera"),
-	         py::arg("buffer_size") = 1)
+	    .def(py::init<mujoco_ros::CameraPublicationTransport *, std::uint8_t, std::uint8_t>(), py::arg("transport"),
+	         py::arg("camera_id"), py::arg("buffer_size") = 1)
 	    .def("getBufferHandles", &OffscreenCameraBuffer::GetBufferHandles, py::return_value_policy::reference_internal)
+	    .def("close", &OffscreenCameraBuffer::Close)
+	    .def("borrow_latest_rgb", [](OffscreenCameraBuffer &self) { return self.Borrow(PlaneKind::kRgb); })
+	    .def("borrow_latest_depth", [](OffscreenCameraBuffer &self) { return self.Borrow(PlaneKind::kDepth); })
+	    .def("borrow_latest_segment", [](OffscreenCameraBuffer &self) { return self.Borrow(PlaneKind::kSegmentation); })
+	    .def("copy_rgb",
+	         [](OffscreenCameraBuffer &self, std::size_t count) { return self.Copy(PlaneKind::kRgb, count); })
+	    .def("copy_depth",
+	         [](OffscreenCameraBuffer &self, std::size_t count) { return self.Copy(PlaneKind::kDepth, count); })
+	    .def("copy_segment",
+	         [](OffscreenCameraBuffer &self, std::size_t count) { return self.Copy(PlaneKind::kSegmentation, count); })
 	    .def("_toggle_flag", &OffscreenCameraBuffer::ToggleFlag, py::arg("flag_idx"))
 	    .def("_set_flag", &OffscreenCameraBuffer::SetFlag, py::arg("flag_idx"), py::arg("enable") = true)
 	    .def("_get_flag", &OffscreenCameraBuffer::GetFlag, py::arg("flag_idx"))
@@ -342,7 +336,8 @@ void InitRendering(py::module_ &module)
 	         })
 	    .def("__exit__", [](OffscreenCameraBuffer &self, py::object, py::object, py::object) { self.Unlock(); });
 
-	py::class_<mujoco_ros::rendering::OffscreenCamera>(module, "_OffscreenCamera")
+	py::class_<mujoco_ros::rendering::OffscreenCamera, std::shared_ptr<mujoco_ros::rendering::OffscreenCamera>>(
+	    module, "_OffscreenCamera")
 	    .def_readonly("id", &mujoco_ros::rendering::OffscreenCamera::cam_id_)
 	    .def_readonly("name", &mujoco_ros::rendering::OffscreenCamera::cam_name_)
 	    .def_readonly("topic", &mujoco_ros::rendering::OffscreenCamera::topic_)
@@ -355,42 +350,52 @@ void InitRendering(py::module_ &module)
 		    return "<OffscreenCamera name='" + camera.cam_name_ + "'>";
 	    });
 
-	py::class_<mujoco_ros::OffscreenRenderContext>(module, "_OffscreenRenderContext")
-	    .def("trigger_render_request",
-	         [](mujoco_ros::OffscreenRenderContext &self) { self.cond_render_request.notify_one(); })
+	py::class_<mujoco_ros::CameraPublicationTransport>(module, "_CameraPublicationTransport")
+#ifdef MJR_BUILD_TESTING
+	    .def(
+	        "_set_retirement_pending_for_test",
+	        [](mujoco_ros::CameraPublicationTransport &self, bool pending) {
+		        self.SetRetirementPendingForTest(pending);
+	        },
+	        py::arg("pending"))
+#endif
 	    .def("__enter__",
-	         [](mujoco_ros::OffscreenRenderContext &self) -> mujoco_ros::OffscreenRenderContext & {
+	         [](mujoco_ros::CameraPublicationTransport &self) -> mujoco_ros::CameraPublicationTransport & {
 		         self.render_mutex.lock();
 		         return self;
 	         })
-	    .def("__exit__", [](mujoco_ros::OffscreenRenderContext &self, py::object, py::object,
+	    .def("__exit__", [](mujoco_ros::CameraPublicationTransport &self, py::object, py::object,
 	                        py::object) { self.render_mutex.unlock(); })
 	    .def(
 	        "camera",
-	        [](mujoco_ros::OffscreenRenderContext &self,
-	           std::uint8_t cam_id) -> mujoco_ros::rendering::OffscreenCamera & {
+	        [](mujoco_ros::CameraPublicationTransport &self,
+	           std::uint8_t cam_id) -> std::shared_ptr<mujoco_ros::rendering::OffscreenCamera> {
+		        std::lock_guard<std::mutex> lock(self.lifecycle_mutex);
 		        for (auto &cam : self.cams) {
 			        if (cam->cam_id_ == cam_id) {
-				        return *cam;
+				        return cam;
 			        }
 		        }
 		        throw std::out_of_range("Invalid camera id " + std::to_string(cam_id));
 	        },
-	        py::arg("id"), py::return_value_policy::reference_internal)
+	        py::arg("id"))
 	    .def(
 	        "camera",
-	        [](mujoco_ros::OffscreenRenderContext &self,
-	           const std::string &cam_name) -> mujoco_ros::rendering::OffscreenCamera & {
+	        [](mujoco_ros::CameraPublicationTransport &self,
+	           const std::string &cam_name) -> std::shared_ptr<mujoco_ros::rendering::OffscreenCamera> {
+		        std::lock_guard<std::mutex> lock(self.lifecycle_mutex);
 		        for (auto &cam : self.cams) {
 			        if (cam->cam_name_ == cam_name) {
-				        return *cam;
+				        return cam;
 			        }
 		        }
 		        throw std::out_of_range("Invalid camera name " + cam_name);
 	        },
-	        py::arg("name"), py::return_value_policy::reference_internal)
-	    .def_property_readonly("num_cams",
-	                           [](const mujoco_ros::OffscreenRenderContext &self) { return self.cams.size(); });
+	        py::arg("name"))
+	    .def_property_readonly("num_cams", [](const mujoco_ros::CameraPublicationTransport &self) {
+		    std::lock_guard<std::mutex> lock(self.lifecycle_mutex);
+		    return self.cams.size();
+	    });
 }
 
 } // namespace mujoco_ros::python

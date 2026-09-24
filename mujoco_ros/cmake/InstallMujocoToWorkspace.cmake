@@ -10,27 +10,29 @@ if(NOT EXISTS "${MUJOCO_DIR}/include/mujoco/mujoco.h")
     message(FATAL_ERROR "Could not find ${MUJOCO_DIR}/include/mujoco/mujoco.h")
 endif()
 
-file(GLOB MUJOCO_SHARED_LIBS
-    "${MUJOCO_DIR}/lib/libmujoco.so*"
-)
-
-if(NOT MUJOCO_SHARED_LIBS)
-    message(FATAL_ERROR "Could not find libmujoco.so* in ${MUJOCO_DIR}/lib")
+set(MUJOCO_REAL_LIB "${MUJOCO_DIR}/lib/libmujoco.so.3.3.5")
+if(NOT EXISTS "${MUJOCO_REAL_LIB}" OR IS_SYMLINK "${MUJOCO_REAL_LIB}")
+    message(FATAL_ERROR "Could not find the real MuJoCo 3.3.5 library at ${MUJOCO_REAL_LIB}")
 endif()
 
-install(
-    DIRECTORY "${MUJOCO_DIR}/include/"
-    DESTINATION include
+# ament symlink-install rewrites install(FILES|DIRECTORY) to the package's
+# original install prefix, ignoring `cmake --install --prefix`. The
+# render_core_standalone_installed smoke test stages into a fresh prefix, so
+# MuJoCo must be placed via install(CODE) which honors CMAKE_INSTALL_PREFIX.
+install(CODE
+    "
+    set(_mujoco_include \"${MUJOCO_DIR}/include\")
+    set(_mujoco_real_lib \"${MUJOCO_REAL_LIB}\")
+    set(_mujoco_plugin \"${MUJOCO_DIR}/plugin\")
+    file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/include\")
+    file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/lib\")
+    file(COPY \"\${_mujoco_include}/\" DESTINATION \"\${CMAKE_INSTALL_PREFIX}/include\")
+    file(COPY \"\${_mujoco_real_lib}\" DESTINATION \"\${CMAKE_INSTALL_PREFIX}/lib\")
+    file(REMOVE \"\${CMAKE_INSTALL_PREFIX}/lib/libmujoco.so\")
+    file(CREATE_LINK \"libmujoco.so.3.3.5\" \"\${CMAKE_INSTALL_PREFIX}/lib/libmujoco.so\" SYMBOLIC)
+    if(EXISTS \"\${_mujoco_plugin}\")
+      file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/lib/mujoco_plugin\")
+      file(COPY \"\${_mujoco_plugin}/\" DESTINATION \"\${CMAKE_INSTALL_PREFIX}/lib/mujoco_plugin\")
+    endif()
+    "
 )
-
-install(
-    FILES ${MUJOCO_SHARED_LIBS}
-    DESTINATION lib
-)
-
-if(EXISTS "${MUJOCO_DIR}/plugin")
-    install(
-        DIRECTORY "${MUJOCO_DIR}/plugin/"
-        DESTINATION lib/mujoco_plugin
-    )
-endif()

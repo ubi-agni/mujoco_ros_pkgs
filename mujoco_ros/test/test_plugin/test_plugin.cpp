@@ -45,8 +45,17 @@
 using namespace mujoco_ros;
 namespace mujoco_ros {
 
+std::atomic_int TestPlugin::load_count{ 0 };
+std::atomic_int TestPlugin::destruction_count{ 0 };
+
+TestPlugin::~TestPlugin()
+{
+	destruction_count.fetch_add(1);
+}
+
 bool TestPlugin::Load(const mjModel *m, mjData *d)
 {
+	load_count.fetch_add(1);
 #if MJR_ROS_VERSION == ROS_1
 	if (rosparam_config_.hasMember("example_param")) {
 		got_config_param.store(true);

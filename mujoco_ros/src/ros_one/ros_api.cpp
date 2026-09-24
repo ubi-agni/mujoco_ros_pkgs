@@ -2,6 +2,7 @@
  * Software License Agreement (BSD 3-Clause License)
  *
  *  Copyright (c) 2022-2026, Bielefeld University
+ *  Copyright (c) 2026, Neura Robotics
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -14,7 +15,7 @@
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *   * Neither the name of Bielefeld University nor the names of its
+ *   * Neither the name of Bielefeld University nor Neura Robotics nor the names of their
  *     contributors may be used to endorse or promote products derived
  *     from this software without specific prior written permission.
  *
@@ -96,6 +97,8 @@ void arr_to_string(const mjtNum *arr, int size, std::string &str)
 
 void ReadSimParams(SimParamsConfig &config, mjModel *model_, const RosAPISettings &api_settings)
 {
+	config.render_backpressure_policy =
+	    rendering::RenderBackpressurePolicyToString(api_settings.render_backpressure_policy);
 	if (model_ != nullptr) {
 		config.running    = api_settings.running;
 		config.admin_hash = api_settings.admin_hash;
@@ -175,9 +178,11 @@ void ReadSimParams(SimParamsConfig &config, mjModel *model_, const RosAPISetting
 void RosAPI::UpdateDynamicParams()
 {
 	boost::recursive_mutex::scoped_lock lk(sim_params_mutex_);
+	RecursiveLock physics_lock(env_ptr_->physics_thread_mutex_);
 	SimParamsConfig config;
 	ReadSimParams(config, env_ptr_->model_.get(),
-	              RosAPISettings{ env_ptr_->GetControlSnapshot().running, env_ptr_->settings_.admin_hash });
+	              RosAPISettings{ env_ptr_->GetControlSnapshot().running, env_ptr_->settings_.admin_hash,
+	                              env_ptr_->GetRenderBackpressurePolicy() });
 	param_server_->updateConfig(config);
 }
 
@@ -186,13 +191,15 @@ dynamic_reconfigure::Server<mujoco_ros::SimParamsConfig> *RosAPI::GetParamServer
 	return param_server_.get();
 }
 
-void RosAPI::DynparamCallback(mujoco_ros::SimParamsConfig &config, uint32_t level)
+#if 0
+void RosAPI::DynparamCallbackLegacy(mujoco_ros::SimParamsConfig &config, uint32_t level)
 {
 	boost::recursive_mutex::scoped_lock lk(sim_params_mutex_);
 	if (level == 0xFFFFFFFF) {
 		// First call on init -> Set params from model
 		ReadSimParams(config, env_ptr_->model_.get(),
-		              RosAPISettings{ env_ptr_->GetControlSnapshot().running, env_ptr_->settings_.admin_hash });
+		              RosAPISettings{ env_ptr_->GetControlSnapshot().running, env_ptr_->settings_.admin_hash,
+		                              env_ptr_->GetRenderBackpressurePolicy() });
 		return;
 	}
 	env_ptr_->ApplyPauseState(!config.running, false);
@@ -250,44 +257,145 @@ void RosAPI::DynparamCallback(mujoco_ros::SimParamsConfig &config, uint32_t leve
 	mujoco_ros::util::set_from_string(env_ptr_->model_->opt.o_solref, config.solref, mjNREF);
 	mujoco_ros::util::set_from_string(env_ptr_->model_->opt.o_friction, config.friction, 5);
 }
+#endif
+
+void RosAPI::DynparamCallback(mujoco_ros::SimParamsConfig &config, uint32_t level)
+{
+	boost::recursive_mutex::scoped_lock lk(sim_params_mutex_);
+	if (level == 0xFFFFFFFF) {
+		RecursiveLock physics_lock(env_ptr_->physics_thread_mutex_);
+		ReadSimParams(config, env_ptr_->model_.get(),
+		              RosAPISettings{ env_ptr_->GetControlSnapshot().running, env_ptr_->settings_.admin_hash,
+		                              env_ptr_->GetRenderBackpressurePolicy() });
+		return;
+	}
+
+	const auto parsed_render_backpressure_policy =
+	    rendering::RenderBackpressurePolicyFromString(config.render_backpressure_policy);
+	if (!parsed_render_backpressure_policy.has_value()) {
+		RecursiveLock physics_lock(env_ptr_->physics_thread_mutex_);
+		ReadSimParams(config, env_ptr_->model_.get(),
+		              RosAPISettings{ env_ptr_->GetControlSnapshot().running, env_ptr_->settings_.admin_hash,
+		                              env_ptr_->GetRenderBackpressurePolicy() });
+		throw std::runtime_error("render_backpressure_policy must be 'drop' or 'wait_for_slot', got '" +
+		                         config.render_backpressure_policy + "'");
+	}
+
+	std::vector<RuntimeOptionInput> input = {
+		{ "integrator", std::int64_t(config.integrator) },
+		{ "cone", std::int64_t(config.cone) },
+		{ "jacobian", std::int64_t(config.jacobian) },
+		{ "solver", std::int64_t(config.solver) },
+		{ "timestep", config.timestep },
+		{ "iterations", std::int64_t(config.iterations) },
+		{ "tolerance", config.tolerance },
+		{ "ls_iterations", std::int64_t(config.ls_iter) },
+		{ "ls_tolerance", config.ls_tol },
+		{ "noslip_iterations", std::int64_t(config.noslip_iter) },
+		{ "noslip_tolerance", config.noslip_tol },
+		{ "ccd_iterations", std::int64_t(config.ccd_iter) },
+		{ "ccd_tolerance", config.ccd_tol },
+		{ "sdf_iterations", std::int64_t(config.sdf_iter) },
+		{ "sdf_initpoints", std::int64_t(config.sdf_init) },
+		{ "gravity", config.gravity },
+		{ "wind", config.wind },
+		{ "magnetic", config.magnetic },
+		{ "density", config.density },
+		{ "viscosity", config.viscosity },
+		{ "impratio", config.impratio },
+		{ "constraint_disabled", config.constraint_disabled },
+		{ "equality_disabled", config.equality_disabled },
+		{ "frictionloss_disabled", config.frictionloss_disabled },
+		{ "limit_disabled", config.limit_disabled },
+		{ "contact_disabled", config.contact_disabled },
+		{ "passive_disabled", config.passive_disabled },
+		{ "gravity_disabled", config.gravity_disabled },
+		{ "clampctrl_disabled", config.clampctrl_disabled },
+		{ "warmstart_disabled", config.warmstart_disabled },
+		{ "filterparent_disabled", config.filterparent_disabled },
+		{ "actuation_disabled", config.actuation_disabled },
+		{ "refsafe_disabled", config.refsafe_disabled },
+		{ "sensor_disabled", config.sensor_disabled },
+		{ "midphase_disabled", config.midphase_disabled },
+		{ "eulerdamp_disabled", config.eulerdamp_disabled },
+		{ "override_contacts", config.override_contacts },
+		{ "energy", config.energy },
+		{ "fwd_inv", config.fwd_inv },
+		{ "inv_discrete", config.inv_discrete },
+		{ "multiccd", config.multiccd },
+		{ "island", config.island },
+		{ "margin", config.margin },
+		{ "solimp", config.solimp },
+		{ "solref", config.solref },
+		{ "friction", config.friction },
+	};
+	const auto transaction = env_ptr_->ApplyRuntimeOptions(input);
+	if (!transaction.ok()) {
+		const auto &error = *transaction.error;
+		if (!error.field.empty()) {
+			RecursiveLock physics_lock(env_ptr_->physics_thread_mutex_);
+			ReadSimParams(config, env_ptr_->model_.get(),
+			              RosAPISettings{ env_ptr_->GetControlSnapshot().running, env_ptr_->settings_.admin_hash,
+			                              env_ptr_->settings_.render_backpressure_policy });
+			throw std::runtime_error(error.field + ": " + error.message);
+		}
+		// Native dynamic_reconfigure sends a complete config. During the no-model
+		// Loading Window, model-backed fields are unavailable, but runtime-only
+		// settings below remain valid.
+	}
+	// Validate both non-option settings before changing either one.
+	const bool running           = config.running;
+	const std::string admin_hash = config.admin_hash;
+	env_ptr_->ApplyPauseState(!running, false);
+	mju::strcpy_arr(env_ptr_->settings_.admin_hash, admin_hash.c_str());
+	const auto policy_status = env_ptr_->SetRenderBackpressurePolicy(*parsed_render_backpressure_policy);
+	if (!policy_status.ok()) {
+		throw std::runtime_error(policy_status.message);
+	}
+}
 
 void RosAPI::OnStepGoal(const mujoco_ros_msgs::StepGoalConstPtr &goal)
 {
 	mujoco_ros_msgs::StepResult result;
-
-	if (!env_ptr_->RequestManualSteps(goal->num_steps)) {
-		ROS_WARN("Simulation is currently unpaused. Stepping makes no sense right now.");
+	const auto request = env_ptr_->RequestManualStepsWithToken(goal->num_steps);
+	if (!request.accepted) {
+		ROS_WARN("Manual step action rejected: no active model or an incompatible control request is pending");
 		result.success = false;
-		action_step_->setPreempted(result);
+		action_step_->setAborted(result);
 		return;
 	}
 
 	mujoco_ros_msgs::StepFeedback feedback;
-
-	feedback.steps_left = goal->num_steps;
-
 	result.success = true;
-	while (env_ptr_->GetControlSnapshot().pending_steps > 0) {
-		const auto control_snapshot = env_ptr_->GetControlSnapshot();
-		if (action_step_->isPreemptRequested() || !ros::ok() || control_snapshot.shutdown_requested ||
-		    control_snapshot.load_request > 0 || control_snapshot.reset_requested) {
-			ROS_WARN_STREAM("Simulation step action preempted");
-			feedback.steps_left = util::as_unsigned(control_snapshot.pending_steps);
-			action_step_->publishFeedback(feedback);
-			result.success = false;
-			action_step_->setPreempted(result);
-			env_ptr_->CancelManualSteps();
+	while (true) {
+		auto step_snapshot = env_ptr_->GetManualStepSnapshot(request.token);
+		if (step_snapshot.status != ManualStepTerminalStatus::kPending) {
+			if (step_snapshot.status == ManualStepTerminalStatus::kCompleted) {
+				feedback.steps_left = 0;
+				action_step_->publishFeedback(feedback);
+				action_step_->setSucceeded(result);
+			} else {
+				feedback.steps_left = util::as_unsigned(step_snapshot.pending_steps);
+				result.success      = false;
+				action_step_->publishFeedback(feedback);
+				action_step_->setPreempted(result);
+			}
+			env_ptr_->AcknowledgeManualStep(request.token);
 			return;
 		}
 
-		feedback.steps_left = util::as_unsigned(control_snapshot.pending_steps);
-		action_step_->publishFeedback(feedback);
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
-	}
+		if (action_step_->isPreemptRequested() || !ros::ok()) {
+			ROS_WARN_STREAM("Simulation step action preempted");
+			if (!env_ptr_->CancelManualSteps(request.token)) {
+				continue;
+			}
+			continue;
+		}
 
-	feedback.steps_left = util::as_unsigned(env_ptr_->GetControlSnapshot().pending_steps);
-	action_step_->publishFeedback(feedback);
-	action_step_->setSucceeded(result);
+		feedback.steps_left = util::as_unsigned(step_snapshot.pending_steps);
+		action_step_->publishFeedback(feedback);
+		env_ptr_->WaitForManualStepUpdate(request.token, step_snapshot.pending_steps);
+	}
 }
 
 bool RosAPI::SetPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &res)

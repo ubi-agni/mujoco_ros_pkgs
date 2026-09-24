@@ -64,13 +64,13 @@
     <param name="wait_for_xml"         value="$(arg wait_for_xml)" />
     <param name="realtime"             value="$(arg realtime)" />
     <param name="num_mj_threads"       value="$(arg mujoco_threads)" />
-    <param if="$(eval arg('urdf_source') != '')" name="urdf.source" value="$(arg urdf_source)" />
-    <param if="$(eval arg('urdf_path') != '')" name="urdf.path" value="$(arg urdf_path)" />
-    <param if="$(eval arg('urdf_topic') != '')" name="urdf.topic" value="$(arg urdf_topic)" />
-    <param if="$(eval arg('srdf_source') != '')" name="srdf.source" value="$(arg srdf_source)" />
-    <param if="$(eval arg('srdf_path') != '')" name="srdf.path" value="$(arg srdf_path)" />
-    <param if="$(eval arg('srdf_topic') != '')" name="srdf.topic" value="$(arg srdf_topic)" />
-    <param if="$(eval arg('convert_ascii_stl') != '')" name="description.convert_ascii_stl" value="$(arg convert_ascii_stl)" />
+    <param if="$(eval arg('urdf_source') != '')" name="urdf/source" value="$(arg urdf_source)" />
+    <param if="$(eval arg('urdf_path') != '')" name="urdf/path" value="$(arg urdf_path)" />
+    <param if="$(eval arg('urdf_topic') != '')" name="urdf/topic" value="$(arg urdf_topic)" />
+    <param if="$(eval arg('srdf_source') != '')" name="srdf/source" value="$(arg srdf_source)" />
+    <param if="$(eval arg('srdf_path') != '')" name="srdf/path" value="$(arg srdf_path)" />
+    <param if="$(eval arg('srdf_topic') != '')" name="srdf/topic" value="$(arg srdf_topic)" />
+    <param if="$(eval arg('convert_ascii_stl') != '')" name="description/convert_ascii_stl" value="$(arg convert_ascii_stl)" />
     <rosparam file="$(arg initial_joint_states)" subst_value="true" />
   </node>
 

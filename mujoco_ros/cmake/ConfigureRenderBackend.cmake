@@ -1,76 +1,108 @@
 include_guard()
 
-find_library(GLFW libglfw.so.3) # Find GLFW3 for GUI
-
-set(RENDER_BACKEND "ANY" CACHE STRING "Choose rendering backend")
-set_property(CACHE RENDER_BACKEND PROPERTY STRINGS "ANY" "GLFW" "EGL" "OSMESA" "DISABLE")
-
-set(NO_GLFW OFF)
-set(NO_EGL OFF)
-set(NO_OSMESA OFF)
-set(NO_RENDER OFF)
-
-if (RENDER_BACKEND STREQUAL "GLFW")
-  set(NO_EGL ON)
-  set(NO_OSMESA ON)
-  message(WARNING "EGL and OSMesa disabled!")
-elseif (RENDER_BACKEND STREQUAL "EGL")
-  set(NO_GLFW ON)
-  message(WARNING "GLFW disabled! Will use OSMesa as fallback if EGL can not be found.")
-elseif (RENDER_BACKEND STREQUAL "OSMESA")
-  set(NO_GLFW ON)
-  set(NO_EGL ON)
-  message(WARNING "GLFW and EGL disabled!")
-elseif (RENDER_BACKEND STREQUAL "DISABLE")
-  set(NO_GLFW ON)
-  set(NO_EGL ON)
-  set(NO_OSMESA ON)
-  set(RENDERING_BACKEND "NO")
-  set(NO_RENDER ON)
-  message(WARNING "GLFW, EGL and OSMesa disabled! No rendering will be available.")
+# Reject removed public cache variables (no compatibility aliases).
+if(DEFINED CACHE{RENDER_BACKEND})
+  message(FATAL_ERROR
+    "RENDER_BACKEND was removed. Configure visible GUI with WITH_GUI=ON or WITH_GUI=OFF.")
 endif()
-# ELSE: ANY
+if(DEFINED CACHE{OFFSCREEN_RENDER_BACKEND})
+  message(FATAL_ERROR
+    "OFFSCREEN_RENDER_BACKEND was removed. Configure offscreen RenderCore with "
+    "OFFSCREEN_BACKEND=ANY, EGL, OSMESA, or DISABLE.")
+endif()
 
-if (NOT NO_RENDER)
-  if (NO_GLFW OR ${GLFW} STREQUAL "GLFW-NOTFOUND")
-    if (NOT NO_GLFW)
-      message(WARNING "GLFW3 not found. GUI will not be available.")
-    endif()
+set(WITH_GUI "ON" CACHE STRING "Build visible GLFW GUI")
+set_property(CACHE WITH_GUI PROPERTY STRINGS "ON" "OFF")
+set(OFFSCREEN_BACKEND "ANY" CACHE STRING "Choose offscreen RenderCore backend")
+set_property(CACHE OFFSCREEN_BACKEND PROPERTY STRINGS "ANY" "EGL" "OSMESA" "DISABLE")
 
-    find_package(OpenGL COMPONENTS OpenGL EGL) # Find OpenGL (EGL) for offscreen rendering
-    if (NO_EGL OR ${OpenGL_EGL_FOUND} STREQUAL "FALSE")
-      if (NOT NO_EGL)
-        message(WARNING "EGL not found. Falling back to OSMesa.")
-      endif()
+if(NOT WITH_GUI STREQUAL "ON" AND NOT WITH_GUI STREQUAL "OFF")
+  message(FATAL_ERROR "Unknown WITH_GUI='${WITH_GUI}'. Choose ON or OFF.")
+endif()
 
-      find_package(OSMesa)
+if(NOT OFFSCREEN_BACKEND STREQUAL "ANY" AND
+    NOT OFFSCREEN_BACKEND STREQUAL "EGL" AND
+    NOT OFFSCREEN_BACKEND STREQUAL "OSMESA" AND
+    NOT OFFSCREEN_BACKEND STREQUAL "DISABLE")
+  message(FATAL_ERROR
+    "Unknown OFFSCREEN_BACKEND='${OFFSCREEN_BACKEND}'. "
+    "Choose ANY, EGL, OSMESA, or DISABLE.")
+endif()
 
-      if (NO_OSMESA OR !OSMesa_FOUND)
-        if(NOT NO_OSMESA)
-          message(WARNING "OSMesa not found.")
-        endif()
-        set(RENDERING_BACKEND "NO")
-      else() # OSMesa found
-        set(RENDERING_BACKEND "OSMESA")
-        message(STATUS "OSMesa found. Offscreen rendering available.")
-      endif()
-    else() # EGL found
-      set(RENDERING_BACKEND "EGL")
-      message(STATUS "EGL found. Offscreen rendering available.")
-    endif()
+if(DEFINED _MUJOCO_RENDER_TEST_MOCK_NO_GLFW AND _MUJOCO_RENDER_TEST_MOCK_NO_GLFW)
+  set(GLFW "")
+elseif(DEFINED _MUJOCO_RENDER_TEST_MOCK_GLFW)
+  set(GLFW "${_MUJOCO_RENDER_TEST_MOCK_GLFW}")
+else()
+  find_library(GLFW libglfw.so.3) # Visible GUI only.
+endif()
 
-  else() # GLFW found
-    set(RENDERING_BACKEND "GLFW")
-    message(STATUS "GLFW3 found. GUI and offscreen rendering available.")
+set(_MUJOCO_VISIBLE_RENDER_BACKEND "NO")
+if(WITH_GUI STREQUAL "ON")
+  if(GLFW)
+    set(_MUJOCO_VISIBLE_RENDER_BACKEND "GLFW")
+    message(STATUS "GLFW3 found. Visible GUI available.")
+  else()
+    message(FATAL_ERROR
+      "WITH_GUI=ON requires GLFW3 (libglfw.so.3). Install GLFW or configure with WITH_GUI=OFF.")
   endif()
 endif()
 
-message(STATUS "configured RENDERING_BACKEND: ${RENDERING_BACKEND}")
+set(_offscreen_request "${OFFSCREEN_BACKEND}")
+
+set(_MUJOCO_RESOLVED_OFFSCREEN_BACKEND "NO")
+if(_offscreen_request STREQUAL "DISABLE")
+  message(STATUS "Offscreen RenderCore disabled.")
+elseif(_offscreen_request STREQUAL "EGL")
+  if(DEFINED _MUJOCO_RENDER_TEST_MOCK_EGL AND _MUJOCO_RENDER_TEST_MOCK_EGL)
+    set(_MUJOCO_RESOLVED_OFFSCREEN_BACKEND "EGL")
+    message(STATUS "EGL selected for offscreen RenderCore.")
+  else()
+    find_package(OpenGL COMPONENTS OpenGL EGL REQUIRED)
+    set(_MUJOCO_RESOLVED_OFFSCREEN_BACKEND "EGL")
+    message(STATUS "EGL selected for offscreen RenderCore.")
+  endif()
+elseif(_offscreen_request STREQUAL "OSMESA")
+  if(DEFINED _MUJOCO_RENDER_TEST_MOCK_OSMESA AND _MUJOCO_RENDER_TEST_MOCK_OSMESA)
+    set(_MUJOCO_RESOLVED_OFFSCREEN_BACKEND "OSMESA")
+    message(STATUS "OSMesa selected for offscreen RenderCore.")
+  else()
+    find_package(OSMesa REQUIRED)
+    set(_MUJOCO_RESOLVED_OFFSCREEN_BACKEND "OSMESA")
+    message(STATUS "OSMesa selected for offscreen RenderCore.")
+  endif()
+else()
+  if(DEFINED _MUJOCO_RENDER_TEST_MOCK_EGL AND _MUJOCO_RENDER_TEST_MOCK_EGL)
+    set(_MUJOCO_RESOLVED_OFFSCREEN_BACKEND "EGL")
+    message(STATUS "EGL found. Selected for offscreen RenderCore.")
+  elseif(DEFINED _MUJOCO_RENDER_TEST_MOCK_OSMESA AND _MUJOCO_RENDER_TEST_MOCK_OSMESA)
+    set(_MUJOCO_RESOLVED_OFFSCREEN_BACKEND "OSMESA")
+    message(STATUS "OSMesa found. Selected for offscreen RenderCore.")
+  else()
+    find_package(OpenGL COMPONENTS OpenGL EGL QUIET)
+    if(OpenGL_EGL_FOUND)
+      set(_MUJOCO_RESOLVED_OFFSCREEN_BACKEND "EGL")
+      message(STATUS "EGL found. Selected for offscreen RenderCore.")
+    else()
+      find_package(OSMesa QUIET)
+      if(OSMesa_FOUND)
+        set(_MUJOCO_RESOLVED_OFFSCREEN_BACKEND "OSMESA")
+        message(STATUS "OSMesa found. Selected for offscreen RenderCore.")
+      else()
+        message(WARNING "Neither EGL nor OSMesa found. Offscreen RenderCore disabled.")
+      endif()
+    endif()
+  endif()
+endif()
+
+message(STATUS "configured visible GUI backend: ${_MUJOCO_VISIBLE_RENDER_BACKEND}")
+message(STATUS "configured offscreen RenderCore backend: ${_MUJOCO_RESOLVED_OFFSCREEN_BACKEND}")
 
 file(MAKE_DIRECTORY ${GENERATED_HEADERS_DIR}/${PROJECT_NAME})
-set(RENDER_BACKEND ${RENDERING_BACKEND})
+set(_render_backend_header_value ${_MUJOCO_VISIBLE_RENDER_BACKEND})
+set(_offscreen_render_backend_header_value ${_MUJOCO_RESOLVED_OFFSCREEN_BACKEND})
 configure_file(
-  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/header_templates/render_backend.hpp.in
+  ${CMAKE_CURRENT_LIST_DIR}/header_templates/render_backend.hpp.in
   ${GENERATED_HEADERS_DIR}/${PROJECT_NAME}/render_backend.hpp
 )
 

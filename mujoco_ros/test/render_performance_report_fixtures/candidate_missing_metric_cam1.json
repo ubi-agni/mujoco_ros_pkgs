@@ -1,0 +1,5 @@
+{
+  "backend": "OSMESA",
+  "camera_count": 1,
+  "iterations_per_trial": 1000
+}

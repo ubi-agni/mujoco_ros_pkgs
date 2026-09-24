@@ -45,6 +45,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -55,6 +56,7 @@
 
 #if MJR_ROS_VERSION == ROS_1
 #include <mujoco_ros/ros_one/plugin_utils.hpp>
+#include <ros/console.h>
 #include <ros/ros.h>
 #else
 #include <mujoco_ros/ros_two/plugin_utils.hpp>
@@ -62,10 +64,6 @@
 #endif
 
 #include <mujoco_ros/offscreen_camera.hpp>
-#if RENDER_BACKEND == GLFW_BACKEND
-#include <mujoco_ros/glfw_adapter.h>
-#include <mujoco_ros/viewer.hpp>
-#endif
 
 namespace mujoco_ros::python {
 namespace {
@@ -79,6 +77,28 @@ std::string NormalizeNamespace(std::string ns)
 		ns.pop_back();
 	}
 	return ns;
+}
+
+std::vector<RuntimeOptionInput> RuntimeOptionInputsFromDict(const py::dict &values)
+{
+	std::vector<RuntimeOptionInput> input;
+	input.reserve(values.size());
+	for (const auto &item : values) {
+		const std::string field = py::cast<std::string>(item.first);
+		const py::handle value  = item.second;
+		if (py::isinstance<py::bool_>(value)) {
+			input.push_back({ field, py::cast<bool>(value) });
+		} else if (py::isinstance<py::int_>(value)) {
+			input.push_back({ field, py::cast<std::int64_t>(value) });
+		} else if (py::isinstance<py::float_>(value)) {
+			input.push_back({ field, py::cast<double>(value) });
+		} else if (py::isinstance<py::str>(value)) {
+			input.push_back({ field, py::cast<std::string>(value) });
+		} else {
+			throw py::type_error("Runtime Options values must be bool, int, float, or string");
+		}
+	}
+	return input;
 }
 
 class TempMjbFileGuard
@@ -98,6 +118,37 @@ void EnsureRosInitialized()
 		ros::M_string remappings;
 		ros::init(remappings, "pymujoco_ros", ros::init_options::AnonymousName | ros::init_options::NoSigintHandler);
 	}
+}
+
+ros::console::levels::Level ParseRosOneLogLevel(const std::string &level)
+{
+	if (level == "debug")
+		return ros::console::levels::Debug;
+	if (level == "info")
+		return ros::console::levels::Info;
+	if (level == "warn" || level == "warning")
+		return ros::console::levels::Warn;
+	if (level == "error")
+		return ros::console::levels::Error;
+	if (level == "fatal")
+		return ros::console::levels::Fatal;
+	throw std::invalid_argument("Unknown log level '" + level + "' (expected one of debug, info, warn, error, fatal)");
+}
+
+// Python-facing counterpart to the ROS 2 side's sys.argv/--log-level handling
+// (EnsureRosInitialized() below): roscpp has no argv-based --log-level
+// equivalent, so instead of building CLI tokens up front, this is called
+// after ros::init() (via ensure_ros_initialized() in ros_context.py, or the
+// EnsureRosInitialized() above as a fallback) to reconfigure loggers
+// in place.
+void SetRosOneLoggerLevel(const std::string &logger_name, const std::string &level)
+{
+	EnsureRosInitialized();
+	const std::string resolved_name = logger_name.empty() ? ROSCONSOLE_DEFAULT_NAME : logger_name;
+	if (!ros::console::set_logger_level(resolved_name, ParseRosOneLogLevel(level))) {
+		throw std::runtime_error("Failed to set log level for logger '" + resolved_name + "'");
+	}
+	ros::console::notifyLoggerLevelsChanged();
 }
 #else
 std::vector<std::string> GetPythonArgv()
@@ -146,7 +197,11 @@ public:
 	    : MujocoEnv(MakeExecutor(), admin_hash, false, python_reload_service, false)
 	{
 		GetExecutorPtr()->add_node(get_node_base_interface());
-		executor_thread_handle_ = std::thread([this]() { GetExecutorPtr()->spin(); });
+		executor_spin_exited_.store(false, std::memory_order_release);
+		executor_thread_handle_ = std::thread([this]() {
+			GetExecutorPtr()->spin();
+			executor_spin_exited_.store(true, std::memory_order_release);
+		});
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 #if RENDER_BACKEND == GLFW_BACKEND
 		prepared_viewer_adapter_ = std::make_unique<mujoco_ros::GlfwAdapter>(false);
@@ -203,15 +258,8 @@ public:
 		const auto model_address = model_py_.attr("_address").cast<std::uintptr_t>();
 		const auto data_address  = data_py_.attr("_address").cast<std::uintptr_t>();
 
-		{
-			RecursiveLock lock(physics_thread_mutex_);
-			mnew = reinterpret_cast<mjModel *>(model_address);
-			dnew = reinterpret_cast<mjData *>(data_address);
-			std::strncpy(filename_, filename.c_str(), kMaxFilenameLength - 1);
-			filename_[kMaxFilenameLength - 1] = '\0';
-			settings_.is_python_request.store(1);
-		}
-		RequestLoad(1);
+		QueueModelAndDataForLoad(reinterpret_cast<mjModel *>(model_address), reinterpret_cast<mjData *>(data_address),
+		                         filename, true);
 
 		const auto deadline = Clock::now() + Seconds(timeout);
 		while (GetControlSnapshot().load_request != 0) {
@@ -281,6 +329,19 @@ public:
 		settings_.settings_changed.store(1);
 	}
 
+	std::string RenderBackpressurePolicyWrapper() const
+	{
+		return rendering::RenderBackpressurePolicyToString(MujocoEnv::GetRenderBackpressurePolicy());
+	}
+
+	void SetRenderBackpressurePolicyWrapper(const std::string &policy)
+	{
+		const auto status = MujocoEnv::SetRenderBackpressurePolicy(policy);
+		if (!status.ok()) {
+			throw py::value_error(status.message);
+		}
+	}
+
 	std::array<double, 3> GetGravityWrapper()
 	{
 		mjtNum gravity[3] = { 0, 0, 0 };
@@ -301,7 +362,39 @@ public:
 		return MujocoEnv::SetGravity(gravity_values, admin_hash);
 	}
 
-	int CountFreeJointsOnBody(const std::string &body_name)
+	RuntimeOptionsSnapshot RuntimeOptionsWrapper()
+	{
+		const auto result = MujocoEnv::GetRuntimeOptions();
+		if (!result.ok()) {
+			throw std::runtime_error(result.error->message);
+		}
+		return *result.effective;
+	}
+
+	RuntimeOptionsSnapshot ApplyRuntimeOptionsWrapper(const py::dict &values)
+	{
+		const auto result = MujocoEnv::ApplyRuntimeOptions(RuntimeOptionInputsFromDict(values));
+		if (!result.ok()) {
+			const auto &error         = *result.error;
+			const std::string message = (error.field.empty() ? std::string() : error.field + ": ") + error.message;
+			if (error.field.empty()) {
+				throw std::runtime_error(message);
+			}
+			throw py::value_error(message);
+		}
+		return *result.effective;
+	}
+
+	void SetPendingRuntimeOptionsWrapper(const py::dict &values)
+	{
+		try {
+			MujocoEnv::SetPendingRuntimeOptions(RuntimeOptionInputsFromDict(values));
+		} catch (const std::invalid_argument &error) {
+			throw py::value_error(error.what());
+		}
+	}
+
+	int CountFreeJointsOnBody(const std::string &body_name) const
 	{
 		RecursiveLock lock(physics_thread_mutex_);
 		if (!sim_state_.model_valid || model_.get() == nullptr) {
@@ -347,10 +440,6 @@ public:
 		} catch (...) {
 		}
 		try {
-			JoinOffscreenRenderThread();
-		} catch (...) {
-		}
-		try {
 			MujocoEnv::WaitForEventsJoin();
 		} catch (...) {
 		}
@@ -361,13 +450,26 @@ public:
 
 #if MJR_ROS_VERSION == ROS_2
 		const auto executor = GetExecutorPtr();
-		if (executor != nullptr) {
-			try {
-				executor->cancel();
-			} catch (...) {
-			}
-		}
+		// cancel() before spin() enters is discarded by MultiThreadedExecutor::spin()'s
+		// spinning.exchange(true). Retry cancel until the spin thread exits; a cancel
+		// issued after spin has begun is always honored.
 		if (executor_thread_handle_.joinable()) {
+			constexpr auto kJoinDeadline = std::chrono::seconds(5);
+			const auto deadline          = std::chrono::steady_clock::now() + kJoinDeadline;
+			while (!executor_spin_exited_.load(std::memory_order_acquire)) {
+				if (std::chrono::steady_clock::now() >= deadline) {
+					executor_thread_handle_.detach();
+					throw std::runtime_error("MujocoEnvWrapper::ShutdownAndJoin: executor spin thread did not exit "
+					                         "within 5s after cancel(); abandon thread and fail loud");
+				}
+				if (executor != nullptr) {
+					try {
+						executor->cancel();
+					} catch (...) {
+					}
+				}
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			}
 			executor_thread_handle_.join();
 		}
 		if (construction_complete_) {
@@ -387,6 +489,10 @@ public:
 	unsigned int LoadCount() const { return sim_state_.load_count; }
 
 	int OperationalStatus() { return MujocoEnv::GetOperationalStatus(); }
+	bool WaitForOperationalStatusIdle(int timeout_ms)
+	{
+		return MujocoEnv::WaitForOperationalStatusIdle(std::chrono::milliseconds(timeout_ms));
+	}
 
 	EnvSettings Settings() const { return MujocoEnv::GetSettings(); }
 
@@ -399,22 +505,15 @@ public:
 	std::vector<std::string> PluginNames() const
 	{
 		std::vector<std::string> plugins;
-		for (const auto &plugin : MujocoEnv::GetPlugins()) {
-			plugins.emplace_back(plugin->get_name());
+		for (const auto &stat : MujocoEnv::GetPluginStats()) {
+			plugins.emplace_back(stat.name);
 		}
 		return plugins;
 	}
 
-	OffscreenRenderContext &Offscreen() { return offscreen_; }
+	CameraPublicationTransport &GetCameraPublicationTransport() { return camera_publication_transport_; }
 
-	std::vector<MujocoPlugin *> PluginObjects() const
-	{
-		std::vector<MujocoPlugin *> plugins;
-		for (const auto &plugin : MujocoEnv::GetPlugins()) {
-			plugins.emplace_back(plugin.get());
-		}
-		return plugins;
-	}
+	std::vector<PluginHandle> PluginObjects() const { return GetPluginHandles(); }
 
 	std::string Filename() const { return std::string(filename_); }
 
@@ -449,9 +548,8 @@ private:
 
 		if (model_is_python_owned || data_is_python_owned) {
 			RecursiveLock lock(physics_thread_mutex_);
-			cb_ready_plugins_.clear();
-			plugins_.clear();
-			offscreen_.cams.clear();
+			plugin_host_->QuiesceAndDestroy();
+			camera_publication_transport_.cams.clear();
 			model_.reset();
 			data_.reset();
 		}
@@ -461,27 +559,7 @@ private:
 		retained_python_models_.clear();
 	}
 
-	void ShutdownViewer()
-	{
-#if RENDER_BACKEND == GLFW_BACKEND
-		if (attached_viewer_ != nullptr) {
-			attached_viewer_->exit_request.store(1);
-		}
-		if (viewer_thread_handle_.joinable()) {
-			viewer_thread_handle_.join();
-		}
-		viewer_running_  = false;
-		attached_viewer_ = nullptr;
-#endif
-	}
-
-	void JoinOffscreenRenderThread()
-	{
-		if (offscreen_.render_thread_handle.joinable()) {
-			offscreen_.cond_render_request.notify_one();
-			offscreen_.render_thread_handle.join();
-		}
-	}
+	void ShutdownViewer() {}
 
 #if MJR_ROS_VERSION == ROS_2
 	static rclcpp::Executor::SharedPtr MakeExecutor()
@@ -507,6 +585,7 @@ private:
 #endif
 #if MJR_ROS_VERSION == ROS_2
 	bool construction_complete_ = false;
+	std::atomic<bool> executor_spin_exited_{ true };
 	std::thread executor_thread_handle_;
 #endif
 };
@@ -543,11 +622,22 @@ void InitMujocoEnv(py::module_ &module)
 	    "Set generate_actuators to derive native MuJoCo actuators from ros2_control command interfaces. "
 	    "Set attach_prefix to namespace composed model names.");
 
+#if MJR_ROS_VERSION == ROS_1
+	module.def("set_ros1_logger_level", &SetRosOneLoggerLevel, py::arg("logger_name"), py::arg("level"),
+	           "Set a roscpp/rosconsole logger to the given level ('debug', 'info', 'warn', 'error', 'fatal') "
+	           "and notify roscpp of the change. Initializes roscpp (anonymously) first if not already done.");
+#endif
+
 	py::class_<MujocoEnvWrapper, std::shared_ptr<MujocoEnvWrapper>>(module, "_MujocoEnvWrapper")
-	    .def(py::init([](std::optional<std::string> admin_hash, bool python_reload_service) {
-		         return std::make_shared<MujocoEnvWrapper>(admin_hash.value_or(""), python_reload_service);
+	    .def(py::init([](std::optional<std::string> admin_hash, bool python_reload_service, py::object runtime_options) {
+		         auto wrapper = std::make_shared<MujocoEnvWrapper>(admin_hash.value_or(""), python_reload_service);
+		         if (!runtime_options.is_none()) {
+			         wrapper->SetPendingRuntimeOptionsWrapper(runtime_options.cast<py::dict>());
+		         }
+		         return wrapper;
 	         }),
-	         py::arg("admin_hash") = py::none(), py::arg("python_reload_service") = false)
+	         py::arg("admin_hash") = py::none(), py::arg("python_reload_service") = false,
+	         py::arg("runtime_options") = py::none())
 	    .def("start_physics_loop", &MujocoEnvWrapper::StartPhysics)
 	    .def("start_event_loop", &MujocoEnvWrapper::StartEvents)
 	    .def("shutdown", &MujocoEnvWrapper::ShutdownAndJoin)
@@ -562,20 +652,25 @@ void InitMujocoEnv(py::module_ &module)
 	    .def("set_rt_factor", &MujocoEnvWrapper::SetRealTimeFactorWrapper, py::arg("rt_factor"),
 	         py::arg("admin_hash") = "")
 	    .def("set_busywait", &MujocoEnvWrapper::SetBusywaitWrapper, py::arg("busywait"))
+	    .def_property("render_backpressure_policy", &MujocoEnvWrapper::RenderBackpressurePolicyWrapper,
+	                  &MujocoEnvWrapper::SetRenderBackpressurePolicyWrapper)
 	    .def("attach_viewer", &MujocoEnvWrapper::AttachViewer, py::arg("active") = true)
 	    .def("get_gravity", &MujocoEnvWrapper::GetGravityWrapper)
 	    .def("set_gravity", &MujocoEnvWrapper::SetGravityWrapper, py::arg("gravity"), py::arg("admin_hash") = "")
+	    .def_property_readonly("runtime_options", &MujocoEnvWrapper::RuntimeOptionsWrapper)
+	    .def("apply_runtime_options", &MujocoEnvWrapper::ApplyRuntimeOptionsWrapper, py::arg("values"))
 	    .def("count_free_joints_on_body", &MujocoEnvWrapper::CountFreeJointsOnBody, py::arg("body_name"))
 	    .def_property_readonly("model_valid", &MujocoEnvWrapper::ModelValid)
 	    .def_property_readonly("load_count", &MujocoEnvWrapper::LoadCount)
 	    .def_property_readonly("operational_status", &MujocoEnvWrapper::OperationalStatus)
+	    .def("wait_for_operational_status_idle", &MujocoEnvWrapper::WaitForOperationalStatusIdle, py::arg("timeout_ms"))
 	    .def_property_readonly("settings", &MujocoEnvWrapper::Settings)
 	    .def_property_readonly("sim_state", &MujocoEnvWrapper::State)
 	    .def_property_readonly("sim_info", &MujocoEnvWrapper::Info)
 	    .def_property_readonly("plugin_stats", &MujocoEnvWrapper::PluginStats)
-	    .def_property_readonly("plugins", &MujocoEnvWrapper::PluginObjects, py::return_value_policy::reference)
+	    .def_property_readonly("plugins", &MujocoEnvWrapper::PluginObjects)
 	    .def_property_readonly("plugin_names", &MujocoEnvWrapper::PluginNames)
-	    .def_property_readonly("_offscreen_context", &MujocoEnvWrapper::Offscreen,
+	    .def_property_readonly("_camera_publication_transport", &MujocoEnvWrapper::GetCameraPublicationTransport,
 	                           py::return_value_policy::reference_internal)
 	    .def_property_readonly("model", &MujocoEnvWrapper::ModelPy)
 	    .def_property_readonly("data", &MujocoEnvWrapper::DataPy)
