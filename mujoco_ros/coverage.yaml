@@ -1,0 +1,15 @@
+matrix:
+  RENDER_BACKEND:
+  - GLFW
+  - OSMESA
+  - DISABLE
+cmake_args_template: -DCMAKE_BUILD_TYPE=Debug
+coverage_cxxflags: --coverage -O0 -fno-omit-frame-pointer
+BUILD_PYTHON_BINDINGS: 'ON'
+ignore:
+- mujoco_ros/src/lodepng.cpp
+- mujoco_ros/test
+- mujoco_ros_laser/test
+- mujoco_ros_mocap_plugin/test
+- mujoco_ros_sensors/test
+test_filter: null

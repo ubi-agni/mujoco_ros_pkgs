@@ -383,7 +383,7 @@ protected:
 		env_ptr = std::make_unique<MujocoEnvTestWrapper>(eval_mode ? "some_hash" : "", nh.get());
 
 		const std::string xml_path = get_sensors_model_path();
-		env_ptr->StartWithXML(xml_path, false);
+		env_ptr->StartWithXML(xml_path);
 
 		float seconds = 0;
 		while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) {

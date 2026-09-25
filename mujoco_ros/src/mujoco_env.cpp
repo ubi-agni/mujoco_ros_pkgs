@@ -2,6 +2,7 @@
  * Software License Agreement (BSD 3-Clause License)
  *
  *  Copyright (c) 2022-2026, Bielefeld University
+ *  Copyright (c) 2026, Neura Robotics
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -14,7 +15,7 @@
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *   * Neither the name of Bielefeld University nor the names of its
+ *   * Neither the name of Bielefeld University nor Neura Robotics nor the names of their
  *     contributors may be used to endorse or promote products derived
  *     from this software without specific prior written permission.
  *
@@ -36,12 +37,15 @@
 
 #include <mujoco/mujoco.h>
 
+#include <cstdio>
+
 #include <mujoco_ros/ros_version.hpp>
 #include <mujoco_ros/render_backend.hpp>
 #include <mujoco_ros/version.hpp>
 #include <mujoco_ros/logging.hpp>
 
 #include <mujoco_ros/array_safety.h>
+#include <mujoco_ros/description_converter.hpp>
 #include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros/offscreen_camera.hpp>
 #include <mujoco_ros/viewer.hpp>
@@ -154,6 +158,28 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/, bool py
 	Configure();
 }
 
+std::unique_ptr<MujocoEnv> MujocoEnv::from_description(const std::string &urdf_path, const std::string &srdf_path,
+                                                       const MeshPrepOptions &mesh_options, bool generate_actuators,
+                                                       const std::string &attach_prefix)
+{
+	std::string tmp_path =
+	    SaveDescriptionToTempMjb(urdf_path, srdf_path, nullptr, mesh_options, generate_actuators, attach_prefix);
+
+	auto env = std::make_unique<MujocoEnv>("");
+	env->StartPhysicsLoop();
+	env->StartEventLoop();
+
+	char load_error[MujocoEnv::kErrorLength] = { '\0' };
+	bool ok                                  = env->LoadModelFromString(tmp_path, load_error, sizeof(load_error));
+	std::remove(tmp_path.c_str());
+
+	if (!ok) {
+		throw std::runtime_error(std::string("MujocoEnv::from_description: failed to load compiled description: ") +
+		                         load_error);
+	}
+	return env;
+}
+
 #else // MJR_ROS_VERSION == ROS_2
 
 MujocoEnv::MujocoEnv(rclcpp::Executor::SharedPtr executor, const std::string &admin_hash /* = std::string()*/,
@@ -191,6 +217,29 @@ void MujocoEnv::RemoveNodeFromExecutor(rclcpp::node_interfaces::NodeBaseInterfac
 rclcpp::Executor::SharedPtr MujocoEnv::GetExecutorPtr()
 {
 	return executor_;
+}
+
+std::unique_ptr<MujocoEnv> MujocoEnv::from_description(const std::string &urdf_path, const std::string &srdf_path,
+                                                       const MeshPrepOptions &mesh_options, bool generate_actuators,
+                                                       const std::string &attach_prefix)
+{
+	std::string tmp_path =
+	    SaveDescriptionToTempMjb(urdf_path, srdf_path, nullptr, mesh_options, generate_actuators, attach_prefix);
+
+	auto executor = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+	auto env      = std::make_unique<MujocoEnv>(executor);
+	env->StartPhysicsLoop();
+	env->StartEventLoop();
+
+	char load_error[MujocoEnv::kErrorLength] = { '\0' };
+	bool ok                                  = env->LoadModelFromString(tmp_path, load_error, sizeof(load_error));
+	std::remove(tmp_path.c_str());
+
+	if (!ok) {
+		throw std::runtime_error(std::string("MujocoEnv::from_description: failed to load compiled description: ") +
+		                         load_error);
+	}
+	return env;
 }
 
 #endif
@@ -570,6 +619,11 @@ void MujocoEnv::RunPassiveCbs()
 MujocoEnv::~MujocoEnv()
 {
 	MJR_DEBUG("Destructor called");
+	if (MujocoEnv::instance == this) {
+		MujocoEnv::instance = nullptr;
+		mjcb_control        = nullptr;
+		mjcb_passive        = nullptr;
+	}
 	RequestShutdown();
 	offscreen_.request_pending.store(true);
 	offscreen_.cond_render_request.notify_one();

@@ -1,0 +1,39 @@
+<robot name="simple_visual_robot">
+  <link name="chassis">
+    <visual>
+      <origin xyz="0 0 0.1"/>
+      <geometry>
+        <box size="0.4 0.2 0.2"/>
+      </geometry>
+      <material name="blue">
+        <color rgba="0.1 0.2 0.8 1"/>
+      </material>
+    </visual>
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="0.02" ixy="0" ixz="0" iyy="0.04" iyz="0" izz="0.05"/>
+    </inertial>
+  </link>
+
+  <link name="mast">
+    <visual>
+      <origin xyz="0 0 0.25"/>
+      <geometry>
+        <cylinder radius="0.04" length="0.5"/>
+      </geometry>
+      <material name="green">
+        <color rgba="0.1 0.7 0.2 1"/>
+      </material>
+    </visual>
+    <inertial>
+      <mass value="0.2"/>
+      <inertia ixx="0.005" ixy="0" ixz="0" iyy="0.005" iyz="0" izz="0.001"/>
+    </inertial>
+  </link>
+
+  <joint name="mast_joint" type="fixed">
+    <parent link="chassis"/>
+    <child link="mast"/>
+    <origin xyz="0 0 0.2"/>
+  </joint>
+</robot>

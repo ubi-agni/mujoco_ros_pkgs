@@ -29,6 +29,19 @@ def is_ros1():
     return True
 
 
+try:
+    from python_bindings_test import shutdown_rclpy_if_needed
+except ImportError:
+
+    def shutdown_rclpy_if_needed():
+        try:
+            import rclpy
+        except ImportError:
+            return
+        if rclpy.ok():
+            rclpy.shutdown()
+
+
 def wait_for_idle(env, timeout=5.0):
     deadline = time.monotonic() + timeout
     while env.operational_status != 0 and time.monotonic() < deadline:
@@ -140,6 +153,9 @@ class PythonBindingsPluginTest(unittest.TestCase):
             self.assertGreaterEqual(plugin.ema_steptime_passive, 0.0)
             self.assertGreaterEqual(plugin.ema_steptime_render, 0.0)
             self.assertGreaterEqual(plugin.ema_steptime_last_stage, 0.0)
+            # Drop non-owning binding views before env shutdown destroys the C++ plugins.
+            del plugin
+            del stat
 
 
 if __name__ == "__main__":
@@ -148,4 +164,9 @@ if __name__ == "__main__":
 
         rostest.rosrun("mujoco_ros", "python_bindings_plugin_test", PythonBindingsPluginTest)
     else:
-        unittest.main(argv=[sys.argv[0]])
+        result = None
+        try:
+            result = unittest.main(argv=[sys.argv[0]], exit=False).result
+        finally:
+            shutdown_rclpy_if_needed()
+        sys.exit(0 if result is not None and result.wasSuccessful() else 1)

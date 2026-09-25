@@ -606,14 +606,20 @@ public:
 	MujocoEnvTestWrapper(ros::NodeHandle * /*test_nh*/) : MujocoEnvTestWrapper("") {}
 #else // MJR_ROS_VERSION == ROS_2
 	MujocoEnvTestWrapper(const std::string &admin_hash = std::string(), testing::TestNodeHandle *test_nh = nullptr)
-	    : MujocoEnv(std::make_shared<rclcpp::executors::MultiThreadedExecutor>(), admin_hash, false)
+	    : MujocoEnv(std::make_shared<rclcpp::executors::SingleThreadedExecutor>(), admin_hash, false)
 	    , test_nh_(test_nh)
 	    , construction_complete_(false)
 	{
 		GetExecutorPtr()->add_node(this->get_node_base_interface());
 
-		// Start executor thread BEFORE Configure() so services and callbacks have a spinning executor
-		executor_thread_handle_ = std::thread([this]() { GetExecutorPtr()->spin(); });
+		// Start executor thread BEFORE Configure() so services and callbacks have a spinning executor.
+		// Bounded spin_once poll (not spin()): under rapid construct/destroy, MultiThreadedExecutor
+		// wait-sets can stay blocked past cancel() and hang the join.
+		executor_thread_handle_ = std::thread([this]() {
+			while (!shutdown_called_.load()) {
+				GetExecutorPtr()->spin_once(std::chrono::milliseconds(10));
+			}
+		});
 
 		// Give executor thread a moment to start spinning
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -624,7 +630,10 @@ public:
 			construction_complete_ = true;
 		} catch (...) {
 			MJR_ERROR("Exception thrown during MujocoEnvTestWrapper construction! Cleaning up executor...");
-			// Stop executor and join thread BEFORE removing node to avoid races
+			// Stop executor and join thread BEFORE removing node to avoid races.
+			// Must set shutdown_called_ first: the executor thread's poll loop only
+			// exits on that flag, not on cancel() alone.
+			shutdown_called_.store(true);
 			GetExecutorPtr()->cancel();
 			if (executor_thread_handle_.joinable()) {
 				executor_thread_handle_.join();
@@ -641,8 +650,10 @@ public:
 			// Only perform cleanup if construction completed successfully
 			// If construction failed, base class destructor will handle cleanup
 			if (construction_complete_) {
-				test_nh_->clearNode();
 				shutdown();
+				if (test_nh_ != nullptr) {
+					test_nh_->clearNode();
+				}
 			}
 		} catch (const std::exception &e) {
 			MJR_ERROR_STREAM("Exception during shutdown in destructor: " << e.what());
@@ -670,7 +681,11 @@ public:
 	void setEvalMode(bool eval_mode) { settings_.eval_mode = eval_mode; }
 	void setAdminHash(const std::string &hash) { mju::strcpy_arr(settings_.admin_hash, hash.c_str()); }
 
-	std::string getFilename() { return { filename_ }; }
+	std::string getFilename()
+	{
+		std::lock_guard<MujocoEnvMutex> lock(physics_thread_mutex_);
+		return std::string(filename_);
+	}
 	int isPhysicsRunning() { return is_physics_running_; }
 	int isEventRunning() { return is_event_running_; }
 	int isRenderingRunning() { return is_rendering_running_; }
@@ -740,6 +755,9 @@ public:
 		if (executor_thread_handle_.joinable()) {
 			executor_thread_handle_.join();
 		}
+		if (construction_complete_ && GetExecutorPtr() != nullptr) {
+			GetExecutorPtr()->remove_node(this->get_node_base_interface());
+		}
 #endif
 	}
 
@@ -755,6 +773,11 @@ public:
 	void StartWithXML(const std::string &xml_path, bool wait = true, float timeout_secs = 2.)
 	{
 		mju::strcpy_arr(queued_filename_, xml_path.c_str());
+		uint load_count_before;
+		{
+			std::lock_guard<MujocoEnvMutex> lock(physics_thread_mutex_);
+			load_count_before = sim_state_.load_count;
+		}
 		requestLoad(2);
 		MujocoEnv::StartPhysicsLoop();
 		MujocoEnv::StartEventLoop();
@@ -764,7 +787,14 @@ public:
 
 		// Wait for model to be loaded
 		float seconds = 0;
-		while (GetOperationalStatus() != 0 && seconds < timeout_secs) { // wait for model to be loaded or timeout
+		while (seconds < timeout_secs) {
+			if (GetOperationalStatus() == 0) {
+				std::lock_guard<MujocoEnvMutex> lock(physics_thread_mutex_);
+				const bool load_count_increased = sim_state_.load_count > load_count_before;
+				if (load_count_increased && sim_state_.model_valid && std::string(filename_) == xml_path) {
+					break;
+				}
+			}
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			seconds += 0.001;
 		}
@@ -795,6 +825,10 @@ protected:
 	{
 		if (env_ptr != nullptr) {
 			env_ptr->shutdown();
+			// Destroy before the next test constructs a new env. unique_ptr
+			// assignment constructs the new object first, so skipping reset()
+			// leaves two MujocoEnvs (GLFW offscreen + ROS nodes) alive together.
+			env_ptr.reset();
 		}
 #if MJR_ROS_VERSION == ROS_1
 		// clean up all parameters
@@ -840,7 +874,10 @@ protected:
 
 	void TearDown() override
 	{
-		env_ptr->shutdown();
+		if (env_ptr != nullptr) {
+			env_ptr->shutdown();
+			env_ptr.reset();
+		}
 #if MJR_ROS_VERSION == ROS_1
 		// clean up all parameters
 		ros::param::del(nh->getNamespace());
@@ -897,5 +934,11 @@ protected:
 		    << "Set eq constraints service should be available!";
 	}
 
-	void TearDown() override { env_ptr->shutdown(); }
+	void TearDown() override
+	{
+		if (env_ptr != nullptr) {
+			env_ptr->shutdown();
+			env_ptr.reset();
+		}
+	}
 };
