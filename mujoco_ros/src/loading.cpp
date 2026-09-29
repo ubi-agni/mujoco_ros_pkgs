@@ -292,6 +292,34 @@ void MujocoEnv::LoadWithModelAndData()
 			mju_bindThreadPool(data_.get(), threadpool_);
 		}
 
+		// Update real-time settings
+		const int num_clicks = sizeof(percentRealTime) / sizeof(percentRealTime[0]);
+		float min_error      = 1e6F;
+		float desired        = 1.0F;
+#if MJR_ROS_VERSION == ROS_1
+		nh_->param<float>("realtime", desired, model_->vis.global.realtime);
+#else // MJR_ROS_VERSION == ROS_2
+		this->get_parameter("realtime", desired);
+#endif
+
+		if (desired == -1.F) {
+			SetRealTimeIndex(0);
+		} else if (desired <= 0.F or desired > 1.F) {
+			MJR_WARN("Desired realtime should be in range (0, 1]. Falling back to default (1)");
+			SetRealTimeIndex(1);
+		} else {
+			int real_time_index = 1;
+			desired             = mju_log(100 * desired);
+			for (int click = 0; click < num_clicks; click++) {
+				float error = mju_abs(mju_log(percentRealTime[click]) - desired);
+				if (error < min_error) {
+					min_error       = error;
+					real_time_index = click;
+				}
+			}
+			SetRealTimeIndex(real_time_index);
+		}
+
 		CompleteEnvSetup();
 	}
 
@@ -428,34 +456,6 @@ bool MujocoEnv::InitModelFromQueue()
 	const auto connected_viewers = AcquireConnectedViewersLease();
 	for (const auto viewer : connected_viewers.viewers()) {
 		mju::strcpy_arr(viewer->load_error, load_error_);
-	}
-
-	// Update real-time settings
-	int num_clicks  = sizeof(percentRealTime) / sizeof(percentRealTime[0]);
-	float min_error = 1e6f;
-	float desired   = 1.0f;
-#if MJR_ROS_VERSION == ROS_1
-	nh_->param<float>("realtime", desired, mnew->vis.global.realtime);
-#else // MJR_ROS_VERSION == ROS_2
-	this->get_parameter("realtime", desired);
-#endif
-
-	if (desired == -1.f) {
-		SetRealTimeIndex(0);
-	} else if (desired <= 0.f or desired > 1.f) {
-		MJR_WARN("Desired realtime should be in range (0, 1]. Falling back to default (1)");
-		SetRealTimeIndex(1);
-	} else {
-		int real_time_index = 1;
-		desired             = mju_log(100 * desired);
-		for (int click = 0; click < num_clicks; click++) {
-			float error = mju_abs(mju_log(percentRealTime[click]) - desired);
-			if (error < min_error) {
-				min_error       = error;
-				real_time_index = click;
-			}
-		}
-		SetRealTimeIndex(real_time_index);
 	}
 
 	return true;
