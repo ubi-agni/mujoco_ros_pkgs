@@ -740,6 +740,51 @@ TEST_F(DescriptionConverterTest, AssignsVisualGroup1AndCollisionGroup2)
 	mj_deleteSpec(result.spec);
 }
 
+TEST_F(DescriptionConverterTest, TexturedGlbAppliesMaterialAndTextureToVisualGeom)
+{
+	const fs::path fixture = fs::path(TEST_RESOURCES_DIR) / "glb_textured" / "textured_tri.glb";
+	ASSERT_TRUE(fs::exists(fixture)) << "missing glb_textured fixture; run gen_fixtures.py";
+
+	auto root = fs::temp_directory_path() / "converter_glb_textured";
+	fs::create_directories(root / "meshes" / "visual");
+	fs::copy_file(fixture, root / "meshes" / "visual" / "textured_tri.glb", fs::copy_options::overwrite_existing);
+
+	const fs::path urdf_path = root / "textured_glb_robot.urdf";
+	{
+		std::ofstream out(urdf_path);
+		out << R"(<robot name="r"><link name="l"><visual><geometry><mesh filename="meshes/visual/textured_tri.glb"/></geometry></visual></link></robot>)";
+	}
+
+	auto result = mju::ConvertDescription(urdf_path.string(), "");
+	ASSERT_NE(result.spec, nullptr);
+	ASSERT_FALSE(result.glb_visual_bindings.empty());
+	EXPECT_FALSE(result.glb_visual_bindings.front().material_name.empty());
+	EXPECT_FALSE(result.glb_visual_bindings.front().texture_basename.empty());
+
+	mjModel *model = mju::CompileWithMeshVfs(result.spec, result.basename_to_dir);
+	ASSERT_NE(model, nullptr) << mjs_getError(result.spec);
+
+	const std::string material_name = result.glb_visual_bindings.front().material_name;
+	const int material_id           = mj_name2id(model, mjOBJ_MATERIAL, material_name.c_str());
+	ASSERT_NE(material_id, -1) << "ApplyGlbVisualMaterials must register material '" << material_name << "'";
+	EXPECT_NE(mj_name2id(model, mjOBJ_TEXTURE, (material_name + "_tex").c_str()), -1);
+
+	bool saw_textured_visual = false;
+	for (int i = 0; i < model->ngeom; ++i) {
+		if (model->geom_contype[i] != 0 || model->geom_conaffinity[i] != 0) {
+			continue;
+		}
+		if (model->geom_matid[i] == material_id) {
+			saw_textured_visual = true;
+			break;
+		}
+	}
+	EXPECT_TRUE(saw_textured_visual) << "visual geom must reference applied GLB material";
+
+	mj_deleteModel(model);
+	mj_deleteSpec(result.spec);
+}
+
 TEST_F(DescriptionConverterTest, CollisionOnlyRobotUsesGroup1)
 {
 	auto result = mju::ConvertDescription(Resource("collision_only_robot/collision_only_robot.urdf"), "");

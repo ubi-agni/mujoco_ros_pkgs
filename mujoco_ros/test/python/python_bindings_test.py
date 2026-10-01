@@ -339,7 +339,23 @@ class PythonBindingsTest(unittest.TestCase):
             if env.model.ncam == 0:
                 raise unittest.SkipTest("camera test world has no cameras")
 
-            manager = OffcamManager(env.binding._offscreen_context, env.model, cam_buff_size=2)
+            ctx = env.binding._offscreen_context
+            self.assertGreaterEqual(ctx.num_cams, 1)
+            raw_cam = ctx.camera(id=0)
+            self.assertEqual(raw_cam.id, 0)
+            self.assertEqual(ctx.camera(name=raw_cam.name).id, raw_cam.id)
+            self.assertIn("OffscreenCamera", repr(raw_cam))
+            with self.assertRaises(IndexError):
+                ctx.camera(id=255)
+            with self.assertRaises(IndexError):
+                ctx.camera(name="__missing_camera__")
+
+            self.assertTrue(hasattr(pymujoco_ros, "StreamType"))
+            self.assertNotEqual(
+                int(pymujoco_ros.StreamType.RGB), int(pymujoco_ros.StreamType.DEPTH)
+            )
+
+            manager = OffcamManager(ctx, env.model, cam_buff_size=2)
             self.assertGreaterEqual(manager.num_cams, 1)
 
             cam = manager.cam(0)
@@ -347,10 +363,43 @@ class PythonBindingsTest(unittest.TestCase):
             self.assertGreater(cam.width, 0)
             self.assertGreater(cam.height, 0)
             self.assertIs(manager.cam(cam.cam_name), cam)
+            self.assertIs(manager.camera(0), cam)
+            self.assertEqual(cam.cam_id, raw_cam.id)
+            self.assertEqual(cam.camera.topic, raw_cam.topic)
+            self.assertEqual(cam.camera.stream_type, raw_cam.stream_type)
+            self.assertEqual(cam.camera.use_segid, raw_cam.use_segid)
+
+            previous_fps = cam.fps
+            cam.fps = previous_fps + 1.0
+            self.assertAlmostEqual(cam.fps, previous_fps + 1.0)
+            cam.fps = previous_fps
+
+            flag_idx = 0
+            before = cam.buffer._get_flag(flag_idx)
+            cam.set_flag(flag_idx, enable=not bool(before))
+            self.assertEqual(cam.buffer._get_flag(flag_idx), 0 if before else 1)
+            cam.toggle_flag(flag_idx)
+            self.assertEqual(cam.buffer._get_flag(flag_idx), before)
+            cam.set_flag(flag_idx, enable=bool(before))
+
+            self.assertIsInstance(cam.buffer._rgb_buf_idx, int)
+            self.assertIsInstance(cam.buffer._depth_buf_idx, int)
+            self.assertIsInstance(cam.buffer._segment_buf_idx, int)
+            cam.buffer._rgb_frame_count = 0
+            cam.buffer._depth_frame_count = 0
+            cam.buffer._segment_frame_count = 0
+            cam.buffer.set_buffers_read()
+            self.assertEqual(cam.buffer._rgb_frame_count, 0)
+            self.assertEqual(cam.buffer._depth_frame_count, 0)
+            self.assertEqual(cam.buffer._segment_frame_count, 0)
 
             self.assertTrue(env.pause())
             self.assertTrue(env.step(20))
             rgb, depth, segment = cam.get_buffered_frames()
+            mgr_rgb, mgr_depth, mgr_segment = manager.get_buffered_frames(0)
+            self.assertIs(mgr_rgb is None, rgb is None)
+            self.assertIs(mgr_depth is None, depth is None)
+            self.assertIs(mgr_segment is None, segment is None)
             if rgb is not None:
                 self.assertLessEqual(rgb.shape[0], 2)
                 self.assertEqual((cam.height, cam.width, 3), rgb.shape[1:])
@@ -360,6 +409,13 @@ class PythonBindingsTest(unittest.TestCase):
             if segment is not None:
                 self.assertLessEqual(segment.shape[0], 2)
                 self.assertEqual((cam.height, cam.width, 3), segment.shape[1:])
+
+            none_rgb, none_depth, none_segment = manager.buffer(cam_id=99)
+            self.assertIsNone(none_rgb)
+            self.assertIsNone(none_depth)
+            self.assertIsNone(none_segment)
+
+            ctx.trigger_render_request()
 
             del cam
             del manager
