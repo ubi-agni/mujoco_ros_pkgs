@@ -932,20 +932,54 @@ TEST_F(BaseEnvFixture, RGB_Published_Correctly)
 
 	env_ptr->shutdown();
 #else // MJR_ROS_VERSION == ROS_2
+	// Without a live subscriber, RenderAndPublish skips RenderAndPubIfNecessary
+	// (rgb/depth/segment all false). ROS 1 coverage depended on subs; keep parity.
+	std::vector<sensor_msgs::msg::Image> rgb_images;
+	std::vector<sensor_msgs::msg::CameraInfo> rgb_infos;
+	auto sub_node        = std::make_shared<rclcpp::Node>("mujoco_render_rgb_pub_sub");
+	const std::string ns = env_ptr->GetHandleNamespace();
+	auto rgb_sub         = sub_node->create_subscription<sensor_msgs::msg::Image>(
+       ns + "/cameras/test_cam/rgb/image_raw", rclcpp::SensorDataQoS(),
+       [&rgb_images](const sensor_msgs::msg::Image::ConstSharedPtr msg) { rgb_images.emplace_back(*msg); });
+	auto info_sub = sub_node->create_subscription<sensor_msgs::msg::CameraInfo>(
+	    ns + "/cameras/test_cam/rgb/camera_info", rclcpp::SensorDataQoS(),
+	    [&rgb_infos](const sensor_msgs::msg::CameraInfo::ConstSharedPtr msg) { rgb_infos.emplace_back(*msg); });
+	env_ptr->AddNodeToExecutor(sub_node->get_node_base_interface());
+
 	env_ptr->StartWithXML(xml_path);
-	env_ptr->step(1);
 
 	EXPECT_TRUE(env_ptr->settings_.headless);
 	EXPECT_TRUE(env_ptr->settings_.render_offscreen);
 
 	OffscreenRenderContext *offscreen = env_ptr->getOffscreenContext();
-
 	ASSERT_EQ(offscreen->cams.size(), 1);
 	EXPECT_EQ(offscreen->cams[0]->cam_id_, 0);
 	EXPECT_STREQ(offscreen->cams[0]->cam_name_.c_str(), "test_cam");
 	EXPECT_EQ(offscreen->cams[0]->stream_type_, rendering::StreamType::RGB);
 	EXPECT_EQ(offscreen->cams[0]->pub_freq_, 30);
 
+	float seconds = 0.f;
+	while (offscreen->cams[0]->rgb_pub_.getNumSubscribers() < 1 && seconds < 1.f) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		seconds += 0.001f;
+	}
+	EXPECT_LT(seconds, 1.f) << "RGB publisher never saw a subscriber";
+
+	env_ptr->step(1);
+
+	seconds = 0.f;
+	while ((rgb_images.empty() || rgb_infos.empty()) && seconds < 1.f) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		seconds += 0.001f;
+	}
+	EXPECT_LT(seconds, 1.f) << "RGB image not published within 1s";
+	ASSERT_FALSE(rgb_images.empty());
+	ASSERT_FALSE(rgb_infos.empty());
+	EXPECT_EQ(rgb_images[0].width, 7u);
+	EXPECT_EQ(rgb_images[0].height, 4u);
+	EXPECT_EQ(rgb_images[0].encoding, sensor_msgs::image_encodings::RGB8);
+
+	env_ptr->RemoveNodeFromExecutor(sub_node->get_node_base_interface());
 	env_ptr->shutdown();
 #endif
 }

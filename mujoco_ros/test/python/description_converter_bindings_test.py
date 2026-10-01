@@ -149,6 +149,36 @@ class DescriptionConverterBindingsTest(unittest.TestCase):
             self.assertIsNotNone(env.model)
             self.assertIsNotNone(env.data)
 
+    def test_count_free_joints_on_body_happy_and_errors(self):
+        require_python_mujoco()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            model_path = Path(tmp) / "free_body.xml"
+            model_path.write_text(
+                """
+<mujoco>
+  <worldbody>
+    <body name="free_box">
+      <freejoint/>
+      <geom type="box" size="0.05 0.05 0.05"/>
+    </body>
+    <body name="fixed_box">
+      <geom type="box" size="0.05 0.05 0.05"/>
+    </body>
+  </worldbody>
+</mujoco>
+""",
+                encoding="utf-8",
+            )
+            with MujocoEnv(model_path=str(model_path)) as env:
+                wait_for_idle(env)
+                self.assertEqual(env.binding.count_free_joints_on_body("free_box"), 1)
+                self.assertEqual(env.binding.count_free_joints_on_body("fixed_box"), 0)
+                with self.assertRaises(ValueError):
+                    env.binding.count_free_joints_on_body("")
+                with self.assertRaises(ValueError):
+                    env.binding.count_free_joints_on_body("missing_body")
+
     def test_mujoco_env_from_description_raises_on_missing_urdf(self):
         require_python_mujoco()
 
