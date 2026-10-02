@@ -56,6 +56,9 @@
 #include <mujoco_ros/offscreen_camera.hpp>
 #include <mujoco_ros/offscreen_camera_config.hpp>
 #include <mujoco_ros/util.hpp>
+#if MJR_ROS_VERSION == ROS_2
+#include <mujoco_ros/ros_two/plugin_utils.hpp>
+#endif
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -791,3 +794,50 @@ TEST_F(LoadedPluginFixture, PluginStats_ResetTimeOnReset)
 	EXPECT_EQ(types[0], "mujoco_ros/TestPlugin") << "Should be TestPlugin!";
 	EXPECT_GT(reset_times[0], -1) << "Reset time should be unset!";
 }
+
+#if MJR_ROS_VERSION == ROS_2
+TEST_F(BaseEnvFixture, RosPluginAdapterFactoryMissingTypeAndUnknownTypeBecomeFailedAdapters)
+{
+	nh->setParam("unpause", false);
+	nh->setParam("no_render", true);
+	nh->setParam("headless", true);
+	nh->setParam("MujocoPlugins.names", std::vector<std::string>{ "missing_type", "bad_type" });
+	nh->setParam("MujocoPlugins.bad_type.type", std::string("mujoco_ros/DoesNotExistPlugin"));
+
+	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	std::string xml_path = testing::get_test_model_path("empty_world.xml");
+	env_ptr->StartWithXML(xml_path);
+	ASSERT_EQ(env_ptr->GetOperationalStatus(), 0);
+
+	plugin_utils::RosPluginAdapterFactory factory(env_ptr.get());
+	const auto adapters = factory.CreateAdapters();
+	ASSERT_EQ(adapters.size(), 2u);
+
+	EXPECT_EQ(adapters[0]->Name(), "missing_type");
+	EXPECT_EQ(adapters[0]->Type(), "");
+	{
+		std::string error;
+		EXPECT_FALSE(adapters[0]->Load(nullptr, nullptr, error));
+		EXPECT_EQ(error, "ROS 2 plugin configuration entry is missing type");
+		const auto stats = adapters[0]->Statistics();
+		EXPECT_EQ(stats.name, "missing_type");
+		EXPECT_EQ(stats.type, "");
+	}
+
+	EXPECT_EQ(adapters[1]->Name(), "bad_type");
+	EXPECT_EQ(adapters[1]->Type(), "mujoco_ros/DoesNotExistPlugin");
+	{
+		std::string error;
+		EXPECT_FALSE(adapters[1]->Load(nullptr, nullptr, error));
+		EXPECT_FALSE(error.empty());
+		adapters[1]->Control(nullptr, nullptr);
+		adapters[1]->Passive(nullptr, nullptr);
+		adapters[1]->Render(nullptr, nullptr, nullptr);
+		adapters[1]->LastStage(nullptr, nullptr);
+		adapters[1]->Reset();
+		adapters[1]->GeometryChanged(nullptr, nullptr, 0);
+	}
+
+	env_ptr->shutdown();
+}
+#endif
