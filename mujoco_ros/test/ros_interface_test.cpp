@@ -3333,6 +3333,37 @@ TEST_F(PendulumEnvFixture, RuntimeParameterRejectsInvalidValues)
 	EXPECT_FALSE(result.successful);
 }
 
+TEST_F(PendulumEnvFixture, RuntimeParameterRejectsWrongTransportTypes)
+{
+	const auto before_policy     = env_ptr->GetRenderBackpressurePolicy();
+	const auto before_running    = env_ptr->GetControlSnapshot().running;
+	const auto before_iterations = env_ptr->getModelPtr()->opt.iterations;
+
+	auto result = env_ptr->set_parameters_atomically({ rclcpp::Parameter("running", std::string("yes")) });
+	EXPECT_FALSE(result.successful);
+	EXPECT_EQ(env_ptr->GetControlSnapshot().running, before_running);
+
+	result = env_ptr->set_parameters_atomically({ rclcpp::Parameter("render_backpressure_policy", true) });
+	EXPECT_FALSE(result.successful);
+	EXPECT_EQ(env_ptr->GetRenderBackpressurePolicy(), before_policy);
+
+	result = env_ptr->set_parameters_atomically({ rclcpp::Parameter("admin_hash", 42) });
+	EXPECT_FALSE(result.successful);
+
+	result = env_ptr->set_parameters_atomically({ rclcpp::Parameter("iterations", 1.5) });
+	EXPECT_FALSE(result.successful);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.iterations, before_iterations);
+
+	result = env_ptr->set_parameters_atomically({ rclcpp::Parameter("tolerance", std::string("not-a-double")) });
+	EXPECT_FALSE(result.successful);
+
+	result = env_ptr->set_parameters_atomically({ rclcpp::Parameter("gravity", true) });
+	EXPECT_FALSE(result.successful);
+
+	result = env_ptr->set_parameters_atomically({ rclcpp::Parameter("energy", 1) });
+	EXPECT_FALSE(result.successful);
+}
+
 TEST_F(PendulumEnvFixture, RuntimeParameterBatchRollsBackAllState)
 {
 	const auto before = env_ptr->GetRuntimeOptions();

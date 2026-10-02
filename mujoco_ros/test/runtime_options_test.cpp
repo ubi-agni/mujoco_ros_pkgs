@@ -130,10 +130,106 @@ TEST(RuntimeOptions, RejectsInvalidDomainsWithFieldSpecificErrors)
 		     value.integrator = 4;
 		     return value;
 		  }() },
+		{ "cone",
+		  [] {
+		     RuntimeOptionsSnapshot value;
+		     value.cone = 2;
+		     return value;
+		  }() },
+		{ "jacobian",
+		  [] {
+		     RuntimeOptionsSnapshot value;
+		     value.jacobian = 3;
+		     return value;
+		  }() },
+		{ "solver",
+		  [] {
+		     RuntimeOptionsSnapshot value;
+		     value.solver = 3;
+		     return value;
+		  }() },
 		{ "iterations",
 		  [] {
 		     RuntimeOptionsSnapshot value;
 		     value.iterations = 0;
+		     return value;
+		  }() },
+		{ "tolerance",
+		  [] {
+		     RuntimeOptionsSnapshot value;
+		     value.tolerance = -1.0;
+		     return value;
+		  }() },
+		{ "ls_iterations",
+		  [] {
+		     RuntimeOptionsSnapshot value;
+		     value.ls_iterations = 0;
+		     return value;
+		  }() },
+		{ "ls_tolerance",
+		  [] {
+		     RuntimeOptionsSnapshot value;
+		     value.ls_tolerance = -0.1;
+		     return value;
+		  }() },
+		{ "noslip_iterations",
+		  [] {
+		     RuntimeOptionsSnapshot value;
+		     value.noslip_iterations = -1;
+		     return value;
+		  }() },
+		{ "noslip_tolerance",
+		  [] {
+		     RuntimeOptionsSnapshot value;
+		     value.noslip_tolerance = -1.0;
+		     return value;
+		  }() },
+		{ "ccd_iterations",
+		  [] {
+		     RuntimeOptionsSnapshot value;
+		     value.ccd_iterations = 0;
+		     return value;
+		  }() },
+		{ "ccd_tolerance",
+		  [] {
+		     RuntimeOptionsSnapshot value;
+		     value.ccd_tolerance = -1.0;
+		     return value;
+		  }() },
+		{ "sdf_iterations",
+		  [] {
+		     RuntimeOptionsSnapshot value;
+		     value.sdf_iterations = 0;
+		     return value;
+		  }() },
+		{ "sdf_initpoints",
+		  [] {
+		     RuntimeOptionsSnapshot value;
+		     value.sdf_initpoints = 0;
+		     return value;
+		  }() },
+		{ "density",
+		  [] {
+		     RuntimeOptionsSnapshot value;
+		     value.density = -1.0;
+		     return value;
+		  }() },
+		{ "viscosity",
+		  [] {
+		     RuntimeOptionsSnapshot value;
+		     value.viscosity = -1.0;
+		     return value;
+		  }() },
+		{ "impratio",
+		  [] {
+		     RuntimeOptionsSnapshot value;
+		     value.impratio = -1.0;
+		     return value;
+		  }() },
+		{ "margin",
+		  [] {
+		     RuntimeOptionsSnapshot value;
+		     value.margin = -1.0;
 		     return value;
 		  }() },
 		{ "gravity",
@@ -210,6 +306,10 @@ TEST(RuntimeOptions, RejectsUnknownFieldsAndWrongTransportTypes)
 	         { "not_an_option", true },
 	         { "timestep", true },
 	         { "gravity", 1.0 },
+	         { "integrator", true },
+	         { "iterations", true },
+	         { "energy", 1.0 },
+	         { "cone", std::numeric_limits<std::int64_t>::max() },
 	     }) {
 		const auto result = ParseRuntimeOptionsPatch({ input });
 		EXPECT_FALSE(result.ok());

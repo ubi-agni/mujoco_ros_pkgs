@@ -4156,6 +4156,12 @@ TEST_F(BaseEnvFixture, OffscreenCameraConfigEnableFramesAndTakeLatestRules)
 	} catch (const std::logic_error &error) {
 		EXPECT_STREQ(error.what(), "EnableFrames must be called before TakeLatest");
 	}
+	try {
+		(void)test_config.TakeRecent(rendering::PlaneKind::kRgb, 1);
+		FAIL() << "expected std::logic_error";
+	} catch (const std::logic_error &error) {
+		EXPECT_STREQ(error.what(), "EnableFrames must be called before TakeRecent");
+	}
 
 	test_config.EnableFrames(1);
 	try {
@@ -4373,6 +4379,24 @@ TEST_F(BaseEnvFixture, No_Render_Backend_Headless_Warn)
 
 	CameraPublicationTransport *offscreen = env_ptr->getCameraPublicationTransport();
 	EXPECT_TRUE(offscreen->cams.empty());
+
+	env_ptr->shutdown();
+}
+
+TEST_F(BaseEnvFixture, TakeRecentRequiresEnableFramesWithoutOffscreenBackend)
+{
+	nh->setParam("unpause", false);
+	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	env_ptr->StartWithXML(testing::get_test_model_path("empty_world.xml"));
+	ASSERT_EQ(env_ptr->GetOperationalStatus(), 0);
+
+	auto config = env_ptr->OpenOffscreenCamera("any_cam");
+	try {
+		(void)config.TakeRecent(rendering::PlaneKind::kRgb, 1);
+		FAIL() << "expected std::logic_error";
+	} catch (const std::logic_error &error) {
+		EXPECT_STREQ(error.what(), "EnableFrames must be called before TakeRecent");
+	}
 
 	env_ptr->shutdown();
 }
