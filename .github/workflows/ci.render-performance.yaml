@@ -1,22 +1,37 @@
 name: CI render performance advisory
 
+# Opt-in only (expensive OSMesa campaign). Never auto-runs on path match alone.
+# PR path:
+#   1. Decide job asks whether the advisory is needed for acceptance.
+#   2. Add label `run-render-performance` to trigger the campaign.
+# Manual path: workflow_dispatch with confirm_needed_for_acceptance=true.
+
 on:
-  workflow_call:
-    inputs:
-      baseline_sha:
-        required: false
-        type: string
-        default: ""
-      candidate_sha:
-        required: false
-        type: string
-        default: ""
-      pull_request_number:
-        required: false
-        type: number
-        default: 0
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    paths:
+      - "mujoco_ros/render_core/**"
+      - "mujoco_ros/include/mujoco_ros/rendering/**"
+      - "mujoco_ros/include/mujoco_ros/offscreen_camera.hpp"
+      - "mujoco_ros/src/offscreen_camera.cpp"
+      - "mujoco_ros/src/offscreen_rendering.cpp"
+      - "mujoco_ros/test/render_performance_test.cpp"
+      - "mujoco_ros/test/run_render_performance_*.sh"
+      - "mujoco_ros/test/merge_render_performance_trials.py"
+      - "mujoco_ros/test/render_performance_report.py"
+      - "mujoco_ros/test/test_render_performance_report.py"
+      - "mujoco_ros/test/render_performance_report_fixtures/**"
+      - "mujoco_ros/CMakeLists.txt"
+      - "mujoco_ros/src/CMakeLists.txt"
+      - "mujoco_ros/test/CMakeLists.txt"
+      - ".github/workflows/ci.render-performance.yaml"
   workflow_dispatch:
     inputs:
+      confirm_needed_for_acceptance:
+        description: Confirm this advisory is needed for acceptance (required to run the campaign).
+        required: true
+        type: boolean
+        default: false
       baseline_sha:
         description: Optional baseline commit SHA; defaults to hybrid-devel.
         required: false
@@ -33,10 +48,8 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
-# Do not use ${{ github.workflow }} here: under workflow_call it resolves to the
-# *caller* name ("CI ROS 2"), so parent and callee share one concurrency group
-# and GitHub cancels with a deadlock. Hard-code a callee-unique prefix.
 concurrency:
   group: ci-render-performance-advisory-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -48,10 +61,100 @@ env:
   CCACHE_DIR: ${{ github.workspace }}/.ccache
   # Share object keys across baseline/candidate workspace paths in one campaign.
   CCACHE_NOHASHDIR: "1"
+  ADVISORY_LABEL: run-render-performance
 
 jobs:
+  decide:
+    name: "Decide: need OSMesa advisory for acceptance?"
+    runs-on: ubuntu-latest
+    outputs:
+      run_benchmark: ${{ steps.gate.outputs.run_benchmark }}
+      pull_request_number: ${{ steps.gate.outputs.pull_request_number }}
+    steps:
+      - name: Evaluate opt-in gate
+        id: gate
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number || 0 }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          DISPATCH_CONFIRM: ${{ github.event.inputs.confirm_needed_for_acceptance || 'false' }}
+          DISPATCH_PR: ${{ github.event.inputs.pull_request_number || '0' }}
+        run: |
+          set -euo pipefail
+          run_benchmark=false
+          pr_number=0
+
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            pr_number="${DISPATCH_PR}"
+            if [[ "${DISPATCH_CONFIRM}" == "true" ]]; then
+              run_benchmark=true
+            fi
+          elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            pr_number="${PR_NUMBER}"
+            IFS=',' read -r -a labels <<< "${PR_LABELS}"
+            for label in "${labels[@]}"; do
+              if [[ "${label}" == "${ADVISORY_LABEL}" ]]; then
+                run_benchmark=true
+                break
+              fi
+            done
+          fi
+
+
+          echo "run_benchmark=${run_benchmark}" >> "${GITHUB_OUTPUT}"
+          echo "pull_request_number=${pr_number}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "## Render performance advisory gate"
+            echo
+            if [[ "${run_benchmark}" == "true" ]]; then
+              echo "Opt-in confirmed. Expensive OSMesa campaign will run."
+            else
+              echo "Opt-in **not** set. Campaign skipped (no runner time for the benchmark)."
+              echo
+              echo "If this change needs the advisory for acceptance:"
+              echo "1. Decide it is necessary for acceptance."
+              echo "2. Trigger by adding label \`${ADVISORY_LABEL}\` on the PR"
+              echo "   (or re-run this workflow via workflow_dispatch with"
+              echo "   confirm_needed_for_acceptance=true)."
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Ask on the pull request
+        if: github.event_name == 'pull_request' && steps.gate.outputs.run_benchmark != 'true'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-tag: render-performance-advisory-gate
+          edit-mode: replace
+          body: |
+            ## Render performance advisory — decision needed
+
+            This PR touches render/performance paths. The OSMesa advisory campaign is **opt-in** (it is expensive).
+
+            1. **Decide** whether it is necessary for acceptance on this PR.
+            2. **Trigger** only if yes: add the label `run-render-performance`.
+
+            Leave the label off to skip the campaign and save runner time.
+            Remove the label later to stop re-running it on new pushes.
+
+      - name: Confirm trigger on the pull request
+        if: github.event_name == 'pull_request' && steps.gate.outputs.run_benchmark == 'true'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-tag: render-performance-advisory-gate
+          edit-mode: replace
+          body: |
+            ## Render performance advisory — running
+
+            Label `run-render-performance` is present, so the OSMesa advisory campaign will run for this PR.
+            Remove the label if it should not run on later pushes.
+
   benchmark:
     name: OSMesa advisory benchmark
+    needs: decide
+    if: needs.decide.outputs.run_benchmark == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 180
     container:
@@ -69,12 +172,23 @@ jobs:
       - name: Resolve baseline and candidate SHAs
         id: refs
         shell: bash
+        env:
+          INPUT_BASELINE: ${{ github.event.inputs.baseline_sha || '' }}
+          INPUT_CANDIDATE: ${{ github.event.inputs.candidate_sha || '' }}
+          PR_BASE: ${{ github.event.pull_request.base.sha || '' }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha || '' }}
         run: |
           set -euo pipefail
-          baseline_sha="${{ inputs.baseline_sha }}"
-          candidate_sha="${{ inputs.candidate_sha }}"
+          baseline_sha="${INPUT_BASELINE}"
+          candidate_sha="${INPUT_CANDIDATE}"
+          if [[ -z "${candidate_sha}" && -n "${PR_HEAD}" ]]; then
+            candidate_sha="${PR_HEAD}"
+          fi
           if [[ -z "${candidate_sha}" ]]; then
             candidate_sha="${GITHUB_SHA}"
+          fi
+          if [[ -z "${baseline_sha}" && -n "${PR_BASE}" ]]; then
+            baseline_sha="${PR_BASE}"
           fi
           if [[ -z "${baseline_sha}" || "${baseline_sha}" == "0000000000000000000000000000000000000000" ]]; then
             git fetch origin hybrid-devel --depth=1
@@ -83,9 +197,9 @@ jobs:
           echo "baseline_sha=${baseline_sha}" >> "${GITHUB_OUTPUT}"
           echo "candidate_sha=${candidate_sha}" >> "${GITHUB_OUTPUT}"
 
-      # Prefer the ROS 2 matrix ccache (ci.ros2 plain prefix ccache-${ROS_DISTRO}),
-      # which the advisory job waits on via needs: default. Keep the private
-      # render-perf key as a fallback when no matrix object matches.
+
+      # Prefer the ROS 2 matrix ccache (ci.ros2 plain prefix ccache-${ROS_DISTRO}).
+      # Keep the private render-perf key as a fallback when no matrix object matches.
       - name: Restore matrix ccache
         id: ccache-matrix
         uses: actions/cache/restore@v4
@@ -177,7 +291,9 @@ jobs:
 
   advisory-report:
     name: Publish advisory report
-    needs: benchmark
+    needs:
+      - decide
+      - benchmark
     if: needs.benchmark.result == 'success'
     runs-on: ubuntu-latest
     permissions:
@@ -210,7 +326,7 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
       - name: Write branch push summary
-        if: inputs.pull_request_number == 0
+        if: needs.decide.outputs.pull_request_number == '0'
         shell: bash
         run: |
           set -euo pipefail
@@ -237,10 +353,10 @@ jobs:
           PY
 
       - name: Update pull request comment
-        if: inputs.pull_request_number != 0
+        if: needs.decide.outputs.pull_request_number != '0'
         uses: peter-evans/create-or-update-comment@v4
         with:
-          issue-number: ${{ inputs.pull_request_number }}
+          issue-number: ${{ needs.decide.outputs.pull_request_number }}
           comment-tag: render-performance-advisory
           edit-mode: replace
           body: |

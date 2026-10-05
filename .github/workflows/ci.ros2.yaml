@@ -93,64 +93,6 @@ jobs:
           osmesa=true
           echo "osmesa=${osmesa}" >> "${GITHUB_OUTPUT}"
 
-  render-performance-policy:
-    name: Select render performance advisory
-    runs-on: ubuntu-24.04
-    outputs:
-      enabled: ${{ steps.filter.outputs.enabled }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - name: Check render-performance paths
-        id: filter
-        shell: bash
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          BEFORE_SHA: ${{ github.event.before }}
-        run: |
-          set -euo pipefail
-
-          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            echo "enabled=true" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
-            baseline_sha="${BASE_SHA}"
-            candidate_ref="HEAD"
-          else
-            baseline_sha="${BEFORE_SHA}"
-            candidate_ref="${GITHUB_SHA}"
-            if [[ -z "${baseline_sha}" || "${baseline_sha}" == "0000000000000000000000000000000000000000" ]]; then
-              git fetch origin hybrid-devel --depth=1
-              baseline_sha="$(git merge-base "${candidate_ref}" origin/hybrid-devel)"
-            fi
-          fi
-
-          if git diff --quiet "${baseline_sha}" "${candidate_ref}" -- \
-            'mujoco_ros/render_core/**' \
-            'mujoco_ros/include/mujoco_ros/rendering/**' \
-            'mujoco_ros/include/mujoco_ros/offscreen_camera.hpp' \
-            'mujoco_ros/src/offscreen_camera.cpp' \
-            'mujoco_ros/src/offscreen_rendering.cpp' \
-            'mujoco_ros/test/render_performance_test.cpp' \
-            'mujoco_ros/test/run_render_performance_*.sh' \
-            'mujoco_ros/test/merge_render_performance_trials.py' \
-            'mujoco_ros/test/render_performance_report.py' \
-            'mujoco_ros/test/test_render_performance_report.py' \
-            'mujoco_ros/test/render_performance_report_fixtures/**' \
-            'mujoco_ros/CMakeLists.txt' \
-            'mujoco_ros/src/CMakeLists.txt' \
-            'mujoco_ros/test/CMakeLists.txt' \
-            '.github/workflows/ci.render-performance.yaml' \
-            '.github/workflows/ci.ros2.yaml'; then
-            echo "enabled=false" >> "${GITHUB_OUTPUT}"
-          else
-            echo "enabled=true" >> "${GITHUB_OUTPUT}"
-          fi
-
   default:
     needs: ci-policy
     strategy:
@@ -276,23 +218,3 @@ jobs:
           sudo find ${{ env.BASEDIR }}/target_ws -wholename '*/test_results/*' -delete
           sudo rm -rf ${{ env.BASEDIR }}/target_ws/src ${{ env.BASEDIR }}/target_ws/logs
           du -sh ${{ env.BASEDIR }}/target_ws
-
-  render-performance:
-    name: OSMesa advisory benchmark
-    needs:
-      - default
-      - ci-policy
-      - render-performance-policy
-    if: >-
-      needs.default.result == 'success' &&
-      needs.ci-policy.outputs.osmesa == 'true' &&
-      needs.render-performance-policy.outputs.enabled == 'true'
-    uses: ./.github/workflows/ci.render-performance.yaml
-    with:
-      baseline_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-      candidate_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-      pull_request_number: ${{ github.event_name == 'pull_request' && github.event.pull_request.number || 0 }}
-    secrets: inherit
-    permissions:
-      contents: read
-      pull-requests: write
