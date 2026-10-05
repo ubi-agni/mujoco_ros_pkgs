@@ -36,6 +36,8 @@
 
 #include "test_plugin.hpp"
 
+#include <mujoco_ros/rendering/frame_boundary.hpp>
+
 #if MJR_ROS_VERSION == ROS_1
 #include <pluginlib/class_list_macros.h>
 #else // MJR_ROS_VERSION == ROS_2
@@ -45,8 +47,17 @@
 using namespace mujoco_ros;
 namespace mujoco_ros {
 
+std::atomic_int TestPlugin::load_count{ 0 };
+std::atomic_int TestPlugin::destruction_count{ 0 };
+
+TestPlugin::~TestPlugin()
+{
+	destruction_count.fetch_add(1);
+}
+
 bool TestPlugin::Load(const mjModel *m, mjData *d)
 {
+	load_count.fetch_add(1);
 #if MJR_ROS_VERSION == ROS_1
 	if (rosparam_config_.hasMember("example_param")) {
 		got_config_param.store(true);
@@ -129,6 +140,27 @@ bool TestPlugin::Load(const mjModel *m, mjData *d)
 		d_ = d;
 	}
 
+	saw_lease.store(false);
+	capture_id.store(0);
+	simulation_time_ns.store(0);
+	second_take_empty.store(false);
+	offscreen_camera_.reset();
+
+	bool enable_offscreen_frames = false;
+#if MJR_ROS_VERSION == ROS_1
+	node_handle_.param<bool>("test_plugin_offscreen_frames", enable_offscreen_frames, false);
+#else
+	if (env_ptr_ != nullptr && env_ptr_->has_parameter("test_plugin_offscreen_frames")) {
+		enable_offscreen_frames = env_ptr_->get_parameter("test_plugin_offscreen_frames").as_bool();
+	}
+#endif
+
+	if (loaded_ok && enable_offscreen_frames && env_ptr_ != nullptr) {
+		offscreen_camera_.emplace(env_ptr_->OpenOffscreenCamera("test_cam"));
+		offscreen_camera_->SetGeomGroup(2, false);
+		offscreen_camera_->EnableFrames(1);
+	}
+
 	return loaded_ok;
 }
 
@@ -155,6 +187,17 @@ void TestPlugin::RenderCallback(const mjModel * /*model*/, mjData * /*data*/, mj
 void TestPlugin::LastStageCallback(const mjModel * /*model*/, mjData * /*data*/)
 {
 	ran_last_cb.store(true);
+	if (offscreen_camera_) {
+		test_cam_geom_group_2_enabled.store(offscreen_camera_->GeomGroupEnabled(2));
+		if (const auto lease = offscreen_camera_->TakeLatest(rendering::PlaneKind::kRgb)) {
+			saw_lease.store(true);
+			capture_id.store(lease->capture_id());
+			simulation_time_ns.store(lease->simulation_time_ns());
+		}
+		if (!offscreen_camera_->TakeLatest(rendering::PlaneKind::kRgb).has_value()) {
+			second_take_empty.store(true);
+		}
+	}
 }
 
 void TestPlugin::OnGeomChanged(const mjModel * /*model*/, mjData * /*data*/, const int /*geom_id*/)

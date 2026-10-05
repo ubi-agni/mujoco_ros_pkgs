@@ -38,11 +38,16 @@
 
 #include <pybind11/pybind11.h>
 
+namespace mujoco_ros {
+class MujocoEnv;
+}
+
 namespace mujoco_ros::python {
 
 namespace py = pybind11;
 
 void InitMujocoEnv(py::module_ &module);
+mujoco_ros::MujocoEnv *MujocoEnvPtrFromPythonBinding(const py::object &binding);
 void InitEnvStructs(py::module_ &module);
 void InitPlugins(py::module_ &module);
 void InitRendering(py::module_ &module);

@@ -2,6 +2,7 @@
  * Software License Agreement (BSD 3-Clause License)
  *
  *  Copyright (c) 2026, Bielefeld University
+ *  Copyright (c) 2026, Neura Robotics
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -14,7 +15,7 @@
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *   * Neither the name of Bielefeld University nor the names of its
+ *   * Neither the name of Bielefeld University nor Neura Robotics nor the names of their
  *     contributors may be used to endorse or promote products derived
  *     from this software without specific prior written permission.
  *
@@ -35,104 +36,313 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <cstdint>
+#include <mutex>
+#include <unordered_map>
 
 namespace mujoco_ros {
 
+using ManualStepToken = std::uint64_t;
+
+enum class ManualStepTerminalStatus
+{
+	kPending,
+	kCompleted,
+	kCancelled,
+	kUnknown,
+};
+
+enum class ModelLifecyclePhase
+{
+	kNoModel,
+	kLoading,
+	kOperational,
+	kShuttingDown,
+};
+
+struct ManualStepSnapshot
+{
+	ManualStepTerminalStatus status = ManualStepTerminalStatus::kUnknown;
+	int pending_steps               = 0;
+};
+
 struct SimulationControlSnapshot
 {
-	bool running            = false;
-	int pending_steps       = 0;
-	bool shutdown_requested = false;
-	int load_request        = 0;
-	bool reset_requested    = false;
-	bool speed_changed      = false;
+	bool running                        = false;
+	int pending_steps                   = 0;
+	bool shutdown_requested             = false;
+	int load_request                    = 0;
+	bool reset_requested                = false;
+	bool speed_changed                  = false;
+	int real_time_index                 = 9;
+	ModelLifecyclePhase model_lifecycle = ModelLifecyclePhase::kNoModel;
 };
+
+class SimulationControlStateTestAccess;
 
 class SimulationControlState
 {
 public:
 	void SetPaused(bool paused)
 	{
+		std::lock_guard<std::mutex> lock(state_mutex_);
 		running_.store(!paused);
 		if (running_) {
-			pending_steps_.store(0);
+			CancelPendingStepsLocked();
 		}
+		state_condition_.notify_all();
 	}
 
-	bool RequestSteps(int num_steps)
+	bool RequestSteps(int num_steps, ManualStepToken *token = nullptr)
 	{
-		if (shutdown_requested_.load() || running_.load() || pending_steps_.load() > 0 || num_steps <= 0) {
+		std::lock_guard<std::mutex> lock(state_mutex_);
+		if (shutdown_requested_.load() || reset_requested_.load() || load_request_.load() > 0 || running_.load() ||
+		    pending_steps_.load() > 0 || num_steps <= 0) {
 			return false;
 		}
 
+		InvokeAdmissionTestHook(AdmissionTestHookPoint::kBeforeManualStepAdmission);
+		const ManualStepToken request_token = next_manual_step_token_++;
+		active_manual_step_token_           = request_token;
+		active_manual_step_tracked_         = token != nullptr;
 		pending_steps_.store(num_steps);
+		if (token != nullptr) {
+			*token = request_token;
+		}
+		state_condition_.notify_all();
 		return true;
 	}
 
-	bool HasPendingSteps() const { return pending_steps_.load() > 0; }
+	bool HasPendingSteps() const
+	{
+		std::lock_guard<std::mutex> lock(state_mutex_);
+		return pending_steps_.load() > 0;
+	}
 
 	bool RecordCompletedStep()
 	{
+		std::lock_guard<std::mutex> lock(state_mutex_);
 		int pending_steps = pending_steps_.load();
-		while (pending_steps > 0) {
-			if (pending_steps_.compare_exchange_weak(pending_steps, pending_steps - 1)) {
-				return true;
-			}
+		if (pending_steps <= 0) {
+			return false;
 		}
-
-		return false;
+		pending_steps_.store(pending_steps - 1);
+		if (pending_steps == 1) {
+			if (active_manual_step_tracked_) {
+				terminal_manual_steps_[active_manual_step_token_] = ManualStepTerminalStatus::kCompleted;
+			}
+			active_manual_step_token_   = 0;
+			active_manual_step_tracked_ = false;
+		}
+		state_condition_.notify_all();
+		return true;
 	}
 
-	void CancelPendingSteps() { pending_steps_.store(0); }
+	bool CancelPendingSteps(ManualStepToken token = 0)
+	{
+		std::lock_guard<std::mutex> lock(state_mutex_);
+		if (token != 0 && token != active_manual_step_token_) {
+			return false;
+		}
+		return CancelPendingStepsLocked();
+	}
 
 	void RequestShutdown()
 	{
+		std::lock_guard<std::mutex> lock(state_mutex_);
 		shutdown_requested_.store(true);
-		pending_steps_.store(0);
+		model_lifecycle_.store(ModelLifecyclePhase::kShuttingDown);
+		CancelPendingStepsLocked();
 	}
 
-	bool IsShutdownRequested() const { return shutdown_requested_.load(); }
+	bool IsShutdownRequested() const
+	{
+		std::lock_guard<std::mutex> lock(state_mutex_);
+		return shutdown_requested_.load();
+	}
 
 	void SetLoadRequest(int load_request)
 	{
+		std::lock_guard<std::mutex> lock(state_mutex_);
 		if (load_request < 0) {
 			load_request = 0;
 		}
 		if (load_request > 0) {
-			pending_steps_.store(0);
+			model_lifecycle_.store(ModelLifecyclePhase::kLoading);
+			CancelPendingStepsLocked();
 		}
 		load_request_.store(load_request);
+		state_condition_.notify_all();
+	}
+
+	void CompleteFailedLoad()
+	{
+		std::lock_guard<std::mutex> lock(state_mutex_);
+		load_request_.store(0);
+		CancelPendingStepsLocked();
+		if (!shutdown_requested_.load()) {
+			model_lifecycle_.store(ModelLifecyclePhase::kNoModel);
+		}
+		state_condition_.notify_all();
+	}
+
+	void PublishOperationalIdle()
+	{
+		std::lock_guard<std::mutex> lock(state_mutex_);
+		load_request_.store(0);
+		if (!shutdown_requested_.load()) {
+			model_lifecycle_.store(ModelLifecyclePhase::kOperational);
+		}
+		state_condition_.notify_all();
+	}
+
+	void SetLifecyclePhase(ModelLifecyclePhase phase)
+	{
+		std::lock_guard<std::mutex> lock(state_mutex_);
+		if (shutdown_requested_.load() && phase != ModelLifecyclePhase::kShuttingDown) {
+			return;
+		}
+		model_lifecycle_.store(phase);
+		state_condition_.notify_all();
 	}
 
 	void RequestReset()
 	{
+		std::lock_guard<std::mutex> lock(state_mutex_);
 		reset_requested_.store(true);
-		pending_steps_.store(0);
+		CancelPendingStepsLocked();
 	}
 
-	void ClearResetRequest() { reset_requested_.store(false); }
+	void ClearResetRequest()
+	{
+		std::lock_guard<std::mutex> lock(state_mutex_);
+		reset_requested_.store(false);
+		state_condition_.notify_all();
+	}
 
-	void MarkSpeedChanged() { speed_changed_.store(true); }
+	void SetRealTimeIndex(int real_time_index)
+	{
+		std::lock_guard<std::mutex> lock(state_mutex_);
+		real_time_index_.store(real_time_index);
+		state_condition_.notify_all();
+	}
+
+	void MarkSpeedChanged()
+	{
+		std::lock_guard<std::mutex> lock(state_mutex_);
+		speed_changed_.store(true);
+		state_condition_.notify_all();
+	}
 
 	bool ConsumeSpeedChange()
 	{
+		std::lock_guard<std::mutex> lock(state_mutex_);
 		bool expected = true;
 		return speed_changed_.compare_exchange_strong(expected, false);
 	}
 
 	SimulationControlSnapshot Snapshot() const
 	{
-		return SimulationControlSnapshot{ running_.load(),      pending_steps_.load(),   shutdown_requested_.load(),
-			                               load_request_.load(), reset_requested_.load(), speed_changed_.load() };
+		std::lock_guard<std::mutex> lock(state_mutex_);
+		return SimulationControlSnapshot{ running_.load(),         pending_steps_.load(),   shutdown_requested_.load(),
+			                               load_request_.load(),    reset_requested_.load(), speed_changed_.load(),
+			                               real_time_index_.load(), model_lifecycle_.load() };
+	}
+
+	bool WaitForChangeUntil(std::chrono::steady_clock::time_point deadline) const
+	{
+		std::unique_lock<std::mutex> lock(state_mutex_);
+		return state_condition_.wait_until(lock, deadline) != std::cv_status::timeout;
+	}
+
+	ManualStepSnapshot GetManualStepSnapshot(ManualStepToken token) const
+	{
+		std::lock_guard<std::mutex> lock(state_mutex_);
+		return GetManualStepSnapshotLocked(token);
+	}
+
+	ManualStepSnapshot WaitForManualStepUpdate(ManualStepToken token, int observed_pending_steps) const
+	{
+		std::unique_lock<std::mutex> lock(state_mutex_);
+		state_condition_.wait(lock, [this, token, observed_pending_steps] {
+			const auto snapshot = GetManualStepSnapshotLocked(token);
+			return snapshot.status != ManualStepTerminalStatus::kPending ||
+			       snapshot.pending_steps != observed_pending_steps;
+		});
+		return GetManualStepSnapshotLocked(token);
+	}
+
+	void AcknowledgeManualStep(ManualStepToken token)
+	{
+		std::lock_guard<std::mutex> lock(state_mutex_);
+		terminal_manual_steps_.erase(token);
 	}
 
 private:
-	std::atomic_bool running_            = { false };
-	std::atomic_int pending_steps_       = { 0 };
-	std::atomic_bool shutdown_requested_ = { false };
-	std::atomic_int load_request_        = { 0 };
-	std::atomic_bool reset_requested_    = { false };
-	std::atomic_bool speed_changed_      = { false };
+	friend class SimulationControlStateTestAccess;
+
+	enum class AdmissionTestHookPoint
+	{
+		kBeforeManualStepAdmission,
+	};
+	using AdmissionTestHook = void (*)(void *, int);
+
+	bool CancelPendingStepsLocked()
+	{
+		if (pending_steps_.load() == 0) {
+			return false;
+		}
+		if (active_manual_step_tracked_) {
+			terminal_manual_steps_[active_manual_step_token_] = ManualStepTerminalStatus::kCancelled;
+		}
+		pending_steps_.store(0);
+		active_manual_step_token_   = 0;
+		active_manual_step_tracked_ = false;
+		state_condition_.notify_all();
+		return true;
+	}
+
+	ManualStepSnapshot GetManualStepSnapshotLocked(ManualStepToken token) const
+	{
+		if (token == 0) {
+			return {};
+		}
+		if (token == active_manual_step_token_ && pending_steps_.load() > 0) {
+			return { ManualStepTerminalStatus::kPending, pending_steps_.load() };
+		}
+		const auto terminal = terminal_manual_steps_.find(token);
+		if (terminal != terminal_manual_steps_.end()) {
+			return { terminal->second, 0 };
+		}
+		return {};
+	}
+
+	void InvokeAdmissionTestHook(AdmissionTestHookPoint point)
+	{
+		auto *hook = admission_test_hook_.load();
+		if (hook) {
+			hook(admission_test_hook_context_.load(), static_cast<int>(point));
+		}
+	}
+
+	mutable std::mutex state_mutex_;
+	mutable std::condition_variable state_condition_;
+	static inline std::atomic<AdmissionTestHook> admission_test_hook_ = { nullptr };
+	static inline std::atomic<void *> admission_test_hook_context_    = { nullptr };
+	ManualStepToken next_manual_step_token_                           = 1;
+	ManualStepToken active_manual_step_token_                         = 0;
+	bool active_manual_step_tracked_                                  = false;
+	std::unordered_map<ManualStepToken, ManualStepTerminalStatus> terminal_manual_steps_;
+	std::atomic_bool running_                         = { false };
+	std::atomic_int pending_steps_                    = { 0 };
+	std::atomic_bool shutdown_requested_              = { false };
+	std::atomic_int load_request_                     = { 0 };
+	std::atomic_bool reset_requested_                 = { false };
+	std::atomic_bool speed_changed_                   = { false };
+	std::atomic_int real_time_index_                  = { 9 };
+	std::atomic<ModelLifecyclePhase> model_lifecycle_ = { ModelLifecyclePhase::kNoModel };
 };
 
 } // namespace mujoco_ros

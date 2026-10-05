@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 400" font-family="Arial, Helvetica, sans-serif" role="img" aria-label="A ROS controller command for effort, position, or velocity checks whether a matching MuJoCo actuator exists and ignore_actuators is false. If so, it writes to mjData.ctrl and MuJoCo's actuator model applies the force. Otherwise it falls back to mjData.qfrc_applied: effort commands apply directly, while position and velocity commands require configured gains to convert to an effort, and are a configuration error without them.">
+  <defs>
+    <marker id="am-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0e6b58"></path>
+    </marker>
+    <marker id="am-warn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#a8461f"></path>
+    </marker>
+  </defs>
+
+  <rect x="180" y="10" width="340" height="42" rx="7" fill="#e7ece9" stroke="#b9c4bd"></rect>
+  <text x="350" y="36" text-anchor="middle" font-size="12" font-weight="700" fill="#17211d">ROS controller command (effort / position / velocity)</text>
+  <line x1="350" y1="52" x2="350" y2="76" stroke="#0e6b58" marker-end="url(#am-a)"></line>
+
+  <rect x="130" y="80" width="440" height="56" rx="8" fill="#dcefe8" stroke="#0e6b58" stroke-width="1.2"></rect>
+  <text x="350" y="103" text-anchor="middle" font-size="11.5" font-weight="700" fill="#17211d">&lt;joint&gt;_act_eff/pos/vel actuator exists,</text>
+  <text x="350" y="121" text-anchor="middle" font-size="11.5" font-weight="700" fill="#17211d">and ignore_actuators is false?</text>
+
+  <line x1="260" y1="136" x2="180" y2="172" stroke="#0e6b58" marker-end="url(#am-a)"></line>
+  <text x="200" y="158" font-size="10.5" fill="#084d3f">yes</text>
+  <line x1="440" y1="136" x2="520" y2="172" stroke="#a8461f" marker-end="url(#am-warn)"></line>
+  <text x="490" y="158" font-size="10.5" fill="#a8461f">no</text>
+
+  <rect x="30" y="176" width="300" height="70" rx="8" fill="#dcefe8" stroke="#0e6b58"></rect>
+  <text x="180" y="200" text-anchor="middle" font-size="11.5" font-weight="600" fill="#17211d">mjData.ctrl</text>
+  <text x="180" y="220" text-anchor="middle" font-size="10.5" fill="#52625a">MuJoCo's actuator model applies</text>
+  <text x="180" y="236" text-anchor="middle" font-size="10.5" fill="#52625a">the actual generalized force</text>
+
+  <rect x="370" y="176" width="300" height="70" rx="8" fill="#f4e1d6" stroke="#a8461f"></rect>
+  <text x="520" y="200" text-anchor="middle" font-size="11.5" font-weight="600" fill="#17211d">mjData.qfrc_applied</text>
+  <text x="520" y="220" text-anchor="middle" font-size="10.5" fill="#52625a">generalized-force fallback --</text>
+  <text x="520" y="236" text-anchor="middle" font-size="10.5" fill="#52625a">qpos/qvel are never set directly</text>
+
+  <line x1="460" y1="246" x2="410" y2="278" stroke="#0e6b58" marker-end="url(#am-a)"></line>
+  <line x1="580" y1="246" x2="620" y2="278" stroke="#a8461f" marker-end="url(#am-warn)"></line>
+
+  <rect x="280" y="282" width="200" height="56" rx="8" fill="#dcefe8" stroke="#0e6b58"></rect>
+  <text x="380" y="304" text-anchor="middle" font-size="11" font-weight="600" fill="#17211d">effort</text>
+  <text x="380" y="322" text-anchor="middle" font-size="10.5" fill="#52625a">applied directly</text>
+
+  <rect x="500" y="282" width="180" height="56" rx="8" fill="#f4e1d6" stroke="#a8461f"></rect>
+  <text x="590" y="302" text-anchor="middle" font-size="11" font-weight="600" fill="#17211d">position / velocity</text>
+  <text x="590" y="320" text-anchor="middle" font-size="10" fill="#52625a">needs kp/kv gains, or it's a</text>
+  <text x="590" y="334" text-anchor="middle" font-size="10" fill="#a8461f">configuration error</text>
+</svg>

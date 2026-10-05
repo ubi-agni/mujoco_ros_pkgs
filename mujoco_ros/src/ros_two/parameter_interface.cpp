@@ -195,14 +195,22 @@ void MujocoEnv::FetchRosConfiguration()
 		    { rclcpp::Parameter("headless", true), rclcpp::Parameter("render_offscreen", false) });
 	}
 
-	rclcpp::Parameter render_offscreen_param = this->get_parameter("render_offscreen");
-	rclcpp::Parameter headless_param         = this->get_parameter("headless");
-	rclcpp::Parameter unpause_param          = this->get_parameter("unpause");
-	rclcpp::Parameter num_steps_param        = this->get_parameter("num_steps");
-	rclcpp::Parameter num_mj_threads_param   = this->get_parameter("num_mj_threads");
+	rclcpp::Parameter render_offscreen_param           = this->get_parameter("render_offscreen");
+	rclcpp::Parameter headless_param                   = this->get_parameter("headless");
+	rclcpp::Parameter unpause_param                    = this->get_parameter("unpause");
+	rclcpp::Parameter num_steps_param                  = this->get_parameter("num_steps");
+	rclcpp::Parameter num_mj_threads_param             = this->get_parameter("num_mj_threads");
+	rclcpp::Parameter render_backpressure_policy_param = this->get_parameter("render_backpressure_policy");
+	const auto parsed_render_backpressure_policy =
+	    rendering::RenderBackpressurePolicyFromString(render_backpressure_policy_param.as_string());
+	if (!parsed_render_backpressure_policy.has_value()) {
+		throw std::runtime_error("render_backpressure_policy must be 'drop' or 'wait_for_slot', got '" +
+		                         render_backpressure_policy_param.as_string() + "'");
+	}
 
-	settings_.render_offscreen = render_offscreen_param.as_bool();
-	settings_.headless         = headless_param.as_bool();
+	settings_.render_offscreen           = render_offscreen_param.as_bool();
+	settings_.headless                   = headless_param.as_bool();
+	settings_.render_backpressure_policy = *parsed_render_backpressure_policy;
 	ApplyPauseState(!unpause_param.as_bool(), false);
 	num_steps_until_exit_    = num_steps_param.as_int();
 	settings_.num_mj_threads = num_mj_threads_param.as_int();
@@ -290,14 +298,7 @@ void MujocoEnv::FetchRosConfiguration()
 			// no-op deleter instead of mj_deleteModel/mj_deleteData. load_model_from_description()
 			// allocates via plain mj_loadModel/mj_makeData -- genuinely C++-owned -- so setting it
 			// here would permanently leak this model on every subsequent reload/destruction.
-			// Locking physics_thread_mutex_ here is uncontended (no physics thread exists yet at
-			// this point in the constructor) but kept for consistency with LoadPythonModel's call site.
-			RecursiveLock lock(physics_thread_mutex_);
-			mnew = model;
-			dnew = data;
-			mju::strcpy_arr(filename_, urdf_path.c_str());
-			settings_.is_python_request.store(0);
-			RequestLoad(1);
+			QueueModelAndDataForLoad(model, data, urdf_path, false);
 		} catch (...) {
 			if (owned_world != nullptr)
 				mj_deleteSpec(owned_world);
@@ -334,8 +335,7 @@ void MujocoEnv::FetchRosConfiguration()
 
 	if (!filename.empty()) {
 		RCLCPP_INFO_STREAM(this->get_logger(), "Using modelfile " << filename);
-		mju::strcpy_arr(queued_filename_, filename.c_str());
-		RequestLoad(2);
+		QueueModelFilenameForLoad(filename, 2);
 	} else {
 		RCLCPP_WARN(this->get_logger(), "No modelfile was provided, launching empty simulation!");
 	}

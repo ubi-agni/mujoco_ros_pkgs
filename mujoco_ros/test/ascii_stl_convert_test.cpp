@@ -125,6 +125,24 @@ TEST(AsciiStlConvert, BinaryTriangleCountAndObjConvert)
 	EXPECT_EQ(mujoco_ros::ConvertBinaryStlToCachedObj(stl), obj);
 }
 
+TEST(AsciiStlConvert, CacheSurvivesMtimeChangeWithSameContent)
+{
+	// Git LFS's smudge filter rewrites mtime on every checkout even when
+	// content is byte-identical; the cache key must not churn from that alone.
+	auto dir = fs::temp_directory_path() / "bin_stl_mtime_churn";
+	fs::create_directories(dir);
+	auto stl = dir / "c.stl";
+	WriteBinaryStlWithFaceCount(stl, 3);
+
+	auto obj1 = mujoco_ros::ConvertBinaryStlToCachedObj(stl);
+	ASSERT_TRUE(fs::exists(obj1));
+
+	fs::last_write_time(stl, fs::last_write_time(stl) + std::chrono::hours(1));
+
+	auto obj2 = mujoco_ros::ConvertBinaryStlToCachedObj(stl);
+	EXPECT_EQ(obj2, obj1);
+}
+
 TEST(MeshUriPrep, OversizedBinaryStlConvertsToObjWhenEnabled)
 {
 	auto root = fs::temp_directory_path() / "mesh_uri_oversize_stl";

@@ -40,21 +40,39 @@
 #include <mujoco_ros/logging.hpp>
 #include <mujoco_ros/common_types.hpp>
 #include <mujoco/mujoco.h>
+#include <cmath>
 #include <sstream>
 
 namespace mujoco_ros::util {
 
+static inline std::int64_t simTimeToNanoseconds(mjtNum time)
+{
+	return static_cast<std::int64_t>(std::llround(time * 1e9));
+}
+
 #if MJR_ROS_VERSION == ROS_1
+static inline ros::Time toRosTime(const std::int64_t nanoseconds)
+{
+	ros::Time t;
+	t.fromNSec(static_cast<uint64_t>(nanoseconds));
+	return t;
+}
+
 static inline ros::Time toRosTime(mjtNum &time)
 {
-	ros::Time t = ros::Time(time);
+	ros::Time t;
+	t.fromNSec(static_cast<uint64_t>(simTimeToNanoseconds(time)));
 	return t;
 }
 #else // MJR_ROS_VERSION == ROS_2
+static inline rclcpp::Time toRosTime(const std::int64_t nanoseconds)
+{
+	return rclcpp::Time(nanoseconds);
+}
+
 static inline rclcpp::Time toRosTime(mjtNum &time)
 {
-	rclcpp::Time t = rclcpp::Time(static_cast<uint64_t>(time * 1e9)); // convert to nanoseconds
-	return t;
+	return rclcpp::Time(simTimeToNanoseconds(time));
 }
 #endif
 

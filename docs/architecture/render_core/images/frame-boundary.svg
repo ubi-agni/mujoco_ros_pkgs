@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 190" font-family="Arial, Helvetica, sans-serif" role="img" aria-label="FrameBoundary records, oldest to newest: A, B, C, D. A consumer still holds a lease on A. Eviction skips A because it is leased and reclaims B instead. If every record were leased, Commit fails explicitly with kFrameSlotsExhausted instead of growing the pool.">
+  <text x="20" y="26" font-size="11.5" fill="#52625a">records, oldest &#8594; newest</text>
+
+  <rect x="20" y="40" width="70" height="46" rx="6" fill="#f4e1d6" stroke="#a8461f" stroke-width="1.3"></rect>
+  <text x="55" y="68" text-anchor="middle" font-size="11.5" font-weight="700" fill="#17211d">A</text>
+  <rect x="105" y="40" width="70" height="46" rx="6" fill="#e7ece9" stroke="#b9c4bd"></rect>
+  <text x="140" y="68" text-anchor="middle" font-size="11.5" font-weight="700" fill="#17211d">B</text>
+  <rect x="190" y="40" width="70" height="46" rx="6" fill="#e7ece9" stroke="#b9c4bd"></rect>
+  <text x="225" y="68" text-anchor="middle" font-size="11.5" font-weight="700" fill="#17211d">C</text>
+  <rect x="275" y="40" width="70" height="46" rx="6" fill="#e7ece9" stroke="#b9c4bd"></rect>
+  <text x="310" y="68" text-anchor="middle" font-size="11.5" font-weight="700" fill="#17211d">D</text>
+
+  <text x="55" y="104" text-anchor="middle" font-size="10.5" fill="#a8461f">leased —</text>
+  <text x="55" y="118" text-anchor="middle" font-size="10.5" fill="#a8461f">use_count &gt; 1</text>
+  <text x="55" y="140" text-anchor="middle" font-size="10.5" fill="#a8461f">✗ evictor skips</text>
+
+  <text x="140" y="104" text-anchor="middle" font-size="10.5" fill="#084d3f">free —</text>
+  <text x="140" y="118" text-anchor="middle" font-size="10.5" fill="#084d3f">use_count == 1</text>
+  <text x="140" y="140" text-anchor="middle" font-size="10.5" fill="#084d3f">✓ reclaimed first</text>
+
+  <text x="500" y="60" font-size="11.5" fill="#17211d">If every record looked like A —</text>
+  <text x="500" y="78" font-size="11.5" fill="#17211d">all leased, no free pooled slot —</text>
+  <text x="500" y="96" font-size="11.5" font-weight="700" fill="#a8461f">Commit() fails explicitly</text>
+  <text x="500" y="114" font-size="10.5" fill="#52625a">(kFrameSlotsExhausted)</text>
+  <text x="500" y="130" font-size="10.5" fill="#52625a">instead of growing the pool</text>
+  <text x="500" y="146" font-size="10.5" fill="#52625a">or blocking the render thread.</text>
+</svg>

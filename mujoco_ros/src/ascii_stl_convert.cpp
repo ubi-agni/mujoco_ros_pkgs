@@ -94,14 +94,25 @@ bool IsValidBinaryStl(const std::filesystem::path &path)
 	return ReadBinaryStlTriangleCount(path).has_value();
 }
 
+std::string HashFileContents(const std::filesystem::path &path)
+{
+	std::ifstream in(path, std::ios::binary);
+	std::string bytes(std::filesystem::file_size(path), '\0');
+	in.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+	return std::to_string(std::hash<std::string>{}(bytes));
+}
+
+// Content-addressed, not mtime-addressed: these mesh files are Git LFS
+// tracked, and LFS's smudge filter rewrites mtime on every checkout even
+// when content is byte-identical -- an mtime-keyed cache would silently
+// miss (and reconvert) on every fresh checkout of unchanged assets.
 std::string CacheFileName(const std::filesystem::path &path, const char *ext)
 {
-	const auto abs   = std::filesystem::absolute(path);
-	const auto mtime = std::filesystem::last_write_time(path);
-	const auto size  = std::filesystem::file_size(path);
+	const auto abs  = std::filesystem::absolute(path);
+	const auto size = std::filesystem::file_size(path);
 
 	std::ostringstream key;
-	key << abs.string() << '\0' << mtime.time_since_epoch().count() << '\0' << size;
+	key << abs.string() << '\0' << size << '\0' << HashFileContents(path);
 	const auto digest = std::hash<std::string>{}(key.str());
 
 	std::ostringstream hex;

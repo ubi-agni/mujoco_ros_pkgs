@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 590" font-family="Arial, Helvetica, sans-serif" role="img" aria-label="Mesh filename pipeline: a URDF mesh URI is resolved by kind (file, absolute, package, or file-relative), then GLB visuals are rewritten in memory to STL, then ASCII STL falls back to a collision OBJ or in-process conversion, before the result is supplied to MuJoCo through mjVFS. Each stage fails loudly rather than silently substituting a default.">
+  <defs>
+    <marker id="mp-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0e6b58"></path>
+    </marker>
+  </defs>
+
+  <rect x="210" y="10" width="300" height="42" rx="7" fill="#e7ece9" stroke="#b9c4bd"></rect>
+  <text x="360" y="36" text-anchor="middle" font-size="12" font-weight="700" fill="#17211d">URDF mesh filename URI</text>
+  <line x1="360" y1="52" x2="360" y2="76" stroke="#0e6b58" marker-end="url(#mp-a)"></line>
+
+  <rect x="30" y="80" width="660" height="90" rx="8" fill="#dcefe8" stroke="#0e6b58" stroke-width="1.2"></rect>
+  <text x="360" y="102" text-anchor="middle" font-size="11.5" font-weight="700" fill="#17211d">1. Resolve the URI</text>
+  <text x="360" y="124" text-anchor="middle" font-size="11" fill="#17211d">file:// or absolute path &#8594; used as-is &#183; package://&lt;pkg&gt;/... &#8594; resolved via ROS package share dir</text>
+  <text x="360" y="144" text-anchor="middle" font-size="11" fill="#17211d">relative path &#8594; resolved against the URDF's own directory</text>
+  <text x="360" y="162" text-anchor="middle" font-size="10" fill="#a8461f">relative paths are only legal for file-backed URDFs -- param-sourced URDF strings must use file:// / package://</text>
+
+  <line x1="360" y1="170" x2="360" y2="194" stroke="#0e6b58" marker-end="url(#mp-a)"></line>
+
+  <rect x="30" y="198" width="440" height="94" rx="8" fill="#dcefe8" stroke="#0e6b58" stroke-width="1.2"></rect>
+  <text x="250" y="220" text-anchor="middle" font-size="11.5" font-weight="700" fill="#17211d">2. Visual mesh is .glb?</text>
+  <text x="250" y="242" text-anchor="middle" font-size="11" fill="#17211d">rewritten in an in-memory working copy to a sibling</text>
+  <text x="250" y="260" text-anchor="middle" font-size="11" fill="#17211d">.stl/.STL, or else ../collision/&lt;stem&gt;.stl</text>
+  <text x="250" y="280" text-anchor="middle" font-size="10" fill="#52625a">not .glb &#8594; pass through unchanged &#183; the on-disk URDF is never modified</text>
+
+  <rect x="490" y="198" width="200" height="94" rx="8" fill="#f4e1d6" stroke="#a8461f"></rect>
+  <text x="590" y="222" text-anchor="middle" font-size="11" font-weight="700" fill="#a8461f">fails loudly</text>
+  <text x="590" y="242" text-anchor="middle" font-size="10.5" fill="#17211d">missing replacement or</text>
+  <text x="590" y="258" text-anchor="middle" font-size="10.5" fill="#17211d">unsupported format --</text>
+  <text x="590" y="274" text-anchor="middle" font-size="10.5" fill="#17211d">no silent substitute</text>
+
+  <line x1="470" y1="245" x2="488" y2="245" stroke="#a8461f" stroke-dasharray="2 3"></line>
+  <line x1="250" y1="292" x2="250" y2="316" stroke="#0e6b58" marker-end="url(#mp-a)"></line>
+
+  <rect x="30" y="320" width="440" height="130" rx="8" fill="#dcefe8" stroke="#0e6b58" stroke-width="1.2"></rect>
+  <text x="250" y="342" text-anchor="middle" font-size="11.5" font-weight="700" fill="#17211d">3. STL is ASCII, not binary?</text>
+  <text x="250" y="364" text-anchor="middle" font-size="11" fill="#17211d">look for a collision OBJ fallback next to the mesh:</text>
+  <text x="250" y="382" text-anchor="middle" font-size="11" fill="#17211d">collision/&lt;stem&gt;.obj, then &lt;stem&gt;_convex_hull.obj</text>
+  <text x="250" y="404" text-anchor="middle" font-size="10.5" fill="#17211d">found &#8594; use the OBJ fallback</text>
+  <text x="250" y="422" text-anchor="middle" font-size="10.5" fill="#17211d">not found &amp; convert_ascii_stl=true &#8594; convert in-process,</text>
+  <text x="250" y="438" text-anchor="middle" font-size="10.5" fill="#17211d">cache under /tmp/mujoco_ros_stl_cache/ (source file untouched)</text>
+
+  <rect x="490" y="320" width="200" height="130" rx="8" fill="#f4e1d6" stroke="#a8461f"></rect>
+  <text x="590" y="344" text-anchor="middle" font-size="11" font-weight="700" fill="#a8461f">fails loudly</text>
+  <text x="590" y="366" text-anchor="middle" font-size="10.5" fill="#17211d">no OBJ fallback and</text>
+  <text x="590" y="382" text-anchor="middle" font-size="10.5" fill="#17211d">convert_ascii_stl=false --</text>
+  <text x="590" y="400" text-anchor="middle" font-size="10.5" fill="#17211d">error names</text>
+  <text x="590" y="416" text-anchor="middle" font-size="10.5" fill="#17211d">convert_ascii_stl:=true</text>
+  <text x="590" y="432" text-anchor="middle" font-size="10.5" fill="#17211d">as the fix</text>
+
+  <line x1="470" y1="385" x2="488" y2="385" stroke="#a8461f" stroke-dasharray="2 3"></line>
+  <text x="250" y="470" text-anchor="middle" font-size="10" fill="#52625a">binary STL / OBJ &#8594; pass through unchanged</text>
+
+  <line x1="250" y1="450" x2="250" y2="472" stroke="#0e6b58"></line>
+  <line x1="250" y1="472" x2="360" y2="472" stroke="#0e6b58"></line>
+  <line x1="360" y1="472" x2="360" y2="504" stroke="#0e6b58" marker-end="url(#mp-a)"></line>
+
+  <rect x="210" y="508" width="300" height="46" rx="7" fill="#e7ece9" stroke="#084d3f" stroke-width="1.3"></rect>
+  <text x="360" y="536" text-anchor="middle" font-size="11.5" font-weight="700" fill="#17211d">supplied to MuJoCo via mjVFS</text>
+</svg>

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 470" font-family="Arial, Helvetica, sans-serif" role="img" aria-label="Reload sequence: under the physics mutex, close render turn admission and request cancellation. Release the physics mutex, then wait for the render turn to finish, drain any in-flight turns, and retire camera resources. Reacquire the physics mutex for the model swap, mj_forward, and SnapshotPool activation. Release the physics mutex again for ReconfigureRenderCore, which recomputes capacity and reconfigures RenderCore for the new generation before rebinding cameras and Python consumers.">
+  <rect x="20" y="10" width="660" height="90" rx="8" fill="#dcefe8" stroke="#0e6b58"></rect>
+  <text x="350" y="32" text-anchor="middle" font-size="11.5" font-weight="700" fill="#17211d">physics_thread_mutex_ held</text>
+  <text x="350" y="54" text-anchor="middle" font-size="11.5" fill="#17211d">CloseRenderTurnAdmission() &#183; RenderCore::StopAcceptingSnapshots()</text>
+  <text x="350" y="76" text-anchor="middle" font-size="11.5" fill="#17211d">RenderCore::RequestCancelRenderTurn()</text>
+
+  <line x1="350" y1="100" x2="350" y2="122" stroke="#a8461f" stroke-width="2"></line>
+
+  <rect x="20" y="126" width="660" height="130" rx="8" fill="#f4e1d6" stroke="#a8461f" stroke-dasharray="2 4"></rect>
+  <text x="350" y="148" text-anchor="middle" font-size="11.5" font-weight="700" fill="#a8461f">physics_thread_mutex_ released</text>
+  <text x="350" y="172" text-anchor="middle" font-size="11.5" fill="#17211d">FinishOrCancelRenderTurn() — wait for the render thread to settle</text>
+  <text x="350" y="194" text-anchor="middle" font-size="11.5" fill="#17211d">WaitForInFlightRenderTurns() — drain the unlocked publish tail</text>
+  <text x="350" y="216" text-anchor="middle" font-size="11.5" fill="#17211d">RetireRenderResources() — detach every camera from the old RenderCore</text>
+  <text x="350" y="238" text-anchor="middle" font-size="10.5" fill="#a8461f">fails loudly, not silently, if a camera can't be detached</text>
+
+  <line x1="350" y1="256" x2="350" y2="278" stroke="#0e6b58" stroke-width="2"></line>
+
+  <rect x="20" y="282" width="660" height="70" rx="8" fill="#dcefe8" stroke="#0e6b58"></rect>
+  <text x="350" y="304" text-anchor="middle" font-size="11.5" font-weight="700" fill="#17211d">physics_thread_mutex_ re-acquired</text>
+  <text x="350" y="326" text-anchor="middle" font-size="11.5" fill="#17211d">model/data swap, ModelGeneration++, mj_forward(), SnapshotPool::Activate()</text>
+
+  <line x1="350" y1="352" x2="350" y2="374" stroke="#a8461f" stroke-width="2"></line>
+
+  <rect x="20" y="378" width="660" height="82" rx="8" fill="#f4e1d6" stroke="#a8461f" stroke-dasharray="2 4"></rect>
+  <text x="350" y="400" text-anchor="middle" font-size="11.5" font-weight="700" fill="#a8461f">physics_thread_mutex_ released again</text>
+  <text x="350" y="422" text-anchor="middle" font-size="11.5" fill="#17211d">ReconfigureRenderCore(): recompute capacity, throw if it exceeds budget,</text>
+  <text x="350" y="442" text-anchor="middle" font-size="11.5" fill="#17211d">RenderCore::Reconfigure(next FrameGeneration) &#8594; rebind cameras + Python</text>
+</svg>

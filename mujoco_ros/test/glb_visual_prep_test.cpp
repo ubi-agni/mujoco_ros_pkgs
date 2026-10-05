@@ -86,3 +86,23 @@ TEST(GlbVisualPrep, NoUvWritesUntexturedObj)
 	EXPECT_TRUE(fs::exists(r.obj_path));
 	EXPECT_EQ(r.obj_path.extension(), ".obj");
 }
+
+TEST(GlbVisualPrep, CacheSurvivesMtimeChangeWithSameContent)
+{
+	// Git LFS's smudge filter rewrites mtime on every checkout even when
+	// content is byte-identical; the cache key must not churn from that alone.
+	auto src     = fs::path(TEST_RESOURCES_DIR) / "glb_textured" / "factor_only.glb";
+	auto tmp_dir = fs::temp_directory_path() / "glb_mtime_churn";
+	fs::create_directories(tmp_dir);
+	auto glb = tmp_dir / "factor_only.glb";
+	fs::copy_file(src, glb, fs::copy_options::overwrite_existing);
+
+	auto r1 = mujoco_ros::ExtractGlbVisual(glb);
+	ASSERT_EQ(r1.kind, mujoco_ros::GlbVisualKind::UntexturedObj);
+	ASSERT_TRUE(fs::exists(r1.obj_path));
+
+	fs::last_write_time(glb, fs::last_write_time(glb) + std::chrono::hours(1));
+
+	auto r2 = mujoco_ros::ExtractGlbVisual(glb);
+	EXPECT_EQ(r2.obj_path, r1.obj_path);
+}

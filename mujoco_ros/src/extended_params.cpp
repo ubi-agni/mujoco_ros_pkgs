@@ -187,7 +187,7 @@ void ParseExtendedParamEntries(const tinyxml2::XMLElement *root, const std::stri
 		ExtendedParamsEntry entry;
 		auto joint_params = ParseJointParams(elem, name);
 		if (HasJointParams(joint_params))
-			entry.joint_params = std::move(joint_params);
+			entry.joint_params = joint_params;
 		entry.gravcomp = ParseGravcomp(elem, name);
 		PreserveCustomXml(elem, entry);
 		if (!entries.emplace(name, std::move(entry)).second) {

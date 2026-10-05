@@ -31,6 +31,7 @@ if(ROS_VERSION EQUAL 1)
     assets/empty_world.xml
     assets/equality_world.xml
     assets/camera_world.xml
+    assets/four_camera_world.xml
     assets/pendulum_world.xml
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/assets
   )
@@ -55,6 +56,7 @@ elseif(ROS_VERSION EQUAL 2)
     assets/empty_world.xml
     assets/equality_world.xml
     assets/camera_world.xml
+    assets/four_camera_world.xml
     assets/pendulum_world.xml
     DESTINATION share/${PROJECT_NAME}/assets
   )

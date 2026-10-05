@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 330" font-family="Arial, Helvetica, sans-serif" role="img" aria-label="ROS 1, ROS 2, and Python each translate at the boundary into MujocoEnv, which owns mjModel and mjData directly and orchestrates three focused modules: Runtime Options, Plugin Host, and RenderCore.">
+  <defs>
+    <marker id="ow-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0e6b58"></path>
+    </marker>
+  </defs>
+  <text x="410" y="22" text-anchor="middle" font-size="12" fill="#52625a">translate at the boundary</text>
+  <rect x="40" y="34" width="150" height="38" rx="7" fill="none" stroke="#b9c4bd"></rect>
+  <text x="115" y="57" text-anchor="middle" font-size="11.5" fill="#17211d">ROS 1 adapter</text>
+  <rect x="335" y="34" width="150" height="38" rx="7" fill="none" stroke="#b9c4bd"></rect>
+  <text x="410" y="57" text-anchor="middle" font-size="11.5" fill="#17211d">ROS 2 adapter</text>
+  <rect x="630" y="34" width="150" height="38" rx="7" fill="none" stroke="#b9c4bd"></rect>
+  <text x="705" y="57" text-anchor="middle" font-size="11.5" fill="#17211d">Python bindings</text>
+
+  <line x1="115" y1="72" x2="330" y2="128" stroke="#0e6b58" marker-end="url(#ow-a)"></line>
+  <line x1="410" y1="72" x2="410" y2="128" stroke="#0e6b58" marker-end="url(#ow-a)"></line>
+  <line x1="705" y1="72" x2="490" y2="128" stroke="#0e6b58" marker-end="url(#ow-a)"></line>
+
+  <rect x="235" y="130" width="350" height="54" rx="9" fill="#e7ece9" stroke="#084d3f" stroke-width="1.4"></rect>
+  <text x="410" y="152" text-anchor="middle" font-size="12" font-weight="700" fill="#17211d">MujocoEnv</text>
+  <text x="410" y="170" text-anchor="middle" font-size="10.5" fill="#52625a">owns mjModel, mjData, lifecycle, physics stepping</text>
+
+  <line x1="330" y1="184" x2="150" y2="248" stroke="#0e6b58" marker-end="url(#ow-a)"></line>
+  <line x1="410" y1="184" x2="410" y2="248" stroke="#0e6b58" marker-end="url(#ow-a)"></line>
+  <line x1="490" y1="184" x2="670" y2="248" stroke="#0e6b58" marker-end="url(#ow-a)"></line>
+
+  <rect x="40" y="250" width="220" height="60" rx="8" fill="#dcefe8" stroke="#0e6b58"></rect>
+  <text x="150" y="273" text-anchor="middle" font-size="11.5" font-weight="600" fill="#17211d">Runtime Options</text>
+  <text x="150" y="291" text-anchor="middle" font-size="10.5" fill="#52625a">validation + mjOption mapping</text>
+
+  <rect x="300" y="250" width="220" height="60" rx="8" fill="#dcefe8" stroke="#0e6b58"></rect>
+  <text x="410" y="273" text-anchor="middle" font-size="11.5" font-weight="600" fill="#17211d">Plugin Host</text>
+  <text x="410" y="291" text-anchor="middle" font-size="10.5" fill="#52625a">adapter set + dispatch</text>
+
+  <rect x="560" y="250" width="220" height="60" rx="8" fill="#dcefe8" stroke="#0e6b58"></rect>
+  <text x="670" y="273" text-anchor="middle" font-size="11.5" font-weight="600" fill="#17211d">RenderCore</text>
+  <text x="670" y="291" text-anchor="middle" font-size="10.5" fill="#52625a">frames + backend lifecycle</text>
+</svg>

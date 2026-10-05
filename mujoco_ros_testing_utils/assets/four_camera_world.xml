@@ -1,0 +1,20 @@
+<mujoco model="four_camera_world">
+    <option timestep="0.001" gravity="0 0 -9.81" cone="elliptic" integrator="implicitfast" />
+    <compiler angle="radian" />
+
+    <visual>
+        <global offwidth="64" offheight="64"/>
+        <headlight ambient="0.4 0.4 0.4" diffuse="0.4 0.4 0.4" specular="0.0 0.0 0.0" active="1" />
+    </visual>
+
+    <worldbody>
+        <light pos="0 0 1000" castshadow="false" />
+        <geom name="ground_plane" type="plane" size="5 5 10" rgba="1 1 1 1"/>
+        <geom name="box" type="box" pos="0 0 0.5" size=".2 .2 .2" rgba="0.8 0.2 0.2 1"/>
+
+        <camera name="camera_0" pos="2 0 1" xyaxes="0 1 0 -0.45 0 0.89"/>
+        <camera name="camera_1" pos="0 2 1" xyaxes="-1 0 0 0 -0.45 0.89"/>
+        <camera name="camera_2" pos="-2 0 1" xyaxes="0 -1 0 0.45 0 0.89"/>
+        <camera name="camera_3" pos="0 -2 1" xyaxes="1 0 0 0 0.45 0.89"/>
+    </worldbody>
+</mujoco>

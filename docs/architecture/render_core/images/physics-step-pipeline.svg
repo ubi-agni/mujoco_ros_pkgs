@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 460" font-family="Arial, Helvetica, sans-serif" role="img" aria-label="Per physics step: under the physics mutex, mj_step, per-camera demand evaluation, optional SnapshotPool acquire and plugin geometry capture, then BeginInFlightRenderTurn. Unlock the physics mutex, WaitForFrameCapacity, submit to RenderCore, finish the turn, and publish. Relock only after that unlocked work completes.">
+  <rect x="20" y="10" width="600" height="150" rx="8" fill="#dcefe8" stroke="#0e6b58" stroke-width="1.2"></rect>
+  <text x="320" y="32" text-anchor="middle" font-size="11.5" font-weight="700" fill="#17211d">under physics_thread_mutex_</text>
+  <text x="320" y="56" text-anchor="middle" font-size="11.5" fill="#17211d">mj_step()</text>
+  <text x="320" y="78" text-anchor="middle" font-size="11.5" fill="#17211d">per camera: UpdateDemand() &#8594; EvaluateDemand()</text>
+  <text x="320" y="100" text-anchor="middle" font-size="11.5" fill="#17211d">any plan has consumers? &#8594; SnapshotPool::Acquire() + capture plugin geometry</text>
+  <text x="320" y="122" text-anchor="middle" font-size="11.5" fill="#17211d">BeginInFlightRenderTurn() — independent turnstile</text>
+  <text x="320" y="144" text-anchor="middle" font-size="10.5" fill="#52625a">(no consumers due &#8594; step ends here, nothing rendered)</text>
+
+  <line x1="320" y1="160" x2="320" y2="186" stroke="#a8461f" stroke-width="2"></line>
+  <text x="345" y="178" font-size="10.5" fill="#a8461f">physics_thread_mutex_.unlock()</text>
+
+  <rect x="20" y="190" width="600" height="160" rx="8" fill="#f4e1d6" stroke="#a8461f" stroke-width="1.2" stroke-dasharray="2 4"></rect>
+  <text x="320" y="212" text-anchor="middle" font-size="11.5" font-weight="700" fill="#a8461f">unlocked — render and publish never hold the physics mutex</text>
+  <text x="320" y="236" text-anchor="middle" font-size="11.5" fill="#17211d">WaitForFrameCapacity() — backpressure wait (unlocked)</text>
+  <text x="320" y="258" text-anchor="middle" font-size="11.5" fill="#17211d">RenderCore::SubmitSnapshot()</text>
+  <text x="320" y="280" text-anchor="middle" font-size="11.5" fill="#17211d">FinishOrCancelRenderTurn()</text>
+  <text x="320" y="302" text-anchor="middle" font-size="11.5" fill="#17211d">publish to each camera &#8594; MarkDelivered()</text>
+  <text x="320" y="324" text-anchor="middle" font-size="10.5" fill="#52625a">turn released on scope exit (EndInFlightRenderTurn)</text>
+
+  <line x1="320" y1="350" x2="320" y2="376" stroke="#0e6b58" stroke-width="2"></line>
+  <text x="345" y="368" font-size="10.5" fill="#084d3f">physics_thread_mutex_.lock()</text>
+
+  <rect x="20" y="380" width="600" height="50" rx="8" fill="#dcefe8" stroke="#0e6b58"></rect>
+  <text x="320" y="410" text-anchor="middle" font-size="11.5" font-weight="700" fill="#17211d">next physics step proceeds</text>
+</svg>
