@@ -45,14 +45,19 @@
 #endif
 #include <mujoco_ros/common_types.hpp>
 #include <mujoco_ros/mujoco_env.hpp>
+#include <mujoco_ros/offscreen_camera_config.hpp>
+
+#include <atomic>
+#include <cstdint>
+#include <optional>
 
 using namespace mujoco_ros;
 namespace mujoco_ros {
 class TestPlugin : public MujocoPlugin
 {
 public:
-	TestPlugin()           = default;
-	~TestPlugin() override = default;
+	TestPlugin() = default;
+	~TestPlugin() override;
 	bool Load(const mjModel *m, mjData *d) override;
 	void Reset() override;
 	void ControlCallback(const mjModel *model, mjData *data) override;
@@ -77,5 +82,15 @@ public:
 	std::atomic_int got_lvl2_nested_array  = { false };
 	std::atomic_int got_lvl2_nested_struct = { false };
 	std::atomic_int should_fail            = { false };
+
+	std::optional<OffscreenCameraConfig> offscreen_camera_;
+	std::atomic_bool saw_lease{ false };
+	std::atomic_uint64_t capture_id{ 0 };
+	std::atomic_int64_t simulation_time_ns{ 0 };
+	std::atomic_bool second_take_empty{ false };
+	std::atomic_bool test_cam_geom_group_2_enabled{ true };
+
+	static std::atomic_int load_count;
+	static std::atomic_int destruction_count;
 };
 } // namespace mujoco_ros

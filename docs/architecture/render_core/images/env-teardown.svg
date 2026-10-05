@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 320" font-family="Arial, Helvetica, sans-serif" role="img" aria-label="Env teardown: drain camera and Python consumer aliases, cancel any in-flight render turn, RequestStop the backend and join RenderCore, then quiesce PluginHost before the rest of MujocoEnv member destruction.">
+  <rect x="20" y="10" width="660" height="190" rx="8" fill="#f4e1d6" stroke="#a8461f" stroke-width="1.2"></rect>
+  <text x="350" y="36" text-anchor="middle" font-size="11.5" font-weight="700" fill="#a8461f">QuiesceRenderCoreForTeardown()</text>
+  <text x="350" y="62" text-anchor="middle" font-size="11.5" fill="#17211d">DrainRenderConsumersForTeardown() &#8212; clear cameras,</text>
+  <text x="350" y="82" text-anchor="middle" font-size="11.5" fill="#17211d">drop Python registrations, detach active RenderCore aliases</text>
+  <text x="350" y="108" text-anchor="middle" font-size="11.5" fill="#17211d">RenderCore::RequestCancelRenderTurn()</text>
+  <text x="350" y="134" text-anchor="middle" font-size="11.5" fill="#17211d">RenderCore::Shutdown() &#8212; IRenderBackend::RequestStop(),</text>
+  <text x="350" y="154" text-anchor="middle" font-size="11.5" fill="#17211d">then join the dedicated render thread</text>
+  <text x="350" y="180" text-anchor="middle" font-size="11.5" fill="#17211d">render_core_.reset()</text>
+
+  <line x1="350" y1="200" x2="350" y2="226" stroke="#0e6b58" stroke-width="2"></line>
+
+  <rect x="20" y="230" width="660" height="70" rx="8" fill="#dcefe8" stroke="#0e6b58"></rect>
+  <text x="350" y="258" text-anchor="middle" font-size="11.5" font-weight="700" fill="#17211d">PluginHost::QuiesceAndDestroy() then reset</text>
+  <text x="350" y="280" text-anchor="middle" font-size="10.5" fill="#52625a">remaining MujocoEnv members destroy afterward (model/data, viewers, ...)</text>
+</svg>

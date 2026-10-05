@@ -2,6 +2,7 @@
  * Software License Agreement (BSD 3-Clause License)
  *
  *  Copyright (c) 2022-2026, Bielefeld University
+ *  Copyright (c) 2026, Neura Robotics
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -14,7 +15,7 @@
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *   * Neither the name of Bielefeld University nor the names of its
+ *   * Neither the name of Bielefeld University nor Neura Robotics nor the names of their
  *     contributors may be used to endorse or promote products derived
  *     from this software without specific prior written permission.
  *
@@ -56,9 +57,11 @@ void InitEnvStructs(py::module_ &module)
 	    .def_property_readonly("headless", [](const EnvSettings &settings) { return settings.headless; })
 	    .def_property_readonly("render_offscreen", [](const EnvSettings &settings) { return settings.render_offscreen; })
 	    .def_property_readonly("use_sim_time", [](const EnvSettings &settings) { return settings.use_sim_time; })
-	    .def_property_readonly(
-	        "real_time_index", [](const EnvSettings &settings) { return settings.real_time_index; },
-	        "The index of the real-time factor in the simulation.")
+	    .def_property_readonly("render_backpressure_policy",
+	                           [](const EnvSettings &settings) {
+		                           return rendering::RenderBackpressurePolicyToString(
+		                               settings.render_backpressure_policy);
+	                           })
 	    .def_readwrite(
 	        "busywait", &EnvSettings::busywait,
 	        "If true, the environment is using busy-waiting for running steps with the desired real-time factor.")
@@ -66,17 +69,8 @@ void InitEnvStructs(py::module_ &module)
 	    .def_property_readonly("eval_mode", [](const EnvSettings &settings) { return settings.eval_mode; })
 	    .def_property_readonly("admin_hash",
 	                           [](const EnvSettings &settings) { return std::string(settings.admin_hash); })
-	    .def_property_readonly("run", [](const EnvSettings &settings) { return settings.run.load(); })
-	    .def_property_readonly("exit_request", [](const EnvSettings &settings) { return settings.exit_request.load(); })
 	    .def_property_readonly("visual_init_request",
 	                           [](const EnvSettings &settings) { return settings.visual_init_request.load(); })
-	    .def_property_readonly("load_request", [](const EnvSettings &settings) { return settings.load_request.load(); })
-	    .def_property_readonly("reset_request",
-	                           [](const EnvSettings &settings) { return settings.reset_request.load(); })
-	    .def_property_readonly("speed_changed",
-	                           [](const EnvSettings &settings) { return settings.speed_changed.load(); })
-	    .def_property_readonly("env_steps_request",
-	                           [](const EnvSettings &settings) { return settings.env_steps_request.load(); })
 	    .def_property_readonly("settings_changed",
 	                           [](const EnvSettings &settings) { return settings.settings_changed.load(); })
 	    .def_property_readonly("is_python_request",
@@ -84,9 +78,60 @@ void InitEnvStructs(py::module_ &module)
 	    .def("__repr__", [](const EnvSettings &settings) {
 		    return "<EnvSettings headless=" + BoolString(settings.headless) +
 		           " render_offscreen=" + BoolString(settings.render_offscreen) +
-		           " use_sim_time=" + BoolString(settings.use_sim_time) +
-		           " real_time_index=" + std::to_string(settings.real_time_index) +
-		           " run=" + std::to_string(settings.run.load()) + ">";
+		           " use_sim_time=" + BoolString(settings.use_sim_time) + ">";
+	    });
+
+	py::class_<RuntimeOptionsSnapshot>(module, "RuntimeOptionsSnapshot")
+	    .def_readonly("integrator", &RuntimeOptionsSnapshot::integrator)
+	    .def_readonly("cone", &RuntimeOptionsSnapshot::cone)
+	    .def_readonly("jacobian", &RuntimeOptionsSnapshot::jacobian)
+	    .def_readonly("solver", &RuntimeOptionsSnapshot::solver)
+	    .def_readonly("timestep", &RuntimeOptionsSnapshot::timestep)
+	    .def_readonly("iterations", &RuntimeOptionsSnapshot::iterations)
+	    .def_readonly("tolerance", &RuntimeOptionsSnapshot::tolerance)
+	    .def_readonly("ls_iterations", &RuntimeOptionsSnapshot::ls_iterations)
+	    .def_readonly("ls_tolerance", &RuntimeOptionsSnapshot::ls_tolerance)
+	    .def_readonly("noslip_iterations", &RuntimeOptionsSnapshot::noslip_iterations)
+	    .def_readonly("noslip_tolerance", &RuntimeOptionsSnapshot::noslip_tolerance)
+	    .def_readonly("ccd_iterations", &RuntimeOptionsSnapshot::ccd_iterations)
+	    .def_readonly("ccd_tolerance", &RuntimeOptionsSnapshot::ccd_tolerance)
+	    .def_readonly("sdf_iterations", &RuntimeOptionsSnapshot::sdf_iterations)
+	    .def_readonly("sdf_initpoints", &RuntimeOptionsSnapshot::sdf_initpoints)
+	    .def_readonly("density", &RuntimeOptionsSnapshot::density)
+	    .def_readonly("viscosity", &RuntimeOptionsSnapshot::viscosity)
+	    .def_readonly("impratio", &RuntimeOptionsSnapshot::impratio)
+	    .def_readonly("margin", &RuntimeOptionsSnapshot::margin)
+	    .def_readonly("gravity", &RuntimeOptionsSnapshot::gravity)
+	    .def_readonly("wind", &RuntimeOptionsSnapshot::wind)
+	    .def_readonly("magnetic", &RuntimeOptionsSnapshot::magnetic)
+	    .def_readonly("solimp", &RuntimeOptionsSnapshot::solimp)
+	    .def_readonly("solref", &RuntimeOptionsSnapshot::solref)
+	    .def_readonly("friction", &RuntimeOptionsSnapshot::friction)
+	    .def_readonly("constraint_disabled", &RuntimeOptionsSnapshot::constraint_disabled)
+	    .def_readonly("equality_disabled", &RuntimeOptionsSnapshot::equality_disabled)
+	    .def_readonly("frictionloss_disabled", &RuntimeOptionsSnapshot::frictionloss_disabled)
+	    .def_readonly("limit_disabled", &RuntimeOptionsSnapshot::limit_disabled)
+	    .def_readonly("contact_disabled", &RuntimeOptionsSnapshot::contact_disabled)
+	    .def_readonly("passive_disabled", &RuntimeOptionsSnapshot::passive_disabled)
+	    .def_readonly("gravity_disabled", &RuntimeOptionsSnapshot::gravity_disabled)
+	    .def_readonly("clampctrl_disabled", &RuntimeOptionsSnapshot::clampctrl_disabled)
+	    .def_readonly("warmstart_disabled", &RuntimeOptionsSnapshot::warmstart_disabled)
+	    .def_readonly("filterparent_disabled", &RuntimeOptionsSnapshot::filterparent_disabled)
+	    .def_readonly("actuation_disabled", &RuntimeOptionsSnapshot::actuation_disabled)
+	    .def_readonly("refsafe_disabled", &RuntimeOptionsSnapshot::refsafe_disabled)
+	    .def_readonly("sensor_disabled", &RuntimeOptionsSnapshot::sensor_disabled)
+	    .def_readonly("midphase_disabled", &RuntimeOptionsSnapshot::midphase_disabled)
+	    .def_readonly("eulerdamp_disabled", &RuntimeOptionsSnapshot::eulerdamp_disabled)
+	    .def_readonly("override_contacts", &RuntimeOptionsSnapshot::override_contacts)
+	    .def_readonly("energy", &RuntimeOptionsSnapshot::energy)
+	    .def_readonly("fwd_inv", &RuntimeOptionsSnapshot::fwd_inv)
+	    .def_readonly("inv_discrete", &RuntimeOptionsSnapshot::inv_discrete)
+	    .def_readonly("multiccd", &RuntimeOptionsSnapshot::multiccd)
+	    .def_readonly("island", &RuntimeOptionsSnapshot::island)
+	    .def("__eq__", [](const RuntimeOptionsSnapshot &lhs, const RuntimeOptionsSnapshot &rhs) { return lhs == rhs; })
+	    .def("__repr__", [](const RuntimeOptionsSnapshot &options) {
+		    return "<RuntimeOptionsSnapshot timestep=" + std::to_string(options.timestep) +
+		           " iterations=" + std::to_string(options.iterations) + ">";
 	    });
 
 	py::class_<SimState>(module, "_SimState")

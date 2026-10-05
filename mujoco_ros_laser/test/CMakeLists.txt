@@ -16,9 +16,10 @@ if(ROS_VERSION EQUAL 1)
   target_link_libraries(mujoco_ros_laser_test
     ${PROJECT_NAME}
     ${catkin_LIBRARIES}
+    mujoco::mujoco
   )
 
-  target_include_directories(mujoco_ros_laser_test
+  target_include_directories(mujoco_ros_laser_test SYSTEM
     PRIVATE
       ${catkin_INCLUDE_DIRS}
       ${mujoco_ros_testing_utils_INCLUDE_DIRS}

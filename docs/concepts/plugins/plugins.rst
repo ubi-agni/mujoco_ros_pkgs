@@ -47,7 +47,17 @@ Plugins override only the callbacks they need:
 
 * ``controlCallback`` runs from MuJoCo's control callback.
 * ``passiveCallback`` runs from MuJoCo's passive callback.
-* ``lastStageCallback`` runs at the end of a physics step.
+* ``lastStageCallback`` runs at the end of a physics step, before the offscreen render turn for that step.
+  From ``load``, a plugin calls ``MujocoEnv::OpenOffscreenCamera(name)``, ``SetGeomGroup``, ``SetVisualFlag``, and
+  ``EnableFrames``. While a reload is still in progress those setter calls and ``EnableFrames`` are recorded on the
+  handle and applied once the camera exists. ``GeomGroupEnabled``, ``VisualFlagEnabled``, and ``TakeLatest`` need a live
+  camera and throw ``std::runtime_error`` with message ``camera is unavailable during reload`` if reload is still in
+  progress. While camera retirement is pending, every call on the handle is rejected with the same message. Do not open
+  the handle from ``lastStageCallback`` or other step callbacks; use the load-time bind and queued settings instead.
+  ``lastStageCallback`` calls ``TakeLatest`` to borrow the previous completed frame. The lease field
+  ``simulation_time_ns`` is the simulated time of the rendered state, not wall clock. The handle rebinds by name after
+  reload; a missing name throws. Calling ``TakeLatest`` before ``EnableFrames``, or calling ``EnableFrames`` twice,
+  throws ``std::logic_error``.
 * ``renderCallback`` can add visualization geoms before a GUI or offscreen scene is rendered.
 * ``reset`` lets a plugin clear internal state after a simulation reset.
 

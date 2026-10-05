@@ -196,6 +196,18 @@ void MujocoEnv::FetchRosConfiguration()
 
 	nh_->param("num_steps", num_steps_until_exit_, -1);
 	nh_->param("num_mj_threads", settings_.num_mj_threads, settings_.num_mj_threads);
+	std::string render_backpressure_policy;
+	if (!ros::param::get("/render_backpressure_policy", render_backpressure_policy) &&
+	    !nh_->getParam("render_backpressure_policy", render_backpressure_policy)) {
+		render_backpressure_policy = "drop";
+	}
+	const auto parsed_render_backpressure_policy =
+	    rendering::RenderBackpressurePolicyFromString(render_backpressure_policy);
+	if (!parsed_render_backpressure_policy.has_value()) {
+		throw std::runtime_error("render_backpressure_policy must be 'drop' or 'wait_for_slot', got '" +
+		                         render_backpressure_policy + "'");
+	}
+	settings_.render_backpressure_policy = *parsed_render_backpressure_policy;
 	bool run;
 	nh_->param("unpause", run, true);
 	ApplyPauseState(!run, false);

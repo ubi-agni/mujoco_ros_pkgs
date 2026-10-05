@@ -421,8 +421,9 @@ protected:
 
 TEST_F(TrainEnvFixture, PluginLoaded)
 {
-	ASSERT_EQ(env_ptr->GetPlugins().size(), 1u);
-	EXPECT_NE(dynamic_cast<mujoco_ros::sensors::MujocoRosSensorsPlugin *>(env_ptr->GetPlugins().front().get()), nullptr);
+	ASSERT_EQ(env_ptr->GetPluginStats().size(), 1u);
+	EXPECT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	EXPECT_EQ(env_ptr->GetPluginStats().front().type, "mujoco_ros_sensors/MujocoRosSensorsPlugin");
 }
 
 TEST_F(TrainEnvFixture, SensorCreatedTrain)

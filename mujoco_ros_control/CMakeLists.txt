@@ -71,6 +71,8 @@ if(ROS_VERSION EQUAL 1)
   )
   target_include_directories(${PROJECT_NAME} PUBLIC
     include
+  )
+  target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC
     ${catkin_INCLUDE_DIRS}
   )
   target_link_libraries(${PROJECT_NAME}
@@ -82,6 +84,8 @@ if(ROS_VERSION EQUAL 1)
   )
   target_include_directories(default_mujoco_ros_robot_hw_sim PUBLIC
     include
+  )
+  target_include_directories(default_mujoco_ros_robot_hw_sim SYSTEM PRIVATE
     ${catkin_INCLUDE_DIRS}
   )
   target_link_libraries(default_mujoco_ros_robot_hw_sim

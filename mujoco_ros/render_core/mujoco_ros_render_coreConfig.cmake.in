@@ -1,0 +1,15 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
+find_dependency(mujoco 3.3.5)
+
+if("@_MUJOCO_RESOLVED_OFFSCREEN_BACKEND@" STREQUAL "EGL")
+  find_dependency(OpenGL COMPONENTS OpenGL EGL)
+elseif("@_MUJOCO_RESOLVED_OFFSCREEN_BACKEND@" STREQUAL "OSMESA")
+  find_dependency(OSMesa)
+endif()
+list(POP_BACK CMAKE_MODULE_PATH)
+
+include("${CMAKE_CURRENT_LIST_DIR}/mujoco_ros_render_coreTargets.cmake")
+check_required_components(mujoco_ros_render_core)

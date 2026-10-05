@@ -1,0 +1,15 @@
+{
+  "measurement": "step_limited_camera_image_publish_rate",
+  "backend": "OSMESA",
+  "render_backpressure_policy": "drop",
+  "camera_count": 1,
+  "steps": 1000,
+  "timestep": 0.001,
+  "camera_frequency_hz": 1000,
+  "expected_publish_count": 1000,
+  "real_time_index": 0,
+  "unbound": true,
+  "aggregate_publish_rate_hz": 2241.41012,
+  "per_camera_publish_rate_hz": [2241.41012],
+  "publish_count_delta": 500
+}

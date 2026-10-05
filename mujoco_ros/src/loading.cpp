@@ -2,6 +2,7 @@
  * Software License Agreement (BSD 3-Clause License)
  *
  *  Copyright (c) 2022-2026, Bielefeld University
+ *  Copyright (c) 2026, Neura Robotics
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -14,7 +15,7 @@
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *   * Neither the name of Bielefeld University nor the names of its
+ *   * Neither the name of Bielefeld University nor Neura Robotics nor the names of their
  *     contributors may be used to endorse or promote products derived
  *     from this software without specific prior written permission.
  *
@@ -35,8 +36,9 @@
 /* Authors: David P. Leins */
 
 #include <filesystem>
+#include <limits>
 
-#include <mujoco_ros/ros_version.hpp>
+#include <mujoco_ros/rendering/frame_capacity.hpp>
 #include <mujoco_ros/logging.hpp>
 
 #include <mujoco_ros/array_safety.h>
@@ -44,40 +46,21 @@
 #include <mujoco_ros/offscreen_camera.hpp>
 #include <mujoco_ros/viewer.hpp>
 
-#if MJR_ROS_VERSION == ROS_1
-#include <mujoco_ros/ros_one/plugin_utils.hpp>
-#else // MJR_ROS_VERSION == ROS_2
-#include <mujoco_ros/ros_two/plugin_utils.hpp>
-#endif
-
 namespace fs = std::filesystem;
 
 namespace mujoco_ros {
 namespace mju = ::mujoco::sample_util;
 
-void MujocoEnv::LoadPlugins()
+void MujocoEnv::LoadPlugins(PluginGeneration generation)
 {
 	MJR_DEBUG("Loading MujocoRosPlugins ...");
-	cb_ready_plugins_.clear();
-	cb_ready_plugins_.shrink_to_fit();
-
-#if MJR_ROS_VERSION == ROS_1
-	XmlRpc::XmlRpcValue plugin_config;
-	if (plugin_utils::ParsePlugins(nh_.get(), plugin_config)) {
-		plugin_utils::RegisterPlugins(nh_->getNamespace(), plugin_config, plugins_, this);
+	const auto report  = plugin_host_->LoadGeneration(model_.get(), data_.get(), model_generation_, generation);
+	plugin_generation_ = report.generation;
+	for (const auto &stat : report.statistics) {
+		MJR_DEBUG_STREAM("Loading plugin " << stat.type << " took " << stat.load_time << " seconds");
 	}
-#else // MJR_ROS_VERSION == ROS_2
-	std::vector<std::string> plugin_names;
-	if (plugin_utils::ParsePlugins(this, plugin_names)) {
-		plugin_utils::RegisterPlugins(plugin_names, plugins_, this);
-	}
-#endif
-
-	for (const auto &plugin : plugins_) {
-		if (plugin->SafeLoad(model_.get(), data_.get())) {
-			cb_ready_plugins_.emplace_back(plugin.get());
-		}
-		MJR_DEBUG_STREAM("Loading plugin " << plugin->get_type() << " took " << plugin->get_load_time() << " seconds");
+	for (const auto &failure : report.failures) {
+		MJR_ERROR_STREAM("Plugin '" << failure.name << "' of type '" << failure.type << "' failed: " << failure.error);
 	}
 	MJR_DEBUG("Done loading MujocoRosPlugins");
 }
@@ -91,13 +74,14 @@ void MujocoEnv::CompleteEnvSetup()
 	ctrlnoise_ = static_cast<mjtNum *>(mju_malloc(sizeof(mjtNum) * static_cast<size_t>(model_->nu)));
 	mju_zero(ctrlnoise_, model_->nu);
 
-	LoadPlugins();
+	LoadPlugins(PluginGeneration(plugin_generation_.value() + 1));
 	ros_api_->UpdateDynamicParams();
 	MJR_DEBUG("Env setup complete");
 }
 
 void MujocoEnv::PrepareReload()
 {
+	is_rendering_running_.store(0);
 	MJR_DEBUG("\tResetting collision cbs to default");
 	for (const auto func : defaultCollisionFunctions) {
 		mjCOLLISIONFUNC[func.geom_type1_][func.geom_type2_] = func.collision_cb_;
@@ -105,16 +89,147 @@ void MujocoEnv::PrepareReload()
 	defaultCollisionFunctions.clear();
 	custom_collisions_.clear();
 
-	offscreen_.rgb.reset();
-	offscreen_.depth.reset();
-	cb_ready_plugins_.clear();
-	plugins_.clear();
-	offscreen_.cams.clear();
+	// This phase runs under physics_thread_mutex_. PluginHost quiesces before
+	// RenderCore teardown, matching the physics -> PluginHost -> RenderCore order.
+	plugin_host_->QuiesceAndDestroy();
+	if (render_core_) {
+		render_core_->StopAcceptingSnapshots();
+		render_core_->RequestCancelRenderTurn();
+	}
+}
+
+void MujocoEnv::ReconfigureRenderCore()
+{
+	if (!settings_.render_offscreen || !model_ || model_->ncam == 0) {
+		is_rendering_running_.store(0);
+		return;
+	}
+	if (!render_core_) {
+		throw std::logic_error("RenderCore backend was not created on the configuration thread");
+	}
+
+	auto cameras = InitializeRenderResources();
+	std::vector<rendering::CameraDescriptor> descriptors;
+	descriptors.reserve(cameras.size());
+	int max_width                   = 1;
+	int max_height                  = 1;
+	std::size_t largest_plane_bytes = 1;
+	for (const auto &camera : cameras) {
+		const auto descriptor = camera->descriptor();
+		descriptors.push_back(descriptor);
+		max_width  = std::max(max_width, descriptor.width);
+		max_height = std::max(max_height, descriptor.height);
+		for (const auto plane :
+		     { rendering::PlaneKind::kRgb, rendering::PlaneKind::kDepth, rendering::PlaneKind::kSegmentation }) {
+			if (rendering::HasPlane(descriptor.planes, plane)) {
+				largest_plane_bytes = std::max(largest_plane_bytes, descriptor.layout(plane).byte_length);
+			}
+		}
+	}
+	if (largest_plane_bytes > std::numeric_limits<std::size_t>::max() / 3U) {
+		throw std::runtime_error("configured render planes exceed frame boundary capacity range");
+	}
+	std::vector<rendering::CameraHistoryDepth> histories;
+	for (const auto &[registration_id, registration] : camera_publication_transport_.python_consumers) {
+		(void)registration_id;
+		for (const auto &camera : cameras) {
+			if (camera->cam_id_ != registration.camera_id) {
+				continue;
+			}
+			histories.push_back({ camera->descriptor().id, registration.history_depth });
+			break;
+		}
+	}
+	const std::size_t required_slots = [&]() {
+		try {
+			return rendering::ComputeFrameSlotCapacity(descriptors, histories);
+		} catch (const rendering::FrameCapacityOverflow &error) {
+			throw std::runtime_error(std::string("configured frame slot capacity overflow: ") + error.what());
+		}
+	}();
+	const std::size_t required_bytes = [&]() {
+		try {
+			return rendering::ComputeFrameByteCapacity(descriptors, histories);
+		} catch (const rendering::FrameCapacityOverflow &error) {
+			throw std::runtime_error(std::string("configured frame byte capacity overflow: ") + error.what());
+		}
+	}();
+	const auto max_slots = render_core_->frames().max_slots();
+	const auto max_bytes = render_core_->frames().max_bytes();
+	if (required_slots > max_slots) {
+		throw std::runtime_error("configured frame slot capacity " + std::to_string(required_slots) +
+		                         " exceeds RenderCore frame boundary budget " + std::to_string(max_slots));
+	}
+	if (required_bytes > max_bytes) {
+		throw std::runtime_error("configured frame byte capacity " + std::to_string(required_bytes) +
+		                         " exceeds RenderCore frame boundary byte budget " + std::to_string(max_bytes));
+	}
+	const auto warm_slot_count =
+	    rendering::ComputeWarmSlotCount(max_slots, max_bytes, largest_plane_bytes, required_slots);
+	if (warm_slot_count < required_slots) {
+		throw std::runtime_error("configured frame storage requires " + std::to_string(required_slots) +
+		                         " warmed slots but byte budget allows " + std::to_string(warm_slot_count));
+	}
+	// Stage the owned model before changing RenderCore or exposing any camera state.
+	auto next_render_model_copy = rendering::CopyModel(*model_);
+	const auto status = render_core_->Reconfigure(model_generation_, FrameGeneration(frame_generation_.value() + 1),
+	                                              rendering::FrameLayout(max_width, max_height, largest_plane_bytes),
+	                                              descriptors, warm_slot_count);
+	if (!status.ok()) {
+		is_rendering_running_.store(0);
+		render_core_->StopAcceptingSnapshots();
+		throw std::runtime_error("RenderCore reconfiguration failed: " + status.message);
+	}
+	if (IsShutdownRequested()) {
+		render_core_->StopAcceptingSnapshots();
+		is_rendering_running_.store(0);
+		return;
+	}
+	// Publish the owned model snapshot before making the new camera generation visible.
+	render_model_copy_ = std::move(next_render_model_copy);
+	camera_publication_transport_.RecordRenderStatus(rendering::FrameStatus::Ok());
+	{
+		std::lock_guard<std::mutex> lock(camera_publication_transport_.lifecycle_mutex);
+		is_rendering_running_.store(1);
+		for (const auto &camera : cameras) {
+			camera->SetActiveRenderCore(render_core_);
+			camera->RegisterConsumer(*render_core_);
+		}
+		frame_generation_                  = render_core_->frames().generation();
+		camera_publication_transport_.cams = cameras;
+		camera_publication_transport_.RebindPythonConsumersLocked();
+	}
 }
 
 void MujocoEnv::LoadWithModelAndData()
 {
 	{
+		RecursiveLock physics_lock(physics_thread_mutex_);
+		reload_in_progress_.store(true, std::memory_order_release);
+		CloseRenderTurnAdmission();
+		PrepareReload();
+		OnReloadPhase(ReloadPhase::kRenderQuiescenceStarted);
+		auto render_core = render_core_;
+		physics_lock.unlock();
+		if (render_core) {
+			const auto render_status = render_core->FinishOrCancelRenderTurn();
+			if (!render_status.ok()) {
+				MJR_WARN_STREAM("RenderCore was unavailable while quiescing for model reload: " << render_status.message);
+			}
+		}
+		// RenderCore completion does not include the caller-side publication and
+		// consumer-delivery tail of SubmitRenderSnapshot(). Drain that accepted
+		// render turn before replacing cameras, model, or frame generations.
+		WaitForInFlightRenderTurns();
+		OnReloadPhase(ReloadPhase::kRenderTurnsIdle);
+		std::string retirement_errors;
+		if (!RetireRenderResources(&retirement_errors)) {
+			throw std::runtime_error("camera retirement failed before model replacement: " + retirement_errors);
+		}
+		physics_lock.lock();
+		render_model_copy_.reset();
+		OnReloadPhase(ReloadPhase::kOldGenerationQuiesced);
+
 		std::shared_ptr<mjModel> mold;
 		std::shared_ptr<mjData> dold;
 		if (settings_.is_python_request.load()) {
@@ -125,43 +240,67 @@ void MujocoEnv::LoadWithModelAndData()
 			mold = std::shared_ptr<mjModel>(mnew, mj_deleteModel);
 			dold = std::shared_ptr<mjData>(dnew, mj_deleteData);
 		}
+		// The shared owners now own the queued pointers; failure cleanup must not delete them again.
+		mnew = nullptr;
+		dnew = nullptr;
 
 		// Swap the new model and data with the old ones
 		std::atomic_store(&model_, mold);
 		std::atomic_store(&data_, dold);
+		model_generation_ = ModelGeneration(model_generation_.value() + 1);
+		OnReloadPhase(ReloadPhase::kModelSwapped);
+
+		// perform a forward pass to initialize all fields if not done yet (very important for offscreen rendering)
+		mj_forward(model_.get(), data_.get());
+		if (settings_.render_offscreen && model_->ncam > 0) {
+			snapshot_pool_.Activate(*model_, model_generation_);
+		} else {
+			snapshot_pool_.Deactivate();
+		}
+		OnReloadPhase(ReloadPhase::kForwarded);
+
+		if (has_pending_runtime_options_) {
+			const auto pending_patch     = pending_runtime_options_;
+			has_pending_runtime_options_ = false;
+			pending_runtime_options_     = {};
+			const auto candidate         = MergeRuntimeOptions(ReadRuntimeOptions(model_->opt), pending_patch);
+			const auto valid             = ValidateRuntimeOptions(candidate);
+			if (valid.ok()) {
+				mjOption candidate_option = model_->opt;
+				WriteRuntimeOptions(candidate, candidate_option);
+				model_->opt    = candidate_option;
+				options_epoch_ = OptionsEpoch(options_epoch_.value() + 1);
+			} else {
+				const std::string message =
+				    "Runtime Options startup update rejected: " + valid.error->field + ": " + valid.error->message;
+				mju::strcpy_arr(load_error_, message.c_str());
+			}
+		}
+
+		if (model_->opt.integrator == mjINT_EULER) {
+			MJR_WARN(
+			    "Euler integrator detected. Euler is default for legacy reasons, consider using implicitfast, which is"
+			    "recommended for most applications.");
+		}
+
+		if (threadpool_ != nullptr) {
+			mju_bindThreadPool(data_.get(), threadpool_);
+		}
+
+		CompleteEnvSetup();
 	}
 
-	// perform a forward pass to initialize all fields if not done yet (very important for offscreen rendering)
-	mj_forward(model_.get(), data_.get());
-
-	if (model_->opt.integrator == mjINT_EULER) {
-		MJR_WARN("Euler integrator detected. Euler is default for legacy reasons, consider using implicitfast, which is"
-		         "recommended for most applications.");
-	}
-
-	if (threadpool_ != nullptr) {
-		mju_bindThreadPool(data_.get(), threadpool_);
-	}
-
-	PrepareReload();
-	CompleteEnvSetup();
-
-	MJR_DEBUG("Delegating model loading to viewers");
-	for (const auto viewer : connected_viewers_) {
-		viewer->Load(model_, data_, filename_);
-	}
-
-	if (settings_.render_offscreen) {
-		MJR_DEBUG("Issuing (re)initialization of offscreen rendering resources");
-		settings_.visual_init_request.store(1);
-		while (settings_.visual_init_request.load() != 0) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(10));
-			offscreen_.cond_render_request.notify_one();
+	// RenderCore may wait for an in-flight render. Keep that wait outside all
+	// environment and physics locks. PluginHost setup above remains ordered first.
+	OnReloadPhase(ReloadPhase::kRenderReconfigureStarted);
+	ReconfigureRenderCore();
+	{
+		RecursiveLock physics_lock(physics_thread_mutex_);
+		MJR_DEBUG("Delegating model loading to viewers");
+		for (const auto viewer : connected_viewers_) {
+			viewer->Load(model_, data_, filename_);
 		}
 	}
-
-	load_error_[0]         = '\0';
-	sim_state_.model_valid = true;
 }
 
 bool MujocoEnv::InitModelFromQueue()
@@ -242,7 +381,9 @@ bool MujocoEnv::InitModelFromQueue()
 		// 'clear' new filename
 		queued_filename_[0] = '\0';
 
-		sim_state_.model_valid = false;
+		sim_state_.model_valid       = false;
+		has_pending_runtime_options_ = false;
+		pending_runtime_options_     = {};
 		return false;
 	}
 
@@ -287,19 +428,21 @@ bool MujocoEnv::InitModelFromQueue()
 #endif
 
 	if (desired == -1.f) {
-		settings_.real_time_index = 0;
+		SetRealTimeIndex(0);
 	} else if (desired <= 0.f or desired > 1.f) {
 		MJR_WARN("Desired realtime should be in range (0, 1]. Falling back to default (1)");
-		settings_.real_time_index = 1;
+		SetRealTimeIndex(1);
 	} else {
-		desired = mju_log(100 * desired);
+		int real_time_index = 1;
+		desired             = mju_log(100 * desired);
 		for (int click = 0; click < num_clicks; click++) {
 			float error = mju_abs(mju_log(percentRealTime[click]) - desired);
 			if (error < min_error) {
-				min_error                 = error;
-				settings_.real_time_index = click;
+				min_error       = error;
+				real_time_index = click;
 			}
 		}
+		SetRealTimeIndex(real_time_index);
 	}
 
 	return true;

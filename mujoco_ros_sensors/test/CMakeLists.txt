@@ -20,7 +20,7 @@ if(ROS_VERSION EQUAL 1)
     Eigen3::Eigen
   )
 
-  target_include_directories(mujoco_sensors_test
+  target_include_directories(mujoco_sensors_test SYSTEM
     PRIVATE
       ${catkin_INCLUDE_DIRS}
       ${mujoco_ros_testing_utils_INCLUDE_DIRS}

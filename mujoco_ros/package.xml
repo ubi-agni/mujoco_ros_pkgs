@@ -47,6 +47,9 @@
   <depend>tinyxml2</depend>
   <test_depend>mujoco_ros_testing_utils</test_depend>
   <test_depend condition="$ROS_VERSION == 1">rostest</test_depend>
+  <test_depend condition="$ROS_VERSION == 1">rosconsole</test_depend>
+  <test_depend condition="$ROS_VERSION == 2">ament_cmake_gtest</test_depend>
+  <test_depend condition="$ROS_VERSION == 2">launch_testing_ament_cmake</test_depend>
 
   <export>
     <mujoco_ros plugin="${prefix}/test/test_plugin/test_plugin.xml" />

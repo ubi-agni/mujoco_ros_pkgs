@@ -4,5 +4,6 @@
 #define OSMESA_BACKEND 1
 #define NO_BACKEND 0
 
-#define RENDER_BACKEND ${RENDER_BACKEND}_BACKEND
+#define RENDER_BACKEND ${_render_backend_header_value}_BACKEND
+#define OFFSCREEN_RENDER_BACKEND ${_offscreen_render_backend_header_value}_BACKEND
 #endif

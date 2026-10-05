@@ -16,6 +16,15 @@ and actions used to control a simulation.
 ROS 1 exposes runtime tuning through dynamic reconfigure. ROS 2 exposes the
 same runtime option names as regular node parameters.
 
+Runtime Options use one transaction boundary shared by ROS and Python. Field
+names match `RuntimeOptionsSnapshot` (integrator, solver, timestep,
+iterations, gravity, solimp, disable/enable flags, and related arrays). A
+rejected patch leaves every effective field unchanged and does not advance the
+Options Epoch. During the Loading Window, reads and writes reject with
+`Runtime Options unavailable during Loading Window`. Python exposes
+`env.runtime_options` and `env.apply_runtime_options(dict)`; validation failures
+raise `ValueError` with `field + ": " + message`.
+
 `MujocoEnv` provides `AddNodeToExecutor()` and `RemoveNodeFromExecutor()` for
 ROS 2 plugins that create additional lifecycle nodes. Top-level plugins are
 registered automatically.
@@ -25,8 +34,18 @@ registered automatically.
 The Python bindings expose a hybrid wrapper around `MujocoEnv` through the
 `mujoco_ros.MujocoEnv` Python class and the native `pymujoco_ros` module. They
 support C++-owned and Python-owned models, runtime settings, service
-cross-checks, plugin objects, and offscreen camera buffer helpers. For details,
-see [python/README.md](python/README.md) and the Sphinx Python binding docs.
+cross-checks, plugin objects, and direct offscreen camera frame access. Python
+borrowed views are read-only and lease-backed. Copying APIs return stable
+buffers. Python demand is independent from ROS demand, while both consumers
+share one `RenderCore` capture. Reload advances the frame generation and
+rebinds existing Python managers and refreshes wrapper layout/name metadata;
+held leases remain readable. `OffcamManager` supports `close()` and the
+context-manager protocol. Per-camera `cam.buffer` remains a compatibility
+object and is also callable for aggregate copied snapshots; missing aggregate
+planes are `None`, while explicit missing-plane access raises. Plugin handles
+retained across reload raise `RuntimeError("plugin handle belongs to an inactive
+Plugin Generation")`. For details, see
+[python/README.md](python/README.md) and the Sphinx Python binding docs.
 
 ## Plugins
 
@@ -34,6 +53,11 @@ Plugins provide a way to include new simulation functionality in `mujoco_ros`.
 After an `mjData` instance is created and stored in a `MujocoEnv`, each
 configured plugin is instantiated and initialized with its configuration. The
 plugin `Load()` method then receives the current `mjModel` and `mjData`.
+
+Each loaded plugin belongs to one **Plugin Generation** — the complete adapter
+set for one Simulation Model and runtime data pair. Reload replaces the
+generation; callbacks and handles do not cross the boundary. Python plugin
+objects reacquire the host on every access and reject stale handles explicitly.
 
 Plugins may implement control, passive, render, reset, and last-stage
 callbacks. A plugin should not override MuJoCo's global callback functions
@@ -81,5 +105,35 @@ cam_config:
     use_segid: false
 ```
 
-As long as image transport topics have no subscribers, offscreen camera images
-are not rendered.
+Offscreen rendering is demand-driven. ROS subscriber demand and Python camera
+demand are tracked independently. A capture selected by both paths is produced
+once by `RenderCore` and is then consumed by both ROS and Python.
+
+## Offscreen RenderCore
+
+Offscreen graphics execution lives in the standalone `mujoco_ros_render_core`
+library. It links only `mujoco::mujoco` and the selected offscreen graphics
+target (EGL, OSMesa, or none). Visible GLFW remains outside this target. Select
+visible GLFW GUI with `WITH_GUI=ON` or `WITH_GUI=OFF`, and select the offscreen
+backend with `OFFSCREEN_BACKEND` (`ANY`, `EGL`, `OSMESA`, or `DISABLE`). GLFW
+is not a supported offscreen backend.
+
+The Frame Boundary inside RenderCore owns bounded frame-slot and byte budgets.
+When configured camera history or byte demand exceeds those budgets, model setup
+fails loudly with an explicit error rather than silently truncating history or
+returning empty frames.
+
+At runtime, slot or generation-capacity exhaustion is reported through explicit
+non-terminal `FrameStatusCode` values such as `kFrameSlotsExhausted` and
+`kGenerationCapacityExhausted`, not collapsed into `kTerminalError`. Backend
+initialization failures, disabled-backend captures, and other context-integrity
+loss (`kTerminalError`, `kBackendFailure`, `kBackendUnavailable`) are terminal:
+consumers observe explicit frame status instead of blank images.
+
+`render_backpressure_policy` defaults to `drop`, preserving non-blocking
+physics submission. Set it to `wait_for_slot` in ROS 1 dynamic reconfigure,
+ROS 2 parameters, or Python when frame frequency matters; this intentionally
+waits on the physics side, outside `physics_thread_mutex_`, until a leased
+frame slot is released. Cancellation, reload, shutdown, and switching back to
+`drop` interrupt the wait. Other values are rejected without changing the
+effective policy.

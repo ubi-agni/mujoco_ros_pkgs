@@ -57,6 +57,7 @@ struct Glfw
 	mjGLFW_DECLARE_SYMBOL(glfwSetScrollCallback);
 	mjGLFW_DECLARE_SYMBOL(glfwSetWindowMonitor);
 	mjGLFW_DECLARE_SYMBOL(glfwSetWindowRefreshCallback);
+	mjGLFW_DECLARE_SYMBOL(glfwSetWindowSize);
 	mjGLFW_DECLARE_SYMBOL(glfwSetWindowSizeCallback);
 	mjGLFW_DECLARE_SYMBOL(glfwSetWindowTitle);
 	mjGLFW_DECLARE_SYMBOL(glfwShowWindow);

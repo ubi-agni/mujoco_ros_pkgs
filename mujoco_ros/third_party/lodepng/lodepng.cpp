@@ -32,7 +32,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 This file was changed from the original to comply with this project's formatting and clang-tidy configuration
 */
 
-#include <mujoco_ros/lodepng.h>
+#include <lodepng.h>
 
 #ifdef LODEPNG_COMPILE_DISK
 #include <limits.h> /* LONG_MAX */

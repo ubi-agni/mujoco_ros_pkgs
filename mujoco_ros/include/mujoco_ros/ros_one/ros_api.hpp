@@ -121,7 +121,6 @@ private:
 
 	boost::recursive_mutex sim_params_mutex_;
 	std::unique_ptr<dynamic_reconfigure::Server<mujoco_ros::SimParamsConfig>> param_server_;
-	mujoco_ros::SimParamsConfig sim_params_;
 	void DynparamCallback(mujoco_ros::SimParamsConfig &config, uint32_t level);
 
 	std::vector<ros::ServiceServer> service_servers_;
