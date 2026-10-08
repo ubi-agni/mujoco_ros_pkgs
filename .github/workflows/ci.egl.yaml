@@ -23,7 +23,8 @@ env:
 
 jobs:
   decide:
-    name: "Decide: run EGL matrix?"
+    # Static name: skipped matrix jobs leave ${{ matrix.* }} literal in the check name.
+    name: EGL opt-in gate
     runs-on: ubuntu-24.04
     outputs:
       run_egl: ${{ steps.gate.outputs.run_egl }}
@@ -44,33 +45,27 @@ jobs:
           echo "run_egl=${run_egl}" >> "${GITHUB_OUTPUT}"
           echo "EGL gate: run_egl=${run_egl}"
 
-  egl:
+  # Two jobs (not one matrix name with ${{ matrix.* }}): a job-level `if: false` skip
+  # never expands matrix expressions, so dynamic names render as raw ${{ ... }} in the UI.
+  egl_glfw:
     needs: decide
     if: needs.decide.outputs.run_egl == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - distro: humble
-            gui_backend: GLFW
-            offscreen_backend: EGL
-            mujoco: "3.3.5"
-          - distro: humble
-            gui_backend: DISABLE
-            offscreen_backend: EGL
-            mujoco: "3.3.5"
-
+    name: humble GLFW + EGL + ccov
+    runs-on: [self-hosted, egl]
+    continue-on-error: true
+    timeout-minutes: 90
     env:
       BUILDER: colcon
-      MUJOCO_DIR: /vol/mujoco/mujoco-${{ matrix.mujoco }}
-      DOCKER_IMAGE: ubiagni/mujoco_ros:${{ matrix.distro }}-ci
+      MUJOCO_DIR: /vol/mujoco/mujoco-3.3.5
+      DOCKER_IMAGE: ubiagni/mujoco_ros:humble-ci
       CXXFLAGS: -Wwrite-strings -Wunreachable-code -Wpointer-arith
-      # DISPLAY / ROS_DOMAIN_ID from DOCKER_RUN_OPTS (AFTER_INIT export dies in subshell).
       AFTER_INIT: >
         apt-get update -q;
-        apt-get install -qy python3-pip${{ matrix.gui_backend == 'GLFW' && ' xvfb' || '' }};
-        python3 -m pip install mujoco==${{ matrix.mujoco }};
-        ${{ matrix.gui_backend == 'GLFW' && 'test -n "$DISPLAY" || { echo "DISPLAY unset in container" >&2; exit 1; }; Xvfb "$DISPLAY" & n=0; sock="/tmp/.X11-unix/X${DISPLAY#:}"; until [ -S "$sock" ]; do n=$((n+1)); if [ "$n" -gt 100 ]; then echo "Xvfb $DISPLAY failed to start" >&2; exit 1; fi; sleep 0.1; done' || '' }}
+        apt-get install -qy python3-pip xvfb;
+        python3 -m pip install mujoco==3.3.5;
+        test -n "$DISPLAY" || { echo "DISPLAY unset in container" >&2; exit 1; };
+        Xvfb "$DISPLAY" & n=0; sock="/tmp/.X11-unix/X${DISPLAY#:}";
+        until [ -S "$sock" ]; do n=$((n+1)); if [ "$n" -gt 100 ]; then echo "Xvfb $DISPLAY failed to start" >&2; exit 1; fi; sleep 0.1; done
       AFTER_SETUP_DOWNSTREAM_WORKSPACE: vcs pull $BASEDIR/downstream_ws/src
       AFTER_SETUP_CCACHE: ccache --zero-stats --max-size=10.0G
       AFTER_BUILD_TARGET_WORKSPACE: ccache --show-stats
@@ -79,25 +74,19 @@ jobs:
         -DCMAKE_BUILD_TYPE=Debug
         -DCMAKE_CXX_FLAGS="-Werror $CXXFLAGS --coverage -O2 -fno-omit-frame-pointer"
         -DBUILD_TESTING=ON
-        -DWITH_GUI=${{ matrix.gui_backend == 'GLFW' && 'ON' || 'OFF' }}
-        -DOFFSCREEN_BACKEND=${{ matrix.offscreen_backend }}
+        -DWITH_GUI=ON
+        -DOFFSCREEN_BACKEND=EGL
       CCOV: true
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       BASEDIR: ${{ github.workspace }}/.work
-
-    name: "${{ matrix.distro }} mj-${{ matrix.mujoco }} ${{ matrix.gui_backend }} + ${{ matrix.offscreen_backend }} + ccov (EGL optional)"
-    runs-on: [self-hosted, egl]
-    continue-on-error: true
-    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
-      # EGL matrix uses :110+ / domain 100+ so it does not collide with ci.ros2.yaml :99+.
+      # :110 / domain 100 — stay clear of ci.ros2.yaml :99+.
       - name: Per-job DISPLAY and ROS_DOMAIN_ID
         shell: bash
         run: |
-          idx="${{ strategy.job-index }}"
-          echo "ICI_DISPLAY=:$((110 + idx))" >> "$GITHUB_ENV"
-          echo "ICI_ROS_DOMAIN_ID=$((100 + idx))" >> "$GITHUB_ENV"
+          echo "ICI_DISPLAY=:110" >> "$GITHUB_ENV"
+          echo "ICI_ROS_DOMAIN_ID=100" >> "$GITHUB_ENV"
       - name: Cache ccache
         uses: rhaschke/cache@main
         with:
@@ -108,20 +97,20 @@ jobs:
             ${{ env.CACHE_PREFIX }}
         env:
           GHA_CACHE_SAVE: always
-          CACHE_PREFIX: ccache-egl-ccov-${{ matrix.distro }}
+          CACHE_PREFIX: ccache-egl-ccov-humble-glfw
       - id: ici
         name: Run industrial_ci
         uses: ros-industrial/industrial_ci@master
         env:
           DOCKER_RUN_OPTS: >-
-            -e MUJOCO_DIR=/root/mujoco/${{ matrix.mujoco }}
+            -e MUJOCO_DIR=/root/mujoco/3.3.5
             -e DISPLAY=${{ env.ICI_DISPLAY }}
             -e ROS_DOMAIN_ID=${{ env.ICI_ROS_DOMAIN_ID }}
       - name: Upload test artifacts (on failure)
         uses: actions/upload-artifact@v4
         if: failure() && (steps.ici.outputs.run_target_test || steps.ici.outputs.target_test_results)
         with:
-          name: test-results-egl-${{ matrix.distro }}-${{ matrix.gui_backend }}-${{ matrix.offscreen_backend }}
+          name: test-results-egl-humble-GLFW-EGL
           path: ${{ env.BASEDIR }}/target_ws/**/test_results/**/*.xml
       - name: Generate codecov report
         uses: rhaschke/lcov-action@main
@@ -130,9 +119,84 @@ jobs:
           docker: ${{ '$DOCKER_IMAGE' }}
           workdir: ${{ env.BASEDIR }}/target_ws
           ignore: '"*/target_ws/build/*" "*/target_ws/install/*" "*/test/*"'
-          output: ${{ env.BASEDIR }}/target_ws/coverage-${{ matrix.distro }}-${{ matrix.gui_backend }}-${{ matrix.offscreen_backend }}.info
+          output: ${{ env.BASEDIR }}/target_ws/coverage-humble-GLFW-EGL.info
       - name: Upload codecov report
         uses: codecov/codecov-action@v5
         if: always() && steps.ici.outputs.target_test_results == '0'
         with:
-          files: ${{ env.BASEDIR }}/target_ws/coverage-${{ matrix.distro }}-${{ matrix.gui_backend }}-${{ matrix.offscreen_backend }}.info
+          files: ${{ env.BASEDIR }}/target_ws/coverage-humble-GLFW-EGL.info
+
+  egl_headless:
+    needs: decide
+    if: needs.decide.outputs.run_egl == 'true'
+    name: humble DISABLE + EGL + ccov
+    runs-on: [self-hosted, egl]
+    continue-on-error: true
+    timeout-minutes: 90
+    env:
+      BUILDER: colcon
+      MUJOCO_DIR: /vol/mujoco/mujoco-3.3.5
+      DOCKER_IMAGE: ubiagni/mujoco_ros:humble-ci
+      CXXFLAGS: -Wwrite-strings -Wunreachable-code -Wpointer-arith
+      AFTER_INIT: >
+        apt-get update -q;
+        apt-get install -qy python3-pip;
+        python3 -m pip install mujoco==3.3.5
+      AFTER_SETUP_DOWNSTREAM_WORKSPACE: vcs pull $BASEDIR/downstream_ws/src
+      AFTER_SETUP_CCACHE: ccache --zero-stats --max-size=10.0G
+      AFTER_BUILD_TARGET_WORKSPACE: ccache --show-stats
+      AFTER_BUILD_DOWNSTREAM_WORKSPACE: ccache --show-stats
+      TARGET_CMAKE_ARGS: >
+        -DCMAKE_BUILD_TYPE=Debug
+        -DCMAKE_CXX_FLAGS="-Werror $CXXFLAGS --coverage -O2 -fno-omit-frame-pointer"
+        -DBUILD_TESTING=ON
+        -DWITH_GUI=OFF
+        -DOFFSCREEN_BACKEND=EGL
+      CCOV: true
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      BASEDIR: ${{ github.workspace }}/.work
+    steps:
+      - uses: actions/checkout@v5
+      - name: Per-job DISPLAY and ROS_DOMAIN_ID
+        shell: bash
+        run: |
+          echo "ICI_DISPLAY=:111" >> "$GITHUB_ENV"
+          echo "ICI_ROS_DOMAIN_ID=101" >> "$GITHUB_ENV"
+      - name: Cache ccache
+        uses: rhaschke/cache@main
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ env.CACHE_PREFIX }}-${{ github.sha }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ env.CACHE_PREFIX }}-${{ github.sha }}
+            ${{ env.CACHE_PREFIX }}
+        env:
+          GHA_CACHE_SAVE: always
+          CACHE_PREFIX: ccache-egl-ccov-humble-disable
+      - id: ici
+        name: Run industrial_ci
+        uses: ros-industrial/industrial_ci@master
+        env:
+          DOCKER_RUN_OPTS: >-
+            -e MUJOCO_DIR=/root/mujoco/3.3.5
+            -e DISPLAY=${{ env.ICI_DISPLAY }}
+            -e ROS_DOMAIN_ID=${{ env.ICI_ROS_DOMAIN_ID }}
+      - name: Upload test artifacts (on failure)
+        uses: actions/upload-artifact@v4
+        if: failure() && (steps.ici.outputs.run_target_test || steps.ici.outputs.target_test_results)
+        with:
+          name: test-results-egl-humble-DISABLE-EGL
+          path: ${{ env.BASEDIR }}/target_ws/**/test_results/**/*.xml
+      - name: Generate codecov report
+        uses: rhaschke/lcov-action@main
+        if: always() && steps.ici.outputs.target_test_results == '0'
+        with:
+          docker: ${{ '$DOCKER_IMAGE' }}
+          workdir: ${{ env.BASEDIR }}/target_ws
+          ignore: '"*/target_ws/build/*" "*/target_ws/install/*" "*/test/*"'
+          output: ${{ env.BASEDIR }}/target_ws/coverage-humble-DISABLE-EGL.info
+      - name: Upload codecov report
+        uses: codecov/codecov-action@v5
+        if: always() && steps.ici.outputs.target_test_results == '0'
+        with:
+          files: ${{ env.BASEDIR }}/target_ws/coverage-humble-DISABLE-EGL.info
