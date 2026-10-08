@@ -115,7 +115,7 @@ OffscreenCamera::OffscreenCamera(const uint8_t cam_id, const std::string &base_t
 	last_pub_ = env_ptr->now();
 #endif
 
-	mjv_defaultOption(&vopt_);
+	vopt_                      = DefaultCameraVisualOptions();
 	timestamp_resolver_        = [](const FrameLease &lease) { return util::toRosTime(lease.simulation_time_ns()); };
 	descriptor_.visual_options = vopt_;
 	descriptor_.planes         = PlaneMask::kNone;

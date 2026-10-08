@@ -28,10 +28,14 @@ namespace mujoco_ros {
 class GlfwAdapter : public PlatformUIAdapter
 {
 public:
-	explicit GlfwAdapter(bool visible = true);
+	// Hidden until SwapBuffers/ShowWindow: mapping a visible window before
+	// mjr_makeContext/gladLoadGL fails when OSMesa is also loaded.
+	explicit GlfwAdapter(bool visible = false);
 	~GlfwAdapter() override;
 
 	void ShowWindow();
+
+	bool RefreshMjrContext(const mjModel *m, int fontscale) override;
 
 	std::pair<double, double> GetCursorPosition() const override;
 	double GetDisplayPixelsPerInch() const override;
@@ -62,6 +66,8 @@ public:
 	mjtButton TranslateMouseButton(int button) const override;
 
 private:
+	void RevealWindowUnderLock();
+
 	GLFWvidmode vidmode_;
 	GLFWwindow *window_           = nullptr;
 	bool glfw_initialized_        = false;

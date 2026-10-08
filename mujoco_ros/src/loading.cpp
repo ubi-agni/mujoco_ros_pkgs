@@ -75,7 +75,6 @@ void MujocoEnv::CompleteEnvSetup()
 	mju_zero(ctrlnoise_, model_->nu);
 
 	LoadPlugins(PluginGeneration(plugin_generation_.value() + 1));
-	ros_api_->UpdateDynamicParams();
 	MJR_DEBUG("Env setup complete");
 }
 
@@ -322,6 +321,10 @@ void MujocoEnv::LoadWithModelAndData()
 
 		CompleteEnvSetup();
 	}
+
+	// Dynparam / parameter sync must not run under physics_thread_mutex_ (see
+	// RosAPI::UpdateDynamicParams). Keep it with the other post-lock reload work.
+	ros_api_->UpdateDynamicParams();
 
 	// RenderCore may wait for an in-flight render. Keep that wait outside all
 	// environment and physics locks. PluginHost setup above remains ordered first.

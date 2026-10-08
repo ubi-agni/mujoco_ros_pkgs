@@ -351,7 +351,8 @@ with ``WITH_GUI=OFF`` raise
 ``RuntimeError("mujoco_ros.viewer requires a build configured with WITH_GUI=ON")``.
 Missing-display and GLFW initialization errors propagate; they are not swallowed.
 
-Visible GLFW and offscreen RenderCore are independent:
+Visible viewer GLFW and offscreen RenderCore are configured independently
+(offscreen may still use a hidden GLFW context when ``ANY`` resolves that way):
 
 * ``WITH_GUI`` controls the visible GLFW viewer backend.
 * ``OFFSCREEN_BACKEND`` controls RenderCore offscreen capture.
@@ -382,8 +383,9 @@ Render failures and capacity limits
 Offscreen rendering uses the shared ``mujoco_ros_render_core`` library. The
 offscreen backend is selected at build time through ``OFFSCREEN_BACKEND``
 (``ANY``, EGL, OSMesa, or ``DISABLE``). Visible GLFW GUI is controlled
-independently by ``WITH_GUI=ON`` or ``WITH_GUI=OFF``. GLFW is not an offscreen
-backend.
+independently by ``WITH_GUI=ON`` or ``WITH_GUI=OFF``. With ``WITH_GUI=ON``,
+``ANY`` uses a hidden GLFW context for offscreen rendering (EGL only on a
+detected hardware device) and ``OSMESA`` is rejected at configure time.
 
 When configured camera history or byte demand exceeds the RenderCore budget,
 model setup fails loudly with an explicit error such as ``configured frame slot

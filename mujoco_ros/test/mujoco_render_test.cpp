@@ -408,12 +408,17 @@ TEST(LegacyProductionHooks, RenderingNamespaceHasNoCopyDataHelper)
 	              "rendering::CopyData must stay removed; use SnapshotPool slots in WrappedStep");
 }
 
-#if OFFSCREEN_RENDER_BACKEND == EGL_BACKEND || OFFSCREEN_RENDER_BACKEND == OSMESA_BACKEND
+#if OFFSCREEN_RENDER_BACKEND == EGL_BACKEND || OFFSCREEN_RENDER_BACKEND == OSMESA_BACKEND || \
+    OFFSCREEN_RENDER_BACKEND == GLFW_BACKEND
 class BlockingRenderBackend final : public rendering::IRenderBackend
 {
 public:
 	rendering::RenderStatus Initialize(const mjModel &, const rendering::RenderConfiguration &) override
 	{
+		// Reload reinitialize calls ShutdownOnRenderThread then Initialize then Render
+		// on the same turn. A latched RequestStop must not skip the next wait.
+		std::lock_guard<std::mutex> lock(mutex_);
+		stop_requested_ = false;
 		return rendering::RenderStatus::Ok();
 	}
 
@@ -477,7 +482,12 @@ public:
 		condition_.notify_all();
 	}
 
-	void ShutdownOnRenderThread() override { RequestStop(); }
+	void ShutdownOnRenderThread() override
+	{
+		// Production tears down GL here. Do not RequestStop: RenderCore reinitialize
+		// calls this then Initialize/Render in the same turn, and a latched stop
+		// makes Render return without waiting or committing planes.
+	}
 
 	bool WaitUntilRenderEntered(std::chrono::seconds timeout)
 	{
@@ -3758,6 +3768,13 @@ TEST_F(BaseEnvFixture, Cam_Timing_Correct)
 	// ros::Time t3 = t2 + (t2 - t1);
 	// Step over next image trigger but before trigger after that
 	env_ptr->step(2 * n_steps - 1);
+	// OSMESA (and loaded runners) can publish after step returns — wait like earlier frames.
+	seconds = 0.f;
+	while ((rgb_images.size() < 3 || rgb_infos.size() < 3) && seconds < .4f) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		seconds += 0.001f;
+	}
+	EXPECT_LT(seconds, .4f) << "third RGB image not published within 400ms";
 
 	ASSERT_EQ(rgb_infos.size(), 3);
 	ASSERT_EQ(rgb_images.size(), 3);
@@ -4360,7 +4377,7 @@ TEST_F(BaseEnvFixture, OffscreenCameraConfigTakeRecentRejectsReloadInProgress)
 	reload_env->shutdown();
 }
 
-#endif // OFFSCREEN_RENDER_BACKEND == EGL_BACKEND || OFFSCREEN_RENDER_BACKEND == OSMESA_BACKEND
+#endif // OFFSCREEN_RENDER_BACKEND == EGL_BACKEND || OSMESA_BACKEND || GLFW_BACKEND
        // any render backend available
 
 #if OFFSCREEN_RENDER_BACKEND == NO_BACKEND // i.e. no offscreen render backend available

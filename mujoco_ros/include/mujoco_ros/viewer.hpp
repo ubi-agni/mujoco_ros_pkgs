@@ -78,6 +78,7 @@
 #include <mujoco_ros/common_types.hpp>
 #include <mujoco_ros/detail/viewer_connection_state.hpp>
 #include <mujoco_ros/mujoco_env.hpp>
+#include <mujoco_ros/rendering/visual_option_defaults.hpp>
 
 namespace mujoco_ros {
 
@@ -94,8 +95,6 @@ class ViewerLoadRejected : public std::runtime_error
 public:
 	using std::runtime_error::runtime_error;
 };
-
-void ApplyInteractiveViewerGeomDefaults(mjvOption *opt);
 
 class Viewer
 {
@@ -242,11 +241,14 @@ public:
 		bool ui_remake_ctrl;
 
 		// UBI Extra
-		bool ui_update_run   = false;
-		bool ui_exit         = false;
-		bool ui_update_speed = false;
-		bool ui_reset        = false;
-		bool ui_reload       = false;
+		bool ui_update_run             = false;
+		bool ui_exit                   = false;
+		bool ui_update_speed           = false;
+		bool ui_reset                  = false;
+		bool ui_reload                 = false;
+		int manual_steps               = 0;
+		bool history_after_manual_step = false;
+		bool apply_model_flags         = false;
 
 	} pending_ = {};
 

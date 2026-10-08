@@ -38,10 +38,15 @@
 #include <mujoco/mujoco.h>
 
 #include <cstdio>
+#include <cstring>
 #include <thread>
 
 #include <mujoco_ros/ros_version.hpp>
 #include <mujoco_ros/render_backend.hpp>
+#include <mujoco_ros/rendering/render_backend_interface.hpp>
+#if RENDER_BACKEND == GLFW_BACKEND
+#include <mujoco_ros/rendering/glfw_library.hpp>
+#endif
 #include <mujoco_ros/version.hpp>
 #include <mujoco_ros/logging.hpp>
 
@@ -70,14 +75,6 @@ namespace roscpp = ros;
 using TransformStamped = geometry_msgs::msg::TransformStamped;
 
 namespace roscpp = rclcpp;
-#endif
-
-#if OFFSCREEN_RENDER_BACKEND == OSMESA_BACKEND
-static std::string render_backend = "OSMesa";
-#elif OFFSCREEN_RENDER_BACKEND == EGL_BACKEND
-static std::string render_backend = "EGL";
-#else
-static std::string render_backend = "NONE. No offscreen rendering available.";
 #endif
 
 namespace mujoco_ros {
@@ -318,7 +315,15 @@ void MujocoEnv::Configure()
 	MJR_DEBUG_COND(!settings_.use_sim_time, "use_sim_time is set to false. Not publishing sim time to /clock!");
 
 	MJR_INFO_STREAM("MuJoCo ROS " << MJR_PROJECT_VERSION << " (" << MJR_GIT_DESCRIBE << (MJR_GIT_DIRTY ? ", dirty" : "")
-	                              << "), MuJoCo " << mj_versionString() << ", render backend " << render_backend);
+	                              << "), MuJoCo " << mj_versionString() << ", render backend "
+	                              << rendering::CompiledRenderBackendDisplayName(
+	                                     rendering::RenderBackendDisplayStyle::kEnvStartupLog));
+#if RENDER_BACKEND == GLFW_BACKEND
+	// Viewer + EGL offscreen: last-window glfwTerminate poisons EGL GL used by cameras later.
+	if (std::strcmp(rendering::CompiledRenderBackendName(), "EGL") == 0) {
+		rendering::SetGlfwLibraryTerminateOnLastRelease(false);
+	}
+#endif
 	if (mjVERSION_HEADER != mj_version()) {
 		MJR_WARN_STREAM("Headers and library have different versions (headers: " << mjVERSION_HEADER
 		                                                                         << ", library: " << mj_version() << ")");
@@ -514,6 +519,7 @@ void MujocoEnv::EventLoop()
 	while (roscpp::ok() && !IsShutdownRequested()) {
 		bool complete_model_load = false;
 		bool reset_requested     = false;
+		bool sync_dynamic_params = false;
 		{
 			RecursiveLock lock(physics_thread_mutex_);
 			now                         = Clock::now();
@@ -521,7 +527,7 @@ void MujocoEnv::EventLoop()
 
 			if (settings_.settings_changed.load()) {
 				settings_.settings_changed.store(0);
-				ros_api_->UpdateDynamicParams();
+				sync_dynamic_params = true;
 			}
 
 			if (control_snapshot.load_request == 1) {
@@ -551,6 +557,10 @@ void MujocoEnv::EventLoop()
 			if (control_snapshot.reset_requested && !complete_model_load) {
 				reset_requested = true;
 			}
+		}
+
+		if (sync_dynamic_params) {
+			ros_api_->UpdateDynamicParams();
 		}
 
 		if (reset_requested) {

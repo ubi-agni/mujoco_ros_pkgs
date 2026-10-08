@@ -59,6 +59,7 @@
 
 #include <mujoco_ros/viewer.hpp>
 #include <mujoco_ros/viewer_branding.hpp>
+#include <mujoco_ros/viewer_pending_physics.hpp>
 #include <mujoco_ros/viewer_sync_policy.hpp>
 
 #include <lodepng.h>
@@ -1578,10 +1579,7 @@ void UiEvent(mjuiState *state)
 
 			// Update flags in env
 			if (!viewer->is_passive_) {
-				if (MujocoEnv *env = viewer->FrameEnvironment()) {
-					env->UpdateModelFlags(opt);
-					env->settings_.settings_changed.store(true);
-				}
+				viewer->pending_.apply_model_flags = true;
 			}
 
 		}
@@ -1692,8 +1690,8 @@ void UiEvent(mjuiState *state)
 
 							// not in scrubber: step, add to history buffer
 							else {
-								env->RequestManualSteps(1);
-								viewer->AddToHistory();
+								viewer->pending_.manual_steps += 1;
+								viewer->pending_.history_after_manual_step = true;
 							}
 						}
 					}
@@ -1720,7 +1718,7 @@ void UiEvent(mjuiState *state)
 				if (MujocoEnv *env = viewer->FrameEnvironment()) {
 					if (!env->GetControlSnapshot().running) {
 						ClearTimers(viewer->d_.get());
-						env->RequestManualSteps(100);
+						viewer->pending_.manual_steps += 100;
 					}
 				}
 				break;
@@ -2151,6 +2149,20 @@ void Viewer::SyncInFrame(MujocoEnv &env, bool state_only)
 		update_sensor      = true;
 	}
 
+	if (pending_.manual_steps > 0 || pending_.apply_model_flags) {
+		const auto drain = DrainDeferredPhysicsUi(pending_, env.GetControlSnapshot().running, m_ != nullptr);
+		if (drain.request_manual_steps > 0) {
+			env.RequestManualSteps(drain.request_manual_steps);
+			if (drain.add_to_history) {
+				AddToHistory();
+			}
+		}
+		if (drain.apply_model_flags) {
+			env.UpdateModelFlags(&m_->opt);
+			env.settings_.settings_changed.store(true);
+		}
+	}
+
 	if (dropload_request.load()) {
 		dropload_request.store(0);
 		env.RequestModelLoad(dropfilename);
@@ -2450,6 +2462,7 @@ void Viewer::InitializeModel(mjModelPtr m, mjDataPtr d, const char *displayed_fi
 void Viewer::LoadOnRenderThread()
 {
 	MJR_WARN_NAMED("Viewer", "Loading model in render thread");
+	ClearDeferredPhysicsUi(pending_);
 	if (!this->mnew_ || !this->dnew_) {
 		this->loadrequest.store(0);
 		if (reload_promise_) {

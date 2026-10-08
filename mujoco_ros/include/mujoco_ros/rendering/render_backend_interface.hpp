@@ -83,6 +83,10 @@ public:
 	virtual RenderStatus Resize(const RenderConfiguration &)                                                  = 0;
 	virtual RenderStatus Render(const RenderSnapshot &, const CameraDescriptor &, PlaneMask, FrameBoundary &) = 0;
 	virtual void ShutdownOnRenderThread()                                                                     = 0;
+	// Tear down GL resources before a same-thread Initialize(). Default = full shutdown.
+	// GLFW keeps the process-wide library acquired so reload does not glfwTerminate/glfwInit.
+	// EGL destroys context/surface only — eglTerminate poisons later Initialize on GLFW+EGL.
+	virtual void PrepareReinitializeOnRenderThread() { ShutdownOnRenderThread(); }
 	// Any-thread interrupt so RenderCore::Shutdown can unblock a backend stuck in Render().
 	virtual void RequestStop() {}
 };
@@ -90,5 +94,14 @@ public:
 std::unique_ptr<IRenderBackend> CreateDisabledRenderBackend();
 std::unique_ptr<IRenderBackend> CreateRenderBackend();
 const char *CompiledRenderBackendName() noexcept;
+
+enum class RenderBackendDisplayStyle
+{
+	kPythonModule,
+	kEnvStartupLog,
+};
+
+// Public-facing backend label (OSMesa, EGL, GLFW, NONE; env log uses the long NONE suffix).
+const char *CompiledRenderBackendDisplayName(RenderBackendDisplayStyle style) noexcept;
 
 } // namespace mujoco_ros::rendering

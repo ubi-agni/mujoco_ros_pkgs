@@ -5,10 +5,16 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
-#if defined(MJR_RENDER_BACKEND_EGL)
+#if defined(MJR_RENDER_BACKEND_GLFW)
+#include <GLFW/glfw3.h>
+#include <mujoco_ros/glfw_dispatch.h>
+#include <mujoco_ros/rendering/glfw_library.hpp>
+#elif defined(MJR_RENDER_BACKEND_EGL)
 #include <EGL/egl.h>
 #elif defined(MJR_RENDER_BACKEND_OSMESA)
 #include <GL/osmesa.h>
@@ -16,6 +22,19 @@
 
 namespace mujoco_ros::rendering {
 namespace {
+
+#if defined(MJR_RENDER_BACKEND_GLFW)
+std::string DescribeGlfwError(const char *context)
+{
+	const char *description = nullptr;
+	const int code          = Glfw().glfwGetError(&description);
+	if (code == GLFW_NO_ERROR) {
+		return std::string(context) + " failed (no GLFW error description)";
+	}
+	return std::string(context) + " failed: " + (description != nullptr ? description : "unknown") + " (error " +
+	       std::to_string(code) + ")";
+}
+#endif
 
 void FlipRows(std::vector<std::byte> &bytes, std::size_t row_bytes, int height)
 {
@@ -64,9 +83,12 @@ public:
 		if (initialized_) {
 			return RenderStatus::Failure(RenderStatusCode::kBackendFailure, "backend initialized twice");
 		}
-		if (!InitializeContext(configuration.frame_layout.width, configuration.frame_layout.height)) {
+		std::string context_error;
+		if (!InitializeContext(configuration.frame_layout.width, configuration.frame_layout.height, context_error)) {
 			ShutdownOnRenderThread();
-			return RenderStatus::Failure(RenderStatusCode::kBackendFailure, "graphics context initialization failed");
+			const auto message = context_error.empty() ? std::string("graphics context initialization failed") :
+			                                             "graphics context initialization failed: " + context_error;
+			return RenderStatus::Failure(RenderStatusCode::kBackendFailure, message);
 		}
 		mjr_defaultContext(&context_);
 		mjv_defaultScene(&scene_);
@@ -156,7 +178,11 @@ public:
 		return last_failure.ok() ? RenderStatus::Ok() : last_failure;
 	}
 
-	void ShutdownOnRenderThread() override
+	void ShutdownOnRenderThread() override { TearDownOnRenderThread(true); }
+
+	void PrepareReinitializeOnRenderThread() override { TearDownOnRenderThread(false); }
+
+	void TearDownOnRenderThread(bool release_library)
 	{
 		if (scene_initialized_) {
 			mjv_freeScene(&scene_);
@@ -166,38 +192,91 @@ public:
 			mjr_freeContext(&context_);
 			context_initialized_ = false;
 		}
-#if defined(MJR_RENDER_BACKEND_EGL)
+#if defined(MJR_RENDER_BACKEND_GLFW)
+		if (glfw_window_ != nullptr || (release_library && glfw_acquired_)) {
+			std::lock_guard<std::mutex> glfw_lock(rendering::GlfwLibraryMutex());
+			if (glfw_window_ != nullptr) {
+				Glfw().glfwMakeContextCurrent(nullptr);
+				Glfw().glfwDestroyWindow(glfw_window_);
+				glfw_window_ = nullptr;
+			}
+			if (release_library && glfw_acquired_) {
+				rendering::ReleaseGlfwLibrary(Glfw().glfwTerminate);
+				glfw_acquired_ = false;
+			}
+		}
+#elif defined(MJR_RENDER_BACKEND_EGL)
+		// Never eglTerminate here. Terminating the process display after context/surface
+		// teardown makes later eglInitialize/MakeCurrent fail on GLFW+EGL CI (and reload).
+		// release_library is GLFW's terminate gate; EGL keeps the display for the process.
+		(void)release_library;
 		if (egl_display_ != EGL_NO_DISPLAY) {
 			eglMakeCurrent(egl_display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-			if (egl_surface_ != EGL_NO_SURFACE)
+			if (egl_surface_ != EGL_NO_SURFACE) {
 				eglDestroySurface(egl_display_, egl_surface_);
-			if (egl_context_ != EGL_NO_CONTEXT)
+				egl_surface_ = EGL_NO_SURFACE;
+			}
+			if (egl_context_ != EGL_NO_CONTEXT) {
 				eglDestroyContext(egl_display_, egl_context_);
-			eglTerminate(egl_display_);
+				egl_context_ = EGL_NO_CONTEXT;
+			}
 			egl_display_ = EGL_NO_DISPLAY;
 		}
 #elif defined(MJR_RENDER_BACKEND_OSMESA)
+		(void)release_library;
 		if (osmesa_context_ != nullptr) {
 			OSMesaDestroyContext(osmesa_context_);
 			osmesa_context_ = nullptr;
 		}
 		osmesa_buffer_.clear();
+#else
+		(void)release_library;
 #endif
 		initialized_ = false;
 	}
 
 private:
-	bool InitializeContext(int width, int height)
+	bool InitializeContext(int width, int height, std::string &error_out)
 	{
-#if defined(MJR_RENDER_BACKEND_EGL)
+#if defined(MJR_RENDER_BACKEND_GLFW)
+		// A dedicated hidden window gives this thread its own GLX context; the viewer's context is
+		// never made current here, so the two threads never contend for one context.
+		std::lock_guard<std::mutex> glfw_lock(rendering::GlfwLibraryMutex());
+		if (!glfw_acquired_) {
+			if (!rendering::AcquireGlfwLibrary(Glfw().glfwInit)) {
+				error_out = DescribeGlfwError("glfwInit");
+				return false;
+			}
+			glfw_acquired_ = true;
+		}
+		Glfw().glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+		Glfw().glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
+		Glfw().glfwWindowHint(GLFW_SAMPLES, 0);
+		glfw_window_ = Glfw().glfwCreateWindow(width > 0 ? width : 1, height > 0 ? height : 1, "mujoco_ros offscreen",
+		                                       nullptr, nullptr);
+		if (glfw_window_ == nullptr) {
+			error_out = DescribeGlfwError("glfwCreateWindow");
+			return false;
+		}
+		Glfw().glfwMakeContextCurrent(glfw_window_);
+		if (Glfw().glfwGetCurrentContext() != glfw_window_) {
+			error_out = DescribeGlfwError("glfwMakeContextCurrent");
+			return false;
+		}
+		return true;
+#elif defined(MJR_RENDER_BACKEND_EGL)
+		const auto egl_fail = [&error_out](const char *step) {
+			error_out = std::string(step) + " failed (eglGetError=" + std::to_string(eglGetError()) + ")";
+			return false;
+		};
 		egl_display_ = eglGetDisplay(EGL_DEFAULT_DISPLAY);
 		if (egl_display_ == EGL_NO_DISPLAY)
-			return false;
+			return egl_fail("eglGetDisplay");
 		EGLint major = 0, minor = 0;
 		if (!eglInitialize(egl_display_, &major, &minor))
-			return false;
+			return egl_fail("eglInitialize");
 		if (!eglBindAPI(EGL_OPENGL_API))
-			return false;
+			return egl_fail("eglBindAPI");
 		const EGLint attributes[] = { EGL_SURFACE_TYPE,
 			                           EGL_PBUFFER_BIT,
 			                           EGL_RENDERABLE_TYPE,
@@ -214,12 +293,17 @@ private:
 		EGLConfig config          = nullptr;
 		EGLint count              = 0;
 		if (!eglChooseConfig(egl_display_, attributes, &config, 1, &count) || count != 1)
-			return false;
+			return egl_fail("eglChooseConfig");
 		const EGLint surface_attributes[] = { EGL_WIDTH, width, EGL_HEIGHT, height, EGL_NONE };
 		egl_surface_                      = eglCreatePbufferSurface(egl_display_, config, surface_attributes);
-		egl_context_                      = eglCreateContext(egl_display_, config, EGL_NO_CONTEXT, nullptr);
-		return egl_surface_ != EGL_NO_SURFACE && egl_context_ != EGL_NO_CONTEXT &&
-		       eglMakeCurrent(egl_display_, egl_surface_, egl_surface_, egl_context_);
+		if (egl_surface_ == EGL_NO_SURFACE)
+			return egl_fail("eglCreatePbufferSurface");
+		egl_context_ = eglCreateContext(egl_display_, config, EGL_NO_CONTEXT, nullptr);
+		if (egl_context_ == EGL_NO_CONTEXT)
+			return egl_fail("eglCreateContext");
+		if (!eglMakeCurrent(egl_display_, egl_surface_, egl_surface_, egl_context_))
+			return egl_fail("eglMakeCurrent");
+		return true;
 #elif defined(MJR_RENDER_BACKEND_OSMESA)
 		osmesa_context_ = OSMesaCreateContextExt(OSMESA_RGBA, 24, 8, 8, nullptr);
 		osmesa_buffer_.resize(static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4U);
@@ -228,6 +312,7 @@ private:
 #else
 		(void)width;
 		(void)height;
+		(void)error_out;
 		return false;
 #endif
 	}
@@ -288,7 +373,10 @@ private:
 	bool initialized_         = false;
 	bool context_initialized_ = false;
 	bool scene_initialized_   = false;
-#if defined(MJR_RENDER_BACKEND_EGL)
+#if defined(MJR_RENDER_BACKEND_GLFW)
+	GLFWwindow *glfw_window_ = nullptr;
+	bool glfw_acquired_      = false;
+#elif defined(MJR_RENDER_BACKEND_EGL)
 	EGLDisplay egl_display_ = EGL_NO_DISPLAY;
 	EGLSurface egl_surface_ = EGL_NO_SURFACE;
 	EGLContext egl_context_ = EGL_NO_CONTEXT;
@@ -326,7 +414,7 @@ std::unique_ptr<IRenderBackend> CreateDisabledRenderBackend()
 
 std::unique_ptr<IRenderBackend> CreateRenderBackend()
 {
-#if defined(MJR_RENDER_BACKEND_EGL) || defined(MJR_RENDER_BACKEND_OSMESA)
+#if defined(MJR_RENDER_BACKEND_GLFW) || defined(MJR_RENDER_BACKEND_EGL) || defined(MJR_RENDER_BACKEND_OSMESA)
 	return std::make_unique<MuJoCoRenderBackend>();
 #else
 	return CreateDisabledRenderBackend();
@@ -335,13 +423,27 @@ std::unique_ptr<IRenderBackend> CreateRenderBackend()
 
 const char *CompiledRenderBackendName() noexcept
 {
-#if defined(MJR_RENDER_BACKEND_EGL)
+#if defined(MJR_RENDER_BACKEND_GLFW)
+	return "GLFW";
+#elif defined(MJR_RENDER_BACKEND_EGL)
 	return "EGL";
 #elif defined(MJR_RENDER_BACKEND_OSMESA)
 	return "OSMESA";
 #else
 	return "NONE";
 #endif
+}
+
+const char *CompiledRenderBackendDisplayName(RenderBackendDisplayStyle style) noexcept
+{
+	const char *name = CompiledRenderBackendName();
+	if (std::strcmp(name, "OSMESA") == 0) {
+		return "OSMesa";
+	}
+	if (style == RenderBackendDisplayStyle::kEnvStartupLog && std::strcmp(name, "NONE") == 0) {
+		return "NONE. No offscreen rendering available.";
+	}
+	return name;
 }
 
 } // namespace mujoco_ros::rendering

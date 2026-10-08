@@ -597,8 +597,25 @@ class MujocoEnv:
     def _reload_cb_ros1(self, req):
         from mujoco_ros_msgs.srv import ReloadResponse
 
-        success, status = self._reload_impl(req.model)
-        return ReloadResponse(success=success, status_message=status)
+        # Keep the rospy service thread free while the load waits on EventLoop.
+        # Holding that thread across a blocking load can deadlock ROS1 transport
+        # against dynparam/updateConfig during CompleteEnvSetup on OFFSCREEN=DISABLE.
+        done = threading.Event()
+        outcome = [False, "reload worker did not finish"]
+
+        def _run():
+            try:
+                outcome[0], outcome[1] = self._reload_impl(req.model)
+            finally:
+                done.set()
+
+        worker = threading.Thread(target=_run, name="mujoco_ros_python_reload", daemon=True)
+        worker.start()
+        if not done.wait(timeout=30.0):
+            return ReloadResponse(
+                success=False, status_message="Timed out while reloading Python-owned model"
+            )
+        return ReloadResponse(success=outcome[0], status_message=outcome[1])
 
     def _reload_cb_ros2(self, req, res):
         success, status = self._reload_impl(req.model)

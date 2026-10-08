@@ -519,7 +519,7 @@ void RenderCore::RenderLoop()
 				backend_initialized = backend_initialized_;
 			}
 			if (!stale_turn && reinitialize_backend && backend_initialized) {
-				backend_->ShutdownOnRenderThread();
+				backend_->PrepareReinitializeOnRenderThread();
 				backend_initialized = false;
 			}
 			if (!stale_turn && !backend_initialized) {

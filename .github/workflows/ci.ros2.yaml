@@ -43,8 +43,9 @@ jobs:
       - id: policy
         name: Build matrix
         run: |
-          # Hosted runners cover GLFW/DISABLE x OSMESA/DISABLE. EGL remains a
-          # supported local/manual backend until GPU-capable hosted workers exist.
+          # Hosted: GLFW GUI uses hidden GLFW offscreen (not OSMESA — configure rejects
+          # GLFW+OSMesa). Headless: OSMESA/DISABLE. Optional ci.egl.yaml covers EGL on
+          # [self-hosted, egl] behind the run-egl label.
           full_matrix=false
           coverage=false
           clang_tidy=false
@@ -73,20 +74,20 @@ jobs:
 
           if [[ "${full_matrix}" != "true" ]]; then
             if [[ "${clang_tidy}" == "true" ]]; then
-              matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"plain"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"clang_tidy"}]}'
+              matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.3.5","check":"plain"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.3.5","check":"clang_tidy"}]}'
             else
-              matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"plain"}]}'
+              matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.3.5","check":"plain"}]}'
             fi
           elif [[ "${coverage}" == "true" ]]; then
             if [[ "${clang_tidy}" == "true" ]]; then
-              matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"clang_tidy"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"ccov"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"ccov"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"ccov"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"ccov"}]}'
+              matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.3.5","check":"clang_tidy"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.3.5","check":"ccov"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"ccov"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"ccov"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"ccov"}]}'
             else
-              matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"ccov"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"ccov"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"ccov"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"ccov"}]}'
+              matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.3.5","check":"ccov"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"ccov"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"ccov"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"ccov"}]}'
             fi
           elif [[ "${clang_tidy}" == "true" ]]; then
-            matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"plain"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"plain"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"plain"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"plain"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"clang_tidy"}]}'
+            matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.3.5","check":"plain"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"plain"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"plain"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"plain"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.3.5","check":"clang_tidy"}]}'
           else
-            matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"plain"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"plain"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"plain"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"plain"}]}'
+            matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.3.5","check":"plain"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"plain"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"plain"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"plain"}]}'
           fi
 
           echo "matrix=${matrix}" >> "${GITHUB_OUTPUT}"
@@ -102,7 +103,6 @@ jobs:
     env:
       BUILDER: colcon
       MUJOCO_DIR: /vol/mujoco/mujoco-${{ matrix.mujoco }} # for self-hosted runners
-      DOCKER_RUN_OPTS: -e MUJOCO_DIR=/root/mujoco/${{ matrix.mujoco }} -e DISPLAY=:99.0
       DOCKER_IMAGE: ubiagni/mujoco_ros:${{ matrix.distro }}-ci
 
       # For now we have flags defined in the CMakeLists, using all flags makes the build break
@@ -112,12 +112,13 @@ jobs:
       CLANG_TIDY_ARGS: -fix -format -style=file
       # UPSTREAM_WORKSPACE: .github/workflows/upstream.ros2.rosinstall
       # Install Python MuJoCo matching the C++ MuJoCo version under test.
-      # GLFW jobs additionally need xvfb.
+      # DISPLAY / ROS_DOMAIN_ID come from DOCKER_RUN_OPTS (AFTER_INIT export dies in subshell).
+      # GLFW jobs start Xvfb on that persistent DISPLAY.
       AFTER_INIT: >
         apt-get update -q;
         apt-get install -qy python3-pip${{ matrix.gui_backend == 'GLFW' && ' xvfb' || '' }};
         python3 -m pip install mujoco==${{ matrix.mujoco }};
-        ${{ matrix.gui_backend == 'GLFW' && 'Xvfb :99 &' || '' }}
+        ${{ matrix.gui_backend == 'GLFW' && 'test -n "$DISPLAY" || { echo "DISPLAY unset in container" >&2; exit 1; }; Xvfb "$DISPLAY" & n=0; sock="/tmp/.X11-unix/X${DISPLAY#:}"; until [ -S "$sock" ]; do n=$((n+1)); if [ "$n" -gt 100 ]; then echo "Xvfb $DISPLAY failed to start" >&2; exit 1; fi; sleep 0.1; done' || '' }}
       # Pull any updates to the upstream workspace
       # AFTER_SETUP_UPSTREAM_WORKSPACE: vcs pull $BASEDIR/upstream_ws/src
       AFTER_SETUP_DOWNSTREAM_WORKSPACE: vcs pull $BASEDIR/downstream_ws/src
@@ -149,6 +150,14 @@ jobs:
     runs-on: ${{ matrix.render_backend == 'EGL' && matrix.distro || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5
+      # Unique domain + display per matrix cell (bash arithmetic — GHA expressions lack '+').
+      # Must land in DOCKER_RUN_OPTS; AFTER_INIT `export` does not persist into tests.
+      - name: Per-job DISPLAY and ROS_DOMAIN_ID
+        shell: bash
+        run: |
+          idx="${{ strategy.job-index }}"
+          echo "ICI_DISPLAY=:$((99 + idx))" >> "$GITHUB_ENV"
+          echo "ICI_ROS_DOMAIN_ID=${idx}" >> "$GITHUB_ENV"
       # - name: Cache upstream workspace
       #   uses: rhaschke/cache@main
       #   with:
@@ -185,6 +194,11 @@ jobs:
       - id: ici
         name: Run industrial_ci
         uses: ros-industrial/industrial_ci@master
+        env:
+          DOCKER_RUN_OPTS: >-
+            -e MUJOCO_DIR=/root/mujoco/${{ matrix.mujoco }}
+            -e DISPLAY=${{ env.ICI_DISPLAY }}
+            -e ROS_DOMAIN_ID=${{ env.ICI_ROS_DOMAIN_ID }}
 
       - name: Upload test artifacts (on failure)
         uses: actions/upload-artifact@v4

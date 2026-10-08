@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <mujoco_ros/render_backend.hpp>
+
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -57,9 +59,15 @@ std::optional<FrameStatus> RunWithHangTimeout(std::chrono::milliseconds timeout,
 	return state->result;
 }
 
-TEST(RenderBackend, GlfwIsRejectedAsAnOffscreenBackend)
+TEST(RenderBackend, CompiledNameMatchesConfiguredOffscreenBackend)
 {
-	EXPECT_STRNE(CompiledRenderBackendName(), "GLFW");
+	const char *name = CompiledRenderBackendName();
+	ASSERT_NE(name, nullptr);
+#if OFFSCREEN_RENDER_BACKEND == NO_BACKEND
+	EXPECT_STREQ(name, "NONE");
+#else
+	EXPECT_STRNE(name, "NONE");
+#endif
 }
 
 class FakeBackend final : public IRenderBackend
@@ -1074,6 +1082,24 @@ TEST(RenderCore, QueuedTurnRejectsReplacementWithoutLosingAcceptedSnapshot)
 	core.Shutdown();
 }
 
+TEST(RenderBackend, RealBackendReinitializeAfterFullShutdown)
+{
+	// Full Shutdown must not poison the next Initialize (EGL: eglTerminate is process-hostile).
+	const auto rgb_layout = PlaneLayout::Rgb8(128, 64);
+	FrameBoundary first(2, rgb_layout.byte_length * 2U);
+	FrameBoundary second(2, rgb_layout.byte_length * 2U);
+	ASSERT_TRUE(first.Reconfigure(FrameGeneration(1), FrameLayout(128, 64)).ok());
+	ASSERT_TRUE(second.Reconfigure(FrameGeneration(1), FrameLayout(128, 64)).ok());
+	const auto first_result  = RenderWithRealBackend({}, first);
+	const auto second_result = RenderWithRealBackend({}, second);
+	if (first_result.code == RenderStatusCode::kBackendUnavailable ||
+	    second_result.code == RenderStatusCode::kBackendUnavailable) {
+		GTEST_SKIP() << first_result.message << " / " << second_result.message;
+	}
+	ASSERT_TRUE(first_result.ok()) << first_result.message;
+	ASSERT_TRUE(second_result.ok()) << second_result.message;
+}
+
 TEST(RenderBackend, PluginGeometryAppendsWithoutHidingModelGeometry)
 {
 	const auto rgb_layout = PlaneLayout::Rgb8(128, 64);
@@ -1122,13 +1148,15 @@ TEST(RenderBackend, PluginGeometryCapacityFailureIsExplicit)
 	const auto rgb_layout = PlaneLayout::Rgb8(128, 64);
 	FrameBoundary boundary(2, rgb_layout.byte_length * 2U);
 	ASSERT_TRUE(boundary.Reconfigure(FrameGeneration(1), FrameLayout(128, 64)).ok());
-	std::vector<mjvGeom> plugin_geometry(20000, GreenPluginGeometry());
+	// Offscreen mjv_makeScene(..., 20000). Size must exceed maxgeom even when model ngeom==0
+	// (strict > available); exact fill would skip the capacity gate and fail later as kBackendFailure.
+	std::vector<mjvGeom> plugin_geometry(20001, GreenPluginGeometry());
 	const auto result = RenderWithRealBackend(plugin_geometry, boundary);
 	if (result.code == RenderStatusCode::kBackendUnavailable) {
 		GTEST_SKIP() << result.message;
 	}
-	EXPECT_EQ(result.code, RenderStatusCode::kFrameUnavailable);
-	EXPECT_NE(result.message.find("plugin geometry capacity"), std::string::npos);
+	EXPECT_EQ(result.code, RenderStatusCode::kFrameUnavailable) << result.message;
+	EXPECT_NE(result.message.find("plugin geometry capacity"), std::string::npos) << result.message;
 }
 
 TEST(RenderCore, ResizeAfterCurrentTurnUsesNewConfiguration)
