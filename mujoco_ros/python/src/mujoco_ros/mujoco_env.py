@@ -5,9 +5,11 @@ import sys
 import tempfile
 import threading
 import time
+import warnings
 
 from pymujoco_ros import _MujocoEnvWrapper
 from pymujoco_ros import __mujoco_version__
+from pymujoco_ros import __ros_version__
 
 from .ros_context import RosCore
 from .ros_context import ensure_ros_initialized
@@ -22,11 +24,8 @@ if mujoco.__version__ != __mujoco_version__:
 
 
 def _is_ros1():
-    try:
-        import rosgraph  # noqa: F401
-    except ImportError:
-        return False
-    return True
+    # Compile-time ROS version of the pymujoco_ros binding is the source of truth.
+    return __ros_version__ == 1
 
 
 # Loggers touched by verbose=True. Core entries mirror launch_server.launch.py/.xml;
@@ -266,6 +265,34 @@ class RuntimeSettings:
         self._env.render_backpressure_policy = str(value)
 
 
+_ENABLE_FLAG_FIELDS = {
+    int(mujoco.mjtEnableBit.mjENBL_OVERRIDE): 'override_contacts',
+    int(mujoco.mjtEnableBit.mjENBL_ENERGY): 'energy',
+    int(mujoco.mjtEnableBit.mjENBL_FWDINV): 'fwd_inv',
+    int(mujoco.mjtEnableBit.mjENBL_INVDISCRETE): 'inv_discrete',
+    int(mujoco.mjtEnableBit.mjENBL_MULTICCD): 'multiccd',
+    int(mujoco.mjtEnableBit.mjENBL_ISLAND): 'island',
+}
+
+_DISABLE_FLAG_FIELDS = {
+    int(mujoco.mjtDisableBit.mjDSBL_CONSTRAINT): 'constraint_disabled',
+    int(mujoco.mjtDisableBit.mjDSBL_EQUALITY): 'equality_disabled',
+    int(mujoco.mjtDisableBit.mjDSBL_FRICTIONLOSS): 'frictionloss_disabled',
+    int(mujoco.mjtDisableBit.mjDSBL_LIMIT): 'limit_disabled',
+    int(mujoco.mjtDisableBit.mjDSBL_CONTACT): 'contact_disabled',
+    int(mujoco.mjtDisableBit.mjDSBL_PASSIVE): 'passive_disabled',
+    int(mujoco.mjtDisableBit.mjDSBL_GRAVITY): 'gravity_disabled',
+    int(mujoco.mjtDisableBit.mjDSBL_CLAMPCTRL): 'clampctrl_disabled',
+    int(mujoco.mjtDisableBit.mjDSBL_WARMSTART): 'warmstart_disabled',
+    int(mujoco.mjtDisableBit.mjDSBL_FILTERPARENT): 'filterparent_disabled',
+    int(mujoco.mjtDisableBit.mjDSBL_ACTUATION): 'actuation_disabled',
+    int(mujoco.mjtDisableBit.mjDSBL_REFSAFE): 'refsafe_disabled',
+    int(mujoco.mjtDisableBit.mjDSBL_SENSOR): 'sensor_disabled',
+    int(mujoco.mjtDisableBit.mjDSBL_MIDPHASE): 'midphase_disabled',
+    int(mujoco.mjtDisableBit.mjDSBL_EULERDAMP): 'eulerdamp_disabled',
+}
+
+
 class MujocoEnv:
     def __init__(
         self,
@@ -453,7 +480,7 @@ class MujocoEnv:
         data = mujoco.MjData(model)
         return self._load_python_model(model, data, str(path))
 
-    def load_from_string(self, model_xml, filename=""):
+    def load_from_string(self, model_xml, filename=''):
         import mujoco
 
         filename = os.fspath(filename) if isinstance(filename, os.PathLike) else filename
@@ -474,7 +501,17 @@ class MujocoEnv:
         return self._env.load_model_from_string(model_or_path)
 
     def attach_viewer(self, active=True):
-        return self._env.attach_viewer(active)
+        warnings.warn(
+            'MujocoEnv.attach_viewer() is deprecated; use '
+            'mujoco_ros.viewer.launch() or launch_passive()',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        from . import viewer
+
+        if active:
+            return viewer.launch(self)
+        return viewer.launch_passive(self, auto_sync=True)
 
     def step(self, num_steps=1, blocking=True):
         return self._env.step(num_steps, blocking)
@@ -570,13 +607,14 @@ class MujocoEnv:
         return res
 
     def shutdown(self):
+        native_error = None
         if getattr(self, "_reload_executor", None) is not None:
             self._reload_executor.shutdown()
             self._reload_executor = None
         if getattr(self, "_reload_thread", None) is not None:
             self._reload_thread.join(timeout=1.0)
             self._reload_thread = None
-        if getattr(self, "_reload_node", None) is not None:
+        if getattr(self, '_reload_node', None) is not None:
             self._reload_node.destroy_node()
             self._reload_node = None
         if getattr(self, "_reload_service", None) is not None:
@@ -585,8 +623,12 @@ class MujocoEnv:
             self._reload_service = None
 
         if getattr(self, "_env", None) is not None:
-            self._env.shutdown()
-            self._env = None
+            try:
+                self._env.shutdown()
+            except BaseException as exc:
+                native_error = exc
+            finally:
+                self._env = None
 
         if getattr(self, "_ros_core", None) is not None:
             self._ros_core.shutdown()
@@ -608,6 +650,9 @@ class MujocoEnv:
             except OSError:
                 pass
             self._temp_param_file = None
+
+        if native_error is not None:
+            raise native_error
 
     def wait_for_physics_join(self):
         self._env.wait_for_physics_join()
@@ -678,28 +723,42 @@ class MujocoEnv:
     def set_enableflag(self, bit: int, enable: bool):
         if isinstance(bit, mujoco._enums.mjtEnableBit):
             bit = bit.value
-        if enable:
-            self._env.model.opt.enableflags |= bit
-        else:
-            self._env.model.opt.enableflags &= ~bit
+        field = _ENABLE_FLAG_FIELDS.get(int(bit))
+        if field is None:
+            raise ValueError(f'unsupported enable flag bit: {bit}')
+        current = getattr(self.runtime_options, field)
+        if current == enable:
+            return
+        self.apply_runtime_options({field: enable})
 
     def set_disableflag(self, bit: int, disable: bool):
         if isinstance(bit, mujoco._enums.mjtDisableBit):
             bit = bit.value
-        if disable:
-            self._env.model.opt.disableflags |= bit
-        else:
-            self._env.model.opt.disableflags &= ~bit
+        field = _DISABLE_FLAG_FIELDS.get(int(bit))
+        if field is None:
+            raise ValueError(f'unsupported disable flag bit: {bit}')
+        current = getattr(self.runtime_options, field)
+        if current == disable:
+            return
+        self.apply_runtime_options({field: disable})
 
     def toggle_enableflag(self, bit: int):
         if isinstance(bit, mujoco._enums.mjtEnableBit):
             bit = bit.value
-        self._env.model.opt.enableflags ^= bit
+        field = _ENABLE_FLAG_FIELDS.get(int(bit))
+        if field is None:
+            raise ValueError(f'unsupported enable flag bit: {bit}')
+        current = getattr(self.runtime_options, field)
+        self.apply_runtime_options({field: not current})
 
     def toggle_disableflag(self, bit: int):
         if isinstance(bit, mujoco._enums.mjtDisableBit):
             bit = bit.value
-        self._env.model.opt.disableflags ^= bit
+        field = _DISABLE_FLAG_FIELDS.get(int(bit))
+        if field is None:
+            raise ValueError(f'unsupported disable flag bit: {bit}')
+        current = getattr(self.runtime_options, field)
+        self.apply_runtime_options({field: not current})
 
     @property
     def binding(self):

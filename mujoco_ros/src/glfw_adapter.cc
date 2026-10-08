@@ -17,7 +17,7 @@
 #include <mujoco_ros/glfw_adapter.h>
 
 #include <cstdlib>
-#include <exception>
+#include <mutex>
 #include <stdexcept>
 #include <thread>
 #include <utility>
@@ -26,6 +26,7 @@
 #include <mujoco/mjui.h>
 #include <mujoco/mujoco.h>
 #include <mujoco_ros/glfw_dispatch.h>
+#include <mujoco_ros/viewer_branding.hpp>
 
 namespace mujoco_ros {
 namespace {
@@ -43,12 +44,37 @@ GLFWmonitor *PrimaryMonitorOrThrow()
 	return monitor;
 }
 
+std::mutex glfw_library_mutex;
+std::size_t glfw_library_users = 0;
+
+bool AcquireGlfwLibrary()
+{
+	std::lock_guard<std::mutex> lock(glfw_library_mutex);
+	if (glfw_library_users == 0 && !Glfw().glfwInit()) {
+		return false;
+	}
+	++glfw_library_users;
+	return true;
+}
+
+void ReleaseGlfwLibrary()
+{
+	std::lock_guard<std::mutex> lock(glfw_library_mutex);
+	if (glfw_library_users == 0) {
+		return;
+	}
+	--glfw_library_users;
+	if (glfw_library_users == 0) {
+		Glfw().glfwTerminate();
+	}
+}
+
 } // namespace
 
 GlfwAdapter::GlfwAdapter(bool visible)
 {
 	owner_thread_ = std::this_thread::get_id();
-	if (!Glfw().glfwInit()) {
+	if (!AcquireGlfwLibrary()) {
 		throw std::runtime_error("Failed to initialize GLFW on the visible GUI owner thread");
 	}
 	glfw_initialized_ = true;
@@ -57,6 +83,10 @@ GlfwAdapter::GlfwAdapter(bool visible)
 		Glfw().glfwWindowHint(GLFW_SAMPLES, 4);
 		Glfw().glfwWindowHint(GLFW_VISIBLE, visible ? GLFW_TRUE : GLFW_FALSE);
 		Glfw().glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
+#if defined(GLFW_X11_CLASS_NAME)
+		Glfw().glfwWindowHintString(GLFW_X11_CLASS_NAME, "mujoco_ros");
+		Glfw().glfwWindowHintString(GLFW_X11_INSTANCE_NAME, "mujoco_ros");
+#endif
 
 		GLFWmonitor *monitor          = PrimaryMonitorOrThrow();
 		const GLFWvidmode *video_mode = Glfw().glfwGetVideoMode(monitor);
@@ -70,6 +100,11 @@ GlfwAdapter::GlfwAdapter(bool visible)
 		if (!window_) {
 			throw std::runtime_error("Failed to create GLFW window");
 		}
+		window_visible_ = visible;
+
+		auto icon = LoadViewerBrandingAsset("mj_ros_icon.png", ViewerBrandingPixelFormat::kRgba);
+		const GLFWimage icon_image{ static_cast<int>(icon.width), static_cast<int>(icon.height), icon.pixels.data() };
+		Glfw().glfwSetWindowIcon(window_, 1, &icon_image);
 
 		// save window position and size
 		Glfw().glfwGetWindowPos(window_, &window_pos_.first, &window_pos_.second);
@@ -104,16 +139,13 @@ GlfwAdapter::GlfwAdapter(bool visible)
 
 		// make context current
 		Glfw().glfwMakeContextCurrent(window_);
-		if (!visible) {
-			Glfw().glfwMakeContextCurrent(nullptr);
-		}
 	} catch (...) {
 		if (window_ != nullptr) {
 			Glfw().glfwDestroyWindow(window_);
 			window_ = nullptr;
 		}
 		if (glfw_initialized_) {
-			Glfw().glfwTerminate();
+			ReleaseGlfwLibrary();
 			glfw_initialized_ = false;
 		}
 		throw;
@@ -122,8 +154,12 @@ GlfwAdapter::GlfwAdapter(bool visible)
 
 void GlfwAdapter::ShowWindow()
 {
+	if (window_visible_) {
+		return;
+	}
 	Glfw().glfwMakeContextCurrent(window_);
 	Glfw().glfwShowWindow(window_);
+	window_visible_ = true;
 }
 
 GlfwAdapter::~GlfwAdapter()
@@ -137,7 +173,7 @@ GlfwAdapter::~GlfwAdapter()
 		window_ = nullptr;
 	}
 	if (glfw_initialized_) {
-		Glfw().glfwTerminate();
+		ReleaseGlfwLibrary();
 		glfw_initialized_ = false;
 	}
 }
@@ -202,6 +238,7 @@ bool GlfwAdapter::ShouldCloseWindow() const
 
 void GlfwAdapter::SwapBuffers()
 {
+	ShowWindow();
 	Glfw().glfwSwapBuffers(window_);
 }
 

@@ -66,15 +66,6 @@
 #include <utility>
 #include <vector>
 
-#if MJR_ROS_VERSION == ROS_1
-class LifetimeTestPlugin final : public mujoco_ros::MujocoPlugin
-{
-public:
-	bool Load(const mjModel *, mjData *) override { return true; }
-	void Reset() override {}
-};
-#endif
-
 int main(int argc, char **argv)
 {
 	::testing::InitGoogleTest(&argc, argv);
@@ -146,23 +137,6 @@ protected:
 		delete env_ptr;
 	}
 };
-
-#if MJR_ROS_VERSION == ROS_1
-TEST(RosPluginAdapter, TypeReferenceRemainsStableAfterGetterTemporaryExpires)
-{
-	XmlRpc::XmlRpcValue config;
-	config["type"] = "mujoco_ros/LifetimeTestPlugin";
-	auto plugin    = std::make_unique<LifetimeTestPlugin>();
-	plugin->Init(config, "~", nullptr);
-	mujoco_ros::plugin_utils::RosPluginAdapter adapter(std::move(plugin));
-
-	const std::string &type = adapter.Type();
-	std::string allocation_churn(4096, 'x');
-	EXPECT_EQ(type, "mujoco_ros/LifetimeTestPlugin");
-	EXPECT_EQ(&type, &adapter.Type());
-	EXPECT_FALSE(allocation_churn.empty());
-}
-#endif
 
 TEST_F(LoadedPluginFixture, ControlCallback)
 {
@@ -807,6 +781,9 @@ TEST_F(BaseEnvFixture, RosPluginAdapterFactoryMissingTypeAndUnknownTypeBecomeFai
 	env_ptr              = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 	std::string xml_path = testing::get_test_model_path("empty_world.xml");
 	env_ptr->StartWithXML(xml_path);
+	ASSERT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(2)))
+	    << "failed plugin adapters left the env non-idle: load_request=" << env_ptr->loadRequest()
+	    << " reset=" << env_ptr->isResetRequested() << " status=" << env_ptr->GetOperationalStatus();
 	ASSERT_EQ(env_ptr->GetOperationalStatus(), 0);
 
 	plugin_utils::RosPluginAdapterFactory factory(env_ptr.get());

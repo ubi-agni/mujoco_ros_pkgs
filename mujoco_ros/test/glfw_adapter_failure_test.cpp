@@ -34,6 +34,8 @@ void Terminate()
 
 void WindowHint(int, int) {}
 
+void WindowHintString(int, const char *) {}
+
 GLFWmonitor *NoPrimaryMonitor()
 {
 	return nullptr;
@@ -55,6 +57,7 @@ const struct Glfw &Glfw(void *)
 		result.glfwInit              = &Initialize;
 		result.glfwTerminate         = &Terminate;
 		result.glfwWindowHint        = &WindowHint;
+		result.glfwWindowHintString  = &WindowHintString;
 		result.glfwGetPrimaryMonitor = &NoPrimaryMonitor;
 		result.glfwDestroyWindow     = &DestroyWindow;
 		return result;

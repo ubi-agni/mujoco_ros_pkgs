@@ -203,9 +203,11 @@ void MujocoEnv::ReconfigureRenderCore()
 
 void MujocoEnv::LoadWithModelAndData()
 {
+	if (IsShutdownRequested()) {
+		throw std::runtime_error("model load aborted because environment shutdown was requested");
+	}
 	{
 		RecursiveLock physics_lock(physics_thread_mutex_);
-		reload_in_progress_.store(true, std::memory_order_release);
 		CloseRenderTurnAdmission();
 		PrepareReload();
 		OnReloadPhase(ReloadPhase::kRenderQuiescenceStarted);
@@ -232,6 +234,9 @@ void MujocoEnv::LoadWithModelAndData()
 
 		std::shared_ptr<mjModel> mold;
 		std::shared_ptr<mjData> dold;
+		if (mnew == nullptr || dnew == nullptr) {
+			throw std::runtime_error("model load aborted because no queued model is available");
+		}
 		if (settings_.is_python_request.load()) {
 			mold = std::shared_ptr<mjModel>(mnew, [](mjModel *) {});
 			dold = std::shared_ptr<mjData>(dnew, [](mjData *) {});
@@ -294,11 +299,17 @@ void MujocoEnv::LoadWithModelAndData()
 	// environment and physics locks. PluginHost setup above remains ordered first.
 	OnReloadPhase(ReloadPhase::kRenderReconfigureStarted);
 	ReconfigureRenderCore();
+	ConnectedViewersLease connected_viewers;
 	{
 		RecursiveLock physics_lock(physics_thread_mutex_);
 		MJR_DEBUG("Delegating model loading to viewers");
-		for (const auto viewer : connected_viewers_) {
-			viewer->Load(model_, data_, filename_);
+		connected_viewers = AcquireConnectedViewersLease();
+	}
+	for (const auto viewer : connected_viewers.viewers()) {
+		try {
+			viewer->Load(model_, data_, filename_, model_generation_);
+		} catch (const ViewerLoadRejected &) {
+			MJR_DEBUG("Viewer stopped before accepting the new model generation");
 		}
 	}
 }
@@ -367,7 +378,8 @@ bool MujocoEnv::InitModelFromQueue()
 	double load_seconds = Seconds(load_interval).count();
 
 	if (!mnew) {
-		for (const auto viewer : connected_viewers_) {
+		const auto connected_viewers = AcquireConnectedViewersLease();
+		for (const auto viewer : connected_viewers.viewers()) {
 			mju::strcpy_arr(viewer->load_error, load_error_);
 		}
 
@@ -407,13 +419,14 @@ bool MujocoEnv::InitModelFromQueue()
 	if (load_error_[0]) {
 		// next mj_forward will print the message
 		MJR_WARN_STREAM("Model compiled, but got simulation warning: " << load_error_);
-		if (!settings_.headless)
+		if (!IsHeadless())
 			SetPaused(true);
 	} else if (load_seconds > 0.25) {
 		mju::sprintf_arr(load_error_, "Model loaded in %.2g seconds", load_seconds);
 	}
 
-	for (const auto viewer : connected_viewers_) {
+	const auto connected_viewers = AcquireConnectedViewersLease();
+	for (const auto viewer : connected_viewers.viewers()) {
 		mju::strcpy_arr(viewer->load_error, load_error_);
 	}
 

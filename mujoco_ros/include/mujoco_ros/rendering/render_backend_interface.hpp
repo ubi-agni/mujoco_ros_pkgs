@@ -73,7 +73,6 @@ struct RenderConfiguration
 {
 	FrameGeneration generation;
 	FrameLayout frame_layout;
-	std::string backend;
 };
 
 class IRenderBackend
