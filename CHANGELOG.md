@@ -19,8 +19,17 @@
 * [major] SRDF <extended_params> is now the only Extended Params input. Remove standalone XML compatibility, extended_params_path APIs/fields/ROS parameters, and legacy standalone fixtures (breaking).
 * [major] Rename built-in Extended Params tags actuator and gravcomp to mujoco_actuator and mujoco_gravcomp; unregistered custom tags now warn and skip instead of entering core parsing (breaking).
 * [major] Description launch sources use topics for URDF/SRDF delivery. modelfile is the optional composition world; empty selects the built-in default world.
-* [major] Replace `RENDER_BACKEND` with separate `WITH_GUI` (ON|OFF) and `OFFSCREEN_BACKEND` (ANY|EGL|OSMESA|DISABLE); GLFW is not a supported offscreen backend (breaking).
-* [major] Offscreen RenderCore no longer creates or destroys GLFW worker contexts; visible GLFW remains GUI-owned only (breaking for GLFW-as-offscreen builds).
+* [major] Replace `RENDER_BACKEND` with separate `WITH_GUI` (ON|OFF) and `OFFSCREEN_BACKEND` (ANY|EGL|OSMESA|DISABLE); with `WITH_GUI=ON`, `OFFSCREEN_BACKEND=ANY` resolves to a hidden GLFW offscreen context (EGL only on a proven hardware device) and `WITH_GUI=ON` + `OFFSCREEN_BACKEND=OSMESA` fails at configure time (breaking).
+* [major] Offscreen RenderCore owns a hidden GLFW window/context on its render thread when `WITH_GUI=ON` and the offscreen backend resolves to GLFW; the visible viewer context is never shared.
+
+> [!IMPORTANT]
+> #### Breaking Changes
+> * Simulation control no longer uses EnvSettings lifecycle/control fields or settings synchronization. Route control through SimulationControlState / MujocoEnv / Python control APIs.
+> * Extended Params accept only SRDF `<extended_params>`. Standalone XML, `extended_params_path` APIs/fields/ROS parameters, and legacy standalone fixtures are removed.
+> * Built-in Extended Params tags `actuator` and `gravcomp` are renamed to `mujoco_actuator` and `mujoco_gravcomp`. Unregistered custom tags warn and skip instead of entering core parsing.
+> * Description launch sources deliver URDF/SRDF via topics. `modelfile` is the optional composition world; empty selects the built-in default world.
+> * CMake `RENDER_BACKEND` is replaced by `WITH_GUI` (ON|OFF) and `OFFSCREEN_BACKEND` (ANY|EGL|OSMESA|DISABLE). `WITH_GUI=ON` with `OFFSCREEN_BACKEND=OSMESA` is rejected at configure time; use `ANY` (hidden GLFW offscreen context) or `EGL`. `WITH_GUI=ON` plus `ANY` needs an X display at runtime unless a hardware EGL device is found.
+> * With `WITH_GUI=ON`, `OFFSCREEN_BACKEND=ANY` now selects GLFW offscreen instead of OSMesa/EGL unless a hardware EGL device is detected. That GLFW offscreen path needs `DISPLAY` or Xvfb.
 
 ### Fixed
 * [patch] Fixed Python viewer rendering on hybrid-GPU systems by preparing the GLFW viewer context before offscreen rendering initializes.

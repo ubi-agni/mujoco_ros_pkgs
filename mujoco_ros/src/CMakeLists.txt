@@ -53,7 +53,6 @@ if(ROS_VERSION EQUAL "1")
     viewer_branding.cpp
     viewer_connection_state.cpp
     viewer_sync_policy.cpp
-    viewer_geom_defaults.cpp
     extended_params.cpp
     description_converter.cpp
     description_bundle.cpp
@@ -81,7 +80,6 @@ else()
     viewer_branding.cpp
     viewer_connection_state.cpp
     viewer_sync_policy.cpp
-    viewer_geom_defaults.cpp
     extended_params.cpp
     description_converter.cpp
     description_bundle.cpp
@@ -92,7 +90,10 @@ else()
 endif()
 
 if(WITH_GUI STREQUAL "ON")
-  list(APPEND MJR_SOURCE_FILES glfw_dispatch.cc)
+  if(NOT _MUJOCO_RESOLVED_OFFSCREEN_BACKEND STREQUAL "GLFW")
+    list(APPEND MJR_SOURCE_FILES glfw_dispatch.cc)
+    list(APPEND MJR_SOURCE_FILES rendering/glfw_library.cpp)
+  endif()
 endif()
 
 add_library(${PROJECT_NAME} SHARED
@@ -129,6 +130,12 @@ target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/lodepng
 )
 
+# libGL.so must precede OSMesa on the link line. OSMesa exports gl*; if it
+# loads first, GLFW's context cannot satisfy MuJoCo gladLoadGL.
+if(WITH_GUI STREQUAL "ON")
+  target_link_libraries(${PROJECT_NAME} PUBLIC
+    "-Wl,--no-as-needed" "${MJR_LIBGL}" "-Wl,--as-needed")
+endif()
 target_link_libraries(${PROJECT_NAME}
   PUBLIC
    mujoco::mujoco
@@ -138,6 +145,13 @@ target_link_libraries(${PROJECT_NAME}
    project_option
    project_warning
 )
+# Public headers expose FrameLease / RenderCore. Dependents must inherit the
+# render_core link (ROS 1 SHARED + ld --as-needed does not follow PRIVATE).
+get_target_property(_mjr_public_libs ${PROJECT_NAME} INTERFACE_LINK_LIBRARIES)
+if(NOT _mjr_public_libs MATCHES "mujoco_ros_render_core")
+  message(FATAL_ERROR
+    "mujoco_ros must PUBLIC-link mujoco_ros_render_core (INTERFACE_LINK_LIBRARIES=${_mjr_public_libs})")
+endif()
 if (ROS_VERSION EQUAL "1")
   target_link_libraries(${PROJECT_NAME}
     PUBLIC

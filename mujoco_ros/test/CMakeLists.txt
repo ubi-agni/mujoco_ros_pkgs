@@ -103,28 +103,13 @@ function(add_mujoco_ros_unit_test TEST_NAME)
     elseif(TEST_NAME STREQUAL "viewer_sync_policy_test")
       set(MJR_UNIT_LINK_MAIN FALSE)
       target_sources(${TEST_NAME} PRIVATE ../src/viewer_sync_policy.cpp)
+    elseif(TEST_NAME STREQUAL "viewer_pending_physics_test")
+      set(MJR_UNIT_LINK_MAIN FALSE)
+    elseif(TEST_NAME STREQUAL "viewer_connection_state_test")
+      set(MJR_UNIT_LINK_MAIN FALSE)
+      target_sources(${TEST_NAME} PRIVATE ../src/viewer_connection_state.cpp)
     elseif(TEST_NAME STREQUAL "viewer_geom_defaults_test")
       set(MJR_UNIT_LINK_MAIN FALSE)
-      target_sources(${TEST_NAME} PRIVATE ../src/viewer_geom_defaults.cpp)
-      if(ROS_VERSION EQUAL 2)
-        ament_target_dependencies(${TEST_NAME}
-          ament_index_cpp
-          rclcpp
-          rclcpp_lifecycle
-          pluginlib
-          tf2
-          tf2_ros
-          image_transport
-          camera_info_manager
-          geometry_msgs
-          tf2_geometry_msgs
-          mujoco_ros_msgs
-          rosgraph_msgs
-          lifecycle_msgs
-          sensor_msgs
-          std_srvs
-        )
-      endif()
     elseif(TEST_NAME STREQUAL "viewer_branding_test")
       set(MJR_UNIT_LINK_MAIN FALSE)
       target_sources(${TEST_NAME} PRIVATE
@@ -238,6 +223,8 @@ add_mujoco_ros_unit_test(mesh_uri_prep_test SOURCES mesh_uri_prep_test.cpp)
 add_mujoco_ros_unit_test(glb_visual_prep_test SOURCES glb_visual_prep_test.cpp)
 add_mujoco_ros_unit_test(ascii_stl_convert_test SOURCES ascii_stl_convert_test.cpp)
 add_mujoco_ros_unit_test(viewer_sync_policy_test SOURCES viewer_sync_policy_test.cpp)
+add_mujoco_ros_unit_test(viewer_pending_physics_test SOURCES viewer_pending_physics_test.cpp)
+add_mujoco_ros_unit_test(viewer_connection_state_test SOURCES viewer_connection_state_test.cpp)
 add_mujoco_ros_unit_test(viewer_geom_defaults_test SOURCES viewer_geom_defaults_test.cpp)
 add_mujoco_ros_unit_test(viewer_branding_test SOURCES viewer_branding_test.cpp)
 add_mujoco_ros_unit_test(runtime_options_test SOURCES runtime_options_test.cpp)
@@ -308,7 +295,7 @@ add_render_core_unit_test(render_demand_test render_demand_test.cpp)
 add_render_core_unit_test(frame_boundary_test frame_boundary_test.cpp)
 add_render_core_unit_test(render_core_test render_core_test.cpp)
 if(TARGET render_core_test)
-  target_include_directories(render_core_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+  target_include_directories(render_core_test PRIVATE ${PROJECT_SOURCE_DIR}/src ${GENERATED_HEADERS_DIR})
 endif()
 
 add_test(NAME render_backend_config_contract
@@ -332,6 +319,7 @@ if(WITH_GUI STREQUAL "ON")
     catkin_add_gtest(glfw_visible_gui_test
       glfw_visible_gui_test.cpp
       ../src/glfw_adapter.cc
+      ../src/rendering/glfw_library.cpp
       ../src/glfw_dispatch.cc
       ../src/platform_ui_adapter.cc
       ../src/viewer_branding.cpp
@@ -341,6 +329,7 @@ if(WITH_GUI STREQUAL "ON")
     ament_add_gtest(glfw_visible_gui_test
       glfw_visible_gui_test.cpp
       ../src/glfw_adapter.cc
+      ../src/rendering/glfw_library.cpp
       ../src/glfw_dispatch.cc
       ../src/platform_ui_adapter.cc
       ../src/viewer_branding.cpp
@@ -360,7 +349,10 @@ if(WITH_GUI STREQUAL "ON")
       MJR_RENDER_BACKEND_GLFW=1
     )
     if(ROS_VERSION EQUAL 1)
-      target_link_libraries(glfw_visible_gui_test gtest_main)
+      # Master-free glfw_* tests compile viewer_branding.cpp (ros/package.h) without
+      # linking libmujoco_ros; same ROS1 includes/roslib wiring as viewer_branding_test.
+      target_include_directories(glfw_visible_gui_test SYSTEM PRIVATE ${catkin_INCLUDE_DIRS})
+      target_link_libraries(glfw_visible_gui_test gtest_main ${MJR_ROS1_ROSLIB_LIBRARY})
     elseif(ROS_VERSION EQUAL 2)
       ament_target_dependencies(glfw_visible_gui_test ament_index_cpp)
     endif()
@@ -372,10 +364,55 @@ if(WITH_GUI STREQUAL "ON")
     )
   endif()
 
+  if(_MUJOCO_RESOLVED_OFFSCREEN_BACKEND STREQUAL "GLFW")
+    if(ROS_VERSION EQUAL 1)
+      catkin_add_gtest(glfw_offscreen_viewer_race_test
+        glfw_offscreen_viewer_race_test.cpp
+        ../src/glfw_adapter.cc
+        ../src/platform_ui_adapter.cc
+        ../src/viewer_branding.cpp
+        $<TARGET_OBJECTS:lodepng>
+      )
+    elseif(ROS_VERSION EQUAL 2)
+      ament_add_gtest(glfw_offscreen_viewer_race_test
+        glfw_offscreen_viewer_race_test.cpp
+        ../src/glfw_adapter.cc
+        ../src/platform_ui_adapter.cc
+        ../src/viewer_branding.cpp
+        $<TARGET_OBJECTS:lodepng>
+      )
+    endif()
+    if(TARGET glfw_offscreen_viewer_race_test)
+      target_include_directories(glfw_offscreen_viewer_race_test PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${GENERATED_HEADERS_DIR}
+        ${GLFW_INTERFACE_INCLUDE_DIRECTORIES}
+      )
+      target_include_directories(glfw_offscreen_viewer_race_test SYSTEM PRIVATE
+        ${PROJECT_SOURCE_DIR}/third_party/lodepng
+      )
+      target_compile_definitions(glfw_offscreen_viewer_race_test PRIVATE MJR_RENDER_BACKEND_GLFW=1)
+      if(ROS_VERSION EQUAL 1)
+        target_include_directories(glfw_offscreen_viewer_race_test SYSTEM PRIVATE ${catkin_INCLUDE_DIRS})
+        target_link_libraries(glfw_offscreen_viewer_race_test gtest_main ${MJR_ROS1_ROSLIB_LIBRARY})
+      elseif(ROS_VERSION EQUAL 2)
+        ament_target_dependencies(glfw_offscreen_viewer_race_test ament_index_cpp)
+      endif()
+      target_link_libraries(glfw_offscreen_viewer_race_test
+        mujoco_ros_render_core
+        mujoco::mujoco
+        ${GLFW}
+        project_option
+        project_warning
+      )
+    endif()
+  endif()
+
   if(ROS_VERSION EQUAL 1)
     catkin_add_gtest(glfw_adapter_failure_test
       glfw_adapter_failure_test.cpp
       ../src/glfw_adapter.cc
+      ../src/rendering/glfw_library.cpp
       ../src/platform_ui_adapter.cc
       ../src/viewer_branding.cpp
       $<TARGET_OBJECTS:lodepng>
@@ -384,6 +421,7 @@ if(WITH_GUI STREQUAL "ON")
     ament_add_gtest(glfw_adapter_failure_test
       glfw_adapter_failure_test.cpp
       ../src/glfw_adapter.cc
+      ../src/rendering/glfw_library.cpp
       ../src/platform_ui_adapter.cc
       ../src/viewer_branding.cpp
       $<TARGET_OBJECTS:lodepng>
@@ -400,7 +438,8 @@ if(WITH_GUI STREQUAL "ON")
     )
     target_compile_definitions(glfw_adapter_failure_test PRIVATE MJR_RENDER_BACKEND_GLFW=1)
     if(ROS_VERSION EQUAL 1)
-      target_link_libraries(glfw_adapter_failure_test gtest_main)
+      target_include_directories(glfw_adapter_failure_test SYSTEM PRIVATE ${catkin_INCLUDE_DIRS})
+      target_link_libraries(glfw_adapter_failure_test gtest_main ${MJR_ROS1_ROSLIB_LIBRARY})
     elseif(ROS_VERSION EQUAL 2)
       ament_target_dependencies(glfw_adapter_failure_test ament_index_cpp)
     endif()

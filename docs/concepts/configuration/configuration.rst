@@ -104,17 +104,24 @@ Offscreen RenderCore and Frame Boundary
 
 Offscreen rendering is coordinated by the core package through ``RenderCore``,
 which owns the ``Render Backend`` and the transport-neutral ``Frame Boundary``.
-The standalone ``mujoco_ros_render_core`` library links only ``mujoco::mujoco``
-and the selected offscreen graphics target (EGL, OSMesa, or none). Its public
-include graph does not depend on ROS headers, ``MujocoEnv``, pluginlib, or the
-visible GLFW backend. Visible GUI rendering remains outside this target.
+The standalone ``mujoco_ros_render_core`` library links ``mujoco::mujoco`` and
+the selected offscreen graphics target (EGL, OSMesa, GLFW when ``ANY``/GUI
+resolves to a hidden GLFW context, or none). Its public include graph does not
+depend on ROS headers, ``MujocoEnv``, pluginlib, or the visible viewer GLFW
+stack. Visible GUI rendering remains outside this target.
 
 Configure visible GLFW GUI with ``WITH_GUI`` (``ON`` or ``OFF``) and the
 offscreen backend with ``OFFSCREEN_BACKEND`` (``ANY``, ``EGL``, ``OSMESA``, or
-``DISABLE``). GLFW is not a supported offscreen backend.
-When neither EGL nor OSMesa is available and ``DISABLE`` is not selected,
-offscreen rendering is disabled rather than silently falling back to another
-backend.
+``DISABLE``). ``OFFSCREEN_BACKEND`` never accepts ``GLFW``; with
+``WITH_GUI=ON`` the default ``ANY`` resolves to a hidden GLFW window/context
+owned by the RenderCore thread (hosted CI uses Xvfb). ``ANY`` selects EGL
+instead only when a ``/dev/dri/renderD*`` node exists and a probe finds a
+non-software renderer. ``WITH_GUI=ON`` with ``OFFSCREEN_BACKEND=OSMESA`` fails
+at configure time because OSMesa and the viewer's libGL conflict in one
+process; use ``EGL`` or ``ANY``. With ``WITH_GUI=OFF``, ``ANY`` prefers EGL,
+then OSMesa. With ``WITH_GUI=OFF``, when neither EGL nor OSMesa is available
+and ``DISABLE`` is not selected, offscreen rendering is disabled rather than
+silently falling back to another backend.
 
 The Frame Boundary owns a bounded pool of frame slots and byte storage. Model
 load and camera reconfiguration compute required capacity from camera layout and

@@ -489,7 +489,14 @@ std::optional<FrameLease> FrameWriter::Acquire() const
 	if (!boundary) {
 		return std::nullopt;
 	}
-	return FrameLease(state_->storage, [boundary]() { boundary->capacity_condition.notify_all(); });
+	// Hand ownership to the lease so a long-lived writer cannot pin capacity via use_count.
+	auto storage = std::move(state_->storage);
+	// Notify under the capacity mutex so WaitForCapacity's use_count() reclaim check
+	// happens-after storage_.reset() in ~FrameLease (notify alone is not a sync point).
+	return FrameLease(std::move(storage), [boundary]() {
+		std::lock_guard<std::mutex> lock(boundary->mutex);
+		boundary->capacity_condition.notify_all();
+	});
 }
 
 FrameBoundary::FrameBoundary(std::size_t max_slots, std::size_t max_bytes)
@@ -689,9 +696,14 @@ FrameStatus FrameBoundary::WaitForCapacity(FrameGeneration generation, std::size
 			return FrameStatus::Ok();
 		}
 #ifdef MJR_BUILD_TESTING
+		// Observer must run without the capacity mutex. Holding the lock while the test releases a
+		// lease and notifies loses the wakeup (notify happens before wait begins).
 		auto capacity_wait_observer = std::move(state->capacity_wait_observer);
 		if (capacity_wait_observer) {
+			lock.unlock();
 			capacity_wait_observer();
+			lock.lock();
+			continue;
 		}
 #endif
 		state->capacity_condition.wait(lock, [&] {
@@ -740,7 +752,10 @@ std::optional<FrameLease> FrameBoundary::AcquireLatest(std::uint64_t capture_id,
 		if ((*it)->plane == plane && (capture_id == 0 || (*it)->stamp.capture_id == capture_id) &&
 		    (camera == CameraId(0) || (*it)->stamp.camera_id == camera)) {
 			const auto boundary = state_;
-			return FrameLease(*it, [boundary]() { boundary->capacity_condition.notify_all(); });
+			return FrameLease(*it, [boundary]() {
+				std::lock_guard<std::mutex> lock(boundary->mutex);
+				boundary->capacity_condition.notify_all();
+			});
 		}
 	}
 	return std::nullopt;
@@ -758,7 +773,10 @@ std::vector<FrameLease> FrameBoundary::AcquireRecent(CameraId camera, PlaneKind 
 		if ((*it)->stamp.generation == state_->generation && (*it)->plane == plane &&
 		    (camera == CameraId(0) || (*it)->stamp.camera_id == camera)) {
 			const auto boundary = state_;
-			result.emplace_back(FrameLease(*it, [boundary]() { boundary->capacity_condition.notify_all(); }));
+			result.emplace_back(FrameLease(*it, [boundary]() {
+				std::lock_guard<std::mutex> lock(boundary->mutex);
+				boundary->capacity_condition.notify_all();
+			}));
 		}
 	}
 	std::reverse(result.begin(), result.end());

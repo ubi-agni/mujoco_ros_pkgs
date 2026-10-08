@@ -83,7 +83,9 @@ const struct Glfw &Glfw(void *dlhandle)
 		// go/keep-sorted start
 		mjGLFW_INITIALIZE_SYMBOL(glfwCreateWindow);
 		mjGLFW_INITIALIZE_SYMBOL(glfwDestroyWindow);
+		mjGLFW_INITIALIZE_SYMBOL(glfwGetCurrentContext);
 		mjGLFW_INITIALIZE_SYMBOL(glfwGetCursorPos);
+		mjGLFW_INITIALIZE_SYMBOL(glfwGetError);
 		mjGLFW_INITIALIZE_SYMBOL(glfwGetFramebufferSize);
 		mjGLFW_INITIALIZE_SYMBOL(glfwGetKey);
 		mjGLFW_INITIALIZE_SYMBOL(glfwGetMonitorPhysicalSize);

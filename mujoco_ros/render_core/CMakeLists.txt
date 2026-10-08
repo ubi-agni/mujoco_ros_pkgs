@@ -1,4 +1,4 @@
-add_library(mujoco_ros_render_core
+add_library(mujoco_ros_render_core SHARED
   ${CMAKE_CURRENT_LIST_DIR}/../src/rendering/render_demand.cpp
   ${CMAKE_CURRENT_LIST_DIR}/../src/rendering/frame_boundary.cpp
   ${CMAKE_CURRENT_LIST_DIR}/../src/rendering/render_backend.cpp
@@ -13,11 +13,25 @@ target_include_directories(mujoco_ros_render_core
 )
 target_link_libraries(mujoco_ros_render_core PUBLIC mujoco::mujoco)
 target_compile_features(mujoco_ros_render_core PUBLIC cxx_std_17)
+get_target_property(_mjr_render_core_type mujoco_ros_render_core TYPE)
+if(NOT _mjr_render_core_type STREQUAL "SHARED_LIBRARY")
+  message(FATAL_ERROR
+    "mujoco_ros_render_core must be SHARED (got ${_mjr_render_core_type})")
+endif()
 if(BUILD_TESTING OR CATKIN_ENABLE_TESTING)
   target_compile_definitions(mujoco_ros_render_core PUBLIC MJR_BUILD_TESTING=1)
 endif()
 
-if(_MUJOCO_RESOLVED_OFFSCREEN_BACKEND STREQUAL "EGL")
+if(_MUJOCO_RESOLVED_OFFSCREEN_BACKEND STREQUAL "GLFW")
+  # glfw_library.cpp and glfw_dispatch.cc hold process-wide statics; compile into
+  # exactly one library. render_core owns both when offscreen is GLFW (GUI is ON).
+  target_sources(mujoco_ros_render_core PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/../src/rendering/glfw_library.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/../src/glfw_dispatch.cc)
+  set_property(TARGET mujoco_ros_render_core PROPERTY POSITION_INDEPENDENT_CODE ON)
+  target_compile_definitions(mujoco_ros_render_core PRIVATE MJR_RENDER_BACKEND_GLFW=1)
+  target_link_libraries(mujoco_ros_render_core PRIVATE ${GLFW})
+elseif(_MUJOCO_RESOLVED_OFFSCREEN_BACKEND STREQUAL "EGL")
   target_compile_definitions(mujoco_ros_render_core PRIVATE MJR_RENDER_BACKEND_EGL=1)
 elseif(_MUJOCO_RESOLVED_OFFSCREEN_BACKEND STREQUAL "OSMESA")
   target_compile_definitions(mujoco_ros_render_core PRIVATE MJR_RENDER_BACKEND_OSMESA=1)

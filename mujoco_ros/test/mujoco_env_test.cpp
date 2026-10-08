@@ -156,9 +156,7 @@ public:
 	using MujocoEnvTestWrapper::WarnFrameSlotDrop;
 };
 
-// GLFW window + OSMesa offscreen in one process SIGSEGVs on CI (first Viewer
-// test dies at GlfwAdapter/RenderLoop after env Configure).
-#if RENDER_BACKEND == GLFW_BACKEND && OFFSCREEN_RENDER_BACKEND != OSMESA_BACKEND
+#if RENDER_BACKEND == GLFW_BACKEND
 TEST_F(BaseEnvFixture, ViewerRenderLoopExceptionalExitRejectsLaterLoads)
 {
 	if (std::getenv("DISPLAY") == nullptr && std::getenv("WAYLAND_DISPLAY") == nullptr) {
@@ -535,6 +533,9 @@ void ExpectChildScenarioSuccess(const char *filter, int expected_result = kScena
 		if (waited == child) {
 			if (WIFEXITED(status) && WEXITSTATUS(status) == kScenarioGlfwStartupFailed) {
 				GTEST_SKIP() << "GLFW startup failed in child (display unavailable)";
+			}
+			if (WIFSIGNALED(status)) {
+				FAIL() << "child terminated by signal " << WTERMSIG(status);
 			}
 			ASSERT_TRUE(WIFEXITED(status)) << "child did not exit cleanly";
 			EXPECT_EQ(WEXITSTATUS(status), expected_result) << "child scenario failed with code " << WEXITSTATUS(status);
@@ -1470,15 +1471,15 @@ int RunConcurrentVoluntaryDisconnectHeadlessScenario(testing::TestNodeHandle *nh
 	}
 	if (first_render_result.load(std::memory_order_acquire) != kScenarioSuccess ||
 	    second_render_result.load(std::memory_order_acquire) != kScenarioSuccess) {
-		return kScenarioLifetimeFailed;
+		ExitChildScenario(kScenarioLifetimeFailed);
 	}
 	if (!WaitUntil([&env]() { return !env->HasConnectedViewers(); }, std::chrono::seconds(5))) {
-		return kScenarioLifetimeFailed;
+		ExitChildScenario(kScenarioLifetimeFailed);
 	}
 	if (!WaitUntil([&env]() { return env->IsHeadless(); }, std::chrono::seconds(5))) {
-		return kScenarioLifetimeFailed;
+		ExitChildScenario(kScenarioLifetimeFailed);
 	}
-	return kScenarioSuccess;
+	ExitChildScenario(kScenarioSuccess);
 }
 
 int RunConnectedViewersLeasePinsViewerStorageScenario(testing::TestNodeHandle *nh)

@@ -82,9 +82,9 @@ protected:
 	void OnWindowRefresh();
 	void OnWindowResize(int width, int height);
 
-	mjuiState state_;
-	void (*event_callback_)(mjuiState *);
-	void (*layout_callback_)(mjuiState *);
+	mjuiState state_{};
+	void (*event_callback_)(mjuiState *)  = nullptr;
+	void (*layout_callback_)(mjuiState *) = nullptr;
 
 	mjrContext con_;
 	const mjModel *last_model_ = nullptr;

@@ -36,7 +36,8 @@
 
 #include <gtest/gtest.h>
 #include <mujoco/mujoco.h>
-#include <mujoco_ros/viewer.hpp>
+#include <mujoco_ros/rendering/camera_descriptor.hpp>
+#include <mujoco_ros/rendering/visual_option_defaults.hpp>
 
 TEST(ViewerGeomDefaults, HidesGroup2AfterDefaultOption)
 {
@@ -47,4 +48,17 @@ TEST(ViewerGeomDefaults, HidesGroup2AfterDefaultOption)
 	EXPECT_EQ(opt.geomgroup[0], 1);
 	EXPECT_EQ(opt.geomgroup[1], 1);
 	EXPECT_EQ(opt.geomgroup[2], 0);
+}
+
+TEST(ViewerGeomDefaults, OffscreenDefaultCameraVisualOptionsMatchViewer)
+{
+	mjvOption viewer_opt;
+	mjv_defaultOption(&viewer_opt);
+	mujoco_ros::ApplyInteractiveViewerGeomDefaults(&viewer_opt);
+
+	const auto offscreen_opt = mujoco_ros::rendering::DefaultCameraVisualOptions();
+	EXPECT_EQ(offscreen_opt.geomgroup[0], viewer_opt.geomgroup[0]);
+	EXPECT_EQ(offscreen_opt.geomgroup[1], viewer_opt.geomgroup[1]);
+	EXPECT_EQ(offscreen_opt.geomgroup[2], viewer_opt.geomgroup[2]);
+	EXPECT_EQ(offscreen_opt.geomgroup[2], 0);
 }

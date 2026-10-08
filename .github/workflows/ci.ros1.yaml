@@ -60,11 +60,11 @@ jobs:
           fi
 
           if [[ "${full_matrix}" != "true" ]]; then
-            matrix='{"include":[{"distro":"one","gui_backend":"GLFW","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"plain"}]}'
+            matrix='{"include":[{"distro":"one","gui_backend":"GLFW","offscreen_backend":"ANY","mujoco":"3.3.5","check":"plain"}]}'
           elif [[ "${coverage}" == "true" ]]; then
-            matrix='{"include":[{"distro":"one","gui_backend":"GLFW","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"ccov"},{"distro":"one","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"ccov"},{"distro":"one","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"ccov"},{"distro":"one","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"ccov"}]}'
+            matrix='{"include":[{"distro":"one","gui_backend":"GLFW","offscreen_backend":"ANY","mujoco":"3.3.5","check":"ccov"},{"distro":"one","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"ccov"},{"distro":"one","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"ccov"},{"distro":"one","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"ccov"}]}'
           else
-            matrix='{"include":[{"distro":"one","gui_backend":"GLFW","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"plain"},{"distro":"one","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"plain"},{"distro":"one","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"plain"},{"distro":"one","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"plain"}]}'
+            matrix='{"include":[{"distro":"one","gui_backend":"GLFW","offscreen_backend":"ANY","mujoco":"3.3.5","check":"plain"},{"distro":"one","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"plain"},{"distro":"one","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.3.5","check":"plain"},{"distro":"one","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.3.5","check":"plain"}]}'
           fi
 
           echo "matrix=${matrix}" >> "${GITHUB_OUTPUT}"
@@ -92,7 +92,7 @@ jobs:
         apt-get update -q;
         apt-get install -qy python3-pip${{ matrix.gui_backend == 'GLFW' && ' xvfb' || '' }};
         python3 -m pip install mujoco==${{ matrix.mujoco }};
-        ${{ matrix.gui_backend == 'GLFW' && 'Xvfb :99 &' || '' }}
+        ${{ matrix.gui_backend == 'GLFW' && 'Xvfb :99 & n=0; until [ -S /tmp/.X11-unix/X99 ]; do n=$((n+1)); if [ "$n" -gt 100 ]; then echo "Xvfb :99 failed to start" >&2; exit 1; fi; sleep 0.1; done' || '' }}
       # Pull any updates to the upstream workspace
       AFTER_SETUP_UPSTREAM_WORKSPACE: vcs pull $BASEDIR/upstream_ws/src
       AFTER_SETUP_DOWNSTREAM_WORKSPACE: vcs pull $BASEDIR/downstream_ws/src

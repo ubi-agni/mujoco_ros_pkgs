@@ -28,6 +28,7 @@
 #endif
 
 #include <mujoco_ros/offscreen_camera.hpp>
+#include <mujoco_ros/rendering/render_backend_interface.hpp>
 #include <mujoco_ros_testing_utils/mujoco_env_fixture.hpp>
 
 // Harness teardown invariant (docs/guardrails.md): flush JSON, shut down step worker,
@@ -628,13 +629,7 @@ void WriteRostestResult(const Options &options)
 
 std::string CompiledBackendName()
 {
-#if OFFSCREEN_RENDER_BACKEND == EGL_BACKEND
-	return "EGL";
-#elif OFFSCREEN_RENDER_BACKEND == OSMESA_BACKEND
-	return "OSMESA";
-#else
-	return "NONE";
-#endif
+	return mujoco_ros::rendering::CompiledRenderBackendName();
 }
 
 std::string CameraCountRole(int camera_count)

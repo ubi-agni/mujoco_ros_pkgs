@@ -9,12 +9,15 @@
 
 #include <mujoco/mujoco.h>
 
+#include <mujoco_ros/rendering/visual_option_defaults.hpp>
+
 namespace mujoco_ros::rendering {
 
 inline mjvOption DefaultCameraVisualOptions()
 {
 	mjvOption options;
 	mjv_defaultOption(&options);
+	ApplyInteractiveViewerGeomDefaults(&options);
 	return options;
 }
 

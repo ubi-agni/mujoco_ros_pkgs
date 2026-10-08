@@ -177,12 +177,19 @@ void ReadSimParams(SimParamsConfig &config, mjModel *model_, const RosAPISetting
 
 void RosAPI::UpdateDynamicParams()
 {
-	boost::recursive_mutex::scoped_lock lk(sim_params_mutex_);
-	RecursiveLock physics_lock(env_ptr_->physics_thread_mutex_);
+	// Match ROS 2: snapshot under the physics lock, then publish without holding it.
+	// dynamic_reconfigure::Server::updateConfig can re-enter DynparamCallback / ROS
+	// transport; doing that while EventLoop already owns physics_thread_mutex_ deadlocks
+	// reload (seen on ROS1 OFFSCREEN=DISABLE python_bindings_test reload service).
 	SimParamsConfig config;
-	ReadSimParams(config, env_ptr_->model_.get(),
-	              RosAPISettings{ env_ptr_->GetControlSnapshot().running, env_ptr_->settings_.admin_hash,
-	                              env_ptr_->GetRenderBackpressurePolicy() });
+	{
+		boost::recursive_mutex::scoped_lock lk(sim_params_mutex_);
+		RecursiveLock physics_lock(env_ptr_->physics_thread_mutex_);
+		ReadSimParams(config, env_ptr_->model_.get(),
+		              RosAPISettings{ env_ptr_->GetControlSnapshot().running, env_ptr_->settings_.admin_hash,
+		                              env_ptr_->GetRenderBackpressurePolicy() });
+	}
+	boost::recursive_mutex::scoped_lock lk(sim_params_mutex_);
 	param_server_->updateConfig(config);
 }
 
