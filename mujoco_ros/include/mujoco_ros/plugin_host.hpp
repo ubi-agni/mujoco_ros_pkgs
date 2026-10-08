@@ -123,18 +123,6 @@ public:
 	void DispatchLastStage(ModelGeneration, const mjModel *, mjData *);
 	void Reset(ModelGeneration);
 	void NotifyGeometryChanged(ModelGeneration, const mjModel *, mjData *, int geom_id);
-	void DispatchControl(const mjModel *model, mjData *data) { DispatchControl(model_generation_, model, data); }
-	void DispatchPassive(const mjModel *model, mjData *data) { DispatchPassive(model_generation_, model, data); }
-	void DispatchRender(const mjModel *model, mjData *data, mjvScene *scene)
-	{
-		DispatchRender(model_generation_, model, data, scene);
-	}
-	void DispatchLastStage(const mjModel *model, mjData *data) { DispatchLastStage(model_generation_, model, data); }
-	void Reset() { Reset(model_generation_); }
-	void NotifyGeometryChanged(const mjModel *model, mjData *data, int geom_id)
-	{
-		NotifyGeometryChanged(model_generation_, model, data, geom_id);
-	}
 
 	std::vector<PluginStat> Statistics() const;
 	std::vector<PluginStat> ActiveStatistics() const;
@@ -158,6 +146,9 @@ private:
 	IPluginAdapter *FindAdapterLocked(const std::string &name, const std::string &type) const;
 	bool ValidateModelGenerationLocked(ModelGeneration model_generation) const;
 	void RecordFailureLocked(const IPluginAdapter &adapter, const char *phase, const std::string &error) const;
+
+	template <auto MemberFn, typename... Args>
+	void DispatchReadyLocked(ModelGeneration model_generation, const char *phase, const char *operation, Args &&...args);
 
 	IPluginAdapterFactory &factory_;
 	mutable std::mutex mutex_;

@@ -3,6 +3,7 @@ from .ros_context import RosCore
 from .ros_context import ensure_ros_initialized
 from .ros_context import is_ros_master_available
 from .ros_context import set_use_sim_time
+from . import viewer
 
 __all__ = [
     "MujocoEnv",
@@ -10,4 +11,5 @@ __all__ = [
     "ensure_ros_initialized",
     "is_ros_master_available",
     "set_use_sim_time",
+    "viewer",
 ]

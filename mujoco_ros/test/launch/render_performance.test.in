@@ -5,36 +5,11 @@
   <env name="ROSCONSOLE_CONFIG_FILE"
        value="$(find mujoco_ros)/config/rosconsole.config"/>
 
-  <arg name="output_dir" default="."/>
+  <arg name="output_dir" default="@RENDER_PERFORMANCE_OUTPUT_DIR@"/>
   <param name="/use_sim_time" value="true"/>
 
-  <test test-name="$(anon render_performance_completion)"
+  <test test-name="$(anon render_performance_@RENDER_PERFORMANCE_CASE@)"
         pkg="mujoco_ros" type="render_performance_test"
-        args="--backend @RENDER_PERFORMANCE_BENCHMARK_BACKEND@ --camera-count 4 --iterations 2 --repeat 1 --output $(arg output_dir)/render_performance_completion.json"
-        time-limit="30.0"/>
-
-  <test test-name="$(anon render_performance_attribution)"
-        pkg="mujoco_ros" type="render_performance_test"
-        args="--backend @RENDER_PERFORMANCE_BENCHMARK_BACKEND@ --camera-count 2 --iterations 3 --repeat 2 --output $(arg output_dir)/render_performance_attribution.json"
-        time-limit="60.0"/>
-
-  <test test-name="$(anon render_performance_exit_deadline)"
-        pkg="mujoco_ros" type="render_performance_test"
-        args="--backend @RENDER_PERFORMANCE_BENCHMARK_BACKEND@ --camera-count 4 --iterations 10 --repeat 2 --output $(arg output_dir)/render_performance_exit_deadline.json"
-        time-limit="180.0"/>
-
-  <test test-name="$(anon render_performance_camera_1)"
-        pkg="mujoco_ros" type="render_performance_test"
-        args="--backend @RENDER_PERFORMANCE_BENCHMARK_BACKEND@ --camera-count 1 --iterations 2 --repeat 1 --output $(arg output_dir)/render_performance_camera_1.json"
-        time-limit="30.0"/>
-
-  <test test-name="$(anon render_performance_camera_2)"
-        pkg="mujoco_ros" type="render_performance_test"
-        args="--backend @RENDER_PERFORMANCE_BENCHMARK_BACKEND@ --camera-count 2 --iterations 2 --repeat 1 --output $(arg output_dir)/render_performance_camera_2.json"
-        time-limit="30.0"/>
-
-  <test test-name="$(anon render_performance_camera_4)"
-        pkg="mujoco_ros" type="render_performance_test"
-        args="--backend @RENDER_PERFORMANCE_BENCHMARK_BACKEND@ --camera-count 4 --iterations 2 --repeat 1 --output $(arg output_dir)/render_performance_camera_4.json"
-        time-limit="30.0"/>
+        args="--backend @RENDER_PERFORMANCE_BENCHMARK_BACKEND@ --camera-count @RENDER_PERFORMANCE_CAMERA_COUNT@ --iterations @RENDER_PERFORMANCE_ITERATIONS@ --repeat @RENDER_PERFORMANCE_REPEAT@ --output $(arg output_dir)/render_performance_@RENDER_PERFORMANCE_CASE@.json"
+        time-limit="@RENDER_PERFORMANCE_TIME_LIMIT@"/>
 </launch>

@@ -353,6 +353,16 @@ TEST_F(MocapPluginFixture, TopicUpdatesMocapPose)
 	const MocapState state = make_mocap_state("mocap2", "world", 0.4, 0.5, 0.6, 1.0);
 	publish_mocap_state(env_ptr.get(), nh.get(), state);
 
+	float seconds = 0;
+	while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		seconds += 0.001f;
+	}
+	m = env_ptr->getModelPtr();
+	d = env_ptr->getDataPtr();
+	ASSERT_NE(m, nullptr);
+	ASSERT_NE(d, nullptr);
+
 	env_ptr->togglePaused(true);
 	for (int i = 0; i < 10; ++i) {
 		ASSERT_TRUE(env_ptr->step());

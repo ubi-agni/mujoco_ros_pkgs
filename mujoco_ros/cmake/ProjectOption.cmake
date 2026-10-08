@@ -7,6 +7,8 @@ include(Sanitizers)
 include(Optimization)
 include(CompilerWarning)
 
+option(ENABLE_CLANG_TIDY "Run clang-tidy during build" OFF)
+
 function(configure_ros_project_option)
   cmake_parse_arguments("" "" "TARGET" "" ${ARGN})
 
@@ -29,7 +31,6 @@ function(configure_project_option)
   set(groups
     CATKIN_ROS
     WARNINGS
-    AVX
     LINKER
     COMPILER_CACHE
     SANITIZER
@@ -45,9 +46,8 @@ function(configure_project_option)
 
   cmake_parse_arguments(IPO "" "" "DISABLE_FOR_CONFIG" "${GRP_IPO}")
   cmake_parse_arguments(CATKIN_ROS "" "TARGET" "" "${GRP_CATKIN_ROS}")
-  cmake_parse_arguments(AVX "" "TARGET" "" "${GRP_AVX}")
 
-  foreach(target_name ${WARNING_TARGET} ${LINKER_TARGET} ${SANITIZER_TARGET} ${CATKIN_ROS_TARGET} ${AVX_TARGET})
+  foreach(target_name ${WARNING_TARGET} ${LINKER_TARGET} ${SANITIZER_TARGET} ${CATKIN_ROS_TARGET})
     if(NOT TARGET ${target_name})
       add_library(${target_name} INTERFACE)
       set_target_properties(${target_name} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "")
@@ -61,13 +61,17 @@ function(configure_project_option)
     configure_compiler_cache(OPTION ${CCACHE_LAUNCHER} BASE_DIR ${CCACHE_CCACHE_BASE_DIR})
   endif()
   configure_project_warnings(TARGET ${WARNING_TARGET} WARNINGS ${WARNING_PROJECT_WARNINGS})
-  configure_project_avx_support(TARGET ${AVX_TARGET})
 
   configure_linker(TARGET ${LINKER_TARGET})
   configure_sanitizers(TARGET ${SANITIZER_TARGET})
 
-  if(${ENABLE_CLANG_TIDY})
-    configure_clang_tidy(EXTRA_ARG ${CLANG_TIDY_EXTRA_ARG} EXTRA_OPTIONS ${CLANG_TIDY_EXTRA_OPTIONS})
+  if(ENABLE_CLANG_TIDY)
+    find_program(CLANG_TIDY_EXE NAMES clang-tidy)
+    if(CLANG_TIDY_EXE)
+      set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY_EXE}")
+    else()
+      message(WARNING "ENABLE_CLANG_TIDY=ON but clang-tidy not found")
+    endif()
   endif()
 
   configure_ros_project_option(TARGET ${CATKIN_ROS_TARGET})

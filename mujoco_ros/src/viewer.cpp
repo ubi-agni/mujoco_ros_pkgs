@@ -52,11 +52,14 @@
 /* Authors: David P. Leins */
 
 #include <climits>
+#include <stdexcept>
 
 #include <mujoco_ros/ros_version.hpp>
 #include <mujoco_ros/logging.hpp>
 
 #include <mujoco_ros/viewer.hpp>
+#include <mujoco_ros/viewer_branding.hpp>
+#include <mujoco_ros/viewer_sync_policy.hpp>
 
 #include <lodepng.h>
 #include <mujoco/mujoco.h>
@@ -120,6 +123,20 @@ inline void Copy(T &dst, const T &src)
 		CopyArray(dst, src);
 	} else {
 		CopyScalar(dst, src);
+	}
+}
+
+bool ShouldPropagateConnectedTeardownCleanupError(const std::exception_ptr &error)
+{
+	if (!error) {
+		return false;
+	}
+	try {
+		std::rethrow_exception(error);
+	} catch (const std::runtime_error &) {
+		return true;
+	} catch (...) {
+		return false;
 	}
 }
 
@@ -1561,8 +1578,10 @@ void UiEvent(mjuiState *state)
 
 			// Update flags in env
 			if (!viewer->is_passive_) {
-				viewer->env_->UpdateModelFlags(opt);
-				viewer->env_->settings_.settings_changed.store(true);
+				if (MujocoEnv *env = viewer->FrameEnvironment()) {
+					env->UpdateModelFlags(opt);
+					env->settings_.settings_changed.store(true);
+				}
 			}
 
 		}
@@ -1649,27 +1668,34 @@ void UiEvent(mjuiState *state)
 					viewer->pending_.ui_update_run = true;
 					viewer->pert.active            = 0;
 
-					if (viewer->env_->GetControlSnapshot().running)
-						viewer->scrub_index = 0; // reset scrubber
+					if (MujocoEnv *env = viewer->FrameEnvironment()) {
+						if (env->GetControlSnapshot().running) {
+							viewer->scrub_index = 0; // reset scrubber
+						}
+					}
 					mjui0_update_section(viewer, -1);
 				}
 				break;
 
 			case mjKEY_RIGHT: // step forward
-				if (!viewer->is_passive_ && !viewer->env_->GetControlSnapshot().running) {
-					ClearTimers(viewer->d_.get());
+				if (!viewer->is_passive_) {
+					if (MujocoEnv *env = viewer->FrameEnvironment()) {
+						if (!env->GetControlSnapshot().running) {
+							ClearTimers(viewer->d_.get());
 
-					// currently in scrubber: increment scrub, load state, update slider UI
-					if (viewer->scrub_index < 0) {
-						viewer->scrub_index++;
-						viewer->pending_.load_from_history = true;
-						mjui0_update_section(viewer, SECT_SIMULATION);
-					}
+							// currently in scrubber: increment scrub, load state, update slider UI
+							if (viewer->scrub_index < 0) {
+								viewer->scrub_index++;
+								viewer->pending_.load_from_history = true;
+								mjui0_update_section(viewer, SECT_SIMULATION);
+							}
 
-					// not in scrubber: step, add to history buffer
-					else {
-						viewer->env_->RequestManualSteps(1);
-						viewer->AddToHistory();
+							// not in scrubber: step, add to history buffer
+							else {
+								env->RequestManualSteps(1);
+								viewer->AddToHistory();
+							}
+						}
 					}
 				}
 				break;
@@ -1691,9 +1717,11 @@ void UiEvent(mjuiState *state)
 				break;
 
 			case mjKEY_DOWN: // step forward 100
-				if (!viewer->env_->GetControlSnapshot().running) {
-					ClearTimers(viewer->d_.get());
-					viewer->env_->RequestManualSteps(100);
+				if (MujocoEnv *env = viewer->FrameEnvironment()) {
+					if (!env->GetControlSnapshot().running) {
+						ClearTimers(viewer->d_.get());
+						env->RequestManualSteps(100);
+					}
 				}
 				break;
 
@@ -1874,7 +1902,9 @@ void UiEvent(mjuiState *state)
 
 	// Redraw
 	if (state->type == mjEVENT_REDRAW) {
-		viewer->Render();
+		if (viewer->FrameEnvironment()) {
+			viewer->Render();
+		}
 		return;
 	}
 }
@@ -1883,15 +1913,61 @@ void UiEvent(mjuiState *state)
 namespace mujoco_ros {
 namespace mju = ::mujoco::sample_util;
 
-Viewer::Viewer(std::unique_ptr<PlatformUIAdapter> platform_ui_adapter, MujocoEnv *env, bool is_passive)
-    : env_(env)
+Viewer::Viewer(std::unique_ptr<PlatformUIAdapter> platform_ui_adapter, MujocoEnv *env, bool is_passive, bool auto_sync)
+    : connection_state_(env->CreateViewerConnection(this))
     , pert(env->pert_)
     , platform_ui(std::move(platform_ui_adapter))
     , uistate(this->platform_ui->state())
     , is_passive_(is_passive)
+    , auto_sync_(auto_sync)
 {
 	mjv_defaultScene(&scn);
-	env_->ConnectViewer(this);
+}
+
+Viewer::~Viewer()
+{
+	if (connection_state_ && connection_state_->RenderLoopActive()) {
+		MJR_ERROR("Viewer destruction during an active RenderLoop is not supported");
+		std::terminate();
+	}
+	if (connection_state_) {
+		connection_state_->WaitForViewerOperationLeases();
+		if (connected_) {
+			connection_state_->DetachViewer();
+			if (auto lease = connection_state_->TryAcquireEnvironment()) {
+				lease.get()->UnregisterViewerConnection(connection_state_);
+				lease = EnvironmentLease();
+			}
+		} else if (connection_state_->viewer() != nullptr) {
+			connection_state_->DetachViewer();
+			if (auto lease = connection_state_->TryAcquireEnvironment()) {
+				lease.get()->UnregisterViewerConnection(connection_state_);
+				lease = EnvironmentLease();
+			}
+		}
+		connection_state_->WaitForDrain();
+		connected_ = false;
+	}
+}
+
+EnvironmentLease Viewer::AcquireEnvironmentOrThrow() const
+{
+	if (!connection_state_) {
+		throw std::runtime_error("viewer has no connection state");
+	}
+	auto lease = connection_state_->TryAcquireEnvironment();
+	if (!lease) {
+		throw std::runtime_error("environment is not available for viewer operation");
+	}
+	return lease;
+}
+
+MujocoEnv *Viewer::FrameEnvironment() const noexcept
+{
+	if (!frame_lease_) {
+		return nullptr;
+	}
+	return frame_lease_->get();
 }
 
 //------------------------- Synchronize render and physics threads ---------------------------------
@@ -1899,23 +1975,31 @@ Viewer::Viewer(std::unique_ptr<PlatformUIAdapter> platform_ui_adapter, MujocoEnv
 // operations which require holding the mutex, prevents racing with physics thread
 void Viewer::Sync(bool state_only)
 {
-	RecursiveLock lock_env(env_->physics_thread_mutex_, std::defer_lock);
+	auto env_lease = AcquireEnvironmentOrThrow();
+	SyncInFrame(*env_lease.get(), state_only);
+}
+
+void Viewer::SyncInFrame(MujocoEnv &env, bool state_only)
+{
+	RecursiveLock lock_env(env.physics_thread_mutex_, std::defer_lock);
 	RecursiveLock lock(this->mtx, std::defer_lock);
 	std::lock(lock_env, lock); // avoid deadlock
-	if (!m_ || !d_) {
-		return;
-	}
-
-	if (!env_) {
-		return;
-	}
 
 	if (this->exit_request.load()) {
 		return;
 	}
 
+	ProcessPendingViewerExit();
+	if (this->exit_request.load()) {
+		return;
+	}
+
+	if (!m_ || !d_) {
+		return;
+	}
+
 	// Avoid updating during load
-	if (env_->GetControlSnapshot().load_request == 1) {
+	if (env.GetControlSnapshot().load_request == 1) {
 		return;
 	}
 
@@ -2006,18 +2090,18 @@ void Viewer::Sync(bool state_only)
 		}
 	}
 
-	this->run = env_->GetControlSnapshot().running;
+	this->run = env.GetControlSnapshot().running;
 	if (pending_.ui_update_run) {
-		env_->SetPaused(this->run);
-		this->run              = env_->GetControlSnapshot().running;
+		env.SetPaused(this->run);
+		this->run              = env.GetControlSnapshot().running;
 		pending_.ui_update_run = false;
 	}
 
 	if (pending_.ui_update_speed) {
-		env_->SetViewerRealTimeIndex(real_time_index);
+		env.SetViewerRealTimeIndex(real_time_index);
 		pending_.ui_update_speed = false;
 	} else {
-		real_time_index = env_->GetControlSnapshot().real_time_index;
+		real_time_index = env.GetControlSnapshot().real_time_index;
 	}
 
 	if (pending_.save_xml) {
@@ -2051,7 +2135,7 @@ void Viewer::Sync(bool state_only)
 
 	if (pending_.ui_reset) {
 		load_error[0] = '\0';
-		env_->RequestViewerReset();
+		env.RequestViewerReset();
 		pending_.ui_reset             = false;
 		update_profiler               = true;
 		update_sensor                 = true;
@@ -2061,7 +2145,7 @@ void Viewer::Sync(bool state_only)
 
 	if (pending_.ui_reload) {
 		load_error[0] = '\0';
-		env_->RequestReload();
+		env.RequestReload();
 		pending_.ui_reload = false;
 		update_profiler    = true;
 		update_sensor      = true;
@@ -2069,7 +2153,7 @@ void Viewer::Sync(bool state_only)
 
 	if (dropload_request.load()) {
 		dropload_request.store(0);
-		env_->RequestModelLoad(dropfilename);
+		env.RequestModelLoad(dropfilename);
 		update_profiler = true;
 		update_sensor   = true;
 	}
@@ -2196,8 +2280,8 @@ void Viewer::Sync(bool state_only)
 			mj_forward(m_passive_, d_passive_);
 			delete[] state;
 		} else {
-			mjv_copyModel(m_.get(), m_passive_);
-			mjv_copyData(d_.get(), m_passive_, d_passive_);
+			mjv_copyModel(m_passive_, m_.get());
+			mjv_copyData(d_passive_, m_passive_, d_.get());
 		}
 
 		// append geoms from user_scn to scratch space
@@ -2228,7 +2312,7 @@ void Viewer::Sync(bool state_only)
 	}
 
 	// Run render cbs from plugins
-	this->env_->RunRenderCbs(&this->scn);
+	env.RunRenderCbs(&this->scn);
 
 	// update settings
 	UpdateSettings(this, m_.get());
@@ -2260,10 +2344,21 @@ void Viewer::Sync(bool state_only)
 	} else {
 		mjv_applyPerturbPose(m_.get(), d_.get(), &this->pert, 1); // mocap and dynamic bodies
 	}
+}
 
-	if (pending_.ui_exit) {
-		env_->RequestViewerShutdown();
-		this->exit_request.store(1);
+void Viewer::ProcessPendingViewerExit()
+{
+	if (!pending_.ui_exit) {
+		return;
+	}
+	const auto exit_action = ComputePendingViewerExitAction(pending_.ui_exit, is_passive_, exit_request.load());
+	if (exit_action.request_environment_shutdown) {
+		if (MujocoEnv *env = FrameEnvironment()) {
+			env->RequestViewerShutdown();
+		}
+	}
+	if (exit_action.set_exit_request) {
+		exit_request.store(1);
 	}
 }
 
@@ -2285,32 +2380,85 @@ void Viewer::LoadMessageClear()
 	}
 }
 
-void Viewer::Load(mjModelPtr m, mjDataPtr d, const char *displayed_filename)
+void Viewer::RejectPendingLoadRequests()
 {
+	this->loadrequest.store(0);
+	if (reload_promise_) {
+		auto rejected_promise = std::move(*reload_promise_);
+		reload_promise_.reset();
+		rejected_promise.set_exception(
+		    std::make_exception_ptr(std::runtime_error("viewer render loop is not accepting load requests")));
+	}
+}
+
+void Viewer::Load(mjModelPtr m, mjDataPtr d, const char *displayed_filename, ModelGeneration generation)
+{
+	if (!render_loop_active_.load(std::memory_order_acquire)) {
+		throw ViewerLoadRejected("viewer render loop is not accepting load requests");
+	}
+
 	MJR_DEBUG_NAMED("Viewer", "Model load requested from physics thread");
-	this->mnew_ = std::move(m);
-	this->dnew_ = std::move(d);
-	mju::strcpy_arr(this->filename, displayed_filename);
 
 	std::future<void> reload_future;
 	{
 		RecursiveLock lock(mtx);
+		if (!render_loop_active_.load(std::memory_order_acquire) || exit_request.load()) {
+			throw ViewerLoadRejected("viewer render loop is not accepting load requests");
+		}
+		if (reload_promise_) {
+			throw std::runtime_error("viewer already has a pending model load request");
+		}
+		if (generation.value() < loaded_model_generation_ || generation.value() < pending_model_generation_) {
+			throw std::runtime_error("viewer rejected stale model generation");
+		}
+		this->mnew_ = std::move(m);
+		this->dnew_ = std::move(d);
+		mju::strcpy_arr(this->filename, displayed_filename);
+		pending_model_generation_ = generation.value();
 		reload_promise_.emplace();
 		reload_future = reload_promise_->get_future();
+		this->loadrequest.store(2);
 	}
-	this->loadrequest.store(2);
 
 	// Wait for the render thread to be done loading
 	// so that we know the old model and data's memory can
 	// be freed by the other thread (sometimes python)
-	reload_future.wait();
-	reload_promise_.reset();
+	reload_future.get();
 	MJR_DEBUG_NAMED("Viewer", "Model load completed in physics thread");
+}
+
+void Viewer::InitializeModel(mjModelPtr m, mjDataPtr d, const char *displayed_filename, ModelGeneration generation)
+{
+	const RecursiveLock lock(mtx);
+	if (!render_loop_active_.load(std::memory_order_acquire)) {
+		throw ViewerLoadRejected("viewer render loop is not accepting load requests");
+	}
+	if (reload_promise_) {
+		throw std::runtime_error("viewer already has a pending model load request");
+	}
+	if (generation.value() < loaded_model_generation_ || generation.value() < pending_model_generation_) {
+		throw std::runtime_error("viewer rejected stale model generation");
+	}
+	mnew_                     = std::move(m);
+	dnew_                     = std::move(d);
+	pending_model_generation_ = generation.value();
+	mju::strcpy_arr(filename, displayed_filename);
+	loadrequest.store(1);
+	LoadOnRenderThread();
 }
 
 void Viewer::LoadOnRenderThread()
 {
 	MJR_WARN_NAMED("Viewer", "Loading model in render thread");
+	if (!this->mnew_ || !this->dnew_) {
+		this->loadrequest.store(0);
+		if (reload_promise_) {
+			reload_promise_->set_exception(
+			    std::make_exception_ptr(std::runtime_error("viewer load request has no model/data payload")));
+			reload_promise_.reset();
+		}
+		return;
+	}
 	this->m_ = this->mnew_;
 	this->d_ = this->dnew_;
 
@@ -2493,8 +2641,11 @@ void Viewer::LoadOnRenderThread()
 	MJR_WARN_NAMED("Viewer", "Notifying load request complete");
 	this->loadrequest.store(0);
 	if (reload_promise_) {
-		reload_promise_->set_value();
+		auto completed_promise = std::move(*reload_promise_);
+		reload_promise_.reset();
+		completed_promise.set_value();
 	}
+	loaded_model_generation_ = pending_model_generation_;
 
 	// set real time index
 	int numclicks   = sizeof(MujocoEnv::percentRealTime) / sizeof(MujocoEnv::percentRealTime[0]);
@@ -2515,6 +2666,15 @@ void Viewer::LoadOnRenderThread()
 // render the UI to the window
 void Viewer::Render()
 {
+	MujocoEnv *frame_env = FrameEnvironment();
+	if (frame_env == nullptr) {
+		throw std::runtime_error("Render() requires an active frame environment lease");
+	}
+	RenderInFrame(*frame_env);
+}
+
+void Viewer::RenderInFrame(MujocoEnv &env)
+{
 	// Update rendering context buffer size if required
 	if (this->platform_ui->EnsureContextSize()) {
 		UiModify(&this->ui0, &this->uistate, &this->platform_ui->mjr_context());
@@ -2532,6 +2692,7 @@ void Viewer::Render()
 	if (!is_passive_ && !this->m_) {
 		// blank screen
 		mjr_rectangle(rect, 0.2f, 0.3f, 0.4f, 1);
+		DrawViewerSplash(rect, &this->platform_ui->mjr_context());
 
 		// label
 		if (this->loadrequest.load()) {
@@ -2667,8 +2828,8 @@ void Viewer::Render()
 	}
 
 	// Get desired and actual percent-of-realtime
-	float desired_real_time = MujocoEnv::percentRealTime[env_->GetControlSnapshot().real_time_index];
-	float actual_real_time  = 100.f / env_->sim_state_.measured_slowdown;
+	float desired_real_time = MujocoEnv::percentRealTime[env.GetControlSnapshot().real_time_index];
+	float actual_real_time  = 100.f / env.sim_state_.measured_slowdown;
 
 	// If running, check for misalignment of more than 10%
 	float realtime_offset = mju_abs(actual_real_time - desired_real_time);
@@ -2790,163 +2951,312 @@ void Viewer::Render()
 	this->platform_ui->SwapBuffers();
 }
 
-void Viewer::RenderLoop()
+void Viewer::RenderLoop(std::function<void()> on_ready)
 {
-	// Set timer callback (milliseconds)
-	mjcb_time = Timer;
+	std::exception_ptr loop_error;
+	try {
+		// Set timer callback (milliseconds)
+		mjcb_time = Timer;
 
-	// Init abstract visualization
-	mjv_defaultCamera(&this->cam);
-	mjv_defaultOption(&this->opt);
-	ApplyInteractiveViewerGeomDefaults(&this->opt);
-	InitializeProfiler(this);
-	InitializeSensor(this);
+		// Init abstract visualization
+		mjv_defaultCamera(&this->cam);
+		mjv_defaultOption(&this->opt);
+		ApplyInteractiveViewerGeomDefaults(&this->opt);
+		InitializeProfiler(this);
+		InitializeSensor(this);
 
-	// Make empty scene
-	if (!is_passive_) {
-		mjv_defaultScene(&this->scn);
-		mjv_makeScene(nullptr, &this->scn, kMaxGeom);
-	}
+		// Make empty scene
+		if (!is_passive_) {
+			mjv_defaultScene(&this->scn);
+			mjv_makeScene(nullptr, &this->scn, kMaxGeom);
+		}
 
-	if (!this->platform_ui->IsGPUAccelerated()) {
-		this->scn.flags[mjRND_SHADOW]     = 0;
-		this->scn.flags[mjRND_REFLECTION] = 0;
-	}
+		if (!this->platform_ui->IsGPUAccelerated()) {
+			this->scn.flags[mjRND_SHADOW]     = 0;
+			this->scn.flags[mjRND_REFLECTION] = 0;
+		}
 
-	// Select default font
-	int fontscale = ComputeFontScale(*this->platform_ui);
-	this->font    = fontscale / 50 - 1;
+		// Select default font
+		int fontscale = ComputeFontScale(*this->platform_ui);
+		this->font    = fontscale / 50 - 1;
 
-	// make empty context
-	this->platform_ui->RefreshMjrContext(nullptr, fontscale);
+		// make empty context
+		this->platform_ui->RefreshMjrContext(nullptr, fontscale);
 
-	// Init state and UIs
-	std::memset(&this->uistate, 0, sizeof(mjuiState));
-	std::memset(&this->ui0, 0, sizeof(mjUI));
-	std::memset(&this->ui1, 0, sizeof(mjUI));
+		// Init state and UIs
+		std::memset(&this->uistate, 0, sizeof(mjuiState));
+		std::memset(&this->ui0, 0, sizeof(mjUI));
+		std::memset(&this->ui1, 0, sizeof(mjUI));
 
-	auto [buf_width, buf_height] = this->platform_ui->GetFramebufferSize();
-	this->uistate.nrect          = 1;
-	this->uistate.rect[0].width  = buf_width;
-	this->uistate.rect[0].height = buf_height;
+		auto [buf_width, buf_height] = this->platform_ui->GetFramebufferSize();
+		this->uistate.nrect          = 1;
+		this->uistate.rect[0].width  = buf_width;
+		this->uistate.rect[0].height = buf_height;
 
-	this->ui0.spacing   = mjui_themeSpacing(this->spacing);
-	this->ui0.color     = mjui_themeColor(this->color);
-	this->ui0.predicate = UiPredicate;
-	this->ui0.rectid    = 1;
-	this->ui0.auxid     = 0;
+		this->ui0.spacing   = mjui_themeSpacing(this->spacing);
+		this->ui0.color     = mjui_themeColor(this->color);
+		this->ui0.predicate = UiPredicate;
+		this->ui0.rectid    = 1;
+		this->ui0.auxid     = 0;
 
-	this->ui1.spacing   = mjui_themeSpacing(this->spacing);
-	this->ui1.color     = mjui_themeColor(this->color);
-	this->ui1.predicate = UiPredicate;
-	this->ui1.rectid    = 2;
-	this->ui1.auxid     = 1;
+		this->ui1.spacing   = mjui_themeSpacing(this->spacing);
+		this->ui1.color     = mjui_themeColor(this->color);
+		this->ui1.predicate = UiPredicate;
+		this->ui1.rectid    = 2;
+		this->ui1.auxid     = 1;
 
-	// Set GUI adapter callbacks
-	this->uistate.userdata = this;
-	this->platform_ui->SetEventCallback(UiEvent);
-	this->platform_ui->SetLayoutCallback(UiLayout);
+		// Set GUI adapter callbacks
+		this->uistate.userdata = this;
+		this->platform_ui->SetEventCallback(UiEvent);
+		this->platform_ui->SetLayoutCallback(UiLayout);
 
-	// Populate UIs with standard sections, open some sections initially
-	this->ui0.userdata = this;
-	this->ui1.userdata = this;
-	mjui_add(&this->ui0, defFile);
-	mjui_add(&this->ui0, this->def_option);
-	mjui_add(&this->ui0, this->def_simulation);
-	this->ui0.sect[0].state = 1;
-	this->ui0.sect[1].state = 1;
-	this->ui0.sect[2].state = 1;
-	mjui_add(&this->ui0, this->def_watch);
-	UiModify(&this->ui0, &this->uistate, &this->platform_ui->mjr_context());
-	UiModify(&this->ui1, &this->uistate, &this->platform_ui->mjr_context());
+		// Populate UIs with standard sections, open some sections initially
+		this->ui0.userdata = this;
+		this->ui1.userdata = this;
+		mjui_add(&this->ui0, defFile);
+		mjui_add(&this->ui0, this->def_option);
+		mjui_add(&this->ui0, this->def_simulation);
+		this->ui0.sect[0].state = 1;
+		this->ui0.sect[1].state = 1;
+		this->ui0.sect[2].state = 1;
+		mjui_add(&this->ui0, this->def_watch);
+		UiModify(&this->ui0, &this->uistate, &this->platform_ui->mjr_context());
+		UiModify(&this->ui1, &this->uistate, &this->platform_ui->mjr_context());
 
-	// Set VSync to initial value
-	this->platform_ui->SetVSync(this->vsync);
+		// Set VSync to initial value
+		this->platform_ui->SetVSync(this->vsync);
 
-	frames_          = 0;
-	last_fps_update_ = Clock::now();
+		// Show the first splash frame before ConnectViewer() can block on model loading.
+		if (!is_passive_) {
+			const mjrRect rect = this->uistate.rect[3];
+			mjr_rectangle(rect, 0.2f, 0.3f, 0.4f, 1);
+			DrawViewerSplash(rect, &this->platform_ui->mjr_context());
+			this->platform_ui->SwapBuffers();
+		}
 
-	// Run event loop
-	while (roscpp::ok() && !this->platform_ui->ShouldCloseWindow() && !this->exit_request.load()) {
+		frames_          = 0;
+		last_fps_update_ = Clock::now();
+
 		{
 			const RecursiveLock lock(this->mtx);
-
-			// Load model (not on first pass, to show "loading" label)
-			if (this->loadrequest.load() == 1) {
-				MJR_DEBUG_NAMED("Viewer", "Model load triggered in render thread");
-				this->LoadOnRenderThread();
-			} else if (this->loadrequest.load() == 2) {
-				MJR_DEBUG_NAMED("Viewer", "Model load announced in render thread");
-				this->loadrequest.store(1);
-			}
-
-			// Poll and handle events
-			this->platform_ui->PollEvents();
-
-			// upload assets if requested
-			bool upload_notify = false;
-			if (hfield_upload_ != -1) {
-				mjr_uploadHField(m_.get(), &platform_ui->mjr_context(), hfield_upload_);
-				hfield_upload_ = -1;
-				upload_notify  = true;
-			}
-			if (mesh_upload_ != -1) {
-				mjr_uploadMesh(m_.get(), &platform_ui->mjr_context(), mesh_upload_);
-				mesh_upload_  = -1;
-				upload_notify = true;
-			}
-			if (texture_upload_ != -1) {
-				mjr_uploadTexture(m_.get(), &platform_ui->mjr_context(), texture_upload_);
-				texture_upload_ = -1;
-				upload_notify   = true;
-			}
-			if (upload_notify) {
-				cond_upload_.notify_all();
-			}
-
-			// Update scene, doing a full sync if the environment is not busy loading
-			if (!is_passive_ && this->env_->GetOperationalStatus() == 0) {
-				Sync();
-			} else if (m_passive_ && d_passive_) {
-				// the user has called Sync() in their code
-				mjv_updateScene(m_passive_, d_passive_, &this->opt, &this->pert, &this->cam, mjCAT_ALL, &this->scn);
-
-				// add user geoms to scene
-				int nusergeom = user_scn_geoms_.size();
-				int ngeom     = std::min(nusergeom, this->scn.maxgeom - this->scn.ngeom);
-				if (ngeom < nusergeom) {
-					mj_warning(d_passive_, mjWARN_VGEOMFULL, this->scn.maxgeom);
-				}
-				std::memcpy(this->scn.geoms + this->scn.ngeom, user_scn_geoms_.data(), ngeom * sizeof(mjvGeom));
-				this->scn.ngeom += ngeom;
-			}
-		} // RecursiveLock (unblocks simulation thread)
-
-		// Render while simulation is running
-		this->Render();
-
-		// Update FPS stat, at most 5 times per second
-		auto now        = Clock::now();
-		double interval = Seconds(now - last_fps_update_).count();
-		++frames_;
-		if (interval > 0.2) {
-			last_fps_update_ = now;
-			fps_             = frames_ / interval;
-			frames_          = 0;
+			render_loop_active_.store(true, std::memory_order_release);
 		}
-	}
-	MJR_WARN_NAMED("Viewer", "Exiting viewer loop");
 
-	const RecursiveLock lock(this->mtx);
-	MJR_WARN_NAMED("Viewer", "Freeing scene");
-	mjv_freeScene(&this->scn);
+		if (!connection_state_->TryActivateRenderLoop(std::this_thread::get_id())) {
+			render_loop_active_.store(false, std::memory_order_release);
+			throw std::runtime_error("viewer render loop activation rejected");
+		}
+
+		auto activation_lease = connection_state_->TryAcquireEnvironment();
+		if (!activation_lease) {
+			render_loop_active_.store(false, std::memory_order_release);
+			connection_state_->FinishRenderLoop();
+			throw std::runtime_error("viewer render loop activation rejected: environment unavailable");
+		}
+
+		try {
+			activation_lease.get()->ConnectViewer(this, connection_state_);
+			connected_ = true;
+			// Only now is this viewer actually able to service an async Load()
+			// request from a reload's tail (see MarkRenderLoopReady's doc comment
+			// in viewer_connection_state.hpp) -- ConnectViewer() just returned,
+			// so the main frame loop below is about to start.
+			connection_state_->MarkRenderLoopReady();
+		} catch (...) {
+			connection_state_->FinishRenderLoop();
+			connection_state_->DetachViewer();
+			if (activation_lease) {
+				activation_lease.get()->UnregisterViewerConnection(connection_state_);
+				activation_lease = EnvironmentLease();
+			}
+			connection_state_->WaitForDrain(std::this_thread::get_id());
+			throw;
+		}
+		activation_lease = EnvironmentLease();
+
+		if (on_ready) {
+			on_ready();
+		}
+
+		// Run event loop
+		while (roscpp::ok() && !this->platform_ui->ShouldCloseWindow() && !this->exit_request.load() &&
+		       !connection_state_->StopRequested() && !connection_state_->EnvironmentClosed()) {
+			auto frame_lease_candidate = connection_state_->TryAcquireEnvironment();
+			if (!frame_lease_candidate) {
+				break;
+			}
+			frame_lease_         = std::move(frame_lease_candidate);
+			MujocoEnv &frame_env = *frame_lease_->get();
+
+			{
+				const RecursiveLock lock(this->mtx);
+
+				// Load model (not on first pass, to show "loading" label)
+				if (this->loadrequest.load() == 1) {
+					MJR_DEBUG_NAMED("Viewer", "Model load triggered in render thread");
+					this->LoadOnRenderThread();
+				} else if (this->loadrequest.load() == 2) {
+					MJR_DEBUG_NAMED("Viewer", "Model load announced in render thread");
+					this->loadrequest.store(1);
+				}
+
+				// Poll and handle events
+				this->platform_ui->PollEvents();
+
+				// upload assets if requested
+				bool upload_notify = false;
+				if (hfield_upload_ != -1) {
+					mjr_uploadHField(m_.get(), &platform_ui->mjr_context(), hfield_upload_);
+					hfield_upload_ = -1;
+					upload_notify  = true;
+				}
+				if (mesh_upload_ != -1) {
+					mjr_uploadMesh(m_.get(), &platform_ui->mjr_context(), mesh_upload_);
+					mesh_upload_  = -1;
+					upload_notify = true;
+				}
+				if (texture_upload_ != -1) {
+					mjr_uploadTexture(m_.get(), &platform_ui->mjr_context(), texture_upload_);
+					texture_upload_ = -1;
+					upload_notify   = true;
+				}
+				if (upload_notify) {
+					cond_upload_.notify_all();
+				}
+
+				// Update scene, doing a full sync if the environment is not busy loading
+				const int operational_status = frame_env.GetOperationalStatus();
+				if (ShouldSyncViewerEachFrame(is_passive_, auto_sync_, operational_status)) {
+					SyncInFrame(frame_env, false);
+				}
+				if (is_passive_ && m_passive_ && d_passive_) {
+					mjv_updateScene(m_passive_, d_passive_, &this->opt, &this->pert, &this->cam, mjCAT_ALL, &this->scn);
+
+					// add user geoms to scene
+					int nusergeom = user_scn_geoms_.size();
+					int ngeom     = std::min(nusergeom, this->scn.maxgeom - this->scn.ngeom);
+					if (ngeom < nusergeom) {
+						mj_warning(d_passive_, mjWARN_VGEOMFULL, this->scn.maxgeom);
+					}
+					std::memcpy(this->scn.geoms + this->scn.ngeom, user_scn_geoms_.data(), ngeom * sizeof(mjvGeom));
+					this->scn.ngeom += ngeom;
+				}
+
+				// Passive viewers may skip Sync(); honor UI Exit on the render thread.
+				if (ShouldProcessPendingViewerExitWithoutSync(is_passive_, auto_sync_, operational_status)) {
+					ProcessPendingViewerExit();
+				}
+			} // RecursiveLock (unblocks simulation thread)
+
+			if (!this->exit_request.load(std::memory_order_acquire)) {
+				this->Render();
+			}
+
+			frame_lease_.reset();
+
+			// Update FPS stat, at most 5 times per second
+			auto now        = Clock::now();
+			double interval = Seconds(now - last_fps_update_).count();
+			++frames_;
+			if (interval > 0.2) {
+				last_fps_update_ = now;
+				fps_             = frames_ / interval;
+				frames_          = 0;
+			}
+		}
+	} catch (...) {
+		loop_error = std::current_exception();
+	}
+
+	std::exception_ptr cleanup_error;
+	const bool had_connected_session = connected_;
+	const int prior_exit_request     = exit_request.load(std::memory_order_acquire);
+	const bool teardown_requested =
+	    prior_exit_request != 0 || connection_state_->StopRequested() || connection_state_->EnvironmentClosed();
+	const auto record_cleanup_error = [&cleanup_error]() {
+		if (!cleanup_error) {
+			cleanup_error = std::current_exception();
+		}
+	};
+	try {
+		const RecursiveLock lock(this->mtx);
+		if (!loop_error && !teardown_requested && (loadrequest.load() == 1 || loadrequest.load() == 2)) {
+			try {
+				LoadOnRenderThread();
+			} catch (...) {
+				loop_error = std::current_exception();
+			}
+		}
+		frame_lease_.reset();
+		try {
+			RejectPendingLoadRequests();
+		} catch (...) {
+			record_cleanup_error();
+		}
+		if (had_connected_session && !loop_error && teardown_requested) {
+			this->exit_request.store(2);
+		}
+	} catch (...) {
+		record_cleanup_error();
+	}
+
+	if (connected_) {
+		try {
+			connection_state_->DetachViewer();
+			if (auto lease = connection_state_->TryAcquireEnvironment()) {
+				lease.get()->UnregisterViewerConnection(connection_state_);
+				lease = EnvironmentLease();
+			}
+			connection_state_->WaitForDrain(std::this_thread::get_id());
+		} catch (...) {
+			record_cleanup_error();
+		}
+		connected_ = false;
+	}
+
+	try {
+		MJR_WARN_NAMED("Viewer", "Exiting viewer loop");
+	} catch (...) {
+		record_cleanup_error();
+	}
+	try {
+		MJR_WARN_NAMED("Viewer", "Freeing scene");
+	} catch (...) {
+		record_cleanup_error();
+	}
+	try {
+		mjv_freeScene(&this->scn);
+	} catch (...) {
+		record_cleanup_error();
+	}
 	if (is_passive_) {
-		mj_deleteData(d_passive_);
-		mj_deleteModel(m_passive_);
+		try {
+			mj_deleteData(d_passive_);
+		} catch (...) {
+			record_cleanup_error();
+		}
+		try {
+			mj_deleteModel(m_passive_);
+		} catch (...) {
+			record_cleanup_error();
+		}
+		d_passive_ = nullptr;
+		m_passive_ = nullptr;
 	}
 
-	this->exit_request.store(2);
-	env_->DisconnectViewer(this);
+	{
+		const RecursiveLock lock(this->mtx);
+		render_loop_active_.store(false, std::memory_order_release);
+	}
+	connection_state_->FinishRenderLoop();
+
+	if (loop_error) {
+		std::rethrow_exception(loop_error);
+	}
+	const bool connected_teardown = had_connected_session && teardown_requested;
+	if (cleanup_error && (!connected_teardown || ShouldPropagateConnectedTeardownCleanupError(cleanup_error))) {
+		std::rethrow_exception(cleanup_error);
+	}
 }
 
 void Viewer::AddToHistory()
@@ -2991,6 +3301,17 @@ void Viewer::UpdateTexture(int texid)
 	}
 	texture_upload_ = texid;
 	cond_upload_.wait(lock, [this]() { return texture_upload_ == -1; });
+}
+
+void ViewerConnectionState::RequestViewerExit() noexcept
+{
+	const auto operation = TryAcquireViewerOperation();
+	if (!operation) {
+		return;
+	}
+	if (Viewer *viewer = operation.get()) {
+		viewer->exit_request.store(1);
+	}
 }
 
 } // namespace mujoco_ros

@@ -148,11 +148,20 @@ public:
 	{
 		auto qos = rclcpp::QoS(1).transient_local().reliable();
 		pub_     = node_->create_publisher<std_msgs::msg::String>(topic_name, qos);
+		executor_.add_node(node_);
+		spin_thread_        = std::thread([this]() { executor_.spin(); });
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+		while (node_->get_publishers_info_by_topic(topic_name).empty()) {
+			if (std::chrono::steady_clock::now() >= deadline) {
+				executor_.cancel();
+				spin_thread_.join();
+				throw std::runtime_error("description publisher graph discovery timed out");
+			}
+			std::this_thread::yield();
+		}
 		std_msgs::msg::String msg;
 		msg.data = content;
 		pub_->publish(msg);
-		executor_.add_node(node_);
-		spin_thread_ = std::thread([this]() { executor_.spin(); });
 	}
 
 	~FakeDescriptionTopicPublisher()
@@ -207,12 +216,8 @@ TEST_F(BaseEnvFixture, FileSourcedBundleProducesARunningEnv)
 	env_ptr->StartPhysicsLoop();
 	env_ptr->StartEventLoop();
 
-	float seconds = 0;
-	while (env_ptr->GetOperationalStatus() != 0 && seconds < 5) { // wait for queued bundle load or timeout
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
-		seconds += 0.005f;
-	}
-	EXPECT_LT(seconds, 5) << "File-sourced description bundle did not finish loading before timeout!";
+	EXPECT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(5)))
+	    << "description bundle did not become idle before timeout!";
 	EXPECT_TRUE(env_ptr->sim_state_.model_valid) << "Model loaded from the file-sourced bundle should be valid!";
 	ASSERT_TRUE(env_ptr->getModelPtr());
 	// Empty modelfile + active bundle -> composed into the default world.
@@ -223,6 +228,27 @@ TEST_F(BaseEnvFixture, FileSourcedBundleProducesARunningEnv)
 
 	env_ptr->shutdown();
 }
+
+#if MJR_ROS_VERSION == ROS_1
+TEST_F(BaseEnvFixture, RosOneSlashParametersMapToCanonicalBundleKeys)
+{
+	nh->setParam(DescriptionParam("urdf.source"), "file");
+	nh->setParam(DescriptionParam("urdf.path"), ResourcePath("two_link_robot.urdf"));
+	nh->setParam(DescriptionParam("srdf.source"), "file");
+	nh->setParam(DescriptionParam("srdf.path"), ResourcePath("srdf_extended_params_with_custom_tags.srdf"));
+	SetBundleBaseModeFixed(nh.get());
+
+	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	env_ptr->StartPhysicsLoop();
+	env_ptr->StartEventLoop();
+
+	ASSERT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(5)));
+	ASSERT_TRUE(env_ptr->sim_state_.model_valid);
+	ASSERT_NE(mj_name2id(env_ptr->getModelPtr(), mjOBJ_BODY, "base_link"), -1);
+	EXPECT_EQ(env_ptr->getFilename(), ResourcePath("two_link_robot.urdf"));
+	env_ptr->shutdown();
+}
+#endif
 
 TEST_F(BaseEnvFixture, CustomSrdfTagsDoNotBreakNormalConversionWithoutHandlers)
 {
@@ -236,12 +262,8 @@ TEST_F(BaseEnvFixture, CustomSrdfTagsDoNotBreakNormalConversionWithoutHandlers)
 	env_ptr->StartPhysicsLoop();
 	env_ptr->StartEventLoop();
 
-	float seconds = 0;
-	while (env_ptr->GetOperationalStatus() != 0 && seconds < 5) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
-		seconds += 0.005f;
-	}
-	EXPECT_LT(seconds, 5);
+	EXPECT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(5)))
+	    << "description bundle did not become idle before timeout!";
 	EXPECT_TRUE(env_ptr->sim_state_.model_valid);
 	env_ptr->shutdown();
 }
@@ -259,12 +281,8 @@ TEST_F(BaseEnvFixture, SrdfActuatorOverrideAppliesThroughRosParamBundle)
 	env_ptr->StartPhysicsLoop();
 	env_ptr->StartEventLoop();
 
-	float seconds = 0;
-	while (env_ptr->GetOperationalStatus() != 0 && seconds < 5) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
-		seconds += 0.005f;
-	}
-	EXPECT_LT(seconds, 5);
+	EXPECT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(5)))
+	    << "description bundle did not become idle before timeout!";
 	EXPECT_TRUE(env_ptr->sim_state_.model_valid);
 	ASSERT_TRUE(env_ptr->getModelPtr());
 	const int actuator = mj_name2id(env_ptr->getModelPtr(), mjOBJ_ACTUATOR, "joint_1_act_pos");
@@ -323,12 +341,8 @@ TEST_F(BaseEnvFixture, TopicSourcedUrdfProducesARunningEnv)
 	env_ptr->StartPhysicsLoop();
 	env_ptr->StartEventLoop();
 
-	float seconds = 0;
-	while (env_ptr->GetOperationalStatus() != 0 && seconds < 5) { // wait for queued bundle load or timeout
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
-		seconds += 0.005f;
-	}
-	EXPECT_LT(seconds, 5) << "Topic-sourced description bundle did not finish loading before timeout!";
+	EXPECT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(5)))
+	    << "Topic-sourced description bundle did not finish loading before timeout!";
 	EXPECT_TRUE(env_ptr->sim_state_.model_valid) << "Model loaded from the topic-sourced bundle should be valid!";
 	ASSERT_TRUE(env_ptr->getModelPtr());
 	EXPECT_EQ(env_ptr->getModelPtr()->nbody, 3); // world + base_link + link_1
@@ -355,12 +369,8 @@ TEST_F(BaseEnvFixture, AbsentBundleParamsLeavesPlainModelfilePathWorking)
 	env_ptr->StartPhysicsLoop();
 	env_ptr->StartEventLoop();
 
-	float seconds = 0;
-	while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) { // wait for model to be loaded or timeout
-		std::this_thread::sleep_for(std::chrono::milliseconds(3));
-		seconds += 0.003f;
-	}
-	EXPECT_LT(seconds, 2) << "Plain modelfile load did not finish before timeout!";
+	EXPECT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(2)))
+	    << "Plain modelfile load did not finish before timeout!";
 	EXPECT_EQ(env_ptr->getFilename(), xml_path) << "Model was not loaded correctly via the modelfile path!";
 	EXPECT_TRUE(env_ptr->sim_state_.model_valid);
 
@@ -378,12 +388,8 @@ TEST_F(BaseEnvFixture, UrdfOnlyBundleUsesDefaultWorld)
 	env_ptr->StartPhysicsLoop();
 	env_ptr->StartEventLoop();
 
-	float seconds = 0;
-	while (env_ptr->GetOperationalStatus() != 0 && seconds < 5) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
-		seconds += 0.005f;
-	}
-	EXPECT_LT(seconds, 5);
+	EXPECT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(5)))
+	    << "description bundle did not become idle before timeout!";
 	ASSERT_TRUE(env_ptr->getModelPtr());
 	EXPECT_NE(mj_name2id(env_ptr->getModelPtr(), mjOBJ_BODY, "base_link"), -1);
 	EXPECT_NE(mj_name2id(env_ptr->getModelPtr(), mjOBJ_GEOM, "ground_plane"), -1);
@@ -403,12 +409,8 @@ TEST_F(BaseEnvFixture, BundleWithModelfileUsesThatFileAsWorld)
 	env_ptr->StartPhysicsLoop();
 	env_ptr->StartEventLoop();
 
-	float seconds = 0;
-	while (env_ptr->GetOperationalStatus() != 0 && seconds < 5) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
-		seconds += 0.005f;
-	}
-	EXPECT_LT(seconds, 5);
+	EXPECT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(5)))
+	    << "description bundle did not become idle before timeout!";
 	ASSERT_TRUE(env_ptr->getModelPtr());
 	EXPECT_NE(mj_name2id(env_ptr->getModelPtr(), mjOBJ_BODY, "base_link"), -1);
 	// minimal_world has no ground_plane -- absence proves we did not fall back to default_world
@@ -427,12 +429,8 @@ TEST_F(BaseEnvFixture, AutoBaseModeThroughBundleAddsFreeJointForUnanchoredRoot)
 	env_ptr->StartPhysicsLoop();
 	env_ptr->StartEventLoop();
 
-	float seconds = 0;
-	while (env_ptr->GetOperationalStatus() != 0 && seconds < 5) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
-		seconds += 0.005f;
-	}
-	EXPECT_LT(seconds, 5) << "auto base_mode bundle did not become idle before timeout!";
+	EXPECT_TRUE(env_ptr->WaitForOperationalStatusIdle(std::chrono::seconds(5)))
+	    << "auto base_mode bundle did not become idle before timeout!";
 	ASSERT_TRUE(env_ptr->getModelPtr());
 	EXPECT_EQ(CountFreeJointsOnBody(env_ptr->getModelPtr(), "base_link"), 1);
 

@@ -104,6 +104,7 @@ const struct Glfw &Glfw(void *dlhandle)
 		mjGLFW_INITIALIZE_SYMBOL(glfwSetKeyCallback);
 		mjGLFW_INITIALIZE_SYMBOL(glfwSetMouseButtonCallback);
 		mjGLFW_INITIALIZE_SYMBOL(glfwSetScrollCallback);
+		mjGLFW_INITIALIZE_SYMBOL(glfwSetWindowIcon);
 		mjGLFW_INITIALIZE_SYMBOL(glfwSetWindowMonitor);
 		mjGLFW_INITIALIZE_SYMBOL(glfwSetWindowRefreshCallback);
 		mjGLFW_INITIALIZE_SYMBOL(glfwSetWindowSize);
@@ -115,6 +116,7 @@ const struct Glfw &Glfw(void *dlhandle)
 		mjGLFW_INITIALIZE_SYMBOL(glfwSwapInterval);
 		mjGLFW_INITIALIZE_SYMBOL(glfwTerminate);
 		mjGLFW_INITIALIZE_SYMBOL(glfwWindowHint);
+		mjGLFW_INITIALIZE_SYMBOL(glfwWindowHintString);
 		mjGLFW_INITIALIZE_SYMBOL(glfwWindowShouldClose);
 		// go/keep-sorted end
 

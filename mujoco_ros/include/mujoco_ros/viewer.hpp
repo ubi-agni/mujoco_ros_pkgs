@@ -56,11 +56,14 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <future>
 #include <memory>
 #include <mutex>
+#include <functional>
 #include <optional>
 #include <ratio>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <tuple>
@@ -73,6 +76,7 @@
 
 #include <mujoco_ros/platform_ui_adapter.h>
 #include <mujoco_ros/common_types.hpp>
+#include <mujoco_ros/detail/viewer_connection_state.hpp>
 #include <mujoco_ros/mujoco_env.hpp>
 
 namespace mujoco_ros {
@@ -85,6 +89,12 @@ namespace mujoco_ros {
 class ViewerMutex : public std::recursive_mutex
 {};
 
+class ViewerLoadRejected : public std::runtime_error
+{
+public:
+	using std::runtime_error::runtime_error;
+};
+
 void ApplyInteractiveViewerGeomDefaults(mjvOption *opt);
 
 class Viewer
@@ -93,13 +103,9 @@ public:
 	static int constexpr kMaxGeom = 100000;
 
 	// Create object and initialize the ui
-	Viewer(std::unique_ptr<PlatformUIAdapter> platform_ui_adapter, MujocoEnv *env, bool is_passive);
-
-	// Apply UI pose perturbations to model and data
-	void ApplyForcePerturbations(int flg_paused);
-
-	// Apply UI pose perturbations to model and data
-	void ApplyForcePerturbations();
+	Viewer(std::unique_ptr<PlatformUIAdapter> platform_ui_adapter, MujocoEnv *env, bool is_passive,
+	       bool auto_sync = false);
+	~Viewer();
 
 	// Syncronize mjModel and mjData state with UI inputs, and update visualization
 	void Sync(bool state_only = false);
@@ -118,7 +124,8 @@ public:
 	void LoadMessageClear();
 
 	// Request that the simulation UI thread renders a new model optionally
-	void Load(mjModelPtr m, mjDataPtr d, const char *displayed_filename);
+	void Load(mjModelPtr m, mjDataPtr d, const char *displayed_filename, ModelGeneration generation);
+	void InitializeModel(mjModelPtr m, mjDataPtr d, const char *displayed_filename, ModelGeneration generation);
 
 	// functions below are used by the render thread
 
@@ -129,7 +136,7 @@ public:
 	void Render();
 
 	// loop to render the UI
-	void RenderLoop();
+	void RenderLoop(std::function<void()> on_ready = nullptr);
 
 	// add state to history buffer
 	void AddToHistory();
@@ -139,8 +146,14 @@ public:
 	static constexpr double render_ui_rate_lower_bound_ = 0.0333; // Minimum render freq at 30 fps
 	static constexpr float render_ui_rate_upper_bound_  = 0.0166f; // Maximum render freq at 60 fps
 
-	// Reference to env
-	MujocoEnv *env_;
+	// Runtime environment access uses connection_state_ leases.
+	std::shared_ptr<ViewerConnectionState> connection_state_;
+	std::optional<EnvironmentLease> frame_lease_;
+
+	EnvironmentLease AcquireEnvironmentOrThrow() const;
+	MujocoEnv *FrameEnvironment() const noexcept;
+	void SyncInFrame(MujocoEnv &env, bool state_only);
+	void RenderInFrame(MujocoEnv &env);
 
 	std::chrono::time_point<Clock> last_fps_update_;
 	double fps_ = 0;
@@ -266,9 +279,7 @@ public:
 	std::atomic_int dropload_request    = { 0 };
 	std::atomic_int reset_request       = { 0 };
 	std::atomic_int model_valid         = { false };
-	std::atomic_int manual_env_steps    = { 0 };
 	std::atomic_int screenshot_request  = { 0 };
-	std::atomic_int ui_load_request     = { 0 };
 	std::atomic_int newfigurerequest    = { 0 };
 	std::atomic_int newtextrequest      = { 0 };
 	std::atomic_int newimagerequest     = { 0 };
@@ -381,6 +392,17 @@ public:
 	// whether the viewer is operating in passive mode, where it cannot assume
 	// that it has exclusive access to the model, data, and various mjv objects
 	bool is_passive_ = false;
+	bool auto_sync_  = false;
+	bool connected_  = false;
+
+	// Set for the RenderLoop lifetime. Load() rejects once cleared so callers
+	// cannot wait on a promise the render thread will never fulfill.
+	std::atomic_bool render_loop_active_{ false };
+	std::uint64_t pending_model_generation_ = 0;
+	std::uint64_t loaded_model_generation_  = 0;
+
+	void RejectPendingLoadRequests();
+	void ProcessPendingViewerExit();
 
 	int run = 0;
 };
