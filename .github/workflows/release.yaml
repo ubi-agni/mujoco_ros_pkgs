@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  pull_request:
+    branches:
+      - hybrid-main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  changelog-gate:
+    name: Changelog gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pyyaml
+      - name: Check Unreleased entries against the diff
+        run: python3 .versioning/scripts/changelog_gate.py --repo .
+
+  version-bump:
+    name: Version bump
+    needs: changelog-gate
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.bump.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Push needs a branch checkout; the bump commit lands on the PR head.
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pyyaml
+      - id: bump
+        name: Bump versions and push to PR head
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          before=$(git rev-parse HEAD)
+          python3 .versioning/scripts/bump_versions.py --repo . bump
+          after=$(git rev-parse HEAD)
+          if [[ "${after}" != "${before}" ]]; then
+            git push origin "HEAD:refs/heads/${HEAD_REF}"
+          fi
+          echo "sha=${after}" >> "${GITHUB_OUTPUT}"
+
+  version-match:
+    name: Version match
+    needs: version-bump
+    runs-on: ubuntu-24.04
+    outputs:
+      # Forwarded so format can read the post-bump SHA; needs only exposes direct deps.
+      sha: ${{ needs.version-bump.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Pushes by GITHUB_TOKEN do not start a new run, so check the bumped tip here.
+          ref: ${{ needs.version-bump.outputs.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pyyaml
+      - name: Check tip versions match the changelog
+        run: python3 .versioning/scripts/bump_versions.py --repo . match
+
+  format:
+    name: pre-commit
+    needs: version-match
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version-match.outputs.sha }}
+      - uses: pre-commit/action@v3.0.1

@@ -1,3 +1,6 @@
+import json
+import re
+
 import pytest
 import yaml
 
@@ -43,3 +46,51 @@ def test_push_gate_guards_entrypoint(name):
     # always() would run superseded runs cancelled by cancel-in-progress.
     assert "always()" not in entry["if"]
     assert "!cancelled()" in entry["if"]
+
+
+RELEASE = "release.yaml"
+RELEASE_JOBS = ["changelog-gate", "version-bump", "version-match", "format"]
+FORBIDDEN_IDENTIFIER = re.compile(r"neura|sdd|neura_spec", re.IGNORECASE)
+
+
+def test_release_triggers_target_hybrid_main_prs_only():
+    doc, triggers = _load(RELEASE)
+
+    assert triggers["pull_request"]["branches"] == ["hybrid-main"]
+    assert "push" not in triggers
+    assert doc["permissions"] == {"contents": "write"}
+
+
+def test_release_jobs_run_in_order_on_one_run():
+    doc, _ = _load(RELEASE)
+
+    assert list(doc["jobs"]) == RELEASE_JOBS
+    assert "needs" not in doc["jobs"]["changelog-gate"]
+    for previous, job in zip(RELEASE_JOBS, RELEASE_JOBS[1:]):
+        assert doc["jobs"][job]["needs"] == previous
+
+
+def test_release_has_no_ros_matrix_jobs():
+    doc, _ = _load(RELEASE)
+
+    for job_id, job in doc["jobs"].items():
+        assert not job_id.startswith(("ros", "ci_ros")), job_id
+        assert "strategy" not in job
+
+
+def test_release_job_outputs_reference_direct_needs_only():
+    # A job's `needs` context exposes only its direct dependencies; a transitive
+    # reference resolves to an empty string at runtime without failing YAML parsing.
+    doc, _ = _load(RELEASE)
+
+    for job_id, job in doc["jobs"].items():
+        needs = job.get("needs", [])
+        direct = {needs} if isinstance(needs, str) else set(needs)
+        referenced = set(re.findall(r"needs\.([\w-]+)\.", json.dumps(job)))
+        assert referenced <= direct, f"{job_id} reads needs outputs of {referenced - direct}"
+
+
+def test_release_uses_neutral_naming():
+    text = (WORKFLOWS / RELEASE).read_text(encoding="utf-8")
+
+    assert not FORBIDDEN_IDENTIFIER.search(text)
