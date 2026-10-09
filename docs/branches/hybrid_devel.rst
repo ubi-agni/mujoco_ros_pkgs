@@ -1,7 +1,12 @@
 ``hybrid-devel``
 ================
 
-``hybrid-devel`` is the active 1.0.0 release line. It supports ROS 1 and ROS 2 from a shared MuJoCo core and replaces the older split ROS 1 / ROS 2 package layout.
+``hybrid-devel`` is the integration line for the hybrid ROS 1 / ROS 2 packages
+(2.x). Feature work and direct maintainer fixes land here first.
+Stable releases and ``vX.Y.Z`` tags live on :doc:`hybrid_main`.
+
+It supports ROS 1 and ROS 2 from a shared MuJoCo core and replaces the older
+split ROS 1 / ROS 2 package layout.
 
 Single Source of Truth
 ----------------------

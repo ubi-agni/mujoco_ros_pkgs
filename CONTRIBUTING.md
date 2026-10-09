@@ -95,7 +95,7 @@ A release is a pull request from `hybrid-devel` into `hybrid-main`.
 
 ### Documentation
 
-* **Unstable docs** track `hybrid-devel`. They rebuild on pushes to `hybrid-devel` that touch the docs, and on each release-pull-request bump.
+* **Unstable docs** track `hybrid-devel`. They rebuild and deploy on pushes to `hybrid-devel` that touch the docs (including Version Bot commits). A release PR into `hybrid-main` **builds** unstable docs as a check but does **not** deploy them to Pages.
 * **Released docs** are built from `v*` tags. Each tag adds one release tree to the version selector.
 * See [docs/README.md](docs/README.md) for the full list of triggers and the local preview commands.
 
