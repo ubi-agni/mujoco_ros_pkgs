@@ -39,9 +39,11 @@ site. It runs in three cases:
 
 - A push to `hybrid-devel` that touches `docs/`, `CHANGELOG.md`, `README.md`, or
   the workflow file rebuilds the unstable `devel/` tree from that branch tip.
-  The workflow does not skip Version Bot commits. Commits pushed with
-  `GITHUB_TOKEN`, including Version Bot bumps, do not start it, so the unstable
-  tree catches up on the next devel push.
+  The workflow does not skip Version Bot commits. Bumps pushed with
+  `GITHUB_TOKEN` do not start it, so the release workflow calls it after the
+  bump is verified. That rebuilds unstable from the release PR head.
+- A release PR into `hybrid-main` rebuilds unstable from the verified bump
+  commit at the PR head (`release.yaml`, after `version-match`).
 - A new `vX.Y.Z` tag created by the tag-release workflow after a release merge
   to `hybrid-main` builds the released trees in the same run. Tags pushed by
   GitHub Actions with `GITHUB_TOKEN` do not start other workflows, so this call

@@ -80,6 +80,20 @@ jobs:
       - name: Check tip versions match the changelog
         run: python3 .versioning/scripts/bump_versions.py --repo . match
 
+  # Version Bot pushes use GITHUB_TOKEN, which does not start push workflows. Rebuild
+  # unstable docs here from the verified post-bump tip (build only — no Pages deploy on
+  # pull_request; tag-release / devel pushes deploy).
+  docs:
+    name: Unstable documentation
+    needs: version-match
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/sphinxdoc.yaml
+    with:
+      ref: ${{ needs.version-match.outputs.sha }}
+
   format:
     name: pre-commit
     needs: version-match
