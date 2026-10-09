@@ -91,6 +91,7 @@ A release is a pull request from `hybrid-devel` into `hybrid-main`.
 * **`[skip-bump]`** in a commit message turns off the bump job for that commit. The version-match check still runs, so the versions must already be correct.
 * **Chore-only changes.** If all Unreleased entries are `[chore]`, no version is bumped and no tag is created. Do not open a versioned release for them.
 * **Version Bot commits** do not start a full CI run. The Version Bot's own bump commit is checked by the release workflow.
+* **After the Version Bot bump:** docs-only reviewer commits are fine. If you change shipped code again, add a new `## Unreleased` entry first — otherwise the changelog gate fails. Do not hand-edit version numbers; let the bump job re-run.
 
 ### Documentation
 

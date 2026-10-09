@@ -2,7 +2,8 @@ name: Documentation
 
 # Triggers:
 # - push to hybrid-devel (docs paths): rebuild the unstable tree from hybrid-devel.
-# - push of tag v*: a human or non-GITHUB_TOKEN tag create rebuilds released docs.
+# - push of tag v*: a human or non-GITHUB_TOKEN tag create rebuilds released docs. The
+#   checkout stays on hybrid-devel; the tag is only read by `make versioned`.
 # - workflow_call: tag-release.yaml calls this after it creates a new tag in the same
 #   run, because GITHUB_TOKEN tag pushes do not start tag-triggered workflows.
 on:
@@ -10,7 +11,7 @@ on:
   workflow_call:
     inputs:
       ref:
-        description: Git ref to build (tag name for released docs)
+        description: Git ref whose checkout builds devel/ (release PRs pass the PR head SHA). Never pass a release tag; release trees come from tags via `make versioned`.
         type: string
         required: false
         default: ""
@@ -40,9 +41,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          # Caller input first (tag-release), then the push ref (hybrid-devel or a tag),
-          # then hybrid-devel for workflow_dispatch.
-          ref: ${{ inputs.ref || (github.event_name == 'push' && github.ref_name) || 'hybrid-devel' }}
+          # The checkout is the source of devel/, so it must be hybrid-devel (or the
+          # release PR head SHA from release.yaml). Tag pushes still build release trees
+          # from tags, but the checkout stays on hybrid-devel; the pushed ref is not used.
+          ref: ${{ inputs.ref || 'hybrid-devel' }}
           fetch-depth: 0
           fetch-tags: true
 
