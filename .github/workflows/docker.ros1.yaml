@@ -7,7 +7,6 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - noetic-devel
       - hybrid-devel
     paths:
       - '**/package.xml'
@@ -17,7 +16,6 @@ on:
       - .github/workflows/*.ros1.rosinstall
   pull_request:
     branches:
-      - noetic-devel
       - hybrid-devel
     paths:
       - '**/package.xml'
@@ -31,7 +29,36 @@ concurrency: # cancel any previous workflow(s) from the same PR or branch/tag
   cancel-in-progress: true
 
 jobs:
+  push-gate:
+    name: Push skip gate
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      skip: ${{ steps.skip.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pyyaml
+      - id: skip
+        name: Decide whether to skip docker push
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          author_name=$(git log -1 --format=%an "${SHA}")
+          author_email=$(git log -1 --format=%ae "${SHA}")
+          python3 .versioning/scripts/ci_push_skip.py \
+            --author-name "${author_name}" --author-email "${author_email}"
+
   ci_ros1:
+    needs: push-gate
+    if: ${{ !cancelled() && needs.push-gate.result != 'failure' && needs.push-gate.result != 'cancelled' && (github.event_name != 'push' || needs.push-gate.outputs.skip == 'false') }}
     strategy:
       fail-fast: false
       matrix:
