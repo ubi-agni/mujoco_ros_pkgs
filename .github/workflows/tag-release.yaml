@@ -1,0 +1,41 @@
+name: Tag release
+
+on:
+  push:
+    branches:
+      - hybrid-main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tag-release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Create release tag
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pyyaml
+      - id: tag
+        name: Create annotated tag if missing
+        run: |
+          set -euo pipefail
+          # Prints the new tag, or "tag exists" when the version is already tagged.
+          tag=$(python3 .versioning/scripts/bump_versions.py --repo . tag)
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+      - name: Push new tag
+        if: steps.tag.outputs.tag != 'tag exists'
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git push origin "refs/tags/${TAG}"

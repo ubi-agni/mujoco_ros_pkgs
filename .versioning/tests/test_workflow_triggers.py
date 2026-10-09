@@ -94,3 +94,41 @@ def test_release_uses_neutral_naming():
     text = (WORKFLOWS / RELEASE).read_text(encoding="utf-8")
 
     assert not FORBIDDEN_IDENTIFIER.search(text)
+
+
+TAG_RELEASE = "tag-release.yaml"
+
+
+def test_tag_release_triggers_on_hybrid_main_push_only():
+    doc, triggers = _load(TAG_RELEASE)
+
+    assert triggers["push"]["branches"] == ["hybrid-main"]
+    assert "pull_request" not in triggers
+    assert "workflow_dispatch" not in triggers
+    assert doc["permissions"] == {"contents": "write"}
+
+
+def test_tag_release_does_not_write_package_files():
+    text = (WORKFLOWS / TAG_RELEASE).read_text(encoding="utf-8")
+
+    assert "package.xml" not in text
+    assert "CMakeLists" not in text
+    assert not re.search(r"bump_versions\.py\s+--repo\s+\S+\s+bump\b", text)
+    assert "git commit" not in text
+
+
+def test_tag_release_creates_then_pushes_tag_only():
+    doc, _ = _load(TAG_RELEASE)
+    run = "\n".join(
+        step.get("run", "") for job in doc["jobs"].values() for step in job["steps"]
+    )
+
+    assert "bump_versions.py --repo . tag" in run
+    assert "git push origin" in run
+    assert "tag exists" in run
+
+
+def test_tag_release_uses_neutral_naming():
+    text = (WORKFLOWS / TAG_RELEASE).read_text(encoding="utf-8")
+
+    assert not FORBIDDEN_IDENTIFIER.search(text)
