@@ -120,7 +120,7 @@ def test_tag_release_does_not_write_package_files():
 def test_tag_release_creates_then_pushes_tag_only():
     doc, _ = _load(TAG_RELEASE)
     run = "\n".join(
-        step.get("run", "") for job in doc["jobs"].values() for step in job["steps"]
+        step.get("run", "") for job in doc["jobs"].values() for step in job.get("steps", [])
     )
 
     assert "bump_versions.py --repo . tag" in run
@@ -132,3 +132,69 @@ def test_tag_release_uses_neutral_naming():
     text = (WORKFLOWS / TAG_RELEASE).read_text(encoding="utf-8")
 
     assert not FORBIDDEN_IDENTIFIER.search(text)
+
+
+SPHINX = "sphinxdoc.yaml"
+SPHINX_REF = "${{ inputs.ref || (github.event_name == 'push' && github.ref_name) || 'hybrid-devel' }}"
+
+
+def _sphinx_checkout_steps(doc):
+    return [
+        step
+        for job in doc["jobs"].values()
+        if "steps" in job
+        for step in job["steps"]
+        if str(step.get("uses", "")).startswith("actions/checkout")
+    ]
+
+
+def test_sphinx_push_triggers_devel_branch_and_release_tags():
+    doc, triggers = _load(SPHINX)
+
+    assert triggers["push"]["branches"] == DEVEL
+    assert triggers["push"]["tags"] == ["v*"]
+    assert "docs/**" in triggers["push"]["paths"]
+    assert "workflow_dispatch" in triggers
+
+
+def test_sphinx_is_reusable_with_ref_input():
+    doc, triggers = _load(SPHINX)
+
+    call = triggers["workflow_call"]
+    assert call["inputs"]["ref"]["required"] is False
+    assert call["inputs"]["ref"]["type"] == "string"
+    assert doc["permissions"] == {"contents": "read", "pages": "write", "id-token": "write"}
+
+
+def test_sphinx_checkout_ref_follows_event():
+    doc, _ = _load(SPHINX)
+
+    checkouts = _sphinx_checkout_steps(doc)
+    assert len(checkouts) == 1
+    assert checkouts[0]["with"]["ref"] == SPHINX_REF
+    assert checkouts[0]["with"]["fetch-tags"] is True
+    assert checkouts[0]["with"]["fetch-depth"] == 0
+
+
+def test_sphinx_does_not_skip_version_bot_pushes():
+    text = (WORKFLOWS / SPHINX).read_text(encoding="utf-8")
+
+    assert "Version Bot" not in text
+    assert "github.actor" not in text
+
+
+def test_tag_release_builds_released_docs_in_same_run():
+    doc, _ = _load(TAG_RELEASE)
+    docs = doc["jobs"]["docs"]
+
+    assert docs["uses"] == "./.github/workflows/sphinxdoc.yaml"
+    assert docs["needs"] == "tag"
+    assert docs["if"] == "needs.tag.outputs.tag != 'tag exists'"
+    assert docs["with"]["ref"] == "${{ needs.tag.outputs.tag }}"
+    assert docs["permissions"] == {"contents": "read", "pages": "write", "id-token": "write"}
+
+
+def test_tag_release_exposes_tag_output_for_docs_job():
+    doc, _ = _load(TAG_RELEASE)
+
+    assert doc["jobs"]["tag"]["outputs"]["tag"] == "${{ steps.tag.outputs.tag }}"

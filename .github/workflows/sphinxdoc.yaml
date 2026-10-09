@@ -1,10 +1,24 @@
 name: Documentation
 
+# Triggers:
+# - push to hybrid-devel (docs paths): rebuild the unstable tree from hybrid-devel.
+# - push of tag v*: a human or non-GITHUB_TOKEN tag create rebuilds released docs.
+# - workflow_call: tag-release.yaml calls this after it creates a new tag in the same
+#   run, because GITHUB_TOKEN tag pushes do not start tag-triggered workflows.
 on:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to build (tag name for released docs)
+        type: string
+        required: false
+        default: ""
   push:
     branches:
       - hybrid-devel
+    tags:
+      - "v*"
     paths:
       - docs/**
       - CHANGELOG.md
@@ -26,8 +40,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: hybrid-devel
+          # Caller input first (tag-release), then the push ref (hybrid-devel or a tag),
+          # then hybrid-devel for workflow_dispatch.
+          ref: ${{ inputs.ref || (github.event_name == 'push' && github.ref_name) || 'hybrid-devel' }}
           fetch-depth: 0
+          fetch-tags: true
 
       - uses: actions/setup-python@v5
         with:
@@ -40,16 +57,21 @@ jobs:
         run: make -C docs versioned
 
       - name: Stage documentation artifact
+        # pull_request (release.yaml workflow_call) builds only — do not publish unmerged tips.
+        if: github.event_name != 'pull_request'
         run: |
           mkdir -p public
           cp -a docs/build/html/. public/
 
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: public
 
   deploy:
+    # Same-run calls from release PRs must not overwrite live Pages with unmerged content.
+    if: github.event_name != 'pull_request'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
