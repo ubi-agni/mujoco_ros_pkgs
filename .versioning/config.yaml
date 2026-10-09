@@ -1,0 +1,4 @@
+# Release versioning for mujoco_ros_pkgs. All packages share one version.
+mode: uniform
+merge_target: hybrid-main
+tag_prefix: v
