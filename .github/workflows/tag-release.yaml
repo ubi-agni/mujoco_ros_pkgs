@@ -16,6 +16,8 @@ jobs:
   tag:
     name: Create release tag
     runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -39,3 +41,17 @@ jobs:
         run: |
           set -euo pipefail
           git push origin "refs/tags/${TAG}"
+
+  # GITHUB_TOKEN tag pushes do not start other workflows, so build released docs here
+  # in the same run. Runs only when this run created the tag.
+  docs:
+    name: Released documentation
+    needs: tag
+    if: needs.tag.outputs.tag != 'tag exists'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/sphinxdoc.yaml
+    with:
+      ref: ${{ needs.tag.outputs.tag }}
