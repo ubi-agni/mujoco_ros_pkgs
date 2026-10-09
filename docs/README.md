@@ -35,21 +35,27 @@ make -C docs versioned RELEASE_REFS="v1.0.0 v1.0.1"
 ## When GitHub Pages updates
 
 The `Documentation` workflow (`.github/workflows/sphinxdoc.yaml`) publishes the
-site. It runs in three cases:
+site. It runs in four cases:
 
 - A push to `hybrid-devel` that touches `docs/`, `CHANGELOG.md`, `README.md`, or
   the workflow file rebuilds the unstable `devel/` tree from that branch tip.
-  The workflow does not skip Version Bot commits. Bumps pushed with
-  `GITHUB_TOKEN` do not start it, so the release workflow calls it after the
-  bump is verified. That rebuilds unstable from the release PR head.
-- A release PR into `hybrid-main` rebuilds unstable from the verified bump
-  commit at the PR head (`release.yaml`, after `version-match`).
+  The workflow does not skip Version Bot commits.
+- A release PR into `hybrid-main` **builds** unstable from the verified bump
+  commit at the PR head (`release.yaml`, after `version-match`) but does **not**
+  deploy to Pages. Bumps pushed with `GITHUB_TOKEN` do not start push workflows,
+  so this call is still the build check for them; live unstable updates on the
+  next `hybrid-devel` push (or after merge).
 - A new `vX.Y.Z` tag created by the tag-release workflow after a release merge
-  to `hybrid-main` builds the released trees in the same run. Tags pushed by
-  GitHub Actions with `GITHUB_TOKEN` do not start other workflows, so this call
-  is the only automatic path for those tags.
+  to `hybrid-main` builds the released trees in the same run. Tags pushed with
+  `GITHUB_TOKEN` do not start other workflows, so this call is the only
+  automatic path for those tags.
 - A `v*` tag pushed by a person starts the workflow directly. Tags that already
   exist do not rebuild the site from the tag-release run.
+
+The `github-pages` environment must allow deploys from `tag-release` /
+`hybrid-main` pushes and from `v*` tag pushes (and from `hybrid-devel` docs
+pushes). Release PRs only build docs; they do not deploy. If the environment
+blocks those deploy events, the jobs fail until it is updated.
 
 Pages deploys are serialized, so a late release build cannot overlap another
 docs deploy.
