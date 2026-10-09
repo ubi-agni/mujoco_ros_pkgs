@@ -741,7 +741,9 @@ OffscreenCamera::PublishResult OffscreenCamera::PublishLatest(RenderCore &core, 
 	std::optional<FrameLease> segment;
 	PlaneMask published_planes = PlaneMask::kNone;
 	std::optional<rendering::FrameStatus> missing_plane;
-	if (stream_type_ & StreamType::RGB) {
+	// Demand renders only subscribed planes; require those, not the full stream_type mask.
+	const auto want = SubscribedPlanes();
+	if (HasPlane(want, PlaneKind::kRgb)) {
 		rgb = core.AcquireLatest(capture_id, camera.id, PlaneKind::kRgb);
 		if (!rgb) {
 			missing_plane =
@@ -751,7 +753,7 @@ OffscreenCamera::PublishResult OffscreenCamera::PublishLatest(RenderCore &core, 
 			published_planes = published_planes | PlaneMask::kRgb;
 		}
 	}
-	if (stream_type_ & StreamType::DEPTH) {
+	if (HasPlane(want, PlaneKind::kDepth)) {
 		depth = core.AcquireLatest(capture_id, camera.id, PlaneKind::kDepth);
 		if (!depth) {
 			if (!missing_plane) {
@@ -763,7 +765,7 @@ OffscreenCamera::PublishResult OffscreenCamera::PublishLatest(RenderCore &core, 
 			published_planes = published_planes | PlaneMask::kDepth;
 		}
 	}
-	if (stream_type_ & StreamType::SEGMENTED) {
+	if (HasPlane(want, PlaneKind::kSegmentation)) {
 		segment = core.AcquireLatest(capture_id, camera.id, PlaneKind::kSegmentation);
 		if (!segment) {
 			if (!missing_plane) {
