@@ -31,3 +31,23 @@ To test a specific set of release refs locally:
 ```bash
 make -C docs versioned RELEASE_REFS="v1.0.0 v1.0.1"
 ```
+
+## When GitHub Pages updates
+
+The `Documentation` workflow (`.github/workflows/sphinxdoc.yaml`) publishes the
+site. It runs in three cases:
+
+- A push to `hybrid-devel` that touches `docs/`, `CHANGELOG.md`, `README.md`, or
+  the workflow file rebuilds the unstable `devel/` tree from that branch tip.
+  The workflow does not skip Version Bot commits. Commits pushed with
+  `GITHUB_TOKEN`, including Version Bot bumps, do not start it, so the unstable
+  tree catches up on the next devel push.
+- A new `vX.Y.Z` tag created by the tag-release workflow after a release merge
+  to `hybrid-main` builds the released trees in the same run. Tags pushed by
+  GitHub Actions with `GITHUB_TOKEN` do not start other workflows, so this call
+  is the only automatic path for those tags.
+- A `v*` tag pushed by a person starts the workflow directly. Tags that already
+  exist do not rebuild the site from the tag-release run.
+
+Pages deploys are serialized, so a late release build cannot overlap another
+docs deploy.
