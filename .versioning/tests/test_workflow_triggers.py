@@ -64,10 +64,31 @@ def test_release_triggers_target_hybrid_main_prs_only():
 def test_release_jobs_run_in_order_on_one_run():
     doc, _ = _load(RELEASE)
 
-    assert list(doc["jobs"]) == RELEASE_JOBS
+    assert list(doc["jobs"]) == ["changelog-gate", "version-bump", "version-match", "docs", "format"]
     assert "needs" not in doc["jobs"]["changelog-gate"]
-    for previous, job in zip(RELEASE_JOBS, RELEASE_JOBS[1:]):
-        assert doc["jobs"][job]["needs"] == previous
+    assert doc["jobs"]["version-bump"]["needs"] == "changelog-gate"
+    assert doc["jobs"]["version-match"]["needs"] == "version-bump"
+    # format and docs both read the verified tip from version-match.
+    assert doc["jobs"]["format"]["needs"] == "version-match"
+    assert doc["jobs"]["docs"]["needs"] == "version-match"
+
+
+def test_release_calls_sphinxdoc_after_verified_bump():
+    doc, _ = _load(RELEASE)
+    docs = doc["jobs"]["docs"]
+
+    assert docs["uses"] == "./.github/workflows/sphinxdoc.yaml"
+    assert docs["needs"] == "version-match"
+    assert docs["with"]["ref"] == "${{ needs.version-match.outputs.sha }}"
+    assert docs["permissions"] == {"contents": "read", "pages": "write", "id-token": "write"}
+
+
+def test_release_docs_job_runs_after_bump_is_verified():
+    doc, _ = _load(RELEASE)
+
+    # sphinxdoc reads the post-bump tip, so it must wait for the version check.
+    assert "version-match" in doc["jobs"]
+    assert doc["jobs"]["version-match"]["outputs"]["sha"] == "${{ needs.version-bump.outputs.sha }}"
 
 
 def test_release_has_no_ros_matrix_jobs():
