@@ -146,7 +146,6 @@ struct EnvSettings
 	EnvSettings(const EnvSettings &other)
 	    : headless(other.headless)
 	    , render_offscreen(other.render_offscreen)
-	    , use_sim_time(other.use_sim_time)
 	    , render_backpressure_policy(other.render_backpressure_policy)
 	    , busywait(other.busywait)
 	    , num_mj_threads(other.num_mj_threads)
@@ -165,7 +164,6 @@ struct EnvSettings
 		}
 		headless                   = other.headless;
 		render_offscreen           = other.render_offscreen;
-		use_sim_time               = other.use_sim_time;
 		render_backpressure_policy = other.render_backpressure_policy;
 		busywait                   = other.busywait;
 		num_mj_threads             = other.num_mj_threads;
@@ -180,7 +178,6 @@ struct EnvSettings
 	// Render options
 	bool headless                                                  = false;
 	bool render_offscreen                                          = false;
-	bool use_sim_time                                              = true;
 	rendering::RenderBackpressurePolicy render_backpressure_policy = rendering::RenderBackpressurePolicy::kDrop;
 
 	// Sim speed configuration

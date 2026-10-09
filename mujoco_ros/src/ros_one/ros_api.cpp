@@ -834,17 +834,12 @@ bool RosAPI::LoadInitialJointStatesCB(std_srvs::Empty::Request & /*req*/, std_sr
 
 void RosAPI::SetupClockPublisher()
 {
-	if (env_ptr_->settings_.use_sim_time) {
-		clock_pub_ = nh_->advertise<rosgraph_msgs::Clock>("/clock", 1);
-		PublishSimTime(mjtNum(0));
-	}
+	clock_pub_ = nh_->advertise<rosgraph_msgs::Clock>("/clock", 1);
+	PublishSimTime(mjtNum(0));
 }
 
 void RosAPI::PublishSimTime(mjtNum time)
 {
-	if (!env_ptr_->settings_.use_sim_time) {
-		return;
-	}
 	// This is the fastes option for intra-node time updates
 	// however, together with non-blocking publish it breaks stuff
 	// ros::Time::setNow(ros::Time(time));
