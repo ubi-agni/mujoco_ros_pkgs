@@ -59,7 +59,7 @@ jobs:
             --jq '.[] | select(.merged_at != null) | .base.ref')
           args=()
           while IFS= read -r base; do
-            [[ -n "${base}" ]] && args+=(--pr-base "${base}")
+            if [[ -n "${base}" ]]; then args+=(--pr-base "${base}"); fi
           done <<< "${merged_bases}"
           python3 .versioning/scripts/ci_push_skip.py \
             --author-name "${author_name}" --author-email "${author_email}" "${args[@]}"
