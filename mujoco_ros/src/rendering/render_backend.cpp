@@ -73,6 +73,13 @@ RenderStatus FromFrameStatus(const FrameStatus &status)
 	return RenderStatus::Failure(code, status.message);
 }
 
+RenderStatus PublishWriter(FrameWriter &writer)
+{
+	MJR_PERF_SCOPE("render.publish");
+	const auto status = writer.Commit();
+	return status.ok() ? RenderStatus::Ok() : FromFrameStatus(status);
+}
+
 class MuJoCoRenderBackend final : public IRenderBackend
 {
 public:
@@ -155,9 +162,13 @@ public:
 		mjr_setBuffer(mjFB_OFFSCREEN, &context_);
 
 		RenderStatus last_failure = RenderStatus::Ok();
-		if (HasPlane(planes, PlaneKind::kRgb)) {
-			if (auto result = ReadColor(snapshot, camera, viewport, boundary, false);
-			    !result.ok() && IsContextIntegrityFailure(result)) {
+		const bool want_rgb       = HasPlane(planes, PlaneKind::kRgb);
+		const bool want_depth     = HasPlane(planes, PlaneKind::kDepth);
+		if (want_rgb || want_depth) {
+			const auto result = want_rgb && want_depth ? ReadRgbAndDepth(snapshot, camera, viewport, boundary) :
+			                    want_rgb               ? ReadColor(snapshot, camera, viewport, boundary, false) :
+			                                             ReadDepth(snapshot, viewport, boundary, camera);
+			if (!result.ok() && IsContextIntegrityFailure(result)) {
 				return result;
 			} else if (!result.ok()) {
 				last_failure = result;
@@ -165,14 +176,6 @@ public:
 		}
 		if (HasPlane(planes, PlaneKind::kSegmentation)) {
 			if (auto result = ReadColor(snapshot, camera, viewport, boundary, true);
-			    !result.ok() && IsContextIntegrityFailure(result)) {
-				return result;
-			} else if (!result.ok()) {
-				last_failure = result;
-			}
-		}
-		if (HasPlane(planes, PlaneKind::kDepth)) {
-			if (auto result = ReadDepth(snapshot, viewport, boundary, camera);
 			    !result.ok() && IsContextIntegrityFailure(result)) {
 				return result;
 			} else if (!result.ok()) {
@@ -346,6 +349,68 @@ private:
 		const auto status = writer.Commit();
 		clear_segmentation();
 		return status.ok() ? RenderStatus::Ok() : FromFrameStatus(status);
+	}
+
+	// One mjr_render and one mjr_readPixels serve both planes. A plane whose writer
+	// cannot be acquired is read as nullptr and is not published; the other still is.
+	RenderStatus ReadRgbAndDepth(const RenderSnapshot &snapshot, const CameraDescriptor &camera, mjrRect viewport,
+	                             FrameBoundary &boundary)
+	{
+		{
+			MJR_PERF_SCOPE("render.mjr_render");
+			mjr_render(viewport, &scene_, &context_);
+		}
+		auto rgb_writer =
+		    boundary.TryAcquireWriter(boundary.generation(), PlaneKind::kRgb, camera.layout(PlaneKind::kRgb));
+		auto depth_writer =
+		    boundary.TryAcquireWriter(boundary.generation(), PlaneKind::kDepth, camera.layout(PlaneKind::kDepth));
+		RenderStatus result = RenderStatus::Ok();
+		const auto note     = [&result](const RenderStatus &status) {
+         if (!status.ok() && (result.ok() || IsContextIntegrityFailure(status))) {
+            result = status;
+         }
+		};
+		bool rgb_ready   = rgb_writer.status().ok();
+		bool depth_ready = depth_writer.status().ok();
+		if (!rgb_ready) {
+			note(FromFrameStatus(rgb_writer.status()));
+		}
+		if (!depth_ready) {
+			note(FromFrameStatus(depth_writer.status()));
+		}
+		if (rgb_ready || depth_ready) {
+			MJR_PERF_SCOPE("render.read_pixels");
+			mjr_readPixels(rgb_ready ? reinterpret_cast<unsigned char *>(rgb_writer.bytes().data()) : nullptr,
+			               depth_ready ? reinterpret_cast<float *>(depth_writer.bytes().data()) : nullptr, viewport,
+			               &context_);
+		}
+		if (rgb_ready) {
+			{
+				MJR_PERF_SCOPE("render.flip");
+				FlipRows(rgb_writer.bytes(), camera.layout(PlaneKind::kRgb).stride_bytes, camera.height);
+			}
+		}
+		if (depth_ready) {
+			{
+				MJR_PERF_SCOPE("render.flip");
+				FlipRows(depth_writer.bytes(), camera.layout(PlaneKind::kDepth).stride_bytes, camera.height);
+			}
+			try {
+				const float znear = snapshot.model->vis.map.znear * snapshot.model->stat.extent;
+				const float zfar  = snapshot.model->vis.map.zfar * snapshot.model->stat.extent;
+				ConvertDepthBufferToMeters(depth_writer.bytes(), znear, zfar);
+			} catch (const std::exception &error) {
+				note(RenderStatus::Failure(RenderStatusCode::kFrameUnavailable, error.what()));
+				depth_ready = false;
+			}
+		}
+		if (rgb_ready) {
+			note(PublishWriter(rgb_writer));
+		}
+		if (depth_ready) {
+			note(PublishWriter(depth_writer));
+		}
+		return result;
 	}
 
 	RenderStatus ReadDepth(const RenderSnapshot &snapshot, mjrRect viewport, FrameBoundary &boundary,

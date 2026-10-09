@@ -79,6 +79,10 @@
 #include <mujoco_ros/rendering/render_core.hpp>
 #include <mujoco_ros/rendering/render_snapshot.hpp>
 #include <mujoco_ros/rendering/frame_capacity.hpp>
+#include <mujoco_ros/rendering/render_backend_interface.hpp>
+#include <mujoco_ros/perf/perf_registry.hpp>
+#include <cstring>
+#include <limits>
 #ifdef MJR_BUILD_TESTING
 #include <mujoco_ros/offscreen_python_buffer_test_access.hpp>
 #endif
@@ -4472,3 +4476,104 @@ TEST_F(BaseEnvFixture, TakeRecentRequiresEnableFramesWithoutOffscreenBackend)
 	env_ptr->shutdown();
 }
 #endif // OFFSCREEN_RENDER_BACKEND == NO_BACKEND // i.e. no offscreen render backend available
+
+#if OFFSCREEN_RENDER_BACKEND == EGL_BACKEND || OFFSCREEN_RENDER_BACKEND == OSMESA_BACKEND || \
+    OFFSCREEN_RENDER_BACKEND == GLFW_BACKEND
+namespace {
+
+std::shared_ptr<mjModel> RgbDepthSharedPassModel()
+{
+	const char *xml = "<mujoco><visual><global offwidth=\"32\" offheight=\"32\"/></visual>"
+	                  "<worldbody><geom type=\"box\" size=\"0.2 0.2 0.2\" rgba=\"1 0 0 1\"/>"
+	                  "<camera name=\"camera\" pos=\"0 -2 0\" euler=\"90 0 0\"/></worldbody></mujoco>";
+	mjVFS vfs;
+	mj_defaultVFS(&vfs);
+	mj_addBufferVFS(&vfs, "shared_pass.xml", xml, std::strlen(xml));
+	char error[1024] = {};
+	auto *model      = mj_loadXML("shared_pass.xml", &vfs, error, sizeof(error));
+	mj_deleteVFS(&vfs);
+	if (model == nullptr) {
+		throw std::runtime_error(error);
+	}
+	return std::shared_ptr<mjModel>(model, mj_deleteModel);
+}
+
+std::vector<std::byte> LatestPlaneBytes(const rendering::FrameBoundary &boundary, rendering::CameraId camera,
+                                        rendering::PlaneKind plane)
+{
+	auto lease = boundary.AcquireLatest(camera, plane);
+	EXPECT_TRUE(lease.has_value());
+	if (!lease.has_value()) {
+		return {};
+	}
+	return lease->bytes();
+}
+
+std::uint64_t ScopeCount(const std::vector<perf::ScopeStats> &stats, const std::string &name)
+{
+	for (const auto &entry : stats) {
+		if (entry.name == name) {
+			return entry.count;
+		}
+	}
+	return 0;
+}
+
+} // namespace
+
+TEST(MujocoRender, RgbAndDepthShareOneRender)
+{
+	const auto model = RgbDepthSharedPassModel();
+	rendering::RenderConfiguration configuration;
+	configuration.generation   = FrameGeneration(1);
+	configuration.frame_layout = rendering::FrameLayout(32, 32);
+	auto backend               = rendering::CreateRenderBackend();
+	ASSERT_TRUE(backend->Initialize(*model, configuration).ok());
+
+	rendering::FrameBoundary boundary(4);
+	ASSERT_TRUE(boundary.Reconfigure(FrameGeneration(1), configuration.frame_layout).ok());
+
+	rendering::RenderSnapshot snapshot;
+	snapshot.model_generation = ModelGeneration(1);
+	snapshot.model            = model;
+	snapshot.data             = std::shared_ptr<mjData>(mj_makeData(model.get()), mj_deleteData);
+	mj_forward(model.get(), snapshot.data.get());
+
+	const rendering::CameraDescriptor camera{ rendering::CameraId(1), "camera", 32, 32,
+		                                       rendering::PlaneMask::kRgb | rendering::PlaneMask::kDepth };
+	const auto render = [&](rendering::PlaneMask planes) {
+		boundary.BeginCapture(ModelGeneration(1), 0, camera.id);
+		const auto status = backend->Render(snapshot, camera, planes, boundary);
+		EXPECT_TRUE(status.ok()) << status.message;
+	};
+
+	perf::SnapshotAndReset();
+	render(rendering::PlaneMask::kRgb | rendering::PlaneMask::kDepth);
+#ifdef MJR_PROFILING
+	const auto stats = perf::SnapshotAndReset();
+	EXPECT_EQ(ScopeCount(stats, "render.mjr_render"), 1U);
+	EXPECT_EQ(ScopeCount(stats, "render.read_pixels"), 1U);
+#endif
+	const auto shared_rgb   = LatestPlaneBytes(boundary, camera.id, rendering::PlaneKind::kRgb);
+	const auto shared_depth = LatestPlaneBytes(boundary, camera.id, rendering::PlaneKind::kDepth);
+
+	render(rendering::PlaneMask::kRgb);
+	const auto separate_rgb = LatestPlaneBytes(boundary, camera.id, rendering::PlaneKind::kRgb);
+	render(rendering::PlaneMask::kDepth);
+	const auto separate_depth = LatestPlaneBytes(boundary, camera.id, rendering::PlaneKind::kDepth);
+
+	EXPECT_TRUE(
+	    std::any_of(shared_rgb.begin(), shared_rgb.end(), [](std::byte value) { return value != std::byte{ 0 }; }));
+	EXPECT_TRUE(shared_rgb == separate_rgb);
+	ASSERT_EQ(shared_depth.size(), separate_depth.size());
+	EXPECT_TRUE(shared_depth == separate_depth);
+	float nearest = std::numeric_limits<float>::max();
+	for (std::size_t offset = 0; offset + sizeof(float) <= shared_depth.size(); offset += sizeof(float)) {
+		float value = 0.0F;
+		std::memcpy(&value, shared_depth.data() + offset, sizeof(float));
+		nearest = std::min(nearest, value);
+	}
+	EXPECT_LT(nearest, 2.0F) << "box surface is about 1.8 m from the camera";
+}
+
+#endif // OFFSCREEN_RENDER_BACKEND == EGL_BACKEND || OSMESA_BACKEND || GLFW_BACKEND
