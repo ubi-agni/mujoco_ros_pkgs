@@ -38,7 +38,9 @@
 
 #include <cmath>
 #include <chrono>
+#include <mutex>
 #include <thread>
+#include <vector>
 
 #include <mujoco_ros_testing_utils/mujoco_env_fixture.hpp>
 #include <mujoco_ros_testing_utils/test_util.hpp>
@@ -62,6 +64,7 @@
 #else // MJR_ROS_VERSION == ROS_2
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
+#include <rosgraph_msgs/msg/clock.hpp>
 #include <std_srvs/srv/empty.hpp>
 
 #include <mujoco_ros_msgs/action/step.hpp>
@@ -3385,5 +3388,116 @@ TEST_F(PendulumEnvFixture, RuntimeParameterBatchRollsBackAllState)
 	EXPECT_EQ(after.epoch, before.epoch);
 	EXPECT_EQ(env_ptr->GetControlSnapshot().running, running_before);
 	EXPECT_STREQ(env_ptr->settings_.admin_hash, admin_before.c_str());
+}
+
+class ClockPublishFixture : public ::testing::Test
+{
+protected:
+	std::unique_ptr<testing::TestNodeHandle> nh;
+	std::unique_ptr<MujocoEnvTestWrapper> env_ptr = nullptr;
+	std::shared_ptr<rclcpp::Node> observer_node;
+	rclcpp::Subscription<rosgraph_msgs::msg::Clock>::SharedPtr clock_sub;
+
+	std::mutex received_mutex_;
+	std::vector<int64_t> received_ns_;
+
+	void StartEnv()
+	{
+		nh = std::make_unique<testing::TestNodeHandle>("~");
+		nh->setParam("unpause", false);
+		nh->setParam("no_render", true);
+		nh->setParam("use_sim_time", true);
+
+		env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+		env_ptr->StartWithXML(testing::get_test_model_path("pendulum_world.xml"));
+
+		float seconds = 0;
+		while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			seconds += 0.001;
+		}
+		ASSERT_EQ(env_ptr->GetOperationalStatus(), 0) << "Model was not loaded in time!";
+
+		observer_node = std::make_shared<rclcpp::Node>("clock_observer");
+		env_ptr->AddNodeToExecutor(observer_node->get_node_base_interface());
+		clock_sub = observer_node->create_subscription<rosgraph_msgs::msg::Clock>(
+		    "/clock", rclcpp::QoS(rclcpp::KeepLast(1000)), [this](const rosgraph_msgs::msg::Clock::ConstSharedPtr msg) {
+			    std::lock_guard<std::mutex> lock(received_mutex_);
+			    received_ns_.push_back(rclcpp::Time(msg->clock).nanoseconds());
+		    });
+	}
+
+	// Same conversion as RosAPI::PublishSimTime.
+	int64_t SimTimeNs()
+	{
+		std::lock_guard<MujocoEnvMutex> lock(*env_ptr->getMutexPtr());
+		return static_cast<int64_t>(env_ptr->getDataPtr()->time * 1e9);
+	}
+
+	// Positive times only: the t=0 message from SetupClockPublisher may arrive as transient-local history.
+	std::vector<int64_t> PositiveClockTimes()
+	{
+		std::lock_guard<std::mutex> lock(received_mutex_);
+		std::vector<int64_t> positive;
+		for (const auto t : received_ns_) {
+			if (t > 0) {
+				positive.push_back(t);
+			}
+		}
+		return positive;
+	}
+
+	bool WaitForLatestClock(int64_t expected_ns, std::chrono::milliseconds timeout)
+	{
+		const auto deadline = std::chrono::steady_clock::now() + timeout;
+		while (true) {
+			const auto times = PositiveClockTimes();
+			if (!times.empty() && times.back() == expected_ns) {
+				return true;
+			}
+			if (std::chrono::steady_clock::now() > deadline) {
+				return false;
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+	}
+
+	void TearDown() override
+	{
+		clock_sub.reset();
+		if (env_ptr != nullptr) {
+			if (observer_node != nullptr) {
+				env_ptr->GetExecutorPtr()->remove_node(observer_node->get_node_base_interface());
+			}
+			env_ptr->shutdown();
+			env_ptr.reset();
+		}
+		observer_node.reset();
+		if (nh != nullptr) {
+			nh->clearNode();
+		}
+	}
+};
+
+TEST_F(ClockPublishFixture, ClockPublishesEveryStepWhenUseSimTime)
+{
+	StartEnv();
+
+	constexpr int kSteps = 20;
+	std::vector<int64_t> expected_ns;
+	for (int i = 0; i < kSteps; ++i) {
+		ASSERT_TRUE(env_ptr->step(1)) << "Step " << i + 1 << " did not succeed!";
+		expected_ns.push_back(SimTimeNs());
+	}
+	ASSERT_TRUE(WaitForLatestClock(expected_ns.back(), std::chrono::seconds(2))) << "Latest step time was not published";
+
+	// The paused physics loop re-publishes the current time between steps, so collapse consecutive repeats.
+	std::vector<int64_t> distinct_in_order;
+	for (const auto t : PositiveClockTimes()) {
+		if (distinct_in_order.empty() || distinct_in_order.back() != t) {
+			distinct_in_order.push_back(t);
+		}
+	}
+	EXPECT_EQ(distinct_in_order, expected_ns) << "every physics step must publish its time, in order";
 }
 #endif

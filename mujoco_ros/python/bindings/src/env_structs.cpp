@@ -56,7 +56,6 @@ void InitEnvStructs(py::module_ &module)
 	py::class_<EnvSettings>(module, "_EnvSettings")
 	    .def_property_readonly("headless", [](const EnvSettings &settings) { return settings.headless; })
 	    .def_property_readonly("render_offscreen", [](const EnvSettings &settings) { return settings.render_offscreen; })
-	    .def_property_readonly("use_sim_time", [](const EnvSettings &settings) { return settings.use_sim_time; })
 	    .def_property_readonly("render_backpressure_policy",
 	                           [](const EnvSettings &settings) {
 		                           return rendering::RenderBackpressurePolicyToString(
@@ -77,8 +76,7 @@ void InitEnvStructs(py::module_ &module)
 	                           [](const EnvSettings &settings) { return settings.is_python_request.load(); })
 	    .def("__repr__", [](const EnvSettings &settings) {
 		    return "<EnvSettings headless=" + BoolString(settings.headless) +
-		           " render_offscreen=" + BoolString(settings.render_offscreen) +
-		           " use_sim_time=" + BoolString(settings.use_sim_time) + ">";
+		           " render_offscreen=" + BoolString(settings.render_offscreen) + ">";
 	    });
 
 	py::class_<RuntimeOptionsSnapshot>(module, "RuntimeOptionsSnapshot")

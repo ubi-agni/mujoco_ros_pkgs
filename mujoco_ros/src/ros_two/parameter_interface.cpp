@@ -178,15 +178,6 @@ void MujocoEnv::FetchRosConfiguration()
 	rclcpp::Parameter eval_mode_param = this->get_parameter("eval_mode");
 	settings_.eval_mode               = eval_mode_param.as_bool();
 
-	rclcpp::Parameter use_sim_time_param;
-	if (!this->get_parameter("use_sim_time", use_sim_time_param)) {
-		RCLCPP_FATAL(this->get_logger(),
-		             "/use_sim_time ROS param is unset. This node requires you to explicitly set it to true "
-		             "or false. Also Make sure it is set before starting any node, "
-		             "otherwise nodes might behave unexpectedly.");
-		throw std::runtime_error("/use_sim_time ROS param is unset.");
-	}
-
 	rclcpp::Parameter no_render_param = this->get_parameter("no_render");
 
 	if (no_render_param.as_bool()) {

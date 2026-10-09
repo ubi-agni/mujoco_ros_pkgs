@@ -1207,22 +1207,17 @@ void RosAPI::LoadInitialJointStatesCB(const std_srvs::srv::Empty::Request::Share
 
 void RosAPI::SetupClockPublisher()
 {
-	if (env_ptr_->settings_.use_sim_time) {
-		MJR_DEBUG("Setting up clock publisher");
-		rclcpp::QoS clock_qos = rclcpp::QoS(rclcpp::KeepLast(10)).transient_local();
-		clock_pub_            = env_ptr_->create_publisher<rosgraph_msgs::msg::Clock>("/clock", clock_qos);
-		PublishSimTime(mjtNum(0));
-	}
+	MJR_DEBUG("Setting up clock publisher");
+	rclcpp::QoS clock_qos = rclcpp::QoS(rclcpp::KeepLast(10)).transient_local();
+	clock_pub_            = env_ptr_->create_publisher<rosgraph_msgs::msg::Clock>("/clock", clock_qos);
+	PublishSimTime(mjtNum(0));
 }
 
 void RosAPI::PublishSimTime(mjtNum time)
 {
-	if (!env_ptr_->settings_.use_sim_time) {
-		return;
-	}
-	rosgraph_msgs::msg::Clock::UniquePtr ros_time = std::make_unique<rosgraph_msgs::msg::Clock>();
-	ros_time->clock = rclcpp::Time(static_cast<uint64_t>(time * 1e9)); // convert to nanoseconds
-	clock_pub_->publish(std::move(ros_time));
+	rosgraph_msgs::msg::Clock ros_time;
+	ros_time.clock = rclcpp::Time(static_cast<uint64_t>(time * 1e9)); // convert to nanoseconds
+	clock_pub_->publish(ros_time);
 }
 
 } // namespace mujoco_ros
