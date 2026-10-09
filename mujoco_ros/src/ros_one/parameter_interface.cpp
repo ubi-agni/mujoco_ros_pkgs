@@ -174,12 +174,6 @@ void MujocoEnv::FetchRosConfiguration()
 	bool eval_mode = false;
 	nh_->param("eval_mode", eval_mode, false);
 	settings_.eval_mode = eval_mode;
-	if (!ros::param::get("/use_sim_time", settings_.use_sim_time)) {
-		ROS_FATAL("/use_sim_time ROS param is unset. This node requires you to explicitly set it to true "
-		          "or false. Also Make sure it is set before starting any node, "
-		          "otherwise nodes might behave unexpectedly.");
-		throw std::runtime_error("/use_sim_time ROS param is unset.");
-	}
 	bool no_render;
 	nh_->param("no_render", no_render, false);
 	nh_->param("render_offscreen", settings_.render_offscreen, true);

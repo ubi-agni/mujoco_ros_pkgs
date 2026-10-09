@@ -209,8 +209,6 @@ class PythonBindingsTest(unittest.TestCase):
                 self.assertTrue(settings.headless)
                 if pymujoco_ros.__render_backend__ == "NONE":
                     self.assertFalse(settings.render_offscreen)
-                if is_ros1():
-                    self.assertTrue(settings.use_sim_time)
                 self.assertTrue(sim_info.model_valid)
                 self.assertGreater(env.load_count, previous_load_count)
                 self.assertGreaterEqual(sim_info.load_count, env.load_count)

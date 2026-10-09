@@ -312,8 +312,6 @@ void MujocoEnv::Configure()
 		}
 	}
 
-	MJR_DEBUG_COND(!settings_.use_sim_time, "use_sim_time is set to false. Not publishing sim time to /clock!");
-
 	MJR_INFO_STREAM("MuJoCo ROS " << MJR_PROJECT_VERSION << " (" << MJR_GIT_DESCRIBE << (MJR_GIT_DIRTY ? ", dirty" : "")
 	                              << "), MuJoCo " << mj_versionString() << ", render backend "
 	                              << rendering::CompiledRenderBackendDisplayName(
