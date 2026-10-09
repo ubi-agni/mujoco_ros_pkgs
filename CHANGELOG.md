@@ -3,7 +3,7 @@
 
 ### Fixed
 * [patch] Resize the offscreen framebuffer when a camera is wider/taller than the model `offwidth`/`offheight` default, so `mjr_readPixels` past the FBO is no longer garbage on the image edge.
-
+* [patch] Render and publish only planes that currently have ROS subscribers (intersected with `stream_type`), so unused RGB/depth/segmentation work is skipped and missing unsubscribed planes no longer spam ERROR logs each step.
 
 <a name="2.0.0"></a>
 ## [2.0.0] - 2026-09-24

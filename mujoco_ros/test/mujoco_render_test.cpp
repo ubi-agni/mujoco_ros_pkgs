@@ -1597,7 +1597,7 @@ TEST_F(BaseEnvFixture, RosAndPythonDeliverOneCaptureIdentity)
 	render_env->shutdown();
 }
 
-TEST_F(BaseEnvFixture, RosPublishesAvailablePlaneAndReportsMissingConfiguredPlane)
+TEST_F(BaseEnvFixture, RosPublishesSubscribedPlaneWithoutMissingUnsubscribedConfiguredPlane)
 {
 	nh->setParam("no_render", false);
 	nh->setParam("headless", true);
@@ -1633,6 +1633,60 @@ TEST_F(BaseEnvFixture, RosPublishesAvailablePlaneAndReportsMissingConfiguredPlan
 		std::this_thread::yield();
 	}
 	ASSERT_GT(received_rgb.load(), 0);
+	const auto &status = offscreen->cams[0]->last_publication_status();
+	EXPECT_TRUE(status.ok()) << status.message;
+	EXPECT_FALSE(status.plane.has_value());
+	EXPECT_GT(offscreen->cams[0]->last_published_capture_id(), 0U);
+	const auto render_status = render_env->GetRenderStatus();
+	EXPECT_TRUE(render_status.ok()) << render_status.message;
+
+	render_env->shutdown();
+}
+
+TEST_F(BaseEnvFixture, RosReportsMissingSubscribedConfiguredPlane)
+{
+	nh->setParam("no_render", false);
+	nh->setParam("headless", true);
+	nh->setParam("render_offscreen", true);
+	nh->setParam("unpause", false);
+	nh->deleteParam("cam_config");
+	nh->setParam("cam_config/test_cam/stream_type", rendering::StreamType::RGB_D);
+	nh->setParam("cam_config/test_cam/frequency", 30.0);
+
+	auto render_env = std::make_unique<RenderTeardownEnvWrapper>("", nh.get());
+	std::atomic_int received_rgb{ 0 };
+	std::atomic_int received_depth{ 0 };
+#if MJR_ROS_VERSION == ROS_1
+	auto rgb_subscriber = nh->subscribe<sensor_msgs::Image>(
+	    "cameras/test_cam/rgb/image_raw", 1,
+	    [&received_rgb](const sensor_msgs::Image::ConstPtr &) { received_rgb.fetch_add(1); });
+	auto depth_subscriber = nh->subscribe<sensor_msgs::Image>(
+	    "cameras/test_cam/depth/image_raw", 1,
+	    [&received_depth](const sensor_msgs::Image::ConstPtr &) { received_depth.fetch_add(1); });
+#else
+	auto observer_node = std::make_shared<rclcpp::Node>("missing_subscribed_plane_observer");
+	render_env->AddNodeToExecutor(observer_node->get_node_base_interface());
+	auto rgb_subscriber = observer_node->create_subscription<sensor_msgs::msg::Image>(
+	    render_env->GetHandleNamespace() + "/cameras/test_cam/rgb/image_raw", rclcpp::SensorDataQoS(),
+	    [&received_rgb](const sensor_msgs::msg::Image::ConstSharedPtr) { received_rgb.fetch_add(1); });
+	auto depth_subscriber = observer_node->create_subscription<sensor_msgs::msg::Image>(
+	    render_env->GetHandleNamespace() + "/cameras/test_cam/depth/image_raw", rclcpp::SensorDataQoS(),
+	    [&received_depth](const sensor_msgs::msg::Image::ConstSharedPtr) { received_depth.fetch_add(1); });
+#endif
+
+	render_env->StartWithXML(testing::get_test_model_path("camera_world.xml"));
+	ASSERT_EQ(render_env->GetOperationalStatus(), 0);
+	auto *offscreen = render_env->getCameraPublicationTransport();
+	ASSERT_EQ(offscreen->cams.size(), 1U);
+	render_env->InstallSelectiveRenderCore(rendering::PlaneMask::kRgb);
+
+	const auto deadline = Clock::now() + std::chrono::seconds(2);
+	while (received_rgb.load() == 0 && Clock::now() < deadline) {
+		render_env->step(1);
+		std::this_thread::yield();
+	}
+	ASSERT_GT(received_rgb.load(), 0);
+	EXPECT_EQ(received_depth.load(), 0);
 	const auto &status = offscreen->cams[0]->last_publication_status();
 	EXPECT_EQ(status.code, rendering::FrameStatusCode::kFrameUnavailable);
 	ASSERT_TRUE(status.plane.has_value());
