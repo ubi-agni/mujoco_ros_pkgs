@@ -579,7 +579,9 @@ std::uint64_t OffscreenCamera::UpdateDemand(RenderCore &core, const roscpp::Time
 {
 	RegisterConsumer(core);
 	std::lock_guard<std::mutex> lock(publication_mutex_);
-	const bool enabled = HasSubscribers();
+	const auto subscribed = SubscribedPlanes();
+	const bool enabled    = subscribed != PlaneMask::kNone;
+	core.SetConsumerPlanes(ros_consumer_, subscribed);
 	core.SetConsumerEnabled(ros_consumer_, enabled);
 	ros_request_accepted_ = enabled && ShouldPublishAtTimeLocked(time);
 	if (ros_request_accepted_) {
@@ -591,21 +593,40 @@ std::uint64_t OffscreenCamera::UpdateDemand(RenderCore &core, const roscpp::Time
 
 bool OffscreenCamera::HasSubscribers() const
 {
+	return SubscribedPlanes() != PlaneMask::kNone;
+}
+
+PlaneMask OffscreenCamera::SubscribedPlanes() const
+{
+	PlaneMask planes = PlaneMask::kNone;
 #if MJR_ROS_VERSION == ROS_1
-	return ((stream_type_ & StreamType::RGB) &&
-	        (rgb_pub_.getNumSubscribers() > 0 || rgb_camera_info_pub_->getNumSubscribers() > 0)) ||
-	       ((stream_type_ & StreamType::DEPTH) &&
-	        (depth_pub_.getNumSubscribers() > 0 || depth_camera_info_pub_->getNumSubscribers() > 0)) ||
-	       ((stream_type_ & StreamType::SEGMENTED) &&
-	        (segment_pub_.getNumSubscribers() > 0 || segment_camera_info_pub_->getNumSubscribers() > 0));
+	if ((stream_type_ & StreamType::RGB) &&
+	    (rgb_pub_.getNumSubscribers() > 0 || rgb_camera_info_pub_->getNumSubscribers() > 0)) {
+		planes = planes | PlaneMask::kRgb;
+	}
+	if ((stream_type_ & StreamType::DEPTH) &&
+	    (depth_pub_.getNumSubscribers() > 0 || depth_camera_info_pub_->getNumSubscribers() > 0)) {
+		planes = planes | PlaneMask::kDepth;
+	}
+	if ((stream_type_ & StreamType::SEGMENTED) &&
+	    (segment_pub_.getNumSubscribers() > 0 || segment_camera_info_pub_->getNumSubscribers() > 0)) {
+		planes = planes | PlaneMask::kSegmentation;
+	}
 #else
-	return ((stream_type_ & StreamType::RGB) &&
-	        (rgb_pub_.getNumSubscribers() > 0 || rgb_camera_info_pub_->get_subscription_count() > 0)) ||
-	       ((stream_type_ & StreamType::DEPTH) &&
-	        (depth_pub_.getNumSubscribers() > 0 || depth_camera_info_pub_->get_subscription_count() > 0)) ||
-	       ((stream_type_ & StreamType::SEGMENTED) &&
-	        (segment_pub_.getNumSubscribers() > 0 || segment_camera_info_pub_->get_subscription_count() > 0));
+	if ((stream_type_ & StreamType::RGB) &&
+	    (rgb_pub_.getNumSubscribers() > 0 || rgb_camera_info_pub_->get_subscription_count() > 0)) {
+		planes = planes | PlaneMask::kRgb;
+	}
+	if ((stream_type_ & StreamType::DEPTH) &&
+	    (depth_pub_.getNumSubscribers() > 0 || depth_camera_info_pub_->get_subscription_count() > 0)) {
+		planes = planes | PlaneMask::kDepth;
+	}
+	if ((stream_type_ & StreamType::SEGMENTED) &&
+	    (segment_pub_.getNumSubscribers() > 0 || segment_camera_info_pub_->get_subscription_count() > 0)) {
+		planes = planes | PlaneMask::kSegmentation;
+	}
 #endif
+	return planes;
 }
 
 void OffscreenCamera::PublishCameraInfo(const roscpp::Time &time, const PlaneMask planes)

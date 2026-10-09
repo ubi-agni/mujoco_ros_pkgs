@@ -1,6 +1,10 @@
 <a name="unreleased"></a>
 ## Unreleased
 
+### Fixed
+* [patch] Resize the offscreen framebuffer when a camera is wider/taller than the model `offwidth`/`offheight` default, so `mjr_readPixels` past the FBO is no longer garbage on the image edge.
+
+
 <a name="2.0.0"></a>
 ## [2.0.0] - 2026-09-24
 

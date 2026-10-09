@@ -116,6 +116,7 @@ public:
 			return RenderStatus::Failure(RenderStatusCode::kBackendFailure, "OSMesa resize failed");
 		}
 #endif
+		mjr_resizeOffscreen(configuration.frame_layout.width, configuration.frame_layout.height, &context_);
 		mjr_setBuffer(mjFB_OFFSCREEN, &context_);
 		return RenderStatus::Ok();
 	}
@@ -148,6 +149,9 @@ public:
 			scene_.ngeom += static_cast<int>(plugin_geometry_size);
 		}
 		const mjrRect viewport{ 0, 0, camera.width, camera.height };
+		// mjr_makeContext copies model vis.global.offwidth/height (default 640x480). Camera
+		// resolution may be larger; without resize, mjr_readPixels past the FBO is garbage.
+		mjr_resizeOffscreen(camera.width, camera.height, &context_);
 		mjr_setBuffer(mjFB_OFFSCREEN, &context_);
 
 		RenderStatus last_failure = RenderStatus::Ok();

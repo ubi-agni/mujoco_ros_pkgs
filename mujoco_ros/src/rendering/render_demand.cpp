@@ -71,6 +71,15 @@ void DemandScheduler::SetEnabled(ConsumerId consumer, bool enabled)
 	it->second.enabled = enabled;
 }
 
+void DemandScheduler::SetConsumerPlanes(ConsumerId consumer, PlaneMask planes)
+{
+	auto it = consumers_.find(consumer.value());
+	if (it == consumers_.end()) {
+		throw std::invalid_argument("unknown render consumer");
+	}
+	it->second.planes = planes;
+}
+
 RenderPlan DemandScheduler::Evaluate(std::chrono::nanoseconds simulation_time, CameraId camera) const
 {
 	RenderPlan plan;
@@ -96,6 +105,25 @@ RenderPlan DemandScheduler::Evaluate(std::chrono::nanoseconds simulation_time, C
 		}
 	}
 	return plan;
+}
+
+PlaneMask DemandScheduler::ResolvePlanes(const RenderPlan &plan, PlaneMask camera_planes) const
+{
+	if (plan.consumers.empty()) {
+		return PlaneMask::kNone;
+	}
+	PlaneMask resolved = PlaneMask::kNone;
+	for (const auto consumer : plan.consumers) {
+		const auto it = consumers_.find(consumer.value());
+		if (it == consumers_.end()) {
+			continue;
+		}
+		if (!it->second.planes.has_value()) {
+			return camera_planes;
+		}
+		resolved = resolved | *it->second.planes;
+	}
+	return resolved & camera_planes;
 }
 
 void DemandScheduler::MarkDelivered(const RenderPlan &plan, ConsumerId consumer)

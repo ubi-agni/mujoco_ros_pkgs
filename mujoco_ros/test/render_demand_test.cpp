@@ -119,4 +119,41 @@ TEST(RenderDemand, MarkDeliveredIsNoOpAfterUnregister)
 	EXPECT_NO_THROW(scheduler.UnregisterConsumer(consumer));
 }
 
+TEST(RenderDemand, ExplicitConsumerPlanesIntersectCameraCapabilities)
+{
+	DemandScheduler scheduler;
+	const auto ros = scheduler.RegisterContinuousConsumer("ros", CameraId(1));
+	scheduler.SetConsumerPlanes(ros, PlaneMask::kSegmentation);
+	const auto plan = scheduler.Evaluate(std::chrono::milliseconds(1), CameraId(1));
+	ASSERT_EQ(plan.consumers.size(), 1U);
+	const auto camera_planes = PlaneMask::kRgb | PlaneMask::kDepth | PlaneMask::kSegmentation;
+	EXPECT_EQ(scheduler.ResolvePlanes(plan, camera_planes), PlaneMask::kSegmentation);
+}
+
+TEST(RenderDemand, UnspecifiedConsumerPlanesUseFullCameraMask)
+{
+	DemandScheduler scheduler;
+	(void)scheduler.RegisterContinuousConsumer("python", CameraId(1));
+	const auto plan = scheduler.Evaluate(std::chrono::milliseconds(1), CameraId(1));
+	ASSERT_EQ(plan.consumers.size(), 1U);
+	const auto camera_planes = PlaneMask::kRgb | PlaneMask::kDepth;
+	EXPECT_EQ(scheduler.ResolvePlanes(plan, camera_planes), camera_planes);
+}
+
+TEST(RenderDemand, MixedConsumersUnionExplicitPlanesUnlessOneWantsAll)
+{
+	DemandScheduler scheduler;
+	const auto ros    = scheduler.RegisterContinuousConsumer("ros", CameraId(1));
+	const auto python = scheduler.RegisterContinuousConsumer("python", CameraId(1));
+	scheduler.SetConsumerPlanes(ros, PlaneMask::kDepth);
+	const auto camera_planes = PlaneMask::kRgb | PlaneMask::kDepth | PlaneMask::kSegmentation;
+	const auto plan          = scheduler.Evaluate(std::chrono::milliseconds(1), CameraId(1));
+	ASSERT_EQ(plan.consumers.size(), 2U);
+	// python has no explicit mask → full camera planes
+	EXPECT_EQ(scheduler.ResolvePlanes(plan, camera_planes), camera_planes);
+	scheduler.SetConsumerPlanes(python, PlaneMask::kRgb);
+	const auto narrowed = scheduler.Evaluate(std::chrono::milliseconds(2), CameraId(1));
+	EXPECT_EQ(scheduler.ResolvePlanes(narrowed, camera_planes), PlaneMask::kRgb | PlaneMask::kDepth);
+}
+
 } // namespace mujoco_ros::rendering

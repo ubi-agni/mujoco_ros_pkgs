@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -52,8 +53,12 @@ public:
 	void UnregisterConsumer(ConsumerId consumer);
 	void RequestOneShot(ConsumerId consumer);
 	void SetEnabled(ConsumerId consumer, bool enabled);
+	// Restrict which configured camera planes this consumer needs. Unset (default) means all
+	// camera planes when the consumer is due — used by Python/continuous buffers.
+	void SetConsumerPlanes(ConsumerId consumer, PlaneMask planes);
 
 	RenderPlan Evaluate(std::chrono::nanoseconds simulation_time, CameraId camera) const;
+	PlaneMask ResolvePlanes(const RenderPlan &plan, PlaneMask camera_planes) const;
 	void MarkDelivered(const RenderPlan &plan, ConsumerId consumer);
 
 private:
@@ -66,6 +71,7 @@ private:
 		bool one_shot_requested = false;
 		CameraId camera_id      = 0;
 		bool enabled            = true;
+		std::optional<PlaneMask> planes;
 	};
 
 	std::uint64_t next_id_ = 1;

@@ -2,6 +2,7 @@
 
 #include <mujoco_ros/render_backend.hpp>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -1272,6 +1273,84 @@ TEST(RenderCore, ReconfigurePreservesTerminalBackendFailure)
 	plan = core.EvaluateDemand(std::chrono::milliseconds(2), camera.id);
 	EXPECT_EQ(core.SubmitSnapshot(Snapshot(ModelGeneration(2)), plan).code, FrameStatusCode::kBackendFailure);
 	core.Shutdown();
+}
+
+TEST(RenderCore, EvaluateDemandUsesExplicitConsumerPlanes)
+{
+	auto backend = std::make_unique<FakeBackend>();
+	RenderCore core(std::move(backend));
+	CameraDescriptor camera{ CameraId(1), "camera", 2, 2,
+		                      PlaneMask::kRgb | PlaneMask::kDepth | PlaneMask::kSegmentation };
+	ConfigureCore(core, camera);
+	const auto ros = core.RegisterContinuousConsumer("ros", camera.id);
+	core.SetConsumerPlanes(ros, PlaneMask::kSegmentation);
+	const auto plan = core.EvaluateDemand(std::chrono::milliseconds(1), camera.id);
+	ASSERT_EQ(plan.consumers.size(), 1U);
+	EXPECT_EQ(plan.planes, PlaneMask::kSegmentation);
+	core.Shutdown();
+}
+
+TEST(MuJoCoRenderBackend, ResizesOffscreenWhenCameraWiderThanModelDefault)
+{
+	const char *xml = R"(
+<mujoco>
+  <visual>
+    <global offwidth="640" offheight="480"/>
+    <headlight ambient="0.8 0.8 0.8" diffuse="0.8 0.8 0.8" specular="0 0 0"/>
+  </visual>
+  <worldbody>
+    <geom type="sphere" pos="0 0 0" size="0.25" rgba="1 0 0 1"/>
+    <camera name="camera" pos="0 -3 0" euler="90 0 0" fovy="35"/>
+  </worldbody>
+</mujoco>)";
+	mjVFS vfs;
+	mj_defaultVFS(&vfs);
+	mj_addBufferVFS(&vfs, "wide_cam.xml", xml, std::strlen(xml));
+	char error[1024] = {};
+	auto *raw_model  = mj_loadXML("wide_cam.xml", &vfs, error, sizeof(error));
+	mj_deleteVFS(&vfs);
+	ASSERT_NE(raw_model, nullptr) << error;
+	const auto model = std::shared_ptr<const mjModel>(raw_model, mj_deleteModel);
+	ASSERT_EQ(model->vis.global.offwidth, 640);
+	constexpr int kWidth  = 720;
+	constexpr int kHeight = 480;
+	FrameBoundary boundary(2, PlaneLayout::Rgb8(kWidth, kHeight).byte_length * 2U);
+	ASSERT_TRUE(boundary.Reconfigure(FrameGeneration(1), FrameLayout(kWidth, kHeight)).ok());
+	auto backend = CreateRenderBackend();
+	RenderConfiguration configuration;
+	configuration.generation   = FrameGeneration(1);
+	configuration.frame_layout = FrameLayout(kWidth, kHeight);
+	const auto initialized     = backend->Initialize(*model, configuration);
+	if (!initialized.ok()) {
+		GTEST_SKIP() << initialized.message;
+	}
+	RenderSnapshot snapshot;
+	snapshot.model_generation = ModelGeneration(1);
+	snapshot.model            = model;
+	snapshot.data             = std::shared_ptr<mjData>(mj_makeData(model.get()), mj_deleteData);
+	mj_forward(model.get(), snapshot.data.get());
+	CameraDescriptor camera{ CameraId(1), "camera", kWidth, kHeight, PlaneMask::kRgb };
+	ASSERT_TRUE(backend->Render(snapshot, camera, PlaneMask::kRgb, boundary).ok());
+	backend->ShutdownOnRenderThread();
+	auto frame = boundary.AcquireLatest(PlaneKind::kRgb);
+	ASSERT_TRUE(frame.has_value());
+	const auto &bytes     = frame->bytes();
+	const auto stride     = PlaneLayout::Rgb8(kWidth, kHeight).stride_bytes;
+	auto unique_in_column = [&](int x) {
+		std::size_t unique = 0;
+		std::array<bool, 256> seen{};
+		for (int y = 0; y < kHeight; y += 4) {
+			const auto idx = static_cast<std::size_t>(y) * stride + static_cast<std::size_t>(x) * 3U;
+			const auto key = static_cast<unsigned>(bytes[idx]);
+			if (!seen[key]) {
+				seen[key] = true;
+				++unique;
+			}
+		}
+		return unique;
+	};
+	// Pre-fix: 640-wide FBO left columns scene-like; past 640 was noise (near-max unique red channel).
+	EXPECT_LT(unique_in_column(700), 40U);
 }
 
 TEST(RenderCore, IndependentPlaneFailureIsObservable)

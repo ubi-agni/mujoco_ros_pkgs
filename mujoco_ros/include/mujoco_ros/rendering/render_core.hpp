@@ -39,6 +39,7 @@ public:
 	void UnregisterConsumer(ConsumerId consumer);
 	void RequestOneShot(ConsumerId consumer);
 	void SetConsumerEnabled(ConsumerId consumer, bool enabled);
+	void SetConsumerPlanes(ConsumerId consumer, PlaneMask planes);
 	RenderPlan EvaluateDemand(std::chrono::nanoseconds simulation_time, CameraId camera) const;
 	void MarkDelivered(const RenderPlan &plan, ConsumerId consumer);
 	FrameStatus UpdateCameraVisualOptions(CameraId camera, const mjvOption &options);
