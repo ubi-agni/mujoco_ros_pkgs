@@ -107,6 +107,12 @@ void RenderCore::SetConsumerEnabled(ConsumerId consumer, bool enabled)
 	demand_.SetEnabled(consumer, enabled);
 }
 
+void RenderCore::SetConsumerPlanes(ConsumerId consumer, PlaneMask planes)
+{
+	std::lock_guard<std::mutex> lock(mutex_);
+	demand_.SetConsumerPlanes(consumer, planes);
+}
+
 RenderPlan RenderCore::EvaluateDemand(std::chrono::nanoseconds simulation_time, CameraId camera) const
 {
 	std::lock_guard<std::mutex> lock(mutex_);
@@ -115,7 +121,7 @@ RenderPlan RenderCore::EvaluateDemand(std::chrono::nanoseconds simulation_time, 
 	const auto it         = cameras_.find(camera);
 	if (it != cameras_.end()) {
 		plan.camera = it->second;
-		plan.planes = it->second.planes;
+		plan.planes = demand_.ResolvePlanes(plan, it->second.planes);
 	}
 	return plan;
 }

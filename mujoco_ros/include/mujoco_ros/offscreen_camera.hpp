@@ -175,6 +175,7 @@ public:
 	int GetVisualFlag(int flag_idx) const;
 	std::uint64_t UpdateDemand(rendering::RenderCore &core, const roscpp::Time &time);
 	bool HasSubscribers() const;
+	PlaneMask SubscribedPlanes() const;
 	PublishResult PublishLatest(rendering::RenderCore &core, const roscpp::Time &accepted_time,
 	                            std::uint64_t accepted_publication_sequence, std::uint64_t expected_capture_id);
 	std::uint64_t last_published_capture_id() const
