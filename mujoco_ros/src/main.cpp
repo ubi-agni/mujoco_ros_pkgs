@@ -86,6 +86,11 @@ int main(int argc, char **argv)
 #endif
 
 	signal(SIGINT, sigint_handler);
+#if MJR_ROS_VERSION == ROS_2
+	// rclcpp's own SIGTERM handler only flips rclcpp::ok(); an unpaced physics loop never checks it and kept
+	// stepping forever (pre-existing). Route SIGTERM through the same shutdown path as SIGINT.
+	signal(SIGTERM, sigint_handler);
+#endif
 
 	std::string admin_hash("");
 
