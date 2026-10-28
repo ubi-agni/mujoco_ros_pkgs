@@ -304,6 +304,16 @@ add_test(NAME render_backend_config_contract
 )
 set_tests_properties(render_backend_config_contract PROPERTIES TIMEOUT 30)
 
+if(ROS_VERSION EQUAL 2)
+  foreach(SIG INT TERM)
+    add_test(NAME mujoco_node_exits_on_sig${SIG}
+      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/signal_exit_test.sh
+        $<TARGET_FILE:mujoco_node> ${PROJECT_SOURCE_DIR}/assets/pendulum_world.xml ${SIG} 10
+    )
+    set_tests_properties(mujoco_node_exits_on_sig${SIG} PROPERTIES TIMEOUT 40)
+  endforeach()
+endif()
+
 if(ROS_VERSION EQUAL 1)
   add_test(NAME installed_export_uses_workspace_mujoco_prefix
     COMMAND ${CMAKE_COMMAND}
