@@ -36,6 +36,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <mujoco_ros/ros_version.hpp>
 #include <mujoco_ros/logging.hpp>
 
@@ -120,6 +121,14 @@ public:
 private:
 	MujocoEnvPtr env_ptr_;
 	rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr clock_pub_;
+	std::atomic<std::int64_t> last_pushed_ns_{ 0 };
+	rclcpp::node_interfaces::PostSetParametersCallbackHandle::SharedPtr use_sim_time_guard_handle_;
+
+	static constexpr int kUseSimTimeGuardTicks = 20;
+	int use_sim_time_guard_ticks_              = 0;
+	rclcpp::TimerBase::SharedPtr use_sim_time_revert_timer_;
+
+	void EnableRosTimeOverride();
 
 	void SetPauseCB(const mujoco_ros_msgs::srv::SetPause::Request::SharedPtr &req,
 	                const mujoco_ros_msgs::srv::SetPause::Response::SharedPtr &res);
