@@ -160,6 +160,8 @@ void MujocoEnv::WrappedStep()
 	}
 	mj_step(model_.get(), data_.get());
 	ros_api_->PublishSimTime(data_->time);
+	// A late /clock sample may have rewound now() since the push; plugins must not see that.
+	ros_api_->ReassertPushedSimTime();
 	RunLastStageCbs();
 	const char *message = Diverged(model_->opt.disableflags, data_.get());
 
