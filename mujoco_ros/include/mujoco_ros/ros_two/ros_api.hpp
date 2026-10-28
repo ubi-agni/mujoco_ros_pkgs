@@ -36,7 +36,7 @@
 
 #pragma once
 
-#include <atomic>
+#include <mutex>
 #include <mujoco_ros/ros_version.hpp>
 #include <mujoco_ros/logging.hpp>
 
@@ -121,7 +121,10 @@ public:
 private:
 	MujocoEnvPtr env_ptr_;
 	rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr clock_pub_;
-	std::atomic<std::int64_t> last_pushed_ns_{ 0 };
+	// Serializes "remember pushed time + write override" so a guard re-arm can never write an older value over a
+	// newer physics-thread push.
+	std::mutex sim_time_mutex_;
+	std::int64_t last_pushed_ns_ = 0;
 	rclcpp::node_interfaces::PostSetParametersCallbackHandle::SharedPtr use_sim_time_guard_handle_;
 
 	static constexpr int kUseSimTimeGuardTicks = 20;
