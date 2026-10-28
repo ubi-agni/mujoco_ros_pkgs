@@ -55,6 +55,18 @@ namespace {
 
 thread_local bool syncing_dynamic_params = false;
 
+// The action server's goal-expiry timer lives on the clock it is given. On the node's ROS clock every per-step
+// ros-time override fires its jump callback and wakes the executor, costing ~35% step rate; wall time is all it needs.
+class SystemClockInterface : public rclcpp::node_interfaces::NodeClockInterface
+{
+public:
+	rclcpp::Clock::SharedPtr get_clock() override { return clock_; }
+	rclcpp::Clock::ConstSharedPtr get_clock() const override { return clock_; }
+
+private:
+	rclcpp::Clock::SharedPtr clock_ = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
+};
+
 rcl_interfaces::msg::ParameterDescriptor MakeParameterDescriptor(const std::string &description = "")
 {
 	rcl_interfaces::msg::ParameterDescriptor descriptor;
@@ -286,7 +298,9 @@ void RosAPI::SetupServices()
 	    ns + "get_gravity", std::bind(&RosAPI::GetGravityCB, this, std::placeholders::_1, std::placeholders::_2));
 
 	action_step_ = rclcpp_action::create_server<mujoco_ros_msgs::action::Step>(
-	    env_ptr_, ns + "step", std::bind(&RosAPI::HandleGoal, this, std::placeholders::_1, std::placeholders::_2),
+	    env_ptr_->get_node_base_interface(), std::make_shared<SystemClockInterface>(),
+	    env_ptr_->get_node_logging_interface(), env_ptr_->get_node_waitables_interface(), ns + "step",
+	    std::bind(&RosAPI::HandleGoal, this, std::placeholders::_1, std::placeholders::_2),
 	    std::bind(&RosAPI::HandleCancel, this, std::placeholders::_1),
 	    std::bind(&RosAPI::OnStepGoal, this, std::placeholders::_1));
 }
@@ -1243,10 +1257,11 @@ void RosAPI::SetupClockPublisher()
 void RosAPI::EnableRosTimeOverride()
 {
 	rcl_clock_t *clock = env_ptr_->get_clock()->get_clock_handle();
+	std::lock_guard<std::mutex> lock(sim_time_mutex_);
 	if (rcl_enable_ros_time_override(clock) != RCL_RET_OK) {
 		throw std::runtime_error("Failed to enable ROS time override on MujocoEnv clock");
 	}
-	if (rcl_set_ros_time_override(clock, last_pushed_ns_.load()) != RCL_RET_OK) {
+	if (rcl_set_ros_time_override(clock, last_pushed_ns_) != RCL_RET_OK) {
 		throw std::runtime_error("Failed to restore ROS time override on MujocoEnv clock");
 	}
 }
@@ -1254,10 +1269,13 @@ void RosAPI::EnableRosTimeOverride()
 void RosAPI::PublishSimTime(mjtNum time)
 {
 	const std::int64_t time_ns = util::simTimeToNanoseconds(time);
-	last_pushed_ns_.store(time_ns);
-	// Authority for in-process now(); /clock below is only the outbound mirror.
-	if (rcl_set_ros_time_override(env_ptr_->get_clock()->get_clock_handle(), time_ns) != RCL_RET_OK) {
-		throw std::runtime_error("Failed to set ROS time override on MujocoEnv clock");
+	{
+		std::lock_guard<std::mutex> lock(sim_time_mutex_);
+		last_pushed_ns_ = time_ns;
+		// Authority for in-process now(); /clock below is only the outbound mirror.
+		if (rcl_set_ros_time_override(env_ptr_->get_clock()->get_clock_handle(), time_ns) != RCL_RET_OK) {
+			throw std::runtime_error("Failed to set ROS time override on MujocoEnv clock");
+		}
 	}
 	rosgraph_msgs::msg::Clock ros_time;
 	ros_time.clock = rclcpp::Time(time_ns);
