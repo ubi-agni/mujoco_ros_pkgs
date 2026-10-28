@@ -37,6 +37,7 @@
 /* Authors: David P. Leins*/
 
 #include <mujoco_ros_control/mujoco_ros_control_plugin.hpp>
+#include <mujoco_ros/util.hpp>
 
 #include <pluginlib/class_list_macros.h>
 
@@ -155,20 +156,15 @@ bool MujocoRosControlPlugin::Load(const mjModel *m, mjData *d)
 
 void MujocoRosControlPlugin::ControlCallback(const mjModel * /*model*/, mjData *data)
 {
-	ros::Time sim_time_ros = ros::Time::now();
+	// data->time is the sim clock; the ROS clock may glitch or lag, which must not look like a sim reset.
+	const ros::Time sim_time_ros = mujoco_ros::util::toRosTime(mujoco_ros::util::simTimeToNanoseconds(data->time));
 
-	ROS_WARN_STREAM_COND_NAMED(sim_time_ros < ros::Time(data->time), "mujoco_ros_control",
-	                           "ROS time not in sync with mjData! (" << sim_time_ros << " < " << ros::Time(data->time)
-	                                                                 << ")");
 	if (sim_time_ros < last_update_sim_time_ros_) {
 		ROS_INFO_NAMED("mujoco_ros_control", "Resetting mujoco_ros_control due to time reset");
 		ROS_DEBUG_STREAM_NAMED("mujoco_ros_control",
 		                       "sim time is " << sim_time_ros << " while last time was " << last_update_sim_time_ros_);
 		last_update_sim_time_ros_ = sim_time_ros;
 		last_write_sim_time_ros_  = sim_time_ros;
-		ROS_WARN_STREAM_COND_NAMED(sim_time_ros < ros::Time::now(), "mujoco_ros_control",
-		                           "Current time moved forward within control update! " << sim_time_ros << " -> "
-		                                                                                << ros::Time::now());
 	}
 
 	ros::Duration sim_period = sim_time_ros - last_update_sim_time_ros_;
