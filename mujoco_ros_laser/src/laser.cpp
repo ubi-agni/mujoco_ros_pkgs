@@ -43,6 +43,7 @@
 #endif
 
 #include <mujoco_ros/logging.hpp>
+#include <mujoco_ros/util.hpp>
 
 #include <algorithm>
 #include <string>
@@ -65,11 +66,6 @@ template <typename MessageT>
 void Publish(const mujoco_ros::sensors::SensorConfig &config, const MessageT &message)
 {
 	config.value_pub.publish(message);
-}
-
-RosTime Now(ros::NodeHandle & /*node*/)
-{
-	return ros::Time::now();
 }
 
 double SecondsSince(const RosTime &now, const RosTime &then)
@@ -122,11 +118,6 @@ void Publish(const mujoco_ros::sensors::SensorConfig &config, const MessageT &me
 	std::any_cast<typename rclcpp::Publisher<MessageT>::SharedPtr>(config.value_pub)->publish(message);
 }
 
-RosTime Now(rclcpp_lifecycle::LifecycleNode::SharedPtr &node)
-{
-	return node->now();
-}
-
 double SecondsSince(const RosTime &now, const RosTime &then)
 {
 	return (now - then).seconds();
@@ -167,6 +158,18 @@ double GetDoubleParam(const rclcpp::Node *node, const std::string &name, double 
 	return parameter.as_double();
 }
 #endif
+
+// Sim time keeps stamps and the rate gate valid when the node clock is not sim time. A rewind (sim reset)
+// clears the gate, otherwise scans would be skipped until sim time catches up with the old last update.
+RosTime SimNow(const mjData *data, const RosTime &last_update, bool &last_update_initialized)
+{
+	const RosTime now = util::toRosTime(util::simTimeToNanoseconds(data->time));
+	if (last_update_initialized && now < last_update) {
+		MJR_DEBUG_NAMED("lasers", "Sim time moved backward, resetting laser rate gate");
+		last_update_initialized = false;
+	}
+	return now;
+}
 
 void InitRays(LaserConfig &config)
 {
@@ -424,7 +427,7 @@ void LaserPlugin::ComputeLasers(const mjModel *model, mjData *data)
 	ignore_groups[1] = 0;
 
 	for (const auto &laser_config : laser_configs_) {
-		const auto now = Now(lasers_nh_);
+		const RosTime now = SimNow(data, last_update_time_, last_update_time_initialized_);
 		if (last_update_time_initialized_ && SecondsSince(now, last_update_time_) < 1.0 / laser_config.update_rate) {
 			skip_ema_ = true;
 			continue;
@@ -471,7 +474,7 @@ void LaserPlugin::ComputeLasersMultithreaded(const mjModel *model, mjData *data)
 	ignore_groups[1] = 0;
 
 	for (const auto &laser_config : laser_configs_) {
-		const auto now = Now(lasers_nh_);
+		const RosTime now = SimNow(data, last_update_time_, last_update_time_initialized_);
 		if (last_update_time_initialized_ && SecondsSince(now, last_update_time_) < 1.0 / laser_config.update_rate) {
 			skip_ema_ = true;
 			continue;

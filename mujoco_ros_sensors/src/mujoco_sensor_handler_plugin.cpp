@@ -30,6 +30,7 @@
 
 #include <mujoco_ros/logging.hpp>
 #include <mujoco_ros/mujoco_env.hpp>
+#include <mujoco_ros/util.hpp>
 
 namespace mujoco_ros::sensors {
 
@@ -53,11 +54,6 @@ void Publish(const ros::Publisher &publisher, const SensorConfig & /*config*/, c
 	publisher.publish(message);
 }
 
-ros::Time Now(ros::NodeHandle & /*node*/)
-{
-	return ros::Time::now();
-}
-
 #else
 using PointStamped      = geometry_msgs::msg::PointStamped;
 using QuaternionStamped = geometry_msgs::msg::QuaternionStamped;
@@ -76,11 +72,6 @@ template <typename MessageT>
 void Publish(const std::any &publisher, const SensorConfig & /*config*/, const MessageT &message)
 {
 	std::any_cast<typename rclcpp::Publisher<MessageT>::SharedPtr>(publisher)->publish(message);
-}
-
-rclcpp::Time Now(rclcpp_lifecycle::LifecycleNode::SharedPtr &node)
-{
-	return node->now();
 }
 
 #endif
@@ -262,6 +253,7 @@ void MujocoRosSensorsPlugin::RegisterNoiseModelsCB(
 
 void MujocoRosSensorsPlugin::LastStageCallback(const mjModel *model, mjData *data)
 {
+	const auto stamp = util::toRosTime(util::simTimeToNanoseconds(data->time));
 	for (int n = 0; n < model->nsensor; n++) {
 		const int adr     = model->sensor_adr[n];
 		const int type    = model->sensor_type[n];
@@ -300,7 +292,7 @@ void MujocoRosSensorsPlugin::LastStageCallback(const mjModel *model, mjData *dat
 			case mjSENS_FRAMEZAXIS: {
 				Vector3Stamped msg;
 				msg.header.frame_id = config.frame_id;
-				msg.header.stamp    = Now(sensors_nh_);
+				msg.header.stamp    = stamp;
 
 				for (int i = 0; i < 3; i++) {
 					noise = 0.0;
@@ -328,7 +320,7 @@ void MujocoRosSensorsPlugin::LastStageCallback(const mjModel *model, mjData *dat
 			case mjSENS_FRAMEPOS: {
 				PointStamped msg;
 				msg.header.frame_id = config.frame_id;
-				msg.header.stamp    = Now(sensors_nh_);
+				msg.header.stamp    = stamp;
 				for (int i = 0; i < 3; i++) {
 					noise = 0.0;
 					if (config.is_set & (1 << i)) {
@@ -370,7 +362,7 @@ void MujocoRosSensorsPlugin::LastStageCallback(const mjModel *model, mjData *dat
 			case mjSENS_TENDONLIMITFRC: {
 				ScalarStamped msg;
 				msg.header.frame_id = config.frame_id;
-				msg.header.stamp    = Now(sensors_nh_);
+				msg.header.stamp    = stamp;
 				if (config.is_set & 0x01) {
 					noise = noise_dist(rand_generator) * config.sigma[0] + config.mean[0];
 				}
@@ -387,7 +379,7 @@ void MujocoRosSensorsPlugin::LastStageCallback(const mjModel *model, mjData *dat
 			case mjSENS_FRAMEQUAT: {
 				QuaternionStamped msg;
 				msg.header.frame_id = config.frame_id;
-				msg.header.stamp    = Now(sensors_nh_);
+				msg.header.stamp    = stamp;
 				msg.quaternion.w    = data->sensordata[adr] / cutoff;
 				msg.quaternion.x    = data->sensordata[adr + 1] / cutoff;
 				msg.quaternion.y    = data->sensordata[adr + 2] / cutoff;

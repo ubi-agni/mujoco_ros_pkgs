@@ -40,6 +40,7 @@
 #include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros/ros_version.hpp>
 #include <mujoco_ros_laser/laser.hpp>
+#include <mujoco_ros/util.hpp>
 #include <mujoco_ros_testing_utils/mujoco_env_fixture.hpp>
 
 #if MJR_ROS_VERSION == ROS_1
@@ -196,6 +197,16 @@ MessageConstPtr<LaserScanMsg> wait_for_scan_message(MujocoEnvTestWrapper *env_pt
 	return message;
 }
 
+template <typename StampT>
+int64_t stamp_to_ns(const StampT &stamp)
+{
+#if MJR_ROS_VERSION == ROS_1
+	return static_cast<int64_t>(stamp.toNSec());
+#else
+	return rclcpp::Time(stamp).nanoseconds();
+#endif
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -292,6 +303,44 @@ TEST_P(LoadedPluginFixture, PublishesLaserScan)
 	EXPECT_NEAR(msg->angle_max, 1.57, 1e-6);
 	EXPECT_NEAR(msg->angle_increment, 0.02, 1e-6);
 	EXPECT_FALSE(msg->ranges.empty());
+
+	// Stamp is sim time (data->time): never ahead of the sim, and within one step batch of it (wait_for_scan_message
+	// stops stepping once a scan arrives).
+	const auto stamp_ns = stamp_to_ns(msg->header.stamp);
+	const auto time_ns  = mujoco_ros::util::simTimeToNanoseconds(env_ptr->getDataPtr()->time);
+	const auto step_ns  = mujoco_ros::util::simTimeToNanoseconds(env_ptr->getModelPtr()->opt.timestep);
+	EXPECT_EQ(stamp_ns % step_ns, 0);
+	EXPECT_LE(stamp_ns, time_ns);
+	EXPECT_GE(stamp_ns, time_ns - 30 * step_ns) << "Stamp lags data->time by more than one 25-step batch";
+}
+
+TEST_P(LoadedPluginFixture, ScanStampRestartsAfterReset)
+{
+	std::atomic<int64_t> last_stamp_ns{ -1 };
+	auto sub = subscribe_to<LaserScanMsg>(
+	    env_ptr.get(), nh.get(), scan_topic_name(env_ptr.get()), 10,
+	    [&last_stamp_ns](const MessageConstPtr<LaserScanMsg> &msg) { last_stamp_ns = stamp_to_ns(msg->header.stamp); });
+
+	env_ptr->togglePaused(true);
+	const auto deadline_run = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+	while (last_stamp_ns.load() < 200'000'000 && std::chrono::steady_clock::now() < deadline_run) {
+		env_ptr->step(25);
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	const int64_t before_reset_ns = last_stamp_ns.load();
+	ASSERT_GE(before_reset_ns, 200'000'000) << "Sim never advanced to 0.2 s before the reset";
+
+	env_ptr->RequestReset();
+	const auto deadline_reset = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+	bool restarted            = false;
+	while (!restarted && std::chrono::steady_clock::now() < deadline_reset) {
+		env_ptr->step(25);
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		const int64_t latest = last_stamp_ns.load();
+		restarted            = latest >= 0 && latest < before_reset_ns;
+	}
+	EXPECT_TRUE(restarted) << "No scan with a stamp below " << before_reset_ns << " ns after reset (last "
+	                       << last_stamp_ns.load() << " ns): rate gate muted scans or stamp is not sim time";
 }
 
 INSTANTIATE_TEST_SUITE_P(LaserThreading, LoadedPluginFixture, ::testing::Values(1, 2),

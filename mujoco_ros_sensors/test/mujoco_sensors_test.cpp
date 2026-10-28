@@ -38,6 +38,7 @@
 
 #include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros/ros_version.hpp>
+#include <mujoco_ros/util.hpp>
 #include <mujoco_ros_sensors/mujoco_sensor_handler_plugin.hpp>
 #include <mujoco_ros_testing_utils/mujoco_env_fixture.hpp>
 
@@ -548,6 +549,26 @@ TEST_F(TrainEnvFixture, Sensor3DOF)
 	EXPECT_EQ(variances_gt(0), 0);
 	EXPECT_EQ(variances_gt(1), 0);
 	EXPECT_EQ(variances_gt(2), 0);
+}
+
+TEST_F(TrainEnvFixture, StampFollowsSimTime)
+{
+	const auto step_ns = util::simTimeToNanoseconds(m->opt.timestep);
+	const auto before  = util::simTimeToNanoseconds(d->time);
+	const auto msg     = wait_for_message<Vector3Stamped>(env_ptr.get(), sensor_topic_name(env_ptr.get(), "vel_EE_GT"),
+	                                                      FIRST_MESSAGE_TIMEOUT_SECONDS);
+	const auto after   = util::simTimeToNanoseconds(d->time);
+	ASSERT_TRUE(msg != nullptr) << "Could not get message on vel_EE_GT topic!";
+
+#if MJR_ROS_VERSION == ROS_1
+	const auto stamp_ns = static_cast<int64_t>(msg->header.stamp.toNSec());
+#else
+	const auto stamp_ns = rclcpp::Time(msg->header.stamp).nanoseconds();
+#endif
+	// Stamps come from data->time: on the sim step grid, never ahead of the sim, and not stale or zero.
+	EXPECT_EQ(stamp_ns % step_ns, 0) << "Stamp " << stamp_ns << " ns is not a multiple of the sim step " << step_ns;
+	EXPECT_LE(stamp_ns, after) << "Stamp is ahead of data->time (wall/ROS clock leak?)";
+	EXPECT_GE(stamp_ns, before - 10 * step_ns) << "Stamp lags data->time (stale or zero stamp?)";
 }
 
 TEST_F(TrainEnvFixture, Framepos)
