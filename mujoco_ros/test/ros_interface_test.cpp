@@ -61,6 +61,8 @@
 #include <mujoco_ros_msgs/StepAction.h>
 #include <mujoco_ros_msgs/StepGoal.h>
 #include <ros/ros.h>
+#include <rosgraph_msgs/Clock.h>
+#include <std_srvs/Empty.h>
 #else // MJR_ROS_VERSION == ROS_2
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
@@ -190,6 +192,112 @@ TEST_F(PendulumEnvFixture, Clock)
 	compare_current_ros_time(env_ptr->getModelPtr()->opt.timestep * total_steps,
 	                         std::string("Simulation time should have increased by 10 steps!"), env_ptr.get());
 }
+
+#if MJR_ROS_VERSION == ROS_1
+
+namespace {
+ros::Time sim_time_to_ros(mjtNum time)
+{
+	return util::toRosTime(util::simTimeToNanoseconds(time));
+}
+
+// Publishes /clock samples older than the last pushed sim time (like a late callback of a previous step) and
+// returns the lowest in-process now() seen right after each delivery. The paused physics loop re-pushes sim time
+// every ~33 ms, so only sampling right after delivery can see a rewind.
+ros::Time lowest_now_after_stale_clock(const ros::Time &stale)
+{
+	ros::NodeHandle nh_stale;
+	ros::Publisher pub  = nh_stale.advertise<rosgraph_msgs::Clock>("/clock", 1);
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+	while (pub.getNumSubscribers() == 0 && std::chrono::steady_clock::now() < deadline) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	EXPECT_GT(pub.getNumSubscribers(), 0u) << "Nobody listens on /clock";
+	rosgraph_msgs::Clock msg;
+	msg.clock        = stale;
+	ros::Time lowest = ros::Time::now();
+	for (int i = 0; i < 5; ++i) {
+		pub.publish(msg);
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+		lowest = std::min(lowest, ros::Time::now());
+	}
+	return lowest;
+}
+} // namespace
+
+TEST_F(PendulumEnvFixture, InProcessNowMatchesAfterStep)
+{
+	ASSERT_TRUE(env_ptr->step(1));
+	EXPECT_EQ(ros::Time::now(), sim_time_to_ros(env_ptr->getDataPtr()->time));
+}
+
+TEST_F(PendulumEnvFixture, StaleClockDoesNotRewindInProcessNow)
+{
+	ASSERT_TRUE(env_ptr->step(10));
+	const ros::Time t_new = sim_time_to_ros(env_ptr->getDataPtr()->time);
+	ASSERT_GT(t_new, ros::Time(0, 0));
+	ASSERT_EQ(ros::Time::now(), t_new);
+
+	const ros::Time lowest = lowest_now_after_stale_clock(sim_time_to_ros(env_ptr->getModelPtr()->opt.timestep));
+
+	EXPECT_EQ(lowest, t_new) << "Late /clock rewound in-process time";
+	EXPECT_EQ(ros::Time::now(), t_new);
+}
+
+TEST_F(PendulumEnvFixture, InProcessNowTracksReset)
+{
+	ASSERT_TRUE(env_ptr->step(10));
+	ASSERT_GT(ros::Time::now(), ros::Time(0, 0));
+
+	std_srvs::Empty srv;
+	ASSERT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/reset", srv));
+	float seconds = 0;
+	while (seconds < 2 && env_ptr->GetOperationalStatus() > 0) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		seconds += 0.001;
+	}
+	ASSERT_LT(seconds, 2);
+
+	// Reset may legitimately rewind; it must land exactly on the post-reset sim time.
+	compare_current_ros_time(env_ptr->getDataPtr()->time, "now() must follow reset time", env_ptr.get());
+	EXPECT_EQ(ros::Time::now(), sim_time_to_ros(env_ptr->getDataPtr()->time));
+}
+
+// Soft guard only: the yield-wait cost depends on /clock delivery, so the bound is generous to stay stable on
+// loaded machines. Step-rate claims are measured separately.
+TEST_F(PendulumEnvFixture, PublishSimTimeHasNoYieldWait)
+{
+	constexpr int kSteps = 200;
+	const auto start     = std::chrono::steady_clock::now();
+	ASSERT_TRUE(env_ptr->step(kSteps));
+	const auto wall_ms =
+	    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+	EXPECT_LT(wall_ms, 1000) << "Stepping is throttled by waiting for /clock";
+}
+
+// The re-assert timer runs on the spinner while the env is torn down; it must not touch destroyed state.
+TEST_F(BaseEnvFixture, RepeatedTeardownWithReassertTimerRunning)
+{
+	nh->setParam("unpause", false);
+	const std::string xml_path = testing::get_test_model_path("pendulum_world.xml");
+	for (int i = 0; i < 10; ++i) {
+		auto env = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+		env->StartWithXML(xml_path);
+		float seconds = 0;
+		while (env->GetOperationalStatus() != 0 && seconds < 2) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			seconds += 0.001;
+		}
+		ASSERT_EQ(env->getFilename(), xml_path);
+		ASSERT_TRUE(env->step(5));
+		// Let the 1 ms timer fire a few times, then tear down while it is armed.
+		std::this_thread::sleep_for(std::chrono::milliseconds(5 + i));
+		env->shutdown();
+		env.reset();
+	}
+}
+
+#endif
 
 TEST_F(BaseEnvFixture, RenderBackpressurePolicyStartupReader)
 {
