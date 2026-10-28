@@ -127,7 +127,6 @@ RosAPI::RosAPI(MujocoEnvPtr env_ptr) : env_ptr_(env_ptr)
 	                                  rclcpp::ParameterValue(std::vector<std::string>{}));
 	declare_parameter_if_not_declared(env_ptr_, "wait_for_xml", rclcpp::ParameterValue(false));
 	declare_parameter_if_not_declared(env_ptr_, "mujoco_xml", rclcpp::ParameterValue(std::string("")));
-	declare_parameter_if_not_declared(env_ptr_, "use_sim_time", rclcpp::ParameterValue(true));
 	declare_parameter_if_not_declared(env_ptr_, "render_backpressure_policy",
 	                                  rclcpp::ParameterValue(std::string("drop")));
 
@@ -190,6 +189,33 @@ RosAPI::RosAPI(MujocoEnvPtr env_ptr) : env_ptr_(env_ptr)
 	DeclareRuntimeParameter(env_ptr_, "solimp", std::string("0.9 0.95 0.001 0.5 2"));
 	DeclareRuntimeParameter(env_ptr_, "solref", std::string("0.02 1.0"));
 	DeclareRuntimeParameter(env_ptr_, "friction", std::string("1 1 0.005 0.0001 0.0001"));
+
+	// rclcpp's TimeSource would subscribe to /clock for this node's clock once use_sim_time turns true and overwrite
+	// the pushed time with late samples. TimeSource handles the change first and disables the override, so undo that.
+	use_sim_time_guard_handle_ =
+	    env_ptr_->add_post_set_parameters_callback([this](const std::vector<rclcpp::Parameter> &parameters) {
+		    for (const auto &param : parameters) {
+			    if (param.get_name() != "use_sim_time" || param.get_type() != rclcpp::ParameterType::PARAMETER_BOOL ||
+			        !param.as_bool()) {
+				    continue;
+			    }
+			    MJR_ERROR("Rejecting use_sim_time=true on the MuJoCo server node: its clock is driven by the "
+			              "simulation via ros-time override and must not follow /clock. Forcing use_sim_time=false.");
+			    // Parameters cannot be changed from inside a set callback, so revert from the executor right after.
+			    // TimeSource reacts to parameter changes asynchronously and disables the override when it sees the
+			    // revert, so keep re-arming for a bounded window until it has settled.
+			    use_sim_time_guard_ticks_  = 0;
+			    use_sim_time_revert_timer_ = env_ptr_->create_wall_timer(std::chrono::milliseconds(5), [this]() {
+				    if (env_ptr_->get_parameter("use_sim_time").as_bool()) {
+					    env_ptr_->set_parameter(rclcpp::Parameter("use_sim_time", false));
+				    }
+				    EnableRosTimeOverride();
+				    if (++use_sim_time_guard_ticks_ >= kUseSimTimeGuardTicks) {
+					    use_sim_time_revert_timer_->cancel();
+				    }
+			    });
+		    }
+	    });
 
 	dynamic_params_callback_handle_ =
 	    env_ptr_->add_on_set_parameters_callback(std::bind(&RosAPI::DynamicParamsCallback, this, std::placeholders::_1));
@@ -1210,13 +1236,31 @@ void RosAPI::SetupClockPublisher()
 	MJR_DEBUG("Setting up clock publisher");
 	rclcpp::QoS clock_qos = rclcpp::QoS(rclcpp::KeepLast(10)).transient_local();
 	clock_pub_            = env_ptr_->create_publisher<rosgraph_msgs::msg::Clock>("/clock", clock_qos);
+	EnableRosTimeOverride();
 	PublishSimTime(mjtNum(0));
+}
+
+void RosAPI::EnableRosTimeOverride()
+{
+	rcl_clock_t *clock = env_ptr_->get_clock()->get_clock_handle();
+	if (rcl_enable_ros_time_override(clock) != RCL_RET_OK) {
+		throw std::runtime_error("Failed to enable ROS time override on MujocoEnv clock");
+	}
+	if (rcl_set_ros_time_override(clock, last_pushed_ns_.load()) != RCL_RET_OK) {
+		throw std::runtime_error("Failed to restore ROS time override on MujocoEnv clock");
+	}
 }
 
 void RosAPI::PublishSimTime(mjtNum time)
 {
+	const std::int64_t time_ns = util::simTimeToNanoseconds(time);
+	last_pushed_ns_.store(time_ns);
+	// Authority for in-process now(); /clock below is only the outbound mirror.
+	if (rcl_set_ros_time_override(env_ptr_->get_clock()->get_clock_handle(), time_ns) != RCL_RET_OK) {
+		throw std::runtime_error("Failed to set ROS time override on MujocoEnv clock");
+	}
 	rosgraph_msgs::msg::Clock ros_time;
-	ros_time.clock = rclcpp::Time(static_cast<uint64_t>(time * 1e9)); // convert to nanoseconds
+	ros_time.clock = rclcpp::Time(time_ns);
 	clock_pub_->publish(ros_time);
 }
 

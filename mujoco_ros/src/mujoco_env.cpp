@@ -232,9 +232,17 @@ std::unique_ptr<MujocoEnv> MujocoEnv::from_description(const std::string &urdf_p
 MujocoEnv::MujocoEnv(rclcpp::Executor::SharedPtr executor, const std::string &admin_hash /* = std::string()*/,
                      bool auto_configure /* = true */, bool python_reload_service /* = false */,
                      bool create_gui_adapter /* = true */)
-    : rclcpp::Node("mujoco_server", "", rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true))
+    // use_sim_time is forced off on this node so rclcpp's TimeSource never subscribes to /clock and applies late
+    // samples to our clock; RosAPI enables the ros-time override and pushes data->time itself.
+    : rclcpp::Node(
+          "mujoco_server", "",
+          rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true).append_parameter_override(
+              "use_sim_time", false))
     , executor_(std::move(executor))
 {
+	// Launch/CLI use_sim_time for this node is superseded by the override above; say so instead of hiding it.
+	MJR_WARN("MuJoCo server node runs with use_sim_time=false; its clock is driven by the simulation via ros-time "
+	         "override and any use_sim_time passed for this node is ignored. /clock is still published.");
 	python_reload_service_ = python_reload_service;
 	create_gui_adapter_    = create_gui_adapter;
 	if (!admin_hash.empty()) {
