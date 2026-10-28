@@ -36,6 +36,10 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
+#include <future>
+#include <thread>
 #include <fstream>
 #include <stdexcept>
 #include <string>
@@ -45,6 +49,10 @@
 #include <mujoco_ros_testing_utils/mujoco_env_fixture.hpp>
 
 #if MJR_ROS_VERSION == ROS_1
+#include <controller_interface/controller.h>
+#include <controller_manager/controller_loader_interface.h>
+#include <hardware_interface/joint_state_interface.h>
+#include <mujoco_ros/util.hpp>
 #include <mujoco_ros_control/default_robot_hw_sim.hpp>
 #include <mujoco_ros_control/mujoco_ros_control_plugin.hpp>
 #else
@@ -434,6 +442,143 @@ TEST(DefaultRobotHWSim, IgnoreActuatorsForcesVelocityFallback)
 	const int joint_id    = mj_name2id(model_data.model.get(), mjOBJ_JOINT, "hinge");
 	EXPECT_NEAR(model_data.data->ctrl[actuator_id], 0.0, 1e-9);
 	EXPECT_NEAR(model_data.data->qfrc_applied[model_data.model->jnt_dofadr[joint_id]], 1.5, 1e-9);
+}
+
+namespace {
+// Records what ControlCallback hands to the hardware and how often controllers (re)start.
+class RecordingRobotHWSim : public mujoco_ros::control::RobotHWSim
+{
+public:
+	RecordingRobotHWSim()
+	{
+		js_.registerHandle(hardware_interface::JointStateHandle("recording_joint", &pos_, &vel_, &eff_));
+		registerInterface(&js_);
+	}
+
+	bool InitSim(const mjModel *, mjData *, mujoco_ros::MujocoEnv *, const std::string &, ros::NodeHandle,
+	             const urdf::Model *const, std::vector<transmission_interface::TransmissionInfo>, bool) override
+	{
+		return true;
+	}
+	void ReadSim(ros::Time, ros::Duration period) override { read_periods.push_back(period); }
+	void WriteSim(ros::Time, ros::Duration) override {}
+
+	std::vector<ros::Duration> read_periods;
+
+private:
+	hardware_interface::JointStateInterface js_;
+	double pos_ = 0.0, vel_ = 0.0, eff_ = 0.0;
+};
+
+std::atomic<int> g_controller_starts{ 0 };
+
+class StartCountingController : public controller_interface::Controller<hardware_interface::JointStateInterface>
+{
+public:
+	void starting(const ros::Time &) override { ++g_controller_starts; }
+	void update(const ros::Time &, const ros::Duration &) override {}
+};
+
+class StartCountingLoader : public controller_manager::ControllerLoaderInterface
+{
+public:
+	StartCountingLoader() : ControllerLoaderInterface("start_counting_loader") {}
+	controller_interface::ControllerBaseSharedPtr createInstance(const std::string &) override
+	{
+		return std::make_shared<StartCountingController>();
+	}
+	std::vector<std::string> getDeclaredClasses() override { return { "test/StartCounting" }; }
+	void reload() override {}
+};
+
+class ControlCallbackHarness : public mujoco_ros::control::MujocoRosControlPlugin
+{
+public:
+	ControlCallbackHarness(const ros::NodeHandle &nh, double control_period_s)
+	{
+		auto hw             = std::make_unique<RecordingRobotHWSim>();
+		hw_                 = hw.get();
+		robot_hw_sim_       = std::move(hw);
+		controller_manager_ = std::make_unique<controller_manager::ControllerManager>(hw_, nh);
+		controller_manager_->registerControllerLoader(std::make_shared<StartCountingLoader>());
+		ros::NodeHandle(nh, "counter").setParam("type", "test/StartCounting");
+		control_period_     = ros::Duration(control_period_s);
+		e_stop_active_      = false;
+		last_e_stop_active_ = false;
+		EXPECT_TRUE(controller_manager_->loadController("counter"));
+	}
+
+	// switchController blocks until update() applies it, so it must run off the control-callback thread.
+	std::future<bool> StartCounterAsync()
+	{
+		return std::async(std::launch::async, [this]() {
+			return controller_manager_->switchController({ "counter" }, {},
+			                                             controller_manager_msgs::SwitchController::Request::STRICT);
+		});
+	}
+
+	RecordingRobotHWSim *hw_ = nullptr;
+};
+} // namespace
+
+// ControlCallback must derive its clock from mjData, not from ros::Time::now().
+TEST(MujocoRosControlCallback, SimTimeDrivesPeriodResetAndIgnoresRosClockGlitch)
+{
+	init_ros();
+	g_controller_starts = 0;
+	ros::NodeHandle nh("control_callback_test");
+	ControlCallbackHarness plugin(nh, 0.001);
+	ModelData model_data = load_model(kModelWithoutActuator);
+	mjData *data         = model_data.data.get();
+
+	constexpr double dt = 0.001;
+	int k               = 0;
+	auto step           = [&]() {
+      data->time = ++k * dt;
+      plugin.ControlCallback(model_data.model.get(), data);
+	};
+	auto started        = plugin.StartCounterAsync();
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+	while (started.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+		ASSERT_LT(std::chrono::steady_clock::now(), deadline) << "controller switch was never applied";
+		step();
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	ASSERT_TRUE(started.get());
+	for (int i = 0; i < 20; ++i) {
+		step();
+	}
+	ASSERT_GE(plugin.hw_->read_periods.size(), 2u);
+	// Every read after the first covers exactly one timestep.
+	for (std::size_t i = 1; i < plugin.hw_->read_periods.size(); ++i) {
+		EXPECT_NEAR(plugin.hw_->read_periods[i].toSec(), dt, 1e-9) << "read " << i;
+	}
+	EXPECT_EQ(g_controller_starts.load(), 1) << "controller starts once when the switch is applied";
+
+	// A stale / jumping ROS clock must neither skew the period nor look like a sim reset.
+	const std::size_t reads_before_glitch = plugin.hw_->read_periods.size();
+	ros::Time::setNow(ros::Time(0, 1));
+	for (int i = 0; i < 5; ++i) {
+		step();
+	}
+	ros::Time::setNow(ros::Time(1000, 0));
+	for (int i = 0; i < 5; ++i) {
+		step();
+	}
+	EXPECT_EQ(g_controller_starts.load(), 1) << "ROS clock glitch must not reset controllers";
+	for (std::size_t i = reads_before_glitch; i < plugin.hw_->read_periods.size(); ++i) {
+		EXPECT_NEAR(plugin.hw_->read_periods[i].toSec(), dt, 1e-9) << "read " << i;
+	}
+
+	// Sim reset (data->time goes backwards) resets controllers exactly once.
+	// A MuJoCo reset puts data->time back to 0; the next control sample restarts controllers.
+	k          = 0;
+	data->time = 0.0;
+	plugin.ControlCallback(model_data.model.get(), data);
+	for (int i = 0; i < 5; ++i) {
+		step();
+	}
+	EXPECT_EQ(g_controller_starts.load(), 2) << "sim time reset restarts controllers exactly once";
 }
 #else
 TEST(MujocoRosControlTypes, DefaultSystemDerivesFromSystemInterface)
