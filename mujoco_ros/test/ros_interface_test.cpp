@@ -3514,7 +3514,6 @@ protected:
 		nh = std::make_unique<testing::TestNodeHandle>("~");
 		nh->setParam("unpause", false);
 		nh->setParam("no_render", true);
-		nh->setParam("use_sim_time", true);
 
 		env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 		env_ptr->StartWithXML(testing::get_test_model_path("pendulum_world.xml"));
@@ -3535,11 +3534,10 @@ protected:
 		    });
 	}
 
-	// Same conversion as RosAPI::PublishSimTime.
 	int64_t SimTimeNs()
 	{
 		std::lock_guard<MujocoEnvMutex> lock(*env_ptr->getMutexPtr());
-		return static_cast<int64_t>(env_ptr->getDataPtr()->time * 1e9);
+		return util::simTimeToNanoseconds(env_ptr->getDataPtr()->time);
 	}
 
 	// Positive times only: the t=0 message from SetupClockPublisher may arrive as transient-local history.
@@ -3567,6 +3565,23 @@ protected:
 				return false;
 			}
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+	}
+
+	// Publishes older /clock samples for a while so a competing TimeSource would have applied them.
+	void PublishStaleClock(int64_t stale_ns)
+	{
+		auto stale_pub = observer_node->create_publisher<rosgraph_msgs::msg::Clock>("/clock", rclcpp::QoS(10));
+		rosgraph_msgs::msg::Clock stale;
+		stale.clock         = rclcpp::Time(stale_ns);
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+		while (stale_pub->get_subscription_count() == 0 && std::chrono::steady_clock::now() < deadline) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+		ASSERT_GT(stale_pub->get_subscription_count(), 0u) << "/clock has no subscriber to deliver stale samples to";
+		for (int i = 0; i < 5; ++i) {
+			stale_pub->publish(stale);
+			std::this_thread::sleep_for(std::chrono::milliseconds(20));
 		}
 	}
 
@@ -3607,5 +3622,71 @@ TEST_F(ClockPublishFixture, ClockPublishesEveryStepWhenUseSimTime)
 		}
 	}
 	EXPECT_EQ(distinct_in_order, expected_ns) << "every physics step must publish its time, in order";
+}
+
+TEST_F(ClockPublishFixture, InProcessClockNowMatchesAfterStep)
+{
+	StartEnv();
+	ASSERT_TRUE(env_ptr->step(1));
+	const int64_t expected = SimTimeNs();
+	ASSERT_GT(expected, 0);
+	EXPECT_EQ(env_ptr->get_clock()->now().nanoseconds(), expected);
+}
+
+TEST_F(ClockPublishFixture, StaleClockDoesNotRewindInProcessNow)
+{
+	StartEnv();
+	ASSERT_TRUE(env_ptr->step(3));
+	const int64_t t_new = SimTimeNs();
+	ASSERT_GT(t_new, 1000000);
+	ASSERT_EQ(env_ptr->get_clock()->now().nanoseconds(), t_new);
+
+	PublishStaleClock(t_new / 2);
+	// Do not step again: a competing TimeSource would have applied the stale time by now.
+	EXPECT_EQ(env_ptr->get_clock()->now().nanoseconds(), t_new);
+}
+
+TEST_F(ClockPublishFixture, RuntimeUseSimTimeTrueDoesNotReattachClockSubscription)
+{
+	StartEnv();
+	ASSERT_TRUE(env_ptr->step(3));
+	const int64_t t_new = SimTimeNs();
+	ASSERT_GT(t_new, 1000000);
+
+	nh->setParam("use_sim_time", true);
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+	while (env_ptr->get_parameter("use_sim_time").as_bool() && std::chrono::steady_clock::now() < deadline) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	ASSERT_FALSE(env_ptr->get_parameter("use_sim_time").as_bool()) << "use_sim_time=true must be forced back to false";
+	// The revert settles asynchronously; in-process time must come back to the pushed value, then stay there.
+	while (env_ptr->get_clock()->now().nanoseconds() != t_new && std::chrono::steady_clock::now() < deadline) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	ASSERT_EQ(env_ptr->get_clock()->now().nanoseconds(), t_new) << "time must survive the reverted parameter change";
+	std::this_thread::sleep_for(std::chrono::milliseconds(150));
+	EXPECT_EQ(env_ptr->get_clock()->now().nanoseconds(), t_new);
+
+	PublishStaleClock(t_new / 2);
+	EXPECT_EQ(env_ptr->get_clock()->now().nanoseconds(), t_new);
+
+	ASSERT_TRUE(env_ptr->step(1));
+	EXPECT_EQ(env_ptr->get_clock()->now().nanoseconds(), SimTimeNs());
+	EXPECT_GT(env_ptr->get_clock()->now().nanoseconds(), t_new);
+}
+
+TEST_F(ClockPublishFixture, InProcessNowTracksReset)
+{
+	StartEnv();
+	ASSERT_TRUE(env_ptr->step(5));
+	ASSERT_GT(env_ptr->get_clock()->now().nanoseconds(), 0);
+	env_ptr->RequestReset();
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+	while (SimTimeNs() != 0 && std::chrono::steady_clock::now() < deadline) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	ASSERT_EQ(SimTimeNs(), 0) << "Reset did not complete in time";
+	std::this_thread::sleep_for(std::chrono::milliseconds(50));
+	EXPECT_EQ(env_ptr->get_clock()->now().nanoseconds(), 0);
 }
 #endif
