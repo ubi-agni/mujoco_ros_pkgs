@@ -50,6 +50,11 @@ namespace mju = ::mujoco::sample_util;
 
 RosAPI::RosAPI(std::shared_ptr<ros::NodeHandle> &nh, MujocoEnvPtr env_ptr) : nh_(nh), env_ptr_(env_ptr) {}
 
+RosAPI::~RosAPI()
+{
+	clock_reassert_timer_.stop();
+}
+
 void RosAPI::SetupServices()
 {
 	service_servers_.emplace_back(nh_->advertiseService("set_pause", &RosAPI::SetPauseCB, this));
@@ -834,21 +839,40 @@ bool RosAPI::LoadInitialJointStatesCB(std_srvs::Empty::Request & /*req*/, std_sr
 
 void RosAPI::SetupClockPublisher()
 {
-	clock_pub_ = nh_->advertise<rosgraph_msgs::Clock>("/clock", 1);
+	clock_pub_            = nh_->advertise<rosgraph_msgs::Clock>("/clock", 1);
+	clock_reassert_timer_ = nh_->createWallTimer(ros::WallDuration(0.001), &RosAPI::ReassertSimTime, this);
 	PublishSimTime(mjtNum(0));
+}
+
+void RosAPI::ReassertSimTime(const ros::WallTimerEvent & /*event*/)
+{
+	ReassertPushedSimTime();
+}
+
+void RosAPI::ReassertPushedSimTime()
+{
+	std::lock_guard<std::mutex> lock(sim_time_mutex_);
+	if (ros::Time::isSimTime() && ros::Time::now() < last_sim_time_) {
+		ros::Time::setNow(last_sim_time_);
+	}
 }
 
 void RosAPI::PublishSimTime(mjtNum time)
 {
-	// This is the fastes option for intra-node time updates
-	// however, together with non-blocking publish it breaks stuff
-	// ros::Time::setNow(ros::Time(time));
-	rosgraph_msgs::ClockPtr ros_time(new rosgraph_msgs::Clock);
-	ros_time->clock.fromSec(time);
-	clock_pub_.publish(ros_time);
-	// Current workaround to simulate a blocking time update
-	while (ros::Time::now() < ros::Time(time)) {
-		std::this_thread::yield();
+	rosgraph_msgs::Clock clock;
+	clock.clock.fromSec(time);
+
+	std::lock_guard<std::mutex> lock(sim_time_mutex_);
+	last_sim_time_ = clock.clock;
+	// setNow is the authority for in-process now(); the /clock publish only serves other processes. A late
+	// callback of an earlier /clock sample can overwrite it, hence the re-assert after publishing.
+	const bool sim_time = ros::Time::isSimTime();
+	if (sim_time) {
+		ros::Time::setNow(clock.clock);
+	}
+	clock_pub_.publish(clock);
+	if (sim_time) {
+		ros::Time::setNow(clock.clock);
 	}
 }
 

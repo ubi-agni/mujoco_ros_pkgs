@@ -37,6 +37,9 @@
 #pragma once
 
 #include <ros/ros.h>
+#include <rosgraph_msgs/Clock.h>
+
+#include <mutex>
 
 #include <mujoco_ros/common_types.hpp>
 
@@ -75,10 +78,13 @@ class RosAPI
 {
 public:
 	RosAPI(std::shared_ptr<ros::NodeHandle> &nh, MujocoEnvPtr env_ptr);
+	~RosAPI();
 
 	void SetupServices();
 	void SetupClockPublisher();
 	void PublishSimTime(mjtNum sim_time);
+	// Restores the last pushed sim time if a late /clock sample rewound now(); call before user/plugin code runs.
+	void ReassertPushedSimTime();
 	void UpdateDynamicParams();
 
 	// Expose param server for testing
@@ -88,6 +94,14 @@ private:
 	std::shared_ptr<ros::NodeHandle> nh_;
 	MujocoEnvPtr env_ptr_;
 	ros::Publisher clock_pub_;
+	// The timer callback uses these two; they must outlive the timer (members are destroyed in reverse order).
+	std::mutex sim_time_mutex_;
+	ros::Time last_sim_time_;
+	// roscpp applies /clock samples on its own internal thread and may land an older one after our setNow.
+	// The timer bounds how long such a rewind stays visible to in-process now().
+	ros::WallTimer clock_reassert_timer_;
+
+	void ReassertSimTime(const ros::WallTimerEvent &event);
 
 	bool SetPauseCB(mujoco_ros_msgs::SetPause::Request &req, mujoco_ros_msgs::SetPause::Response &res);
 	bool ShutdownCB(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);

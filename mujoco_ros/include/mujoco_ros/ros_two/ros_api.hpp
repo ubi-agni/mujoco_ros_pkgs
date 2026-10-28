@@ -114,6 +114,7 @@ public:
 	void SetupServices();
 	void SetupClockPublisher();
 	void PublishSimTime(mjtNum sim_time);
+	void ReassertPushedSimTime() {}
 	void UpdateDynamicParams();
 
 private:
