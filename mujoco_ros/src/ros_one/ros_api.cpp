@@ -839,6 +839,10 @@ bool RosAPI::LoadInitialJointStatesCB(std_srvs::Empty::Request & /*req*/, std_sr
 
 void RosAPI::SetupClockPublisher()
 {
+	if (!ros::Time::isSimTime()) {
+		MJR_WARN("/use_sim_time is not true: the in-process ROS clock is wall time and will not follow the "
+		         "simulation. /clock is still published for other nodes; set /use_sim_time=true before starting.");
+	}
 	clock_pub_            = nh_->advertise<rosgraph_msgs::Clock>("/clock", 1);
 	clock_reassert_timer_ = nh_->createWallTimer(ros::WallDuration(0.001), &RosAPI::ReassertSimTime, this);
 	PublishSimTime(mjtNum(0));
