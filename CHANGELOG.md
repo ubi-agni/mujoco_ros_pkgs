@@ -5,6 +5,7 @@
 * [patch] Render RGB and depth in one `mjr_render` / `mjr_readPixels` pass when both planes are demanded, so RGB+D offscreen capture no longer pays for two full render+readback cycles (segmentation stays a separate pass).
 * [patch] Publish `/clock` with a stack `rosgraph_msgs::msg::Clock` every physics step and stop gating clock setup/publish on `EnvSettings::use_sim_time` (ROS `use_sim_time` remains for graph consumers), removing a per-step heap allocation on the clock path.
 * [chore] Document the ROS 2 MuJoCo server `use_sim_time=false` + rcl ros-time override workaround in `docs/ros_api/mujoco_server_options/mujoco_server_options.rst` (fix-ros-time-update)
+* [chore] Always run the CI push-skip gate on pull requests (emit `skip=false`) so matrix job outputs propagate; Format runs unconditionally with no skip gate. (fix-ros-time-update)
 
 ### Fixed
 * [patch] Resize the offscreen framebuffer when a camera is wider/taller than the model `offwidth`/`offheight` default, so `mjr_readPixels` past the FBO is no longer garbage on the image edge.
