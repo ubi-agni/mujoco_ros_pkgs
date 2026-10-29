@@ -204,6 +204,7 @@ RosAPI::RosAPI(MujocoEnvPtr env_ptr) : env_ptr_(env_ptr)
 
 	// rclcpp's TimeSource would subscribe to /clock for this node's clock once use_sim_time turns true and overwrite
 	// the pushed time with late samples. TimeSource handles the change first and disables the override, so undo that.
+#if RCLCPP_VERSION_GTE(21, 0, 0)
 	use_sim_time_guard_handle_ =
 	    env_ptr_->add_post_set_parameters_callback([this](const std::vector<rclcpp::Parameter> &parameters) {
 		    for (const auto &param : parameters) {
@@ -228,6 +229,25 @@ RosAPI::RosAPI(MujocoEnvPtr env_ptr) : env_ptr_(env_ptr)
 			    });
 		    }
 	    });
+#else
+	// Humble has no post-set callback: reject the change up front so TimeSource never sees use_sim_time=true.
+	use_sim_time_guard_handle_ =
+	    env_ptr_->add_on_set_parameters_callback([](const std::vector<rclcpp::Parameter> &parameters) {
+		    rcl_interfaces::msg::SetParametersResult result;
+		    result.successful = true;
+		    for (const auto &param : parameters) {
+			    if (param.get_name() != "use_sim_time" || param.get_type() != rclcpp::ParameterType::PARAMETER_BOOL ||
+			        !param.as_bool()) {
+				    continue;
+			    }
+			    MJR_ERROR("Rejecting use_sim_time=true on the MuJoCo server node: its clock is driven by the "
+			              "simulation via ros-time override and must not follow /clock.");
+			    result.successful = false;
+			    result.reason     = "use_sim_time=true is not supported on the MuJoCo server node";
+		    }
+		    return result;
+	    });
+#endif
 
 	dynamic_params_callback_handle_ =
 	    env_ptr_->add_on_set_parameters_callback(std::bind(&RosAPI::DynamicParamsCallback, this, std::placeholders::_1));
