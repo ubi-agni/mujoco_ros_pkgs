@@ -9,14 +9,18 @@ from helpers import VERSIONING_DIR
 WORKFLOWS = VERSIONING_DIR.parent / ".github" / "workflows"
 DEVEL = ["hybrid-devel"]
 PUSH_GATE = "push-gate"
-# The first job of each workflow; it waits on the push gate, later jobs chain off it.
-ENTRYPOINT = {
-    "format.yaml": "pre-commit",
+# Workflows that skip expensive work on merge-pushes / Version Bot pushes.
+GATED_ENTRYPOINT = {
     "ci.ros2.yaml": "ci-policy",
     "ci.ros1.yaml": "ci-policy",
     "docker.ros2.yaml": "ci_ros2",
     "docker.ros1.yaml": "ci_ros1",
 }
+# Format always runs (no push-gate).
+ALWAYS_RUN = {
+    "format.yaml": "pre-commit",
+}
+ENTRYPOINT = {**ALWAYS_RUN, **GATED_ENTRYPOINT}
 
 
 def _load(name):
@@ -34,18 +38,32 @@ def test_triggers_target_devel_only(name):
     assert "workflow_dispatch" in triggers
 
 
-@pytest.mark.parametrize("name", list(ENTRYPOINT))
+@pytest.mark.parametrize("name", list(GATED_ENTRYPOINT))
 def test_push_gate_guards_entrypoint(name):
     doc, _ = _load(name)
     gate = doc["jobs"][PUSH_GATE]
-    entry = doc["jobs"][ENTRYPOINT[name]]
+    entry = doc["jobs"][GATED_ENTRYPOINT[name]]
 
-    assert gate["if"] == "github.event_name == 'push'"
+    # Gate must always run so outputs propagate on pull_request.
+    assert "if" not in gate
     assert PUSH_GATE in entry["needs"]
     assert "push-gate.outputs.skip == 'false'" in entry["if"]
     # always() would run superseded runs cancelled by cancel-in-progress.
     assert "always()" not in entry["if"]
     assert "!cancelled()" in entry["if"]
+    # Non-push short-circuit must emit skip=false before the Python decision.
+    skip_step = next(s for s in gate["steps"] if s.get("id") == "skip")
+    assert skip_step["env"]["EVENT_NAME"] == "${{ github.event_name }}"
+    assert 'EVENT_NAME}" != "push"' in skip_step["run"]
+    assert "skip=false" in skip_step["run"]
+
+
+def test_format_always_runs_without_push_gate():
+    doc, _ = _load("format.yaml")
+
+    assert PUSH_GATE not in doc["jobs"]
+    assert "needs" not in doc["jobs"]["pre-commit"]
+    assert "if" not in doc["jobs"]["pre-commit"]
 
 
 RELEASE = "release.yaml"
@@ -277,10 +295,12 @@ def test_tag_release_exposes_tag_output_for_docs_job():
     assert doc["jobs"]["tag"]["outputs"]["tag"] == "${{ steps.tag.outputs.tag }}"
 
 
-PUSH_GATE_WORKFLOWS = ["format.yaml", "ci.ros1.yaml", "ci.ros2.yaml"]
+# CI workflows that associate merged-PR bases; format has no push-gate, docker
+# only checks Version Bot author (no --pr-base loop).
+PUSH_GATE_PR_BASE_WORKFLOWS = ["ci.ros1.yaml", "ci.ros2.yaml"]
 
 
-@pytest.mark.parametrize("name", PUSH_GATE_WORKFLOWS)
+@pytest.mark.parametrize("name", PUSH_GATE_PR_BASE_WORKFLOWS)
 def test_push_gate_base_loop_avoids_short_circuit_append(name):
     # `[[ -n x ]] && cmd` as a loop body is a hygiene hazard under `set -e`; use `if`.
     text = (WORKFLOWS / name).read_text(encoding="utf-8")

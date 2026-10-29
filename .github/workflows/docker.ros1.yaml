@@ -31,7 +31,8 @@ concurrency: # cancel any previous workflow(s) from the same PR or branch/tag
 jobs:
   push-gate:
     name: Push skip gate
-    if: github.event_name == 'push'
+    # Always run so job outputs propagate on pull_request. Non-push → skip=false;
+    # push uses ci_push_skip.py (Version Bot; docker does not pass merged-PR bases).
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -49,8 +50,13 @@ jobs:
         name: Decide whether to skip docker push
         env:
           SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
+          if [[ "${EVENT_NAME}" != "push" ]]; then
+            echo "skip=false" | tee -a "${GITHUB_OUTPUT}"
+            exit 0
+          fi
           author_name=$(git log -1 --format=%an "${SHA}")
           author_email=$(git log -1 --format=%ae "${SHA}")
           python3 .versioning/scripts/ci_push_skip.py \
@@ -58,7 +64,7 @@ jobs:
 
   ci_ros1:
     needs: push-gate
-    if: ${{ !cancelled() && needs.push-gate.result != 'failure' && needs.push-gate.result != 'cancelled' && (github.event_name != 'push' || needs.push-gate.outputs.skip == 'false') }}
+    if: ${{ !cancelled() && needs.push-gate.result != 'failure' && needs.push-gate.result != 'cancelled' && needs.push-gate.outputs.skip == 'false' }}
     strategy:
       fail-fast: false
       matrix:
