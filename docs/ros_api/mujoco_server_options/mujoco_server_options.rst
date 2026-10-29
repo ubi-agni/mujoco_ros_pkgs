@@ -11,8 +11,14 @@ Required Argument
 -----------------
 
 ``use_sim_time``
-  Required. Sets ``/use_sim_time``. Use ``true`` for fully simulated systems.
+  Required on ROS 1. Sets ``/use_sim_time``. Use ``true`` for fully simulated
+  systems so in-process ``ros::Time::now()`` follows the simulation push.
   Use ``false`` only when another clock source owns ROS time.
+
+  On ROS 2 the same launch argument still sets the parameter for other nodes
+  and for ``/clock`` consumers. The MuJoCo **server node itself** forces
+  ``use_sim_time=false`` and drives its clock from simulation via an rcl
+  ros-time override. See :ref:`ros2-use-sim-time-override` below.
 
 Runtime Arguments
 -----------------
@@ -175,3 +181,27 @@ but use ROS 2 launch syntax, ``$(find-pkg-share ...)`` / ``get_package_share_dir
 paths, ``exec=`` instead of ``type=``, ROS 2 log-level arguments, and
 ``<param from=...>`` / ``ParameterFile`` for YAML loading.
 They also add ``gdb_term_cmd`` for opening gdb in a terminal.
+
+.. _ros2-use-sim-time-override:
+
+ROS 2 server ``use_sim_time`` workaround
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Keep ``use_sim_time:=true`` in launch for the rest of the graph. Other nodes
+should still follow ``/clock``.
+
+The MuJoCo server node does **not** follow ``/clock`` for its own
+``node->now()``. With ``use_sim_time=true``, rclcpp's ``TimeSource`` attaches
+to ``/clock`` and can overwrite a late sample onto the node clock. That fights
+the per-step ``rcl_set_ros_time_override`` push from ``data->time``.
+
+Workaround (by design):
+
+* The server forces ``use_sim_time=false`` on its own node (launch/CLI values
+  for this node are superseded; a WARN is logged at startup).
+* Its clock is sim-driven through the rcl ros-time override each physics step.
+* ``/clock`` is still published every step for other processes.
+* If something sets ``use_sim_time=true`` on the server at runtime, the node
+  logs an ERROR and reverts the parameter.
+
+Decision record: ``docs/adr/0036-sim-time-push-not-clock-wait.md``.

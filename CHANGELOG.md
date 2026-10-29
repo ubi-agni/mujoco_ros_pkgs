@@ -4,10 +4,15 @@
 ### Changed
 * [patch] Render RGB and depth in one `mjr_render` / `mjr_readPixels` pass when both planes are demanded, so RGB+D offscreen capture no longer pays for two full render+readback cycles (segmentation stays a separate pass).
 * [patch] Publish `/clock` with a stack `rosgraph_msgs::msg::Clock` every physics step and stop gating clock setup/publish on `EnvSettings::use_sim_time` (ROS `use_sim_time` remains for graph consumers), removing a per-step heap allocation on the clock path.
+* [chore] Document the ROS 2 MuJoCo server `use_sim_time=false` + rcl ros-time override workaround in `docs/ros_api/mujoco_server_options/mujoco_server_options.rst` (fix-ros-time-update)
 
 ### Fixed
 * [patch] Resize the offscreen framebuffer when a camera is wider/taller than the model `offwidth`/`offheight` default, so `mjr_readPixels` past the FBO is no longer garbage on the image edge.
 * [patch] Render and publish only planes that currently have ROS subscribers (intersected with `stream_type`), so unused RGB/depth/segmentation work is skipped and missing unsubscribed planes no longer spam ERROR logs each step.
+* [patch] Push sim time into in-process ROS clocks each step without `/clock` yield-wait (ROS 1 `setNow` + re-assert; ROS 2 ros-time override). `/clock` remains an outbound mirror. Fixes #20. (fix-ros-time-update)
+* [patch] Stamp sensors, laser, and ROS 1 control from `data->time` instead of ROS `now()`. (fix-ros-time-update)
+* [patch] Exit `mujoco_node` on SIGTERM via the same shutdown path as SIGINT. (fix-ros-time-update)
+* [patch] Keep the ROS 2 Step action server on a system clock so per-step ros-time override does not wake the executor. (fix-ros-time-update)
 
 <a name="2.0.0"></a>
 ## [2.0.0] - 2026-09-24
