@@ -120,8 +120,13 @@ jobs:
             fi
           } >> "${GITHUB_STEP_SUMMARY}"
 
+      # Instruction comment once per PR lifetime (open/reopen). Decide job still
+      # runs on synchronize; sticky replace on every push was noisy.
       - name: Ask on the pull request
-        if: github.event_name == 'pull_request' && steps.gate.outputs.run_benchmark != 'true'
+        if: >-
+          github.event_name == 'pull_request' &&
+          steps.gate.outputs.run_benchmark != 'true' &&
+          (github.event.action == 'opened' || github.event.action == 'reopened')
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.pull_request.number }}
