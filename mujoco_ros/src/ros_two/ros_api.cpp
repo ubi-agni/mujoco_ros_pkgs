@@ -204,6 +204,7 @@ RosAPI::RosAPI(MujocoEnvPtr env_ptr) : env_ptr_(env_ptr)
 
 	// rclcpp's TimeSource would subscribe to /clock for this node's clock once use_sim_time turns true and overwrite
 	// the pushed time with late samples. TimeSource handles the change first and disables the override, so undo that.
+	// Allow the set (callers / fixtures treat use_sim_time as ignored, not a hard failure), then revert on a timer.
 #if RCLCPP_VERSION_GTE(21, 0, 0)
 	use_sim_time_guard_handle_ =
 	    env_ptr_->add_post_set_parameters_callback([this](const std::vector<rclcpp::Parameter> &parameters) {
@@ -214,25 +215,14 @@ RosAPI::RosAPI(MujocoEnvPtr env_ptr) : env_ptr_(env_ptr)
 			    }
 			    MJR_ERROR("Rejecting use_sim_time=true on the MuJoCo server node: its clock is driven by the "
 			              "simulation via ros-time override and must not follow /clock. Forcing use_sim_time=false.");
-			    // Parameters cannot be changed from inside a set callback, so revert from the executor right after.
-			    // TimeSource reacts to parameter changes asynchronously and disables the override when it sees the
-			    // revert, so keep re-arming for a bounded window until it has settled.
-			    use_sim_time_guard_ticks_  = 0;
-			    use_sim_time_revert_timer_ = env_ptr_->create_wall_timer(std::chrono::milliseconds(5), [this]() {
-				    if (env_ptr_->get_parameter("use_sim_time").as_bool()) {
-					    env_ptr_->set_parameter(rclcpp::Parameter("use_sim_time", false));
-				    }
-				    EnableRosTimeOverride();
-				    if (++use_sim_time_guard_ticks_ >= kUseSimTimeGuardTicks) {
-					    use_sim_time_revert_timer_->cancel();
-				    }
-			    });
+			    ArmUseSimTimeRevert();
 		    }
 	    });
 #else
-	// Humble has no post-set callback: reject the change up front so TimeSource never sees use_sim_time=true.
+	// Humble has no post-set callback: arm the same revert from on-set (still allow the set so set_parameters
+	// does not throw; TimeSource may briefly see true until the timer forces false — same window as Jazzy).
 	use_sim_time_guard_handle_ =
-	    env_ptr_->add_on_set_parameters_callback([](const std::vector<rclcpp::Parameter> &parameters) {
+	    env_ptr_->add_on_set_parameters_callback([this](const std::vector<rclcpp::Parameter> &parameters) {
 		    rcl_interfaces::msg::SetParametersResult result;
 		    result.successful = true;
 		    for (const auto &param : parameters) {
@@ -241,9 +231,8 @@ RosAPI::RosAPI(MujocoEnvPtr env_ptr) : env_ptr_(env_ptr)
 				    continue;
 			    }
 			    MJR_ERROR("Rejecting use_sim_time=true on the MuJoCo server node: its clock is driven by the "
-			              "simulation via ros-time override and must not follow /clock.");
-			    result.successful = false;
-			    result.reason     = "use_sim_time=true is not supported on the MuJoCo server node";
+			              "simulation via ros-time override and must not follow /clock. Forcing use_sim_time=false.");
+			    ArmUseSimTimeRevert();
 		    }
 		    return result;
 	    });
@@ -1272,6 +1261,23 @@ void RosAPI::SetupClockPublisher()
 	clock_pub_            = env_ptr_->create_publisher<rosgraph_msgs::msg::Clock>("/clock", clock_qos);
 	EnableRosTimeOverride();
 	PublishSimTime(mjtNum(0));
+}
+
+void RosAPI::ArmUseSimTimeRevert()
+{
+	// Parameters cannot be changed from inside a set callback, so revert from the executor right after.
+	// TimeSource reacts to parameter changes asynchronously and disables the override when it sees the
+	// revert, so keep re-arming for a bounded window until it has settled.
+	use_sim_time_guard_ticks_  = 0;
+	use_sim_time_revert_timer_ = env_ptr_->create_wall_timer(std::chrono::milliseconds(5), [this]() {
+		if (env_ptr_->get_parameter("use_sim_time").as_bool()) {
+			env_ptr_->set_parameter(rclcpp::Parameter("use_sim_time", false));
+		}
+		EnableRosTimeOverride();
+		if (++use_sim_time_guard_ticks_ >= kUseSimTimeGuardTicks) {
+			use_sim_time_revert_timer_->cancel();
+		}
+	});
 }
 
 void RosAPI::EnableRosTimeOverride()

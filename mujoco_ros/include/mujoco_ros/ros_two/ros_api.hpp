@@ -128,15 +128,16 @@ private:
 	std::int64_t last_pushed_ns_ = 0;
 #if RCLCPP_VERSION_GTE(21, 0, 0)
 	rclcpp::node_interfaces::PostSetParametersCallbackHandle::SharedPtr use_sim_time_guard_handle_;
-
-	static constexpr int kUseSimTimeGuardTicks = 20;
-	int use_sim_time_guard_ticks_              = 0;
-	rclcpp::TimerBase::SharedPtr use_sim_time_revert_timer_;
 #else
 	rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr use_sim_time_guard_handle_;
 #endif
+	// Shared by Iron+/Jazzy post-set and Humble on-set: both arm a wall timer to force false.
+	static constexpr int kUseSimTimeGuardTicks = 20;
+	int use_sim_time_guard_ticks_              = 0;
+	rclcpp::TimerBase::SharedPtr use_sim_time_revert_timer_;
 
 	void EnableRosTimeOverride();
+	void ArmUseSimTimeRevert();
 
 	void SetPauseCB(const mujoco_ros_msgs::srv::SetPause::Request::SharedPtr &req,
 	                const mujoco_ros_msgs::srv::SetPause::Response::SharedPtr &res);
