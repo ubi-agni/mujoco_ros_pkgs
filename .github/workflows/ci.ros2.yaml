@@ -163,20 +163,20 @@ jobs:
 
           if [[ "${full_matrix}" != "true" ]]; then
             if [[ "${clang_tidy}" == "true" ]]; then
-              matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.8.1","check":"plain"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.8.1","check":"clang_tidy"}]}'
+              matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.9.0","check":"plain"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.9.0","check":"clang_tidy"}]}'
             else
-              matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.8.1","check":"plain"}]}'
+              matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.9.0","check":"plain"}]}'
             fi
           elif [[ "${coverage}" == "true" ]]; then
             if [[ "${clang_tidy}" == "true" ]]; then
-              matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.8.1","check":"clang_tidy"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.8.1","check":"ccov"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.8.1","check":"ccov"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.8.1","check":"ccov"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.8.1","check":"ccov"}]}'
+              matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.9.0","check":"clang_tidy"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.9.0","check":"ccov"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.9.0","check":"ccov"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.9.0","check":"ccov"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.9.0","check":"ccov"}]}'
             else
-              matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.8.1","check":"ccov"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.8.1","check":"ccov"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.8.1","check":"ccov"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.8.1","check":"ccov"}]}'
+              matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.9.0","check":"ccov"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.9.0","check":"ccov"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.9.0","check":"ccov"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.9.0","check":"ccov"}]}'
             fi
           elif [[ "${clang_tidy}" == "true" ]]; then
-            matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.8.1","check":"plain"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.8.1","check":"plain"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.8.1","check":"plain"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.8.1","check":"plain"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.8.1","check":"clang_tidy"}]}'
+            matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.9.0","check":"plain"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.9.0","check":"plain"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.9.0","check":"plain"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.9.0","check":"plain"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.9.0","check":"clang_tidy"}]}'
           else
-            matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.8.1","check":"plain"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.8.1","check":"plain"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.8.1","check":"plain"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.8.1","check":"plain"}]}'
+            matrix='{"include":[{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"GLFW","mujoco":"3.9.0","check":"plain"},{"distro":"humble","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.9.0","check":"plain"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.9.0","check":"plain"},{"distro":"humble","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.9.0","check":"plain"}]}'
           fi
 
           echo "matrix=${matrix}" >> "${GITHUB_OUTPUT}"
