@@ -385,7 +385,7 @@ void ProcessRay(const mjModel *model, mjData *data, std::mt19937 rand_generator,
 	mju_copy(pos, data->site_xpos + 3 * laser_config.site_attached, 3);
 
 	int geomid  = -1;
-	mjtNum dist = mj_ray(model, data, pos, target, ignore_groups, 1, -1, &geomid);
+	mjtNum dist = mj_ray(model, data, pos, target, ignore_groups, 1, -1, &geomid, nullptr);
 	if (dist < 0) {
 		dist = laser_config.max_range;
 	}
