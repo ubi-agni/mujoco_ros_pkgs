@@ -41,6 +41,7 @@
 #include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros/array_safety.h>
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <vector>
@@ -638,6 +639,18 @@ bool MujocoEnv::SetBodyInertialProperties(const std::string &body_name, mjtNum m
 	const int body_id = mj_name2id(model_.get(), mjOBJ_BODY, body_name.c_str());
 	if (body_id < 1) {
 		message = "Could not find body with name " + body_name;
+		MJR_ERROR_STREAM(message);
+		copy_status(message);
+		return false;
+	}
+	// MuJoCo >= 3.11: mj_setConst raises a fatal mju_error (aborting the process) if the inertial frame of a body
+	// compiled as simple changes. Reject before mutating anything. Exact comparison on purpose: MuJoCo's tolerance is
+	// not exposed, so any difference is refused (conservative; clients re-sending the current frame still pass).
+	if (model_->body_simple[body_id] != 0 && (!std::equal(ipos, ipos + 3, model_->body_ipos + body_id * 3) ||
+	                                          !std::equal(iquat, iquat + 4, model_->body_iquat + body_id * 4))) {
+		message = "Body '" + body_name +
+		          "' is compiled as simple; its inertial frame (ipos/iquat) cannot be changed at runtime. "
+		          "Declare it with <body ... simple=\"false\"> in the model (MuJoCo >= 3.11) to allow this.";
 		MJR_ERROR_STREAM(message);
 		copy_status(message);
 		return false;
