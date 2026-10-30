@@ -53,6 +53,8 @@
 #include <utility>
 #include <vector>
 
+#include <cstdarg>
+#include <cstdio>
 #include <spawn.h>
 #include <signal.h>
 #include <sys/wait.h>
@@ -75,6 +77,7 @@ extern char **environ;
 #include <ros/ros.h>
 #else // MJR_ROS_VERSION == ROS_2
 #include <rclcpp/rclcpp.hpp>
+#include <rcutils/logging.h>
 #endif
 
 int main(int argc, char **argv)
@@ -2578,6 +2581,113 @@ TEST_F(BaseEnvFixture, ViewerLoadAndShutdownRequestsRouteThroughControlState)
 	EXPECT_TRUE(sync_env->GetControlSnapshot().shutdown_requested);
 
 	sync_env->shutdown();
+}
+
+int ExpectedEnginePoolThreads(int requested)
+{
+	// Mirrors MujocoEnv::Configure: the request is capped at hardware threads - 1; below 2 no pool is created.
+	const int available = static_cast<int>(std::thread::hardware_concurrency()) - 1;
+	return std::min(requested, available);
+}
+
+TEST_F(BaseEnvFixture, EngineThreadpoolFollowsNumMjThreadsAcrossReload)
+{
+	nh->setParam("num_mj_threads", 2);
+	auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
+	sync_env->StartWithXML(testing::get_test_model_path("empty_world.xml"));
+
+	const bool expect_pool = ExpectedEnginePoolThreads(2) >= 2;
+	EXPECT_EQ(static_cast<bool>(sync_env->getDataPtr()->threadpool), expect_pool)
+	    << "Engine threadpool must be enabled on the initial load iff num_mj_threads >= 2";
+
+	// Reload creates a fresh mjData; mju_threadpool is per mjData, so it has to be re-applied.
+	const mjData *first_data = sync_env->getDataPtr();
+	sync_env->RequestReload();
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+	while (sync_env->getDataPtr() == first_data && std::chrono::steady_clock::now() < deadline) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+	}
+	while (sync_env->GetOperationalStatus() != 0 && std::chrono::steady_clock::now() < deadline) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+	}
+	ASSERT_EQ(sync_env->GetOperationalStatus(), 0) << "Reload did not finish";
+	EXPECT_EQ(static_cast<bool>(sync_env->getDataPtr()->threadpool), expect_pool)
+	    << "Engine threadpool must be re-applied after reload";
+
+	sync_env->shutdown();
+}
+
+TEST_F(BaseEnvFixture, EngineThreadpoolDisabledForSingleThread)
+{
+	for (const int requested : { 1, 0 }) {
+		nh->setParam("num_mj_threads", requested);
+		auto sync_env = std::make_unique<ControlStateTestWrapper>("", nh.get());
+		sync_env->StartWithXML(testing::get_test_model_path("empty_world.xml"));
+		EXPECT_FALSE(static_cast<bool>(sync_env->getDataPtr()->threadpool)) << "requested " << requested;
+		sync_env->shutdown();
+	}
+}
+
+#if MJR_ROS_VERSION == ROS_2
+namespace {
+struct CapturedLog
+{
+	int severity;
+	std::string message;
+};
+std::mutex captured_logs_mutex;
+std::vector<CapturedLog> captured_logs;
+rcutils_logging_output_handler_t previous_output_handler = nullptr;
+
+void CaptureOutputHandler(const rcutils_log_location_t *location, int severity, const char *name,
+                          rcutils_time_point_value_t timestamp, const char *format, va_list *args)
+{
+	va_list args_copy;
+	va_copy(args_copy, *args);
+	char buffer[2048];
+	vsnprintf(buffer, sizeof(buffer), format, args_copy);
+	va_end(args_copy);
+	if (std::string_view(name) == "mujoco_server") {
+		std::lock_guard<std::mutex> lock(captured_logs_mutex);
+		captured_logs.push_back({ severity, buffer });
+	}
+	previous_output_handler(location, severity, name, timestamp, format, args);
+}
+} // namespace
+
+// Real MuJoCo -> handler -> ROS logger path; only the ROS output sink is observed.
+TEST(MujocoLogBridge, WarningIsRoutedToRosLogger)
+{
+	InstallMujocoLogHandler();
+	{
+		std::lock_guard<std::mutex> lock(captured_logs_mutex);
+		captured_logs.clear();
+	}
+	previous_output_handler = rcutils_logging_get_output_handler();
+	rcutils_logging_set_output_handler(CaptureOutputHandler);
+
+	mju_warning("bridge-warning %d", 42);
+	// Handler may also be invoked by MuJoCo worker threads: exercise that path too.
+	std::thread([] { mju_warning("bridge-warning-thread"); }).join();
+
+	rcutils_logging_set_output_handler(previous_output_handler);
+
+	std::lock_guard<std::mutex> lock(captured_logs_mutex);
+	ASSERT_EQ(captured_logs.size(), 2u);
+	EXPECT_EQ(captured_logs[0].severity, RCUTILS_LOG_SEVERITY_WARN);
+	EXPECT_NE(captured_logs[0].message.find("bridge-warning 42"), std::string::npos) << captured_logs[0].message;
+	EXPECT_EQ(captured_logs[1].severity, RCUTILS_LOG_SEVERITY_WARN);
+	EXPECT_NE(captured_logs[1].message.find("bridge-warning-thread"), std::string::npos) << captured_logs[1].message;
+}
+#endif
+
+// mju_error never returns with MuJoCo's default handler; the bridge must keep that guarantee. ROS console output goes
+// to stdout, so only the exit status is matched.
+TEST(MujocoLogBridgeDeathTest, ErrorIsLoggedAndTerminates)
+{
+	::testing::GTEST_FLAG(death_test_style) = "threadsafe";
+	InstallMujocoLogHandler();
+	EXPECT_EXIT(mju_error("bridge-error %d", 7), ::testing::ExitedWithCode(EXIT_FAILURE), "");
 }
 
 TEST_F(BaseEnvFixture, LoadPayloadPublishesBeforeRequestInsideControlBoundary)

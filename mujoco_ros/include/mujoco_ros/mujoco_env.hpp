@@ -123,6 +123,20 @@ using TransformStamped = geometry_msgs::msg::TransformStamped;
 
 namespace mujoco_ros {
 
+/**
+ * @brief Log handler routing MuJoCo log messages to the MJR_* logging macros.
+ *
+ * Warnings map to MJR_WARN, errors to MJR_ERROR, info/debug to MJR_INFO/MJR_DEBUG. MuJoCo's own handler terminates the
+ * process on errors (mju_error never returns). A custom handler replaces that behavior, so after logging an error this
+ * handler exits with EXIT_FAILURE just like MuJoCo's default. May be called from MuJoCo worker threads.
+ */
+void HandleMujocoLog(const mjLogMessage *message);
+
+/**
+ * @brief Install HandleMujocoLog as the global MuJoCo log handler. Idempotent and thread-safe.
+ */
+void InstallMujocoLogHandler();
+
 class MujocoEnvMutex : public std::recursive_mutex
 {};
 using RecursiveLock = std::unique_lock<std::recursive_mutex>;
@@ -881,7 +895,8 @@ protected:
 	 */
 	void LoadWithModelAndData();
 
-	mjThreadPool *threadpool_ = nullptr;
+	/// Worker threads for mju_threadpool, applied to each mjData on load. Below 2 means no engine threadpool.
+	int mj_threadpool_size_ = 0;
 
 	std::mutex control_state_boundary_mutex_;
 	SimulationControlState control_state_;

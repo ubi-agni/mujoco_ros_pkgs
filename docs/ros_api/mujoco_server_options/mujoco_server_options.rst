@@ -125,7 +125,7 @@ Example (ASCII STL convert on)::
   Automatically exits after this many MuJoCo simulation steps. ``-1`` disables the limit.
 
 ``mujoco_threads``
-  Deprecated. Number of MuJoCo worker threads requested by the server. The launch file defaults to ``1``; the server falls back to its internal default when the parameter is not set. Values greater than ``1`` can increase CPU usage because MuJoCo worker threads busy-wait; see `google-deepmind/mujoco#2746 <https://github.com/google-deepmind/mujoco/pull/2746>`_. MuJoCo upstream is changing the public threading API to internal-only usage, so this behavior will change in the future and ``mujoco_ros`` will need its own threading API.
+  Deprecated. Number of worker threads for MuJoCo's internal engine threadpool (``mju_threadpool``), applied to the simulation data after every model load. The launch file defaults to ``1``; the server falls back to its internal default when the parameter is not set. The request is capped at the number of hardware threads minus one. A pool is only created for values of ``2`` or more; ``1`` (the default) and lower run MuJoCo single-threaded without a pool. Values greater than ``1`` can increase CPU usage because MuJoCo worker threads busy-wait; see `google-deepmind/mujoco#2746 <https://github.com/google-deepmind/mujoco/pull/2746>`_. Only the MuJoCo engine uses this pool: plugins such as the laser run serially, and MuJoCo 3.10 offers no public API for plugin tasks.
 
 ``mujoco_plugin_config``
   YAML file loaded before the node starts. Use it to define ``MujocoPlugins`` and plugin-specific configuration.
@@ -135,6 +135,8 @@ Example (ASCII STL convert on)::
 
 Access Control and Logging
 --------------------------
+
+MuJoCo's own warnings and errors are routed through the ROS logger (``[MuJoCo]`` prefix) via ``mju_setLogHandler``. After logging a MuJoCo error the server exits, as with MuJoCo's default handler.
 
 ``eval_mode``
   Enables evaluation restrictions. Mutating service calls require a matching ``admin_hash``, and the sensors plugin suppresses ground-truth topics.

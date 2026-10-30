@@ -19,7 +19,7 @@
   <arg name="profile"              default="false" doc="Whether mujoco_ros should be profiled." />
   <arg name="num_sim_steps"        default="-1" />
   <arg name="mujoco_plugin_config" default=""      doc="Optionally provide the path to a yaml with plugin configurations to load." />
-  <arg name="mujoco_threads"       default="1"     doc="Deprecated. Number of threads to use in the MuJoCo simulation. Values greater than 1 can increase CPU usage because MuJoCo worker threads busy-wait." />
+  <arg name="mujoco_threads"       default="1"     doc="Deprecated. Number of threads for MuJoCo's internal engine threadpool, used only for values above 1 (plugins such as the laser run serially). Values greater than 1 can increase CPU usage because MuJoCo worker threads busy-wait." />
 
   <arg name="modelfile"            default="" doc="Full MuJoCo model when description bundle unused. With urdf_source set: world MJCF to compose into (empty = built-in default_world)." />
   <arg name="initial_joint_states" default="$(find mujoco_ros)/config/initial_joint_states.yaml" doc="Provide a filepath containing initial joint states to load." />
