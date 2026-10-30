@@ -10,9 +10,9 @@ if(NOT EXISTS "${MUJOCO_DIR}/include/mujoco/mujoco.h")
     message(FATAL_ERROR "Could not find ${MUJOCO_DIR}/include/mujoco/mujoco.h")
 endif()
 
-set(MUJOCO_REAL_LIB "${MUJOCO_DIR}/lib/libmujoco.so.3.11.0")
+set(MUJOCO_REAL_LIB "${MUJOCO_DIR}/lib/libmujoco.so.3.12.0")
 if(NOT EXISTS "${MUJOCO_REAL_LIB}" OR IS_SYMLINK "${MUJOCO_REAL_LIB}")
-    message(FATAL_ERROR "Could not find the real MuJoCo 3.11.0 library at ${MUJOCO_REAL_LIB}")
+    message(FATAL_ERROR "Could not find the real MuJoCo 3.12.0 library at ${MUJOCO_REAL_LIB}")
 endif()
 
 # ament symlink-install rewrites install(FILES|DIRECTORY) to the package's
@@ -29,7 +29,7 @@ install(CODE
     file(COPY \"\${_mujoco_include}/\" DESTINATION \"\${CMAKE_INSTALL_PREFIX}/include\")
     file(COPY \"\${_mujoco_real_lib}\" DESTINATION \"\${CMAKE_INSTALL_PREFIX}/lib\")
     file(REMOVE \"\${CMAKE_INSTALL_PREFIX}/lib/libmujoco.so\")
-    file(CREATE_LINK \"libmujoco.so.3.11.0\" \"\${CMAKE_INSTALL_PREFIX}/lib/libmujoco.so\" SYMBOLIC)
+    file(CREATE_LINK \"libmujoco.so.3.12.0\" \"\${CMAKE_INSTALL_PREFIX}/lib/libmujoco.so\" SYMBOLIC)
     if(EXISTS \"\${_mujoco_plugin}\")
       file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/lib/mujoco_plugin\")
       file(COPY \"\${_mujoco_plugin}/\" DESTINATION \"\${CMAKE_INSTALL_PREFIX}/lib/mujoco_plugin\")
