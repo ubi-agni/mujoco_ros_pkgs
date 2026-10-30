@@ -76,7 +76,7 @@ TEST(RuntimeOptions, ReadsAndWritesEveryNamedField)
 	expected.energy                = true;
 	expected.fwd_inv               = true;
 	expected.inv_discrete          = true;
-	expected.multiccd              = true;
+	expected.multiccd              = false;
 	expected.island                = false;
 
 	ASSERT_TRUE(ValidateRuntimeOptions(expected).ok());
@@ -99,6 +99,23 @@ TEST(RuntimeOptions, IslandingIsOnByDefaultAndOnlyDisabledOnRequest)
 	WriteRuntimeOptions(snapshot, option);
 	EXPECT_TRUE(option.disableflags & mjDSBL_ISLAND);
 	EXPECT_FALSE(ReadRuntimeOptions(option).island);
+}
+
+TEST(RuntimeOptions, MulticcdIsOnByDefaultAndOnlyDisabledOnRequest)
+{
+	mjOption option;
+	mj_defaultOption(&option);
+	EXPECT_TRUE(RuntimeOptionsSnapshot{}.multiccd);
+	EXPECT_TRUE(ReadRuntimeOptions(option).multiccd);
+
+	RuntimeOptionsSnapshot snapshot = ReadRuntimeOptions(option);
+	WriteRuntimeOptions(snapshot, option);
+	EXPECT_FALSE(option.disableflags & mjDSBL_MULTICCD);
+
+	snapshot.multiccd = false;
+	WriteRuntimeOptions(snapshot, option);
+	EXPECT_TRUE(option.disableflags & mjDSBL_MULTICCD);
+	EXPECT_FALSE(ReadRuntimeOptions(option).multiccd);
 }
 
 TEST(RuntimeOptions, PassiveDisabledCoversSpringAndDamperTogether)

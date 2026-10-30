@@ -137,7 +137,8 @@ ROS 2 parameters.
 Field names match the configuration reference: integrator and solver settings,
 scalars such as ``timestep`` and ``iterations``, space-delimited arrays such as
 ``gravity`` and ``solimp``, disable flags ending in ``_disabled``, and enable
-flags such as ``energy`` and ``multiccd``.
+flags such as ``energy``. ``island`` and ``multiccd`` are on by default and map
+to MuJoCo's inverted ``mjDSBL_ISLAND`` and ``mjDSBL_MULTICCD`` disable bits.
 
 A rejected patch leaves the previous snapshot unchanged and does not advance the
 Options Epoch. Validation failures raise ``ValueError`` with

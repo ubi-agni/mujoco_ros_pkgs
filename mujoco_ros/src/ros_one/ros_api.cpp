@@ -161,7 +161,7 @@ void ReadSimParams(SimParamsConfig &config, mjModel *model_, const RosAPISetting
 		config.energy            = ((model_->opt.enableflags & mjENBL_ENERGY) != 0);
 		config.fwd_inv           = ((model_->opt.enableflags & mjENBL_FWDINV) != 0);
 		config.inv_discrete      = ((model_->opt.enableflags & mjENBL_INVDISCRETE) != 0);
-		config.multiccd          = ((model_->opt.enableflags & mjENBL_MULTICCD) != 0);
+		config.multiccd          = ((model_->opt.disableflags & mjDSBL_MULTICCD) == 0);
 		config.island            = ((model_->opt.disableflags & mjDSBL_ISLAND) == 0);
 
 		config.margin = model_->opt.o_margin;
@@ -261,7 +261,7 @@ void RosAPI::DynparamCallbackLegacy(mujoco_ros::SimParamsConfig &config, uint32_
 	mujoco_ros::util::flag_set_to(env_ptr_->model_->opt.enableflags, mjENBL_ENERGY, config.energy);
 	mujoco_ros::util::flag_set_to(env_ptr_->model_->opt.enableflags, mjENBL_FWDINV, config.fwd_inv);
 	mujoco_ros::util::flag_set_to(env_ptr_->model_->opt.enableflags, mjENBL_INVDISCRETE, config.inv_discrete);
-	mujoco_ros::util::flag_set_to(env_ptr_->model_->opt.enableflags, mjENBL_MULTICCD, config.multiccd);
+	mujoco_ros::util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_MULTICCD, !config.multiccd);
 	mujoco_ros::util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_ISLAND, !config.island);
 
 	env_ptr_->model_->opt.o_margin = config.margin;
