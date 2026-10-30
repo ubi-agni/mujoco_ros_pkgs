@@ -62,7 +62,7 @@ if (ROS_VERSION EQUAL "1")
   endif()
 
   # Find MuJoCo
-  find_package(mujoco 3.10.0 REQUIRED)
+  find_package(mujoco 3.11.0 REQUIRED)
   find_package(tinyxml2 REQUIRED)
   include(InstallMujocoToWorkspace)
 else()
@@ -104,7 +104,7 @@ else()
   find_package(sensor_msgs REQUIRED)
   find_package(std_srvs REQUIRED)
   find_package(tinyxml2 REQUIRED)
-  find_package(mujoco 3.10.0 REQUIRED)
+  find_package(mujoco 3.11.0 REQUIRED)
   include(InstallMujocoToWorkspace)
 endif()
 
