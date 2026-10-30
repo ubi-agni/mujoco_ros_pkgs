@@ -227,6 +227,8 @@ protected:
 	std::unique_ptr<testing::TestNodeHandle> nh;
 	std::unique_ptr<MujocoEnvTestWrapper> env_ptr;
 
+	virtual void ConfigureExtraParams() {}
+
 	void SetUp() override
 	{
 		nh = std::make_unique<testing::TestNodeHandle>("~");
@@ -235,6 +237,7 @@ protected:
 		nh->setParam("use_sim_time", true);
 		nh->setParam("num_mj_threads", GetParam());
 		configure_plugin_params(*nh);
+		ConfigureExtraParams();
 
 		env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
@@ -281,14 +284,17 @@ TEST_P(LoadedPluginFixture, ScanTopicCreated)
 	    << "Laser scan topic should have been generated";
 }
 
+// The engine threadpool (mju_threadpool) follows num_mj_threads: enabled iff the effective thread count is >= 2. The
+// laser plugin does not use it for ray casting; it always casts serially.
 TEST_P(LoadedPluginFixture, ThreadpoolModeMatchesConfiguration)
 {
 	const bool has_threadpool           = static_cast<bool>(env_ptr->getDataPtr()->threadpool);
 	const unsigned int hardware_threads = std::thread::hardware_concurrency();
 	const int available_threads         = hardware_threads > 1 ? static_cast<int>(hardware_threads - 1) : 0;
 	const int effective_threads         = std::min(GetParam(), available_threads);
-	EXPECT_EQ(has_threadpool, effective_threads > 1) << "Unexpected MuJoCo threadpool state for requested " << GetParam()
-	                                                 << " and effective " << effective_threads << " threads";
+	EXPECT_EQ(has_threadpool, effective_threads >= 2)
+	    << "Unexpected MuJoCo threadpool state for requested " << GetParam() << " and effective " << effective_threads
+	    << " threads";
 }
 
 TEST_P(LoadedPluginFixture, PublishesLaserScan)
@@ -342,6 +348,55 @@ TEST_P(LoadedPluginFixture, ScanStampRestartsAfterReset)
 	EXPECT_TRUE(restarted) << "No scan with a stamp below " << before_reset_ns << " ns after reset (last "
 	                       << last_stamp_ns.load() << " ns): rate gate muted scans or stamp is not sim time";
 }
+
+#if MJR_ROS_VERSION == ROS_2
+class NoiseFreeLaserFixture : public LoadedPluginFixture
+{
+protected:
+	void ConfigureExtraParams() override { nh->setParam("MujocoPlugins.mujoco_ros_laser.scan.sensor_std", 0.0); }
+};
+
+// Published ranges must equal a serial per-ray mj_ray loop with the laser's ray set and arguments, i.e. the
+// mj_multiRay hot path is output-identical to the former serial path (noise disabled).
+TEST_P(NoiseFreeLaserFixture, RangesMatchSerialMjRay)
+{
+	const auto msg = wait_for_scan_message(env_ptr.get(), nh.get());
+	ASSERT_TRUE(msg != nullptr) << "Could not get message on " << scan_topic_name(env_ptr.get());
+	ASSERT_GT(msg->ranges.size(), 100u);
+
+	const mjModel *m = env_ptr->getModelPtr();
+	const mjData *d  = env_ptr->getDataPtr();
+	const int site   = mj_name2id(m, mjOBJ_SITE, "laser_site");
+	ASSERT_GE(site, 0);
+
+	mjtByte groups[mjNGROUP];
+	std::fill(std::begin(groups), std::end(groups), 1);
+	groups[1] = 0;
+
+	int hits = 0;
+	for (size_t i = 0; i < msg->ranges.size(); ++i) {
+		const double angle    = msg->angle_min + static_cast<double>(i) * msg->angle_increment;
+		const mjtNum local[3] = { mju_cos(angle), mju_sin(angle), 0 };
+		mjtNum dir[3];
+		mju_mulMatVec3(dir, d->site_xmat + 9 * site, local);
+		int geomid      = -1;
+		mjtNum expected = mj_ray(m, d, d->site_xpos + 3 * site, dir, groups, 1, -1, &geomid, nullptr);
+		hits += expected >= 0 && expected < msg->range_max;
+		if (expected < 0) {
+			expected = msg->range_max;
+		}
+		expected = std::min<mjtNum>(std::max<mjtNum>(msg->range_min, expected), msg->range_max);
+		// Boxes rest on the plane and may creep by micrometres between the scan step and this check.
+		EXPECT_NEAR(msg->ranges[i], expected, 1e-4) << "ray " << i;
+	}
+	EXPECT_GT(hits, 5) << "Scan should hit the obstacles in the laser world";
+}
+
+INSTANTIATE_TEST_SUITE_P(LaserRanges, NoiseFreeLaserFixture, ::testing::Values(1, 2),
+                         [](const ::testing::TestParamInfo<int> &info) {
+	                         return info.param == 1 ? "SingleThreaded" : "MultiThreaded";
+                         });
+#endif
 
 INSTANTIATE_TEST_SUITE_P(LaserThreading, LoadedPluginFixture, ::testing::Values(1, 2),
                          [](const ::testing::TestParamInfo<int> &info) {

@@ -2,7 +2,7 @@
 
 Provides a CPU-based Laser sensor, using MuJoCo's `ray_collision` function.
 
-This plugin uses MuJoCo's threadpool, if using more than 1 thread is configured in the server.
+Rays are cast serially with one `mj_multiRay` call per scan. The server's `mujoco_threads` option does not parallelize laser scans; it only sizes MuJoCo's internal engine threadpool, which exists only for values above 1.
 
 ## Configuration Example
 
