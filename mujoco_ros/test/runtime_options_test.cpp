@@ -77,11 +77,43 @@ TEST(RuntimeOptions, ReadsAndWritesEveryNamedField)
 	expected.fwd_inv               = true;
 	expected.inv_discrete          = true;
 	expected.multiccd              = true;
-	expected.island                = true;
+	expected.island                = false;
 
 	ASSERT_TRUE(ValidateRuntimeOptions(expected).ok());
 	WriteRuntimeOptions(expected, option);
 	EXPECT_EQ(ReadRuntimeOptions(option), expected);
+}
+
+TEST(RuntimeOptions, IslandingIsOnByDefaultAndOnlyDisabledOnRequest)
+{
+	mjOption option;
+	mj_defaultOption(&option);
+	EXPECT_TRUE(RuntimeOptionsSnapshot{}.island);
+	EXPECT_TRUE(ReadRuntimeOptions(option).island);
+
+	RuntimeOptionsSnapshot snapshot = ReadRuntimeOptions(option);
+	WriteRuntimeOptions(snapshot, option);
+	EXPECT_FALSE(option.disableflags & mjDSBL_ISLAND);
+
+	snapshot.island = false;
+	WriteRuntimeOptions(snapshot, option);
+	EXPECT_TRUE(option.disableflags & mjDSBL_ISLAND);
+	EXPECT_FALSE(ReadRuntimeOptions(option).island);
+}
+
+TEST(RuntimeOptions, PassiveDisabledCoversSpringAndDamperTogether)
+{
+	mjOption option;
+	mj_defaultOption(&option);
+	RuntimeOptionsSnapshot snapshot = ReadRuntimeOptions(option);
+	snapshot.passive_disabled       = true;
+	WriteRuntimeOptions(snapshot, option);
+	EXPECT_EQ(option.disableflags, mjDSBL_SPRING | mjDSBL_DAMPER | 0);
+	EXPECT_TRUE(ReadRuntimeOptions(option).passive_disabled);
+
+	// A lone spring bit leaves damper forces active, so it is not "passive disabled".
+	option.disableflags = mjDSBL_SPRING;
+	EXPECT_FALSE(ReadRuntimeOptions(option).passive_disabled);
 }
 
 TEST(RuntimeOptions, InvalidPatchLeavesEveryEffectiveFieldUnchanged)

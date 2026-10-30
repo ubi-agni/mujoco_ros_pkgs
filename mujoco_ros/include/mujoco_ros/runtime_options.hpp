@@ -73,7 +73,7 @@ struct RuntimeOptionsSnapshot
 	bool fwd_inv           = false;
 	bool inv_discrete      = false;
 	bool multiccd          = false;
-	bool island            = false;
+	bool island            = true;
 
 	friend bool operator==(const RuntimeOptionsSnapshot &lhs, const RuntimeOptionsSnapshot &rhs)
 	{

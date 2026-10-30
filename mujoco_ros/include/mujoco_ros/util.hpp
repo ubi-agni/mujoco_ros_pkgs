@@ -104,13 +104,13 @@ static inline void arr_to_string(const mjtNum *arr, int size, std::string &str)
 		}
 	}
 }
-// Helper function to set a bit in a flags int
-static inline void bit_set_to(int &flags, int bit, bool value)
+// Helper function to set or clear a named MuJoCo flag mask (mjDSBL_* / mjENBL_*) in a flags int
+static inline void flag_set_to(int &flags, int mask, bool value)
 {
 	if (value) {
-		flags |= (1 << bit);
+		flags |= mask;
 	} else {
-		flags &= ~(1 << bit);
+		flags &= ~mask;
 	}
 }
 
