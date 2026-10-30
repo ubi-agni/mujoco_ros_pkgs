@@ -35,13 +35,13 @@ Create a workspace and clone the repository:
    cd ~/mujoco_ws/src
    git clone https://github.com/ubi-agni/mujoco_ros_pkgs -b hybrid-devel
 
-MuJoCo ROS currently expects MuJoCo 3.10.0. Make sure the headers and shared library come from the same MuJoCo installation.
+MuJoCo ROS currently expects MuJoCo 3.11.0. Make sure the headers and shared library come from the same MuJoCo installation.
 
 If MuJoCo was installed from an archive, expose it to CMake and the dynamic linker:
 
 .. code-block:: bash
 
-   export MUJOCO_DIR=$HOME/.mujoco/mujoco-3.10.0
+   export MUJOCO_DIR=$HOME/.mujoco/mujoco-3.11.0
    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$MUJOCO_DIR/lib
    export LIBRARY_PATH=$LIBRARY_PATH:$MUJOCO_DIR/lib
 
