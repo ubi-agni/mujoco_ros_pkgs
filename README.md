@@ -61,7 +61,7 @@ Install MuJoCo first. If MuJoCo is installed from a tarball, make sure the
 environment points at it:
 
 ```bash
-export MUJOCO_DIR=$HOME/.mujoco/mujoco-3.7.0
+export MUJOCO_DIR=$HOME/.mujoco/mujoco-3.8.0
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$MUJOCO_DIR/lib
 export LIBRARY_PATH=$LIBRARY_PATH:$MUJOCO_DIR/lib
 ```
