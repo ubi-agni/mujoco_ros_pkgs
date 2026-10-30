@@ -38,6 +38,9 @@
 #include <mujoco/mujoco.h>
 
 #include <cstdio>
+#include <cstdlib>
+#include <mutex>
+#include <string>
 #include <cstring>
 #include <thread>
 
@@ -78,6 +81,36 @@ namespace roscpp = rclcpp;
 #endif
 
 namespace mujoco_ros {
+
+void HandleMujocoLog(const mjLogMessage *message)
+{
+	std::string text = message->subject;
+	if (message->body != nullptr && message->body[0] != '\0') {
+		text += "\n";
+		text += message->body;
+	}
+	switch (message->level) {
+		case mjLOG_DEBUG:
+			MJR_DEBUG_STREAM("[MuJoCo] " << text);
+			break;
+		case mjLOG_INFO:
+			MJR_INFO_STREAM("[MuJoCo] " << text);
+			break;
+		case mjLOG_WARNING:
+			MJR_WARN_STREAM("[MuJoCo] " << text);
+			break;
+		default:
+			MJR_ERROR_STREAM("[MuJoCo] " << text);
+			// mju_error must not return; MuJoCo's default handler terminates the process.
+			std::exit(EXIT_FAILURE);
+	}
+}
+
+void InstallMujocoLogHandler()
+{
+	static std::once_flag installed;
+	std::call_once(installed, [] { mju_setLogHandler(HandleMujocoLog); });
+}
 namespace mju = ::mujoco::sample_util;
 
 ConnectedViewersLease &ConnectedViewersLease::operator=(ConnectedViewersLease &&other) noexcept
@@ -362,21 +395,24 @@ void MujocoEnv::Configure()
 
 	MJR_INFO_STREAM_COND(num_steps_until_exit_ > 0, "Sim will terminate after " << num_steps_until_exit_ << " steps");
 
+	InstallMujocoLogHandler();
+
 	int available_threads = std::thread::hardware_concurrency() - 1;
 	int num_threads       = settings_.num_mj_threads;
 	MJR_WARN_STREAM("The 'num_mj_threads' parameter, exposed by the 'mujoco_threads' launch argument, is deprecated. "
-	                "MuJoCo upstream is changing the public threading API to internal-only usage, so this behavior "
-	                "will change in the future.");
+	                "It only sizes MuJoCo's internal engine threadpool (mju_threadpool); plugins, e.g. the laser, run "
+	                "serially.");
 	MJR_WARN_STREAM_COND(num_threads > 1,
 	                     "Using more than one MuJoCo thread can increase CPU usage because MuJoCo worker threads "
 	                         << "busy-wait. See https://github.com/google-deepmind/mujoco/pull/2746");
 	num_threads = std::min(num_threads, available_threads);
-	if (num_threads > 1) {
-		threadpool_ = mju_threadPoolCreate(num_threads);
+	if (num_threads >= 2) {
+		// Applied to every mjData in LoadWithModelAndData via mju_threadpool; the pool is owned by the mjData.
+		mj_threadpool_size_ = num_threads;
 		MJR_INFO_STREAM("Using MuJoCo threadpool size of " << num_threads << " (max available: " << available_threads
 		                                                   << ")");
 	} else {
-		MJR_INFO_STREAM("Running MuJoCo in single-threaded mode (" << available_threads << " threads available)");
+		MJR_INFO_STREAM("Running MuJoCo single-threaded, no threadpool (" << available_threads << " threads available)");
 	}
 
 	// init VFS
@@ -1312,10 +1348,6 @@ MujocoEnv::~MujocoEnv()
 	model_.reset();
 	data_.reset();
 	mj_deleteVFS(&vfs_);
-
-	if (threadpool_ != nullptr) {
-		mju_threadPoolDestroy(threadpool_);
-	}
 }
 
 void MujocoEnv::DrainRenderConsumersForTeardown(bool clear_cameras) noexcept

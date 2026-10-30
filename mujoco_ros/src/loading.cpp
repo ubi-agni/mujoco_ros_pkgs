@@ -282,8 +282,8 @@ void MujocoEnv::LoadWithModelAndData()
 			    "recommended for most applications.");
 		}
 
-		if (threadpool_ != nullptr) {
-			mju_bindThreadPool(data_.get(), threadpool_);
+		if (mj_threadpool_size_ >= 2) {
+			mju_threadpool(data_.get(), mj_threadpool_size_);
 		}
 
 		// Update real-time settings

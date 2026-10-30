@@ -19,7 +19,7 @@
   <arg name="profile"              default="false" description="Whether mujoco_ros should be profiled." />
   <arg name="num_sim_steps"        default="-1" />
   <arg name="mujoco_plugin_config" default=""      description="Optionally provide the path to a yaml with plugin configurations to load." />
-  <arg name="mujoco_threads"       default="1"     description="Deprecated. Number of threads to use in the MuJoCo simulation. Values greater than 1 can increase CPU usage because MuJoCo worker threads busy-wait." />
+  <arg name="mujoco_threads"       default="1"     description="Deprecated. Number of threads for MuJoCo's internal engine threadpool, used only for values above 1 (plugins such as the laser run serially). Values greater than 1 can increase CPU usage because MuJoCo worker threads busy-wait." />
   <arg name="gdb_term_cmd"         default="gnome-terminal -- " description="Command to open gdb in a new terminal. Common alternative: 'xterm -e '" />
 
   <arg name="modelfile"            default="" description="Full MuJoCo model when description bundle unused. With urdf_source set: world MJCF to compose into (empty = built-in default_world)." />

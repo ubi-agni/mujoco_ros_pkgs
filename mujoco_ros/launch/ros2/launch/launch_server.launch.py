@@ -206,7 +206,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 'mujoco_threads',
                 default_value='1',
-                description='Deprecated. Number of MuJoCo simulation threads.',
+                description='Deprecated. Number of MuJoCo engine threadpool threads; a pool is used only above 1 (plugins run serially).',
             ),
             DeclareLaunchArgument(
                 'gdb_term_cmd',
