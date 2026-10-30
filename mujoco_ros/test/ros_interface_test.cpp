@@ -3051,7 +3051,7 @@ TEST_F(PendulumEnvFixture, DynamicReconfigureAllParams)
 	conf.bools.emplace_back(bool_param);
 
 	bool_param.name  = "island";
-	bool_param.value = true;
+	bool_param.value = false;
 	conf.bools.emplace_back(bool_param);
 
 	// contact override
@@ -3110,7 +3110,8 @@ TEST_F(PendulumEnvFixture, DynamicReconfigureAllParams)
 	EXPECT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_FRICTIONLOSS) << "Friction loss is already disabled!";
 	EXPECT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_LIMIT) << "Limit is already disabled!";
 	EXPECT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_CONTACT) << "Contact is already disabled!";
-	EXPECT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_PASSIVE) << "Passive is already disabled!";
+	EXPECT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_SPRING) << "Spring is already disabled!";
+	EXPECT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_DAMPER) << "Damper is already disabled!";
 	EXPECT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_GRAVITY) << "Gravity is already disabled!";
 	EXPECT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_CLAMPCTRL) << "Clamp control is already disabled!";
 	EXPECT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_WARMSTART) << "Warm start is already disabled!";
@@ -3126,7 +3127,7 @@ TEST_F(PendulumEnvFixture, DynamicReconfigureAllParams)
 	EXPECT_FALSE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_FWDINV) << "Forward inverse is already enabled!";
 	EXPECT_FALSE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_INVDISCRETE) << "Inverse discrete is already enabled!";
 	EXPECT_FALSE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_MULTICCD) << "Multi CCD is already enabled!";
-	EXPECT_FALSE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_ISLAND) << "Island is already enabled!";
+	EXPECT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_ISLAND) << "Islanding is already disabled!";
 
 	EXPECT_NE(env_ptr->getModelPtr()->opt.o_margin, 0.5) << "Margin is already set to the target value!";
 	EXPECT_NE(env_ptr->getModelPtr()->opt.o_solimp[0], 0.8) << "Solimp is already set to the target value!";
@@ -3185,7 +3186,8 @@ TEST_F(PendulumEnvFixture, DynamicReconfigureAllParams)
 	    << "Friction loss should have been disabled!";
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_LIMIT) << "Limit should have been disabled!";
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_CONTACT) << "Contact should have been disabled!";
-	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_PASSIVE) << "Passive should have been disabled!";
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_SPRING) << "Spring should have been disabled!";
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_DAMPER) << "Damper should have been disabled!";
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_GRAVITY) << "Gravity should have been disabled!";
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_CLAMPCTRL)
 	    << "Clamp control should have been disabled!";
@@ -3205,7 +3207,7 @@ TEST_F(PendulumEnvFixture, DynamicReconfigureAllParams)
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_INVDISCRETE)
 	    << "Inverse discrete should have been enabled!";
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_MULTICCD) << "Multi CCD should have been enabled!";
-	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_ISLAND) << "Island should have been enabled!";
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_ISLAND) << "Islanding should have been disabled!";
 
 	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_margin, 0.5) << "Margin should have been updated!";
 	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_solimp[0], 0.8) << "Solimp should have been updated!";
@@ -3355,7 +3357,7 @@ TEST_F(PendulumEnvFixture, RuntimeParameterAllParams)
 	    rclcpp::Parameter("fwd_inv", true),
 	    rclcpp::Parameter("inv_discrete", true),
 	    rclcpp::Parameter("multiccd", true),
-	    rclcpp::Parameter("island", true),
+	    rclcpp::Parameter("island", false),
 	    rclcpp::Parameter("margin", 0.5),
 	    rclcpp::Parameter("solimp", std::string("0.8 0.9 0.1 0.5 2")),
 	    rclcpp::Parameter("solref", std::string("0.03 1.1")),
@@ -3402,7 +3404,8 @@ TEST_F(PendulumEnvFixture, RuntimeParameterAllParams)
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_FRICTIONLOSS);
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_LIMIT);
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_CONTACT);
-	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_PASSIVE);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_SPRING);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_DAMPER);
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_GRAVITY);
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_CLAMPCTRL);
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_WARMSTART);
@@ -3418,7 +3421,7 @@ TEST_F(PendulumEnvFixture, RuntimeParameterAllParams)
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_FWDINV);
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_INVDISCRETE);
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_MULTICCD);
-	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_ISLAND);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_ISLAND);
 
 	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_margin, 0.5);
 	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_solimp[0], 0.8);
@@ -3430,6 +3433,71 @@ TEST_F(PendulumEnvFixture, RuntimeParameterAllParams)
 	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_friction[1], 0.5);
 	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_friction[2], 0.1);
 	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_friction[3], 0.1);
+}
+
+TEST_F(PendulumEnvFixture, RuntimeParameterFlagsMapToNamedBits)
+{
+	struct DisableCase
+	{
+		const char *name;
+		int mask;
+	};
+	const DisableCase disable_cases[] = {
+		{ "constraint_disabled", mjDSBL_CONSTRAINT },
+		{ "equality_disabled", mjDSBL_EQUALITY },
+		{ "frictionloss_disabled", mjDSBL_FRICTIONLOSS },
+		{ "limit_disabled", mjDSBL_LIMIT },
+		{ "contact_disabled", mjDSBL_CONTACT },
+		{ "passive_disabled", mjDSBL_SPRING | mjDSBL_DAMPER },
+		{ "gravity_disabled", mjDSBL_GRAVITY },
+		{ "clampctrl_disabled", mjDSBL_CLAMPCTRL },
+		{ "warmstart_disabled", mjDSBL_WARMSTART },
+		{ "filterparent_disabled", mjDSBL_FILTERPARENT },
+		{ "actuation_disabled", mjDSBL_ACTUATION },
+		{ "refsafe_disabled", mjDSBL_REFSAFE },
+		{ "sensor_disabled", mjDSBL_SENSOR },
+		{ "midphase_disabled", mjDSBL_MIDPHASE },
+		{ "eulerdamp_disabled", mjDSBL_EULERDAMP },
+	};
+	for (const auto &flag : disable_cases) {
+		const int before = env_ptr->getModelPtr()->opt.disableflags;
+		auto result      = env_ptr->set_parameters_atomically({ rclcpp::Parameter(flag.name, true) });
+		ASSERT_TRUE(result.successful) << flag.name << ": " << result.reason;
+		EXPECT_EQ(env_ptr->getModelPtr()->opt.disableflags, before | flag.mask) << flag.name;
+		result = env_ptr->set_parameters_atomically({ rclcpp::Parameter(flag.name, false) });
+		ASSERT_TRUE(result.successful) << flag.name << ": " << result.reason;
+		EXPECT_EQ(env_ptr->getModelPtr()->opt.disableflags, before) << flag.name;
+	}
+
+	const std::pair<const char *, int> enable_cases[] = {
+		{ "override_contacts", mjENBL_OVERRIDE }, { "energy", mjENBL_ENERGY },
+		{ "fwd_inv", mjENBL_FWDINV },             { "inv_discrete", mjENBL_INVDISCRETE },
+		{ "multiccd", mjENBL_MULTICCD },
+	};
+	for (const auto &flag : enable_cases) {
+		const int before = env_ptr->getModelPtr()->opt.enableflags;
+		auto result      = env_ptr->set_parameters_atomically({ rclcpp::Parameter(flag.first, true) });
+		ASSERT_TRUE(result.successful) << flag.first << ": " << result.reason;
+		EXPECT_EQ(env_ptr->getModelPtr()->opt.enableflags, before | flag.second) << flag.first;
+		result = env_ptr->set_parameters_atomically({ rclcpp::Parameter(flag.first, false) });
+		ASSERT_TRUE(result.successful) << flag.first << ": " << result.reason;
+		EXPECT_EQ(env_ptr->getModelPtr()->opt.enableflags, before) << flag.first;
+	}
+}
+
+TEST_F(PendulumEnvFixture, RuntimeParameterIslandDefaultsOnAndMapsToDisableBit)
+{
+	EXPECT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_ISLAND);
+	EXPECT_TRUE(env_ptr->get_parameter("island").as_bool());
+
+	auto result = env_ptr->set_parameters_atomically({ rclcpp::Parameter("island", false) });
+	ASSERT_TRUE(result.successful) << result.reason;
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_ISLAND);
+	EXPECT_FALSE(env_ptr->get_parameter("island").as_bool());
+
+	result = env_ptr->set_parameters_atomically({ rclcpp::Parameter("island", true) });
+	ASSERT_TRUE(result.successful) << result.reason;
+	EXPECT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_ISLAND);
 }
 
 TEST_F(PendulumEnvFixture, RuntimeParameterRejectsInvalidValues)

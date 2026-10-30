@@ -264,11 +264,26 @@ class PythonBindingsTest(unittest.TestCase):
                 self.assertTrue(env.runtime_options.sensor_disabled)
                 env.toggle_disableflag(mujoco.mjtDisableBit.mjDSBL_SENSOR)
                 self.assertFalse(env.runtime_options.sensor_disabled)
+
+                # Islanding is on by default; the disable bit inverts the `island` option.
+                self.assertTrue(env.runtime_options.island)
+                env.set_disableflag(mujoco.mjtDisableBit.mjDSBL_ISLAND, True)
+                self.assertFalse(env.runtime_options.island)
+                env.toggle_disableflag(mujoco.mjtDisableBit.mjDSBL_ISLAND)
+                self.assertTrue(env.runtime_options.island)
+
+                # Passive covers spring and damper together.
+                env.set_disableflag(mujoco.mjtDisableBit.mjDSBL_SPRING, True)
+                self.assertTrue(env.runtime_options.passive_disabled)
+                env.set_disableflag(mujoco.mjtDisableBit.mjDSBL_DAMPER, False)
+                self.assertFalse(env.runtime_options.passive_disabled)
             finally:
                 env.apply_runtime_options(
                     {
                         'energy': original_energy,
                         'sensor_disabled': original_sensor_disabled,
+                        'island': True,
+                        'passive_disabled': False,
                     }
                 )
 
