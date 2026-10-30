@@ -1311,7 +1311,6 @@ MujocoEnv::~MujocoEnv()
 
 	model_.reset();
 	data_.reset();
-	free(this->ctrlnoise_);
 	mj_deleteVFS(&vfs_);
 
 	if (threadpool_ != nullptr) {
