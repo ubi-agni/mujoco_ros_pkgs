@@ -118,3 +118,4 @@ Branch Status
 
 This package is hybrid in ``hybrid-devel``.
 The ROS 1 and ROS 2 implementations use different control framework APIs, but share the same actuator mapping semantics.
+ROS 2 selects Humble vs Jazzy ``hardware_interface`` types with ``RCLCPP_VERSION_GTE(28,0,0)``.

@@ -2,6 +2,7 @@
 ## Unreleased
 
 ### Changed
+* [patch] Gate `mujoco_ros_control` Jazzy `hardware_interface` APIs behind `RCLCPP_VERSION_GTE(28,0,0)` so Humble keeps `HardwareInfo` call sites and both distros build from one tree.
 * [patch] Render RGB and depth in one `mjr_render` / `mjr_readPixels` pass when both planes are demanded, so RGB+D offscreen capture no longer pays for two full render+readback cycles (segmentation stays a separate pass).
 * [patch] Publish `/clock` with a stack `rosgraph_msgs::msg::Clock` every physics step and stop gating clock setup/publish on `EnvSettings::use_sim_time` (ROS `use_sim_time` remains for graph consumers), removing a per-step heap allocation on the clock path.
 * [chore] Document the ROS 2 MuJoCo server `use_sim_time=false` + rcl ros-time override workaround in `docs/ros_api/mujoco_server_options/mujoco_server_options.rst` (fix-ros-time-update)
