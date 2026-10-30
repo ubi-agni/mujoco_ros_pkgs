@@ -208,7 +208,7 @@ public:
 	mjStatistic mjstat_prev_;
 	mjvOption opt_prev_;
 	mjvCamera cam_prev_;
-	int warn_vgeomfull_prev_;
+	bool warned_user_geoms_truncated_ = false;
 
 	// pending GUI-driven actions, to be applied at the next call to Sync
 	struct
