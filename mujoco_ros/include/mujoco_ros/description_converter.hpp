@@ -90,19 +90,17 @@ JointCommandInterfaces ParseRos2ControlCommandInterfaces(const std::string &urdf
 std::map<std::string, std::string> ParseMimicFollowers(const std::string &urdf_text);
 
 // Reads every <joint><mimic joint="..." multiplier="..." offset="..."/> tag
-// from raw URDF text and adds one mjEQ_JOINT <equality> per follower to
-// `spec`, so the follower joint's qpos is physically constrained to
-// multiplier*driver_qpos + offset -- MuJoCo's own URDF importer does not
-// understand <mimic> and silently drops it, so without this call a mimic
-// follower joint with no actuator of its own (the normal case: it's a
-// mimic follower specifically so it does NOT get its own actuator) is
-// completely unconstrained and free-swings. Chained mimics (a follower
-// whose driver is itself a follower) work: each pair gets its own
-// independent equality constraint. Call this unconditionally -- mimic
+// from raw URDF text and finalizes the mjEQ_JOINT <equality> that MuJoCo's
+// URDF importer (>= 3.13) already created per follower: it is named
+// `<follower>_mimic_eq` and its offset/multiplier rewritten from the parsed
+// tag, so the follower's qpos is constrained to multiplier*driver_qpos +
+// offset. No second equality is added. Chained mimics (a follower whose
+// driver is itself a follower) work: each pair has its own equality. Call this unconditionally -- mimic
 // coupling is a property of the URDF, not of whether ros2_control actuators
 // are generated. Throws std::runtime_error under the same conditions as
 // ParseMimicFollowers, plus if a follower or driver joint name from a
-// <mimic> tag does not exist in the compiled `spec`.
+// <mimic> tag does not exist in `spec`, or if `spec` does not contain exactly
+// one matching joint equality (the importer failed to emit it).
 void ApplyMimicEqualityConstraints(mjSpec *spec, const std::string &urdf_text);
 
 // Reads every <joint><friction ds="..."/> tag from raw URDF text, returning

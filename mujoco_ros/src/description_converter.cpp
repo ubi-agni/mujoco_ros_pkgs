@@ -599,13 +599,32 @@ void ApplyMimicEqualityConstraints(mjSpec *spec, const std::string &urdf_text)
 			                         "' which does not exist in "
 			                         "the URDF");
 
-		mjsEquality *equality  = mjs_addEquality(spec, nullptr);
+		// MuJoCo >= 3.13 emits the mimic equality itself while parsing the URDF.
+		// Locate it instead of adding one: a second equality would double-weight
+		// the coupling. Our parse stays the source of truth for the values.
+		mjsEquality *equality = nullptr;
+		for (mjsElement *element = mjs_firstElement(spec, mjOBJ_EQUALITY); element != nullptr;
+		     element             = mjs_nextElement(spec, element)) {
+			mjsEquality *candidate = mjs_asEquality(element);
+			if (candidate->type != mjEQ_JOINT)
+				continue;
+			const char *name1 = mjs_getString(candidate->name1);
+			const char *name2 = mjs_getString(candidate->name2);
+			if (name1 == nullptr || name2 == nullptr || follower != name1 || constraint.driver != name2)
+				continue;
+			if (equality != nullptr)
+				throw std::runtime_error(
+				    "Robot Description Converter: multiple joint equalities couple <mimic> follower '" + follower +
+				    "' to driver '" + constraint.driver + "'");
+			equality = candidate;
+		}
+		if (equality == nullptr)
+			throw std::runtime_error(
+			    "Robot Description Converter: MuJoCo's URDF parser did not emit the joint equality for "
+			    "<mimic> follower '" +
+			    follower + "' (driver '" + constraint.driver + "')");
 		const std::string name = follower + "_mimic_eq";
 		mjs_setName(equality->element, name.c_str());
-		equality->type    = mjEQ_JOINT;
-		equality->objtype = mjOBJ_JOINT;
-		mjs_setString(equality->name1, follower.c_str());
-		mjs_setString(equality->name2, constraint.driver.c_str());
 		// mjEQ_JOINT: qpos(name1) = data[0] + data[1]*qpos(name2) + data[2]*qpos(name2)^2 + ...
 		// URDF <mimic multiplier="m" offset="o"/> defines: follower = m*driver + o.
 		equality->data[0] = constraint.offset;

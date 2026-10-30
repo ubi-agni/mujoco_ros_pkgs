@@ -390,6 +390,7 @@ TEST_F(DescriptionConverterTest, MimicFollowerGetsAnEqualityConstraintCouplingIt
 
 	ASSERT_EQ(model->neq, 1);
 	EXPECT_EQ(model->eq_type[0], mjEQ_JOINT);
+	EXPECT_STREQ(mj_id2name(model, mjOBJ_EQUALITY, 0), "follower_joint_mimic_eq");
 	const int follower_id = mj_name2id(model, mjOBJ_JOINT, "follower_joint");
 	const int driver_id   = mj_name2id(model, mjOBJ_JOINT, "driver_joint");
 	ASSERT_NE(follower_id, -1);
@@ -411,6 +412,35 @@ TEST_F(DescriptionConverterTest, MimicFollowerGetsAnEqualityConstraintCouplingIt
 	EXPECT_DOUBLE_EQ(model->dof_armature[model->jnt_dofadr[follower_dof]], 5e-4);
 
 	mj_deleteModel(model);
+	mj_deleteSpec(result.spec);
+}
+
+TEST_F(DescriptionConverterTest, MimicEqualityCarriesTheParsedMultiplierAndOffset)
+{
+	// mimic_scaled_robot.urdf: multiplier="2.5" offset="0.3"
+	auto result    = mju::ConvertDescription(Resource("mimic_scaled_robot.urdf"), "", {}, false);
+	mjModel *model = mju::CompileWithMeshVfs(result.spec, result.basename_to_dir);
+	ASSERT_NE(model, nullptr) << mjs_getError(result.spec);
+
+	ASSERT_EQ(model->neq, 1);
+	EXPECT_EQ(model->eq_type[0], mjEQ_JOINT);
+	EXPECT_DOUBLE_EQ(model->eq_data[mjNEQDATA * 0 + 0], 0.3); // offset
+	EXPECT_DOUBLE_EQ(model->eq_data[mjNEQDATA * 0 + 1], 2.5); // multiplier
+	for (int k = 2; k < 5; ++k)
+		EXPECT_DOUBLE_EQ(model->eq_data[mjNEQDATA * 0 + k], 0.0);
+
+	mj_deleteModel(model);
+	mj_deleteSpec(result.spec);
+}
+
+TEST_F(DescriptionConverterTest, ApplyMimicEqualityConstraintsThrowsWhenNativeEqualityIsMissing)
+{
+	// Both joints exist, but the URDF the spec came from has no <mimic>, so the
+	// importer emitted no equality; the converter must not paper over that.
+	auto result = mju::ConvertDescription(Resource("two_joint_robot.urdf"), "", {}, false);
+	EXPECT_THROW(mju::ApplyMimicEqualityConstraints(result.spec, "<robot><joint name=\"follower_joint\"><mimic "
+	                                                             "joint=\"driver_joint\"/></joint></robot>"),
+	             std::runtime_error);
 	mj_deleteSpec(result.spec);
 }
 
