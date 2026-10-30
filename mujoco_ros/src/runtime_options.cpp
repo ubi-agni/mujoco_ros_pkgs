@@ -179,7 +179,7 @@ RuntimeOptionsSnapshot ReadRuntimeOptions(const mjOption &option)
 	result.frictionloss_disabled = (option.disableflags & mjDSBL_FRICTIONLOSS) != 0;
 	result.limit_disabled        = (option.disableflags & mjDSBL_LIMIT) != 0;
 	result.contact_disabled      = (option.disableflags & mjDSBL_CONTACT) != 0;
-	result.passive_disabled      = (option.disableflags & mjDSBL_PASSIVE) != 0;
+	result.passive_disabled      = (option.disableflags & (mjDSBL_SPRING | mjDSBL_DAMPER)) == (mjDSBL_SPRING | mjDSBL_DAMPER);
 	result.gravity_disabled      = (option.disableflags & mjDSBL_GRAVITY) != 0;
 	result.clampctrl_disabled    = (option.disableflags & mjDSBL_CLAMPCTRL) != 0;
 	result.warmstart_disabled    = (option.disableflags & mjDSBL_WARMSTART) != 0;
@@ -194,7 +194,7 @@ RuntimeOptionsSnapshot ReadRuntimeOptions(const mjOption &option)
 	result.fwd_inv               = (option.enableflags & mjENBL_FWDINV) != 0;
 	result.inv_discrete          = (option.enableflags & mjENBL_INVDISCRETE) != 0;
 	result.multiccd              = (option.enableflags & mjENBL_MULTICCD) != 0;
-	result.island                = (option.enableflags & mjENBL_ISLAND) != 0;
+	result.island                = (option.disableflags & mjDSBL_ISLAND) == 0;
 	return result;
 }
 
@@ -505,7 +505,7 @@ void WriteRuntimeOptions(const RuntimeOptionsSnapshot &snapshot, mjOption &optio
 	SetBit(option.disableflags, mjDSBL_FRICTIONLOSS, snapshot.frictionloss_disabled);
 	SetBit(option.disableflags, mjDSBL_LIMIT, snapshot.limit_disabled);
 	SetBit(option.disableflags, mjDSBL_CONTACT, snapshot.contact_disabled);
-	SetBit(option.disableflags, mjDSBL_PASSIVE, snapshot.passive_disabled);
+	SetBit(option.disableflags, mjDSBL_SPRING | mjDSBL_DAMPER, snapshot.passive_disabled);
 	SetBit(option.disableflags, mjDSBL_GRAVITY, snapshot.gravity_disabled);
 	SetBit(option.disableflags, mjDSBL_CLAMPCTRL, snapshot.clampctrl_disabled);
 	SetBit(option.disableflags, mjDSBL_WARMSTART, snapshot.warmstart_disabled);
@@ -521,7 +521,7 @@ void WriteRuntimeOptions(const RuntimeOptionsSnapshot &snapshot, mjOption &optio
 	SetBit(option.enableflags, mjENBL_FWDINV, snapshot.fwd_inv);
 	SetBit(option.enableflags, mjENBL_INVDISCRETE, snapshot.inv_discrete);
 	SetBit(option.enableflags, mjENBL_MULTICCD, snapshot.multiccd);
-	SetBit(option.enableflags, mjENBL_ISLAND, snapshot.island);
+	SetBit(option.disableflags, mjDSBL_ISLAND, !snapshot.island);
 }
 
 } // namespace mujoco_ros

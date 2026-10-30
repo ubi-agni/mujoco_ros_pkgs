@@ -195,7 +195,7 @@ RosAPI::RosAPI(MujocoEnvPtr env_ptr) : env_ptr_(env_ptr)
 	DeclareRuntimeParameter(env_ptr_, "fwd_inv", false);
 	DeclareRuntimeParameter(env_ptr_, "inv_discrete", false);
 	DeclareRuntimeParameter(env_ptr_, "multiccd", false);
-	DeclareRuntimeParameter(env_ptr_, "island", false);
+	DeclareRuntimeParameter(env_ptr_, "island", true);
 
 	DeclareRuntimeParameter(env_ptr_, "margin", 0.0);
 	DeclareRuntimeParameter(env_ptr_, "solimp", std::string("0.9 0.95 0.001 0.5 2"));
@@ -357,7 +357,7 @@ void RosAPI::UpdateDynamicParams()
 		parameters.emplace_back("frictionloss_disabled", static_cast<bool>(opt.disableflags & mjDSBL_FRICTIONLOSS));
 		parameters.emplace_back("limit_disabled", static_cast<bool>(opt.disableflags & mjDSBL_LIMIT));
 		parameters.emplace_back("contact_disabled", static_cast<bool>(opt.disableflags & mjDSBL_CONTACT));
-		parameters.emplace_back("passive_disabled", static_cast<bool>(opt.disableflags & mjDSBL_PASSIVE));
+		parameters.emplace_back("passive_disabled", (opt.disableflags & (mjDSBL_SPRING | mjDSBL_DAMPER)) == (mjDSBL_SPRING | mjDSBL_DAMPER));
 		parameters.emplace_back("gravity_disabled", static_cast<bool>(opt.disableflags & mjDSBL_GRAVITY));
 		parameters.emplace_back("clampctrl_disabled", static_cast<bool>(opt.disableflags & mjDSBL_CLAMPCTRL));
 		parameters.emplace_back("warmstart_disabled", static_cast<bool>(opt.disableflags & mjDSBL_WARMSTART));
@@ -373,7 +373,7 @@ void RosAPI::UpdateDynamicParams()
 		parameters.emplace_back("fwd_inv", static_cast<bool>(opt.enableflags & mjENBL_FWDINV));
 		parameters.emplace_back("inv_discrete", static_cast<bool>(opt.enableflags & mjENBL_INVDISCRETE));
 		parameters.emplace_back("multiccd", static_cast<bool>(opt.enableflags & mjENBL_MULTICCD));
-		parameters.emplace_back("island", static_cast<bool>(opt.enableflags & mjENBL_ISLAND));
+		parameters.emplace_back("island", !static_cast<bool>(opt.disableflags & mjDSBL_ISLAND));
 
 		parameters.emplace_back("margin", opt.o_margin);
 		parameters.emplace_back("solimp", ArrayToString(opt.o_solimp, mjNIMP));
@@ -543,47 +543,47 @@ rcl_interfaces::msg::SetParametersResult RosAPI::DynamicParamsCallbackLegacy(con
 			} else if (name == "impratio") {
 				env_ptr_->model_->opt.impratio = parameter.as_double();
 			} else if (name == "constraint_disabled") {
-				util::bit_set_to(env_ptr_->model_->opt.disableflags, 0, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_CONSTRAINT, parameter.as_bool());
 			} else if (name == "equality_disabled") {
-				util::bit_set_to(env_ptr_->model_->opt.disableflags, 1, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_EQUALITY, parameter.as_bool());
 			} else if (name == "frictionloss_disabled") {
-				util::bit_set_to(env_ptr_->model_->opt.disableflags, 2, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_FRICTIONLOSS, parameter.as_bool());
 			} else if (name == "limit_disabled") {
-				util::bit_set_to(env_ptr_->model_->opt.disableflags, 3, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_LIMIT, parameter.as_bool());
 			} else if (name == "contact_disabled") {
-				util::bit_set_to(env_ptr_->model_->opt.disableflags, 4, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_CONTACT, parameter.as_bool());
 			} else if (name == "passive_disabled") {
-				util::bit_set_to(env_ptr_->model_->opt.disableflags, 5, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_SPRING | mjDSBL_DAMPER, parameter.as_bool());
 			} else if (name == "gravity_disabled") {
-				util::bit_set_to(env_ptr_->model_->opt.disableflags, 6, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_GRAVITY, parameter.as_bool());
 			} else if (name == "clampctrl_disabled") {
-				util::bit_set_to(env_ptr_->model_->opt.disableflags, 7, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_CLAMPCTRL, parameter.as_bool());
 			} else if (name == "warmstart_disabled") {
-				util::bit_set_to(env_ptr_->model_->opt.disableflags, 8, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_WARMSTART, parameter.as_bool());
 			} else if (name == "filterparent_disabled") {
-				util::bit_set_to(env_ptr_->model_->opt.disableflags, 9, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_FILTERPARENT, parameter.as_bool());
 			} else if (name == "actuation_disabled") {
-				util::bit_set_to(env_ptr_->model_->opt.disableflags, 10, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_ACTUATION, parameter.as_bool());
 			} else if (name == "refsafe_disabled") {
-				util::bit_set_to(env_ptr_->model_->opt.disableflags, 11, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_REFSAFE, parameter.as_bool());
 			} else if (name == "sensor_disabled") {
-				util::bit_set_to(env_ptr_->model_->opt.disableflags, 12, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_SENSOR, parameter.as_bool());
 			} else if (name == "midphase_disabled") {
-				util::bit_set_to(env_ptr_->model_->opt.disableflags, 13, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_MIDPHASE, parameter.as_bool());
 			} else if (name == "eulerdamp_disabled") {
-				util::bit_set_to(env_ptr_->model_->opt.disableflags, 14, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_EULERDAMP, parameter.as_bool());
 			} else if (name == "override_contacts") {
-				util::bit_set_to(env_ptr_->model_->opt.enableflags, 0, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.enableflags, mjENBL_OVERRIDE, parameter.as_bool());
 			} else if (name == "energy") {
-				util::bit_set_to(env_ptr_->model_->opt.enableflags, 1, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.enableflags, mjENBL_ENERGY, parameter.as_bool());
 			} else if (name == "fwd_inv") {
-				util::bit_set_to(env_ptr_->model_->opt.enableflags, 2, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.enableflags, mjENBL_FWDINV, parameter.as_bool());
 			} else if (name == "inv_discrete") {
-				util::bit_set_to(env_ptr_->model_->opt.enableflags, 3, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.enableflags, mjENBL_INVDISCRETE, parameter.as_bool());
 			} else if (name == "multiccd") {
-				util::bit_set_to(env_ptr_->model_->opt.enableflags, 4, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.enableflags, mjENBL_MULTICCD, parameter.as_bool());
 			} else if (name == "island") {
-				util::bit_set_to(env_ptr_->model_->opt.enableflags, 5, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_ISLAND, !parameter.as_bool());
 			} else if (name == "margin") {
 				env_ptr_->model_->opt.o_margin = parameter.as_double();
 			} else if (name == "solimp") {

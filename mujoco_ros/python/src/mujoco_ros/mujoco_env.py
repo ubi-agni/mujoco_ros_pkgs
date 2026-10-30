@@ -271,7 +271,6 @@ _ENABLE_FLAG_FIELDS = {
     int(mujoco.mjtEnableBit.mjENBL_FWDINV): 'fwd_inv',
     int(mujoco.mjtEnableBit.mjENBL_INVDISCRETE): 'inv_discrete',
     int(mujoco.mjtEnableBit.mjENBL_MULTICCD): 'multiccd',
-    int(mujoco.mjtEnableBit.mjENBL_ISLAND): 'island',
 }
 
 _DISABLE_FLAG_FIELDS = {
@@ -280,7 +279,9 @@ _DISABLE_FLAG_FIELDS = {
     int(mujoco.mjtDisableBit.mjDSBL_FRICTIONLOSS): 'frictionloss_disabled',
     int(mujoco.mjtDisableBit.mjDSBL_LIMIT): 'limit_disabled',
     int(mujoco.mjtDisableBit.mjDSBL_CONTACT): 'contact_disabled',
-    int(mujoco.mjtDisableBit.mjDSBL_PASSIVE): 'passive_disabled',
+    # Passive is exposed as one option that covers both bits, so either bit maps to it.
+    int(mujoco.mjtDisableBit.mjDSBL_SPRING): 'passive_disabled',
+    int(mujoco.mjtDisableBit.mjDSBL_DAMPER): 'passive_disabled',
     int(mujoco.mjtDisableBit.mjDSBL_GRAVITY): 'gravity_disabled',
     int(mujoco.mjtDisableBit.mjDSBL_CLAMPCTRL): 'clampctrl_disabled',
     int(mujoco.mjtDisableBit.mjDSBL_WARMSTART): 'warmstart_disabled',
@@ -290,7 +291,11 @@ _DISABLE_FLAG_FIELDS = {
     int(mujoco.mjtDisableBit.mjDSBL_SENSOR): 'sensor_disabled',
     int(mujoco.mjtDisableBit.mjDSBL_MIDPHASE): 'midphase_disabled',
     int(mujoco.mjtDisableBit.mjDSBL_EULERDAMP): 'eulerdamp_disabled',
+    int(mujoco.mjtDisableBit.mjDSBL_ISLAND): 'island',
 }
+
+# Runtime option fields that hold the opposite sense of their MuJoCo disable bit.
+_INVERTED_DISABLE_FIELDS = frozenset({'island'})
 
 
 class MujocoEnv:
@@ -754,10 +759,11 @@ class MujocoEnv:
         field = _DISABLE_FLAG_FIELDS.get(int(bit))
         if field is None:
             raise ValueError(f'unsupported disable flag bit: {bit}')
+        value = not disable if field in _INVERTED_DISABLE_FIELDS else disable
         current = getattr(self.runtime_options, field)
-        if current == disable:
+        if current == value:
             return
-        self.apply_runtime_options({field: disable})
+        self.apply_runtime_options({field: value})
 
     def toggle_enableflag(self, bit: int):
         if isinstance(bit, mujoco._enums.mjtEnableBit):
