@@ -689,9 +689,6 @@ void UpdateWatch(mujoco_ros::Viewer *viewer, const mjModel *m, const mjData *d)
 	viewer->ui0.sect[SECT_WATCH].item[2].multi.nelem = 1;
 	mju::strcpy_arr(viewer->ui0.sect[SECT_WATCH].item[2].multi.name[0], "invalid field");
 
-	// prepare symbols needed by xmacro
-	MJDATA_POINTERS_PREAMBLE(m);
-
 // find specified field in mjData arrays, update value
 #define X(TYPE, NAME, NR, NC)                                                                     \
 	if (!mju::strcmp_arr(#NAME, viewer->field) && !mju::strcmp_arr(#TYPE, "mjtNum")) {             \
