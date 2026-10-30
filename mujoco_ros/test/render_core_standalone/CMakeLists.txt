@@ -132,7 +132,7 @@ if(NOT EXPECTED_MUJOCO_DIR STREQUAL "")
     )
   endif()
   get_filename_component(_expected_mujoco_library
-    "${EXPECTED_MUJOCO_DIR}/lib/libmujoco.so.3.3.6" REALPATH
+    "${EXPECTED_MUJOCO_DIR}/lib/libmujoco.so.3.3.7" REALPATH
   )
   _assert_imported_locations(
     mujoco::mujoco
