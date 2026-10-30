@@ -55,6 +55,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <thread>
@@ -376,7 +377,10 @@ TEST_P(NoiseFreeLaserFixture, RangesMatchSerialMjRay)
 	std::fill(std::begin(groups), std::end(groups), 1);
 	groups[1] = 0;
 
-	int hits = 0;
+	const int mocap_body = mj_name2id(m, mjOBJ_BODY, "mocap_obs");
+	ASSERT_GE(mocap_body, 0);
+
+	int hits = 0; // hits on anything but the mocap box, so obs0..2 stay exercised
 	for (size_t i = 0; i < msg->ranges.size(); ++i) {
 		const double angle    = msg->angle_min + static_cast<double>(i) * msg->angle_increment;
 		const mjtNum local[3] = { mju_cos(angle), mju_sin(angle), 0 };
@@ -384,7 +388,7 @@ TEST_P(NoiseFreeLaserFixture, RangesMatchSerialMjRay)
 		mju_mulMatVec3(dir, d->site_xmat + 9 * site, local);
 		int geomid      = -1;
 		mjtNum expected = mj_ray(m, d, d->site_xpos + 3 * site, dir, groups, 1, -1, &geomid, nullptr);
-		hits += expected >= 0 && expected < msg->range_max;
+		hits += expected >= 0 && expected < msg->range_max && m->geom_bodyid[geomid] != mocap_body;
 		if (expected < 0) {
 			expected = msg->range_max;
 		}
@@ -392,7 +396,69 @@ TEST_P(NoiseFreeLaserFixture, RangesMatchSerialMjRay)
 		// Boxes rest on the plane and may creep by micrometres between the scan step and this check.
 		EXPECT_NEAR(msg->ranges[i], expected, 1e-4) << "ray " << i;
 	}
-	EXPECT_GT(hits, 5) << "Scan should hit the obstacles in the laser world";
+	EXPECT_GT(hits, 5) << "Scan should hit the free obstacles in the laser world";
+}
+
+// A mocap box in the beam must register in the scan and the range must follow mocap_pos, and a static world geom
+// must still be hit. Guards MuJoCo >= 3.12 ray semantics: flg_static=1 hits mocap, dynamic and static geoms, while
+// flg_static=0 would drop the static wall (and the ground plane).
+TEST_P(NoiseFreeLaserFixture, RangesFollowMocapObstacle)
+{
+	mjModel *m     = env_ptr->getModelPtr();
+	mjData *d      = env_ptr->getDataPtr();
+	const int site = mj_name2id(m, mjOBJ_SITE, "laser_site");
+	const int body = mj_name2id(m, mjOBJ_BODY, "mocap_obs");
+	const int wall = mj_name2id(m, mjOBJ_GEOM, "static_wall");
+	ASSERT_GE(site, 0);
+	ASSERT_GE(body, 0);
+	ASSERT_GE(wall, 0);
+	const int mocap_id = m->body_mocapid[body];
+	ASSERT_GE(mocap_id, 0) << "mocap_obs must be a mocap body";
+	ASSERT_EQ(m->body_weldid[m->geom_bodyid[wall]], 0) << "static_wall must be a world geom";
+
+	const double half_extent = m->geom_size[3 * m->body_geomadr[body]];
+	const double sx          = d->site_xpos[3 * site];
+	const double sy          = d->site_xpos[3 * site + 1];
+
+	// Ray index closest to the bearing of (x, y) from the laser site; the laser frame is axis-aligned with the world.
+	auto ray_towards = [](const LaserScanMsg &msg, double x, double y, double &angle) {
+		const size_t idx = static_cast<size_t>(std::lround((std::atan2(y, x) - msg.angle_min) / msg.angle_increment));
+		angle            = msg.angle_min + static_cast<double>(idx) * msg.angle_increment;
+		return idx;
+	};
+
+	// Range to the mocap box's -x face along the ray aimed at the box centre.
+	auto mocap_range = [&](double box_x) -> double {
+		d->mocap_pos[3 * mocap_id] = box_x;
+		const auto msg             = wait_for_scan_message(env_ptr.get(), nh.get());
+		EXPECT_TRUE(msg != nullptr);
+		if (msg == nullptr) {
+			return -1;
+		}
+		const double box_y = d->mocap_pos[3 * mocap_id + 1];
+		double angle;
+		const size_t idx      = ray_towards(*msg, box_x - sx, box_y - sy, angle);
+		const double expected = (box_x - half_extent - sx) / std::cos(angle);
+		EXPECT_NEAR(msg->ranges[idx], expected, 1e-3) << "mocap box at x=" << box_x;
+		return msg->ranges[idx];
+	};
+
+	env_ptr->togglePaused(true);
+	const double near_range = mocap_range(3.0);
+	const double far_range  = mocap_range(4.0);
+	// Both ranges are checked analytically above; the oblique ray makes the delta slightly differ from 1.0.
+	EXPECT_GT(far_range - near_range, 0.9) << "Range must follow the moved mocap box";
+
+	// Static wall at +y, not shadowed by the mocap box (at -y): ray hits its -y face.
+	const auto msg = wait_for_scan_message(env_ptr.get(), nh.get());
+	ASSERT_TRUE(msg != nullptr);
+	const double *wc = d->geom_xpos + 3 * wall;
+	double angle;
+	const size_t idx    = ray_towards(*msg, wc[0] - sx, wc[1] - sy, angle);
+	const double face_y = wc[1] - m->geom_size[3 * wall + 1];
+	const double hit_x  = sx + (face_y - sy) / std::tan(angle);
+	ASSERT_LT(std::abs(hit_x - wc[0]), m->geom_size[3 * wall]) << "test ray must land on the wall face";
+	EXPECT_NEAR(msg->ranges[idx], (face_y - sy) / std::sin(angle), 1e-3) << "static world geom must be hit";
 }
 
 // Every ray of a scan must advance the shared noise generator. Rays with identical true range then get distinct noise.

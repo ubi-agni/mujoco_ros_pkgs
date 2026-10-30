@@ -30,6 +30,12 @@
             <geom type="box" size="0.2 0.2 0.2" rgba="1. 0 0. 1." />
         </body>
 
+        <geom name="static_wall" type="box" pos="2. 4. 0.2" size="0.2 0.2 0.2" rgba="0. 1. 0. 1." />
+
+        <body name="mocap_obs" mocap="true" pos="3. -0.8 0.2">
+            <geom type="box" size="0.2 0.2 0.2" rgba="0. 0 1. 1." />
+        </body>
+
         <body name="laser" pos="0 0 .3">
             <geom type="box" size=".2 .2 .3" rgba="0.8 0.8 0.8 0.2" />
             <site pos=".21 0 -0.1" name="laser_site" size="0.05" />
