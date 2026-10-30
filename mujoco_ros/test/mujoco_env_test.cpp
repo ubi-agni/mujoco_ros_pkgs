@@ -3515,6 +3515,38 @@ TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesUpdatesModelAndPreservesQpos
 	}
 }
 
+TEST_F(PendulumEnvFixture, SaveModelXmlAfterInertialEditSucceedsWithoutNotice)
+{
+	ASSERT_TRUE(
+	    env_ptr->SetBodyInertialProperties("immovable", kValidMass, kValidIpos, kValidPrincipalInertia, kValidIquat));
+
+	const std::string path = "/tmp/mujoco_ros_save_xml_test_ok.xml";
+	std::remove(path.c_str());
+	char notice[1000] = "";
+	EXPECT_TRUE(mujoco_ros::SaveModelXml(path, env_ptr->getModelPtr(), notice, sizeof(notice)));
+	EXPECT_STREQ(notice, "");
+	EXPECT_EQ(std::remove(path.c_str()), 0) << "saved XML file was not written";
+}
+
+TEST_F(PendulumEnvFixture, SaveModelXmlFailureIsSurfacedWithoutTerminating)
+{
+	ASSERT_TRUE(
+	    env_ptr->SetBodyInertialProperties("immovable", kValidMass, kValidIpos, kValidPrincipalInertia, kValidIquat));
+	// Loading another XML replaces MuJoCo's last-loaded spec, so the env model no longer matches it and
+	// mj_saveLastXML fails through its error buffer.
+	char load_error[200] = "";
+	mjModel *other       = mj_loadXML((std::string(TEST_RESOURCES_DIR) + "/minimal_world.xml").c_str(), nullptr, load_error,
+	                                  sizeof(load_error));
+	ASSERT_NE(other, nullptr) << load_error;
+
+	char notice[1000] = "";
+	EXPECT_FALSE(mujoco_ros::SaveModelXml("/tmp/mujoco_ros_save_xml_test_fail.xml", env_ptr->getModelPtr(), notice,
+	                                      sizeof(notice)));
+	EXPECT_NE(std::string(notice).find("Save XML failed"), std::string::npos) << notice;
+	mj_deleteModel(other);
+	// Reaching this point also shows the log bridge did not exit() the process.
+}
+
 TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesRejectsInertialFrameChangeOnSimpleBody)
 {
 	// MuJoCo >= 3.11: mj_setConst raises a fatal mju_error for a body compiled as simple whose inertial frame changed.

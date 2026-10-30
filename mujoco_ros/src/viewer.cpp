@@ -80,6 +80,20 @@ static std::string GetSavePath(const char *filename)
 	return filename;
 }
 
+namespace mujoco_ros {
+bool SaveModelXml(const std::string &path, const mjModel *m, char *notice, std::size_t notice_sz)
+{
+	// mj_saveLastXML reports failure through its error buffer, not mju_error, so the log bridge never sees it.
+	char err[500] = "";
+	if (mj_saveLastXML(path.c_str(), m, err, sizeof(err))) {
+		return true;
+	}
+	MJR_ERROR_STREAM("Save XML to '" << path << "' failed: " << err);
+	std::snprintf(notice, notice_sz, "Save XML failed: %s", err);
+	return false;
+}
+} // namespace mujoco_ros
+
 namespace {
 namespace mju = ::mujoco::sample_util;
 using namespace mujoco_ros;
@@ -2098,9 +2112,8 @@ void Viewer::SyncInFrame(MujocoEnv &env, bool state_only)
 	}
 
 	if (pending_.save_xml) {
-		char err[200];
-		if (!pending_.save_xml->empty() && !mj_saveLastXML(pending_.save_xml->c_str(), m_.get(), err, 200)) {
-			std::printf("Save XML error: %s", err);
+		if (!pending_.save_xml->empty()) {
+			SaveModelXml(*pending_.save_xml, m_.get(), load_error, sizeof(load_error));
 		}
 		pending_.save_xml = std::nullopt;
 	}

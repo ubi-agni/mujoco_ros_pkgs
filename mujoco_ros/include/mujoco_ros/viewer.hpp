@@ -90,6 +90,10 @@ namespace mujoco_ros {
 class ViewerMutex : public std::recursive_mutex
 {};
 
+// Writes the last-loaded XML for `m` to `path`. On failure (e.g. runtime model edits the spec cannot express) the
+// MuJoCo error is logged and copied to `notice`, which the viewer shows as its overlay message. Never terminates.
+bool SaveModelXml(const std::string &path, const mjModel *m, char *notice, std::size_t notice_sz);
+
 class ViewerLoadRejected : public std::runtime_error
 {
 public:
