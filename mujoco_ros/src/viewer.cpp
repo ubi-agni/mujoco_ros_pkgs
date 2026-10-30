@@ -1108,6 +1108,10 @@ void MakeControlSection(mujoco_ros::Viewer *viewer)
 	}
 }
 
+// mjui has no bool check box; eq_active (mjtBool) is edited through mjITEM_CHECKBYTE, which
+// reads and writes it as mjtByte. That is only safe while both are one byte wide.
+static_assert(sizeof(mjtBool) == sizeof(mjtByte), "mjITEM_CHECKBYTE cannot edit mjData::eq_active");
+
 // make equality section of UI
 void MakeEqualitySection(mujoco_ros::Viewer *viewer)
 {
