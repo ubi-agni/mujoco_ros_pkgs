@@ -69,11 +69,6 @@ void MujocoEnv::CompleteEnvSetup()
 {
 	LoadInitialJointStates();
 
-	MJR_DEBUG("Resetting noise ...");
-	free(ctrlnoise_);
-	ctrlnoise_ = static_cast<mjtNum *>(mju_malloc(sizeof(mjtNum) * static_cast<size_t>(model_->nu)));
-	mju_zero(ctrlnoise_, model_->nu);
-
 	LoadPlugins(PluginGeneration(plugin_generation_.value() + 1));
 	MJR_DEBUG("Env setup complete");
 }

@@ -352,11 +352,6 @@ public:
 	const double syncMisalign       = 0.1; // maximum mis-alignment before re-sync (simulation seconds)
 	const double simRefreshFraction = 0.7; // fraction of refresh available for simulation
 
-	/// Noise to apply to control signal
-	mjtNum *ctrlnoise_     = nullptr;
-	double ctrl_noise_std  = 0.0;
-	double ctrl_noise_rate = 0.0;
-
 	mjvScene scn_;
 	mjvPerturb pert_;
 

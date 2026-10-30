@@ -157,10 +157,6 @@ public:
 	std::chrono::time_point<Clock> last_fps_update_;
 	double fps_ = 0;
 
-	// control noise
-	double ctrl_noise_std  = 0.0;
-	double ctrl_noise_rate = 0.0;
-
 	// model and data to be visualized
 	mjModelPtr mnew_;
 	mjDataPtr dnew_;
@@ -358,7 +354,7 @@ public:
 		                              { mjITEM_END } };
 
 	// simulation section of UI
-	const mjuiDef def_simulation[14] = { { mjITEM_SECTION, "Simulation", mjPRESERVE, nullptr, "AS" },
+	const mjuiDef def_simulation[12] = { { mjITEM_SECTION, "Simulation", mjPRESERVE, nullptr, "AS" },
 		                                  { mjITEM_RADIO, "", 5, &this->pending_.ui_update_run, "Pause\nRun" },
 		                                  { mjITEM_BUTTON, "Reset", 2, nullptr, " #259" },
 		                                  { mjITEM_BUTTON, "Reload", 5, nullptr, "CL" },
@@ -367,8 +363,6 @@ public:
 		                                  { mjITEM_SLIDERINT, "Key", 3, &this->key, "0 0" },
 		                                  { mjITEM_BUTTON, "Load key", 3 },
 		                                  { mjITEM_BUTTON, "Save key", 3 },
-		                                  { mjITEM_SLIDERNUM, "Noise scale", 5, &this->ctrl_noise_std, "0 1" },
-		                                  { mjITEM_SLIDERNUM, "Noise rate", 5, &this->ctrl_noise_rate, "0 4" },
 		                                  { mjITEM_SEPARATOR, "History", 1 },
 		                                  { mjITEM_SLIDERINT, "", 5, &this->scrub_index, "0 0" },
 		                                  { mjITEM_END } };
