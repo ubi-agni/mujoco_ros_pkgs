@@ -3515,6 +3515,48 @@ TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesUpdatesModelAndPreservesQpos
 	}
 }
 
+TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesRejectsInertialFrameChangeOnSimpleBody)
+{
+	// MuJoCo >= 3.11: mj_setConst raises a fatal mju_error for a body compiled as simple whose inertial frame changed.
+	mjModel *m             = env_ptr->getModelPtr();
+	const int body_id      = mj_name2id(m, mjOBJ_BODY, "body_ball");
+	const std::string name = "body_ball";
+	ASSERT_GE(body_id, 1);
+	ASSERT_NE(m->body_simple[body_id], 0) << "fixture body must be compiled as simple";
+
+	const mjtNum mass_before = m->body_mass[body_id];
+	std::vector<mjtNum> ipos_before(m->body_ipos + body_id * 3, m->body_ipos + body_id * 3 + 3);
+	std::vector<mjtNum> iquat_before(m->body_iquat + body_id * 4, m->body_iquat + body_id * 4 + 4);
+	std::vector<mjtNum> inertia_before(m->body_inertia + body_id * 3, m->body_inertia + body_id * 3 + 3);
+
+	char status[MujocoEnv::kErrorLength] = {};
+	EXPECT_FALSE(env_ptr->SetBodyInertialProperties(name, kValidMass, kValidIpos, kValidPrincipalInertia, kValidIquat,
+	                                                "", status, sizeof(status)));
+	EXPECT_NE(std::string(status).find(name), std::string::npos);
+	EXPECT_NE(std::string(status).find("simple=\"false\""), std::string::npos);
+
+	// Model untouched
+	EXPECT_DOUBLE_EQ(m->body_mass[body_id], mass_before);
+	for (int i = 0; i < 3; ++i) {
+		EXPECT_EQ(m->body_ipos[body_id * 3 + i], ipos_before[i]);
+		EXPECT_EQ(m->body_inertia[body_id * 3 + i], inertia_before[i]);
+	}
+	for (int i = 0; i < 4; ++i) {
+		EXPECT_EQ(m->body_iquat[body_id * 4 + i], iquat_before[i]);
+	}
+
+	// Env is still alive and steps
+	mjData *d       = env_ptr->getDataPtr();
+	const mjtNum t0 = d->time;
+	mj_step(m, d);
+	EXPECT_GT(d->time, t0);
+
+	// Mass / diagonal inertia only (frame unchanged) stays allowed on simple bodies
+	EXPECT_TRUE(env_ptr->SetBodyInertialProperties(name, kValidMass, ipos_before.data(), kValidPrincipalInertia,
+	                                               iquat_before.data()));
+	EXPECT_DOUBLE_EQ(m->body_mass[body_id], kValidMass);
+}
+
 TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesRejectsMissingBody)
 {
 	char status[MujocoEnv::kErrorLength] = {};
