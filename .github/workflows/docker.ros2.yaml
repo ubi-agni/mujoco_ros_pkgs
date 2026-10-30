@@ -63,7 +63,7 @@ jobs:
     env:
       # Must match CI DOCKER_IMAGE (…/<distro>-ci), not github.job.
       IMAGE: ubiagni/mujoco_ros:${{ matrix.ROS_DISTRO }}-ci
-      MUJOCO_VERSIONS: 3.8.1
+      MUJOCO_VERSIONS: 3.9.0
 
     steps:
       - name: Check for apt updates
