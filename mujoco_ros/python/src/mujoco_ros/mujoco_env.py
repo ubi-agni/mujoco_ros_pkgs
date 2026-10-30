@@ -270,7 +270,6 @@ _ENABLE_FLAG_FIELDS = {
     int(mujoco.mjtEnableBit.mjENBL_ENERGY): 'energy',
     int(mujoco.mjtEnableBit.mjENBL_FWDINV): 'fwd_inv',
     int(mujoco.mjtEnableBit.mjENBL_INVDISCRETE): 'inv_discrete',
-    int(mujoco.mjtEnableBit.mjENBL_MULTICCD): 'multiccd',
 }
 
 _DISABLE_FLAG_FIELDS = {
@@ -292,10 +291,11 @@ _DISABLE_FLAG_FIELDS = {
     int(mujoco.mjtDisableBit.mjDSBL_MIDPHASE): 'midphase_disabled',
     int(mujoco.mjtDisableBit.mjDSBL_EULERDAMP): 'eulerdamp_disabled',
     int(mujoco.mjtDisableBit.mjDSBL_ISLAND): 'island',
+    int(mujoco.mjtDisableBit.mjDSBL_MULTICCD): 'multiccd',
 }
 
 # Runtime option fields that hold the opposite sense of their MuJoCo disable bit.
-_INVERTED_DISABLE_FIELDS = frozenset({'island'})
+_INVERTED_DISABLE_FIELDS = frozenset({'island', 'multiccd'})
 
 
 class MujocoEnv:

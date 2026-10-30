@@ -272,6 +272,13 @@ class PythonBindingsTest(unittest.TestCase):
                 env.toggle_disableflag(mujoco.mjtDisableBit.mjDSBL_ISLAND)
                 self.assertTrue(env.runtime_options.island)
 
+                # Multi-CCD is on by default; the disable bit inverts the `multiccd` option.
+                self.assertTrue(env.runtime_options.multiccd)
+                env.set_disableflag(mujoco.mjtDisableBit.mjDSBL_MULTICCD, True)
+                self.assertFalse(env.runtime_options.multiccd)
+                env.toggle_disableflag(mujoco.mjtDisableBit.mjDSBL_MULTICCD)
+                self.assertTrue(env.runtime_options.multiccd)
+
                 # Passive covers spring and damper together.
                 env.set_disableflag(mujoco.mjtDisableBit.mjDSBL_SPRING, True)
                 self.assertTrue(env.runtime_options.passive_disabled)
@@ -283,6 +290,7 @@ class PythonBindingsTest(unittest.TestCase):
                         'energy': original_energy,
                         'sensor_disabled': original_sensor_disabled,
                         'island': True,
+                        'multiccd': True,
                         'passive_disabled': False,
                     }
                 )

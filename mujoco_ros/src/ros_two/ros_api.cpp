@@ -194,7 +194,7 @@ RosAPI::RosAPI(MujocoEnvPtr env_ptr) : env_ptr_(env_ptr)
 	DeclareRuntimeParameter(env_ptr_, "energy", false);
 	DeclareRuntimeParameter(env_ptr_, "fwd_inv", false);
 	DeclareRuntimeParameter(env_ptr_, "inv_discrete", false);
-	DeclareRuntimeParameter(env_ptr_, "multiccd", false);
+	DeclareRuntimeParameter(env_ptr_, "multiccd", true);
 	DeclareRuntimeParameter(env_ptr_, "island", true);
 
 	DeclareRuntimeParameter(env_ptr_, "margin", 0.0);
@@ -372,7 +372,7 @@ void RosAPI::UpdateDynamicParams()
 		parameters.emplace_back("energy", static_cast<bool>(opt.enableflags & mjENBL_ENERGY));
 		parameters.emplace_back("fwd_inv", static_cast<bool>(opt.enableflags & mjENBL_FWDINV));
 		parameters.emplace_back("inv_discrete", static_cast<bool>(opt.enableflags & mjENBL_INVDISCRETE));
-		parameters.emplace_back("multiccd", static_cast<bool>(opt.enableflags & mjENBL_MULTICCD));
+		parameters.emplace_back("multiccd", !static_cast<bool>(opt.disableflags & mjDSBL_MULTICCD));
 		parameters.emplace_back("island", !static_cast<bool>(opt.disableflags & mjDSBL_ISLAND));
 
 		parameters.emplace_back("margin", opt.o_margin);
@@ -581,7 +581,7 @@ rcl_interfaces::msg::SetParametersResult RosAPI::DynamicParamsCallbackLegacy(con
 			} else if (name == "inv_discrete") {
 				util::flag_set_to(env_ptr_->model_->opt.enableflags, mjENBL_INVDISCRETE, parameter.as_bool());
 			} else if (name == "multiccd") {
-				util::flag_set_to(env_ptr_->model_->opt.enableflags, mjENBL_MULTICCD, parameter.as_bool());
+				util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_MULTICCD, !parameter.as_bool());
 			} else if (name == "island") {
 				util::flag_set_to(env_ptr_->model_->opt.disableflags, mjDSBL_ISLAND, !parameter.as_bool());
 			} else if (name == "margin") {

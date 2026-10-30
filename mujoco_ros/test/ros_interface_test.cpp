@@ -3047,7 +3047,7 @@ TEST_F(PendulumEnvFixture, DynamicReconfigureAllParams)
 	conf.bools.emplace_back(bool_param);
 
 	bool_param.name  = "multiccd";
-	bool_param.value = true;
+	bool_param.value = false;
 	conf.bools.emplace_back(bool_param);
 
 	bool_param.name  = "island";
@@ -3126,7 +3126,7 @@ TEST_F(PendulumEnvFixture, DynamicReconfigureAllParams)
 	EXPECT_FALSE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_ENERGY) << "Energy is already enabled!";
 	EXPECT_FALSE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_FWDINV) << "Forward inverse is already enabled!";
 	EXPECT_FALSE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_INVDISCRETE) << "Inverse discrete is already enabled!";
-	EXPECT_FALSE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_MULTICCD) << "Multi CCD is already enabled!";
+	EXPECT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_MULTICCD) << "Multi CCD is already disabled!";
 	EXPECT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_ISLAND) << "Islanding is already disabled!";
 
 	EXPECT_NE(env_ptr->getModelPtr()->opt.o_margin, 0.5) << "Margin is already set to the target value!";
@@ -3206,7 +3206,7 @@ TEST_F(PendulumEnvFixture, DynamicReconfigureAllParams)
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_FWDINV) << "Forward inverse should have been enabled!";
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_INVDISCRETE)
 	    << "Inverse discrete should have been enabled!";
-	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_MULTICCD) << "Multi CCD should have been enabled!";
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_MULTICCD) << "Multi CCD should have been disabled!";
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_ISLAND) << "Islanding should have been disabled!";
 
 	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_margin, 0.5) << "Margin should have been updated!";
@@ -3356,7 +3356,7 @@ TEST_F(PendulumEnvFixture, RuntimeParameterAllParams)
 	    rclcpp::Parameter("energy", true),
 	    rclcpp::Parameter("fwd_inv", true),
 	    rclcpp::Parameter("inv_discrete", true),
-	    rclcpp::Parameter("multiccd", true),
+	    rclcpp::Parameter("multiccd", false),
 	    rclcpp::Parameter("island", false),
 	    rclcpp::Parameter("margin", 0.5),
 	    rclcpp::Parameter("solimp", std::string("0.8 0.9 0.1 0.5 2")),
@@ -3420,7 +3420,7 @@ TEST_F(PendulumEnvFixture, RuntimeParameterAllParams)
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_ENERGY);
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_FWDINV);
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_INVDISCRETE);
-	EXPECT_TRUE(env_ptr->getModelPtr()->opt.enableflags & mjENBL_MULTICCD);
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_MULTICCD);
 	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_ISLAND);
 
 	EXPECT_EQ(env_ptr->getModelPtr()->opt.o_margin, 0.5);
@@ -3472,7 +3472,6 @@ TEST_F(PendulumEnvFixture, RuntimeParameterFlagsMapToNamedBits)
 	const std::pair<const char *, int> enable_cases[] = {
 		{ "override_contacts", mjENBL_OVERRIDE }, { "energy", mjENBL_ENERGY },
 		{ "fwd_inv", mjENBL_FWDINV },             { "inv_discrete", mjENBL_INVDISCRETE },
-		{ "multiccd", mjENBL_MULTICCD },
 	};
 	for (const auto &flag : enable_cases) {
 		const int before = env_ptr->getModelPtr()->opt.enableflags;
@@ -3498,6 +3497,23 @@ TEST_F(PendulumEnvFixture, RuntimeParameterIslandDefaultsOnAndMapsToDisableBit)
 	result = env_ptr->set_parameters_atomically({ rclcpp::Parameter("island", true) });
 	ASSERT_TRUE(result.successful) << result.reason;
 	EXPECT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_ISLAND);
+}
+
+TEST_F(PendulumEnvFixture, RuntimeParameterMulticcdDefaultsOnAndMapsToDisableBit)
+{
+	// Unset param: the loaded model keeps MuJoCo's default (multi-CCD on) and the param reports it.
+	EXPECT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_MULTICCD);
+	EXPECT_TRUE(env_ptr->get_parameter("multiccd").as_bool());
+
+	auto result = env_ptr->set_parameters_atomically({ rclcpp::Parameter("multiccd", false) });
+	ASSERT_TRUE(result.successful) << result.reason;
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_MULTICCD);
+	EXPECT_FALSE(env_ptr->get_parameter("multiccd").as_bool());
+
+	result = env_ptr->set_parameters_atomically({ rclcpp::Parameter("multiccd", true) });
+	ASSERT_TRUE(result.successful) << result.reason;
+	EXPECT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_MULTICCD);
+	EXPECT_TRUE(env_ptr->get_parameter("multiccd").as_bool());
 }
 
 TEST_F(PendulumEnvFixture, RuntimeParameterRejectsInvalidValues)

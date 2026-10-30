@@ -31,7 +31,9 @@ Supported field names match ``RuntimeOptionsSnapshot``:
 
 ``passive_disabled`` disables both spring and damper forces. ``island`` is
 ``true`` by default (constraint islanding on, as in MuJoCo); setting it to
-``false`` sets MuJoCo's ``mjDSBL_ISLAND``.
+``false`` sets MuJoCo's ``mjDSBL_ISLAND``. ``multiccd`` is likewise ``true`` by
+default (multi-point convex collision detection on, as in MuJoCo); setting it
+to ``false`` sets ``mjDSBL_MULTICCD``.
 
 Legacy short names such as ``ls_iter``, ``noslip_tol``, and ``ccd_iter`` are
 still accepted by the parser.
