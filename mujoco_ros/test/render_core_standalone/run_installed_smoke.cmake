@@ -65,9 +65,9 @@ foreach(_header IN ITEMS
     message(FATAL_ERROR "installed header missing after install: ${_header}")
   endif()
 endforeach()
-if(NOT EXISTS "${EXPECTED_MUJOCO_DIR}/lib/libmujoco.so.3.15.0")
+if(NOT EXISTS "${EXPECTED_MUJOCO_DIR}/lib/libmujoco.so.3.16.0")
   message(FATAL_ERROR
-    "configured MuJoCo library missing: ${EXPECTED_MUJOCO_DIR}/lib/libmujoco.so.3.15.0"
+    "configured MuJoCo library missing: ${EXPECTED_MUJOCO_DIR}/lib/libmujoco.so.3.16.0"
   )
 endif()
 
@@ -75,7 +75,7 @@ get_filename_component(_mujoco_module_dir
   "${STANDALONE_SOURCE_DIR}/../../cmake" ABSOLUTE
 )
 get_filename_component(_expected_mujoco_library
-  "${EXPECTED_MUJOCO_DIR}/lib/libmujoco.so.3.15.0" REALPATH
+  "${EXPECTED_MUJOCO_DIR}/lib/libmujoco.so.3.16.0" REALPATH
 )
 set(_default_discovery_source
   "${STANDALONE_BINARY_DIR}/default_mujoco_discovery"
@@ -95,7 +95,7 @@ cmake_minimum_required(VERSION 3.16)
 project(mujoco_default_discovery LANGUAGES NONE)
 
 list(PREPEND CMAKE_MODULE_PATH "@MUJOCO_MODULE_DIR@")
-find_package(mujoco 3.15.0 REQUIRED)
+find_package(mujoco 3.16.0 REQUIRED)
 
 if(DEFINED MUJOCO_DIR AND NOT MUJOCO_DIR STREQUAL "")
   message(FATAL_ERROR "Default MuJoCo discovery unexpectedly configured MUJOCO_DIR")
@@ -188,7 +188,7 @@ file(MAKE_DIRECTORY "${_alternate_mujoco_prefix}/lib")
 file(WRITE
   "${_alternate_mujoco_prefix}/lib/cmake/mujoco/mujocoConfigVersion.cmake"
   [=[
-set(PACKAGE_VERSION "3.15.0")
+set(PACKAGE_VERSION "3.16.0")
 if(PACKAGE_FIND_VERSION VERSION_GREATER PACKAGE_VERSION)
   set(PACKAGE_VERSION_COMPATIBLE FALSE)
 else()
@@ -202,7 +202,7 @@ endif()
 file(WRITE
   "${_alternate_mujoco_prefix}/lib/cmake/mujoco/mujocoConfig.cmake"
   "set(mujoco_FOUND TRUE)\n"
-  "set(mujoco_VERSION 3.15.0)\n"
+  "set(mujoco_VERSION 3.16.0)\n"
   "message(FATAL_ERROR \"stale alternate MuJoCo config was selected\")\n"
 )
 file(WRITE
