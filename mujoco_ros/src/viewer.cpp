@@ -2077,11 +2077,6 @@ void Viewer::SyncInFrame(MujocoEnv &env, bool state_only)
 			pending_.ui_update_visualization = true;
 			m_->stat                         = m_passive_->stat;
 		}
-
-		// synchronize number of mjWARN_VGEOMFULL warnings
-		if (d_passive_->warning[mjWARN_VGEOMFULL].number > warn_vgeomfull_prev_) {
-			d_->warning[mjWARN_VGEOMFULL].number += d_passive_->warning[mjWARN_VGEOMFULL].number - warn_vgeomfull_prev_;
-		}
 	}
 
 	this->run = env.GetControlSnapshot().running;
@@ -2313,10 +2308,9 @@ void Viewer::SyncInFrame(MujocoEnv &env, bool state_only)
 			Copy(user_scn_flags_prev_, user_scn->flags);
 		}
 
-		mjopt_prev_          = m_passive_->opt;
-		mjvis_prev_          = m_passive_->vis;
-		mjstat_prev_         = m_passive_->stat;
-		warn_vgeomfull_prev_ = d_passive_->warning[mjWARN_VGEOMFULL].number;
+		mjopt_prev_  = m_passive_->opt;
+		mjvis_prev_  = m_passive_->vis;
+		mjstat_prev_ = m_passive_->stat;
 	}
 
 	// Run render cbs from plugins
@@ -2612,10 +2606,9 @@ void Viewer::LoadOnRenderThread()
 	if (!is_passive_) {
 		mjv_updateScene(this->m_.get(), this->d_.get(), &this->opt, &this->pert, &this->cam, mjCAT_ALL, &this->scn);
 	} else {
-		mjopt_prev_          = this->m_->opt;
-		opt_prev_            = opt;
-		cam_prev_            = cam;
-		warn_vgeomfull_prev_ = this->d_->warning[mjWARN_VGEOMFULL].number;
+		mjopt_prev_ = this->m_->opt;
+		opt_prev_   = opt;
+		cam_prev_   = cam;
 
 		// full copy on init
 		m_passive_ = mj_copyModel(nullptr, this->m_.get());
@@ -3144,8 +3137,11 @@ void Viewer::RenderLoop(std::function<void()> on_ready)
 					// add user geoms to scene
 					int nusergeom = user_scn_geoms_.size();
 					int ngeom     = std::min(nusergeom, this->scn.maxgeom - this->scn.ngeom);
-					if (ngeom < nusergeom) {
-						mj_warning(d_passive_, mjWARN_VGEOMFULL, this->scn.maxgeom);
+					if (ngeom < nusergeom && !warned_user_geoms_truncated_) {
+						// MuJoCo no longer reports a full scene as a warning; log once so truncation is not silent.
+						MJR_WARN_NAMED("Viewer", "Scene is full (maxgeom=%d): dropping %d of %d user geoms", this->scn.maxgeom,
+						               nusergeom - ngeom, nusergeom);
+						warned_user_geoms_truncated_ = true;
 					}
 					std::memcpy(this->scn.geoms + this->scn.ngeom, user_scn_geoms_.data(), ngeom * sizeof(mjvGeom));
 					this->scn.ngeom += ngeom;
