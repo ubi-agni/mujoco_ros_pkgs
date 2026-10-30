@@ -76,7 +76,7 @@ jobs:
       contents: read
     env:
       IMAGE: ubiagni/mujoco_ros:${{ matrix.ROS_DISTRO }}-${{ github.job }}
-      MUJOCO_VERSIONS: 3.3.5
+      MUJOCO_VERSIONS: 3.3.6
 
     steps:
       - name: Check for apt updates
