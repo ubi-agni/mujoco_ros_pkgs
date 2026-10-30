@@ -193,7 +193,7 @@ RuntimeOptionsSnapshot ReadRuntimeOptions(const mjOption &option)
 	result.energy                = (option.enableflags & mjENBL_ENERGY) != 0;
 	result.fwd_inv               = (option.enableflags & mjENBL_FWDINV) != 0;
 	result.inv_discrete          = (option.enableflags & mjENBL_INVDISCRETE) != 0;
-	result.multiccd              = (option.enableflags & mjENBL_MULTICCD) != 0;
+	result.multiccd              = (option.disableflags & mjDSBL_MULTICCD) == 0;
 	result.island                = (option.disableflags & mjDSBL_ISLAND) == 0;
 	return result;
 }
@@ -520,8 +520,8 @@ void WriteRuntimeOptions(const RuntimeOptionsSnapshot &snapshot, mjOption &optio
 	SetBit(option.enableflags, mjENBL_ENERGY, snapshot.energy);
 	SetBit(option.enableflags, mjENBL_FWDINV, snapshot.fwd_inv);
 	SetBit(option.enableflags, mjENBL_INVDISCRETE, snapshot.inv_discrete);
-	SetBit(option.enableflags, mjENBL_MULTICCD, snapshot.multiccd);
 	SetBit(option.disableflags, mjDSBL_ISLAND, !snapshot.island);
+	SetBit(option.disableflags, mjDSBL_MULTICCD, !snapshot.multiccd);
 }
 
 } // namespace mujoco_ros
