@@ -1826,7 +1826,7 @@ void UiEvent(mjuiState *state)
 	// 3D scroll
 	if (state->type == mjEVENT_SCROLL && state->mouserect == 3 && model) {
 		// emulate vertical mouse motion = 2% of window height
-		mjv_moveCamera(model, mjMOUSE_ZOOM, 0, -zoom_increment * state->sy, &viewer->scn, &viewer->cam);
+		mjv_moveCamera(model, mjMOUSE_ZOOM, 0, -zoom_increment * state->sy, &viewer->cam);
 		return;
 	}
 
@@ -1884,7 +1884,7 @@ void UiEvent(mjuiState *state)
 		if (viewer->pert.active) {
 			mjv_movePerturb(model, data, action, state->dx / r.height, -state->dy / r.height, &viewer->scn, &viewer->pert);
 		} else {
-			mjv_moveCamera(model, action, state->dx / r.height, -state->dy / r.height, &viewer->scn, &viewer->cam);
+			mjv_moveCamera(model, action, state->dx / r.height, -state->dy / r.height, &viewer->cam);
 		}
 		return;
 	}
