@@ -2,8 +2,7 @@ Laser Plugin
 ============
 
 ``mujoco_ros_laser`` provides a CPU-based ``sensor_msgs/LaserScan`` publisher using MuJoCo's ray-collision functions.
-It uses MuJoCo's thread pool when the server is configured with more than one MuJoCo worker thread.
-This server threading option is deprecated and values greater than ``1`` can increase CPU usage because MuJoCo worker threads busy-wait.
+Rays are cast serially in one ``mj_multiRay`` call per scan. The plugin does not use ``mujoco_threads`` or any worker pool for ray casting, because MuJoCo 3.10 no longer exposes a public task API for plugins.
 
 This plugin is raycast-based. It does not include the older ROS 2 sensors rangefinder/lidar aggregation behavior; that should live in another plugin if it is needed again.
 
@@ -53,4 +52,4 @@ ROS 2 Configuration
 
 Each configured laser attaches to a MuJoCo site. The scan topic is named from the laser configuration/model setup and the frame defaults to the parent body unless overridden.
 
-Use the deprecated ``mujoco_threads`` option on the server launch file to allow parallel ray work for larger scans.
+Scan casting is single-threaded regardless of ``mujoco_threads``; that option only sizes MuJoCo's internal engine threadpool, which exists only for values above 1.

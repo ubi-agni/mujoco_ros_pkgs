@@ -47,6 +47,7 @@
 
 #include <algorithm>
 #include <string>
+#include <vector>
 
 using namespace mujoco_ros;
 
@@ -182,21 +183,6 @@ void InitRays(LaserConfig &config)
 	}
 }
 } // namespace
-
-struct ProcessRayArgs
-{
-	const mjModel *model;
-	mjData *data;
-	std::mt19937 *rand_generator;
-	std::normal_distribution<double> *noise_dist;
-	const LaserConfig *laser_config;
-	mjvGeom *geom;
-	mjtNum (*rot)[9];
-	mjtByte (*ignore_groups)[mjNGROUP];
-	const float (*rgba)[4];
-	LaserScan *scan_msg;
-	int ray_idx;
-};
 
 #if MJR_ROS_VERSION == ROS_1
 LaserConfig::LaserConfig(const XmlRpc::XmlRpcValue &config, const std::string &frame_id, const std::string &name,
@@ -373,19 +359,11 @@ void LaserPlugin::RenderCallback(const mjModel * /*model*/, mjData * /*data*/, m
 	}
 }
 
-void ProcessRay(const mjModel *model, mjData *data, std::mt19937 rand_generator,
-                std::normal_distribution<double> &noise_dist, const LaserConfig &laser_config, mjvGeom *geom,
-                mjtNum (&rot)[9], const mjtByte (&ignore_groups)[mjNGROUP], const float (&rgba)[4], LaserScan &scan_msg,
-                int ray_idx)
+// Applies noise, range limits and visualization to a raw mj_multiRay distance (< 0: no hit).
+void ProcessRay(std::mt19937 rand_generator, std::normal_distribution<double> &noise_dist,
+                const LaserConfig &laser_config, mjvGeom *geom, const mjtNum (&pos)[3], const mjtNum *dir, mjtNum dist,
+                const float (&rgba)[4], LaserScan &scan_msg, int ray_idx)
 {
-	mjtNum pos[3], target[3];
-	mju_copy(pos, laser_config.rays + 3 * ray_idx, 3);
-	mju_mulMatVec3(target, rot, pos);
-
-	mju_copy(pos, data->site_xpos + 3 * laser_config.site_attached, 3);
-
-	int geomid  = -1;
-	mjtNum dist = mj_ray(model, data, pos, target, ignore_groups, 1, -1, &geomid, nullptr);
 	if (dist < 0) {
 		dist = laser_config.max_range;
 	}
@@ -401,17 +379,10 @@ void ProcessRay(const mjModel *model, mjData *data, std::mt19937 rand_generator,
 		return;
 	}
 
-	mju_addScl3(target, pos, target, dist);
+	mjtNum target[3];
+	mju_addScl3(target, pos, dir, dist);
 	mjv_initGeom(geom, mjGEOM_LINE, nullptr, nullptr, nullptr, rgba);
 	mjv_connector(geom, mjGEOM_LINE, 1., pos, target);
-}
-
-void *ProcessRayThreaded(void *args)
-{
-	ProcessRayArgs *pargs = static_cast<ProcessRayArgs *>(args);
-	ProcessRay(pargs->model, pargs->data, *pargs->rand_generator, *pargs->noise_dist, *pargs->laser_config, pargs->geom,
-	           *pargs->rot, *pargs->ignore_groups, *pargs->rgba, *pargs->scan_msg, pargs->ray_idx);
-	return nullptr;
 }
 
 void LaserPlugin::ComputeLasers(const mjModel *model, mjData *data)
@@ -445,58 +416,18 @@ void LaserPlugin::ComputeLasers(const mjModel *model, mjData *data)
 
 		mju_copy(rot, data->site_xmat + 9 * laser_config.site_attached, 9);
 
+		// Rotate all rays into the world frame, then cast them in one serial mj_multiRay call. Matches the former
+		// per-ray mj_ray call: static geoms included, no body excluded, effectively unbounded cutoff.
+		mjtNum pos[3];
+		mju_copy3(pos, data->site_xpos + 3 * laser_config.site_attached);
+		std::vector<mjtNum> dirs(3 * laser_config.nrays);
+		std::vector<mjtNum> dists(laser_config.nrays);
+		std::vector<int> geomids(laser_config.nrays);
 		for (uint i = 0; i < laser_config.nrays; ++i) {
-			mjvGeom *g = nullptr;
-			if (laser_config.visualize) {
-				g = laser_geoms_ + n_vGeom;
-				n_vGeom++;
-			}
-			ProcessRay(model, data, rand_generator, noise_dist, laser_config, g, rot, ignore_groups, rgba, scan_msg, i);
+			mju_mulMatVec3(dirs.data() + 3 * i, rot, laser_config.rays + 3 * i);
 		}
-
-		Publish<LaserScan>(laser_config, scan_msg);
-		last_update_time_             = now;
-		last_update_time_initialized_ = true;
-		has_render_data_              = has_render_data_ || laser_config.visualize;
-	}
-}
-
-void LaserPlugin::ComputeLasersMultithreaded(const mjModel *model, mjData *data)
-{
-	uint n_vGeom        = 0;
-	const float rgba[4] = { 0., 0., 1., 0.8 };
-	mjtNum rot[9];
-
-	mjtByte ignore_groups[mjNGROUP] = { 0 };
-	for (unsigned char &ignore_group : ignore_groups) {
-		ignore_group = 1;
-	}
-	ignore_groups[1] = 0;
-
-	for (const auto &laser_config : laser_configs_) {
-		const RosTime now = SimNow(data, last_update_time_, last_update_time_initialized_);
-		if (last_update_time_initialized_ && SecondsSince(now, last_update_time_) < 1.0 / laser_config.update_rate) {
-			skip_ema_ = true;
-			continue;
-		}
-
-		LaserScan scan_msg;
-		scan_msg.header.stamp    = now;
-		scan_msg.header.frame_id = laser_config.frame_id;
-		scan_msg.angle_min       = laser_config.min_angle;
-		scan_msg.angle_max       = laser_config.max_angle;
-		scan_msg.angle_increment = laser_config.angular_resolution;
-		scan_msg.range_min       = laser_config.min_range;
-		scan_msg.range_max       = laser_config.max_range;
-		scan_msg.ranges.resize(laser_config.nrays);
-
-		mj_markStack(data);
-		ProcessRayArgs *ray_args = static_cast<ProcessRayArgs *>(
-		    mj_stackAllocByte(data, sizeof(ProcessRayArgs) * laser_config.nrays, alignof(ProcessRayArgs)));
-		mjTask *tasks =
-		    static_cast<mjTask *>(mj_stackAllocByte(data, sizeof(mjTask) * laser_config.nrays, alignof(mjTask)));
-
-		mju_copy(rot, data->site_xmat + 9 * laser_config.site_attached, 9);
+		mj_multiRay(model, data, pos, dirs.data(), ignore_groups, 1, -1, geomids.data(), dists.data(), nullptr,
+		            static_cast<int>(laser_config.nrays), mjMAXVAL);
 
 		for (uint i = 0; i < laser_config.nrays; ++i) {
 			mjvGeom *g = nullptr;
@@ -504,30 +435,8 @@ void LaserPlugin::ComputeLasersMultithreaded(const mjModel *model, mjData *data)
 				g = laser_geoms_ + n_vGeom;
 				n_vGeom++;
 			}
-			ray_args[i].model          = model;
-			ray_args[i].data           = data;
-			ray_args[i].rand_generator = &rand_generator;
-			ray_args[i].noise_dist     = &noise_dist;
-			ray_args[i].laser_config   = &laser_config;
-			ray_args[i].geom           = g;
-			ray_args[i].rot            = &rot;
-			ray_args[i].ignore_groups  = &ignore_groups;
-			ray_args[i].rgba           = &rgba;
-			ray_args[i].scan_msg       = &scan_msg;
-			ray_args[i].ray_idx        = i;
-
-			mju_defaultTask(&tasks[i]);
-			tasks[i].func = ProcessRayThreaded;
-			tasks[i].args = &ray_args[i];
-
-			mju_threadPoolEnqueue(reinterpret_cast<mjThreadPool *>(data->threadpool), &tasks[i]);
+			ProcessRay(rand_generator, noise_dist, laser_config, g, pos, dirs.data() + 3 * i, dists[i], rgba, scan_msg, i);
 		}
-
-		for (uint i = 0; i < laser_config.nrays; ++i) {
-			mju_taskJoin(&tasks[i]);
-		}
-
-		mj_freeStack(data);
 
 		Publish<LaserScan>(laser_config, scan_msg);
 		last_update_time_             = now;
@@ -538,10 +447,6 @@ void LaserPlugin::ComputeLasersMultithreaded(const mjModel *model, mjData *data)
 
 void LaserPlugin::LastStageCallback(const mjModel *model, mjData *data)
 {
-	if (data->threadpool) {
-		ComputeLasersMultithreaded(model, data);
-		return;
-	}
 	ComputeLasers(model, data);
 }
 

@@ -145,7 +145,6 @@ protected:
 #endif
 
 	void ComputeLasers(const mjModel *model, mjData *data);
-	void ComputeLasersMultithreaded(const mjModel *model, mjData *data);
 
 	mjvGeom *laser_geoms_{ nullptr };
 	int ngeom_ = 0;
