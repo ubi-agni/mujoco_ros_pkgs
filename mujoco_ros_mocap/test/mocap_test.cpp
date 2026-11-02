@@ -288,7 +288,9 @@ protected:
 		nh = std::make_unique<testing::TestNodeHandle>("~");
 		nh->setParam("unpause", false);
 		nh->setParam("no_render", true);
+#if MJR_ROS_VERSION == ROS_1
 		nh->setParam("use_sim_time", true);
+#endif
 		configure_plugin_params(*nh);
 
 		env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());

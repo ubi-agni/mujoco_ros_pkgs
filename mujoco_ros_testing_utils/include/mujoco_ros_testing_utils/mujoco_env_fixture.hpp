@@ -851,7 +851,11 @@ protected:
 		nh->setParam("no_render", true);
 		nh->setParam("headless", true);
 		nh->setParam("render_offscreen", true);
+		// ROS 2 constructs the server node with use_sim_time false. Setting it true here
+		// toggles rclcpp's TimeSource on the spinning executor and deadlocks.
+#if MJR_ROS_VERSION == ROS_1
 		nh->setParam("use_sim_time", true);
+#endif
 	}
 
 	void TearDown() override
@@ -883,7 +887,9 @@ protected:
 		nh = std::make_unique<testing::TestNodeHandle>("~");
 		nh->setParam("unpause", false);
 		nh->setParam("no_render", true);
+#if MJR_ROS_VERSION == ROS_1
 		nh->setParam("use_sim_time", true);
+#endif
 		nh->setParam("sim_steps", -1);
 
 		env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
@@ -933,7 +939,9 @@ protected:
 		nh = std::make_shared<testing::TestNodeHandle>("~");
 		nh->setParam("unpause", false);
 		nh->setParam("no_render", true);
+#if MJR_ROS_VERSION == ROS_1
 		nh->setParam("use_sim_time", true);
+#endif
 		nh->setParam("sim_steps", -1);
 
 		// verify expected parameter array sizes

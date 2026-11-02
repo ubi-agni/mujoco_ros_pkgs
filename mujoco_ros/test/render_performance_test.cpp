@@ -691,7 +691,9 @@ void ConfigureParameters(testing::TestNodeHandle &parameters, int camera_count)
 	parameters.setParam("no_render", false);
 	parameters.setParam("headless", true);
 	parameters.setParam("render_offscreen", true);
+#if MJR_ROS_VERSION == ROS_1
 	parameters.setParam("use_sim_time", true);
+#endif
 	for (int camera = 0; camera < camera_count; ++camera) {
 		const std::string prefix = "cam_config/camera_" + std::to_string(camera);
 		parameters.setParam(prefix + "/stream_type", mujoco_ros::rendering::StreamType::RGB);
