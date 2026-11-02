@@ -109,6 +109,12 @@ public:
 	mjtNum cur_xpos[3];
 };
 
+// Applies noise, range limits and visualization to a raw mj_multiRay distance (< 0: no hit). The generator is taken by
+// reference so each ray advances the shared state and draws its own noise sample.
+void ProcessRay(std::mt19937 &rand_generator, std::normal_distribution<double> &noise_dist,
+                const LaserConfig &laser_config, mjvGeom *geom, const mjtNum (&pos)[3], const mjtNum *dir, mjtNum dist,
+                const float (&rgba)[4], LaserScan &scan_msg, int ray_idx);
+
 class LaserPlugin : public mujoco_ros::MujocoPlugin
 {
 public:
