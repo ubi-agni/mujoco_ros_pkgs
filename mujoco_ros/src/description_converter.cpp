@@ -1151,7 +1151,7 @@ mjsElement *ComposeIntoWorld(mjSpec *world_spec, mjSpec *robot_spec, const Compo
 		throw ComposePreflightError(error.what());
 	}
 
-	// MuJoCo 3.3.5's mjs_attach does not reject duplicate prefixed names
+	// MuJoCo 3.3.6's mjs_attach does not reject duplicate prefixed names
 	// (returns non-null; mj_compile later fails with "repeated name").
 	// Detect the collision up front so ComposeIntoWorld fails loud without
 	// mutating world_spec into an uncompilable state.

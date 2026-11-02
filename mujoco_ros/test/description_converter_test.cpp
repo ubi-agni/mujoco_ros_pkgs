@@ -1304,7 +1304,7 @@ TEST(LoadModelFromDescription, PropagatesCollisionRejectionAsRuntimeErrorWithout
 	// left untouched) -- it does NOT reach the documented post-mutation
 	// mjs_attach()==nullptr branch that Finding 1's production fix (never
 	// mj_deleteSpec-ing compose_target in this catch block) actually guards
-	// against. Per this codebase's own findings, MuJoCo 3.3.5's mjs_attach
+	// against. Per this codebase's own findings, MuJoCo 3.3.6's mjs_attach
 	// never returns nullptr for a duplicate-prefix collision -- that's why
 	// the up-front check exists -- so that literal branch has no known,
 	// practically constructible repro with these test fixtures. The

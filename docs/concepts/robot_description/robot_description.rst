@@ -28,7 +28,7 @@ geometry, the converter mirrors those primitives into collision geometry before
 handing the URDF to MuJoCo so the resulting robot has real geoms in the
 Simulation Model.
 
-Mesh ``filename`` URIs are normalized before MuJoCo parse. MuJoCo 3.3.5 also
+Mesh ``filename`` URIs are normalized before MuJoCo parse. MuJoCo 3.3.6 also
 does not load ``.glb``, and only loads **binary** STL (and OBJ), not ASCII
 STL -- both are handled as an explicit pipeline before the mesh reaches
 MuJoCo:
