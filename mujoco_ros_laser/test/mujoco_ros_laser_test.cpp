@@ -234,7 +234,9 @@ protected:
 		nh = std::make_unique<testing::TestNodeHandle>("~");
 		nh->setParam("unpause", false);
 		nh->setParam("no_render", true);
+#if MJR_ROS_VERSION == ROS_1
 		nh->setParam("use_sim_time", true);
+#endif
 		nh->setParam("num_mj_threads", GetParam());
 		configure_plugin_params(*nh);
 		ConfigureExtraParams();

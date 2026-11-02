@@ -113,7 +113,9 @@ protected:
 		nh->setParam("unpause", false);
 		nh->setParam("no_render", true);
 		nh->setParam("headless", true);
+#if MJR_ROS_VERSION == ROS_1
 		nh->setParam("use_sim_time", true);
+#endif
 
 		env_ptr              = new MujocoEnvTestWrapper(nh.get());
 		std::string xml_path = testing::get_test_model_path("empty_world.xml");
