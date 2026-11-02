@@ -415,8 +415,8 @@ void LaserPlugin::ComputeLasers(const mjModel *model, mjData *data)
 
 		mju_copy(rot, data->site_xmat + 9 * laser_config.site_attached, 9);
 
-		// Rotate all rays into the world frame, then cast them in one serial mj_multiRay call. Matches the former
-		// per-ray mj_ray call: static geoms included, no body excluded, effectively unbounded cutoff.
+		// Rotate all rays into the world frame, then cast them in one serial mj_multiRay call.
+		// Static geoms are included, no body is excluded and the cutoff is effectively unbounded.
 		mjtNum pos[3];
 		mju_copy3(pos, data->site_xpos + 3 * laser_config.site_attached);
 		std::vector<mjtNum> dirs(3 * laser_config.nrays);
