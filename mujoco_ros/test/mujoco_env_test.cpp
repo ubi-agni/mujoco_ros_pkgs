@@ -3824,3 +3824,27 @@ TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesRejectsMissingBodyUnderPhysi
 	                                                kValidIquat, "", status, sizeof(status)));
 	EXPECT_NE(std::string(status).find("no_such_body"), std::string::npos);
 }
+
+TEST_F(BaseEnvFixture, EqualityParametersRejectedWhenNoModelIsLoaded)
+{
+	env_ptr                               = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	char status[MujocoEnv::kErrorLength]  = {};
+	int type                              = 0;
+	bool active                           = false;
+	mjtNum solver_params[mjNIMP + mjNREF] = {};
+	mjtNum anchor[3]                      = {};
+	mjtNum relpose[7]                     = {};
+	mjtNum polycoef[mjNEQDATA]            = {};
+	mjtNum torquescale                    = 0;
+	std::string element1, element2;
+
+	EXPECT_FALSE(env_ptr->GetEqualityConstraintParameters("weld", type, solver_params, active, element1, element2,
+	                                                      torquescale, anchor, relpose, polycoef, "", status,
+	                                                      sizeof(status)));
+	EXPECT_NE(std::string(status).find("No model is loaded"), std::string::npos);
+
+	status[0] = '\0';
+	EXPECT_FALSE(env_ptr->SetEqualityConstraintParameters("weld", mjEQ_WELD, solver_params, true, "", "", -1, anchor,
+	                                                      relpose, polycoef, "", status, sizeof(status)));
+	EXPECT_NE(std::string(status).find("No model is loaded"), std::string::npos);
+}

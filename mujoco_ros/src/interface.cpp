@@ -951,6 +951,14 @@ bool MujocoEnv::SetEqualityConstraintParameters(const std::string &eq_name, cons
 		return false;
 	}
 	RecursiveLock sim_lock(physics_thread_mutex_);
+	if (GetControlSnapshot().model_lifecycle != ModelLifecyclePhase::kOperational || model_ == nullptr) {
+		message = "No model is loaded. Equality constraint parameters are unavailable";
+		MJR_ERROR_STREAM(message);
+		if (status_message != nullptr) {
+			std::strncpy(status_message, message.c_str(), status_sz);
+		}
+		return false;
+	}
 	int eq_id = mj_name2id(model_.get(), mjOBJ_EQUALITY, eq_name.c_str());
 	if (eq_id == -1) {
 		message = "Could not find equality constraint named '" + eq_name + "'";
@@ -1106,6 +1114,14 @@ bool MujocoEnv::GetEqualityConstraintParameters(const std::string &eq_name, int 
 		return false;
 	}
 	RecursiveLock sim_lock(physics_thread_mutex_);
+	if (GetControlSnapshot().model_lifecycle != ModelLifecyclePhase::kOperational || model_ == nullptr) {
+		std::string message = "No model is loaded. Equality constraint parameters are unavailable";
+		MJR_ERROR_STREAM(message);
+		if (status_message != nullptr) {
+			std::strncpy(status_message, message.c_str(), status_sz);
+		}
+		return false;
+	}
 	int eq_id = mj_name2id(model_.get(), mjOBJ_EQUALITY, eq_name.c_str());
 	if (eq_id == -1) {
 		std::string message = "Could not find equality constraint named '" + eq_name + "'";
