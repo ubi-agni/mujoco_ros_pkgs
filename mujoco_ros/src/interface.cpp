@@ -1015,6 +1015,9 @@ bool MujocoEnv::SetEqualityConstraintParameters(const std::string &eq_name, cons
 				                 << relpose[4] << ", " << relpose[5] << ", " << relpose[6] << ", " << relpose[7] << ", "
 				                 << relpose[8] << ", " << relpose[9]);
 				mju_copy(model_->eq_data + eq_id * mjNEQDATA + 3, relpose, 7);
+				// MuJoCo >= 3.17 flags welds compiled without relpose in the last eq_data slot; mj_setConst re-derives
+				// relpose for flagged welds. An explicit relpose must not be overwritten by later mj_setConst calls.
+				model_->eq_data[eq_id * mjNEQDATA + mjNEQDATA - 1] = 0;
 			}
 			if (torquescale != -1) {
 				MJR_DEBUG_STREAM("\tSetting torquescale of weld eqc to " << torquescale);

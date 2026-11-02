@@ -945,7 +945,7 @@ protected:
 		nh->setParam("sim_steps", -1);
 
 		// verify expected parameter array sizes
-		EXPECT_EQ(mjNEQDATA, 11) << "This versions expects the maximum equality contraint parameters to be 11";
+		EXPECT_EQ(mjNEQDATA, 12) << "This version expects the maximum equality constraint parameters to be 12";
 		EXPECT_EQ(mjNIMP, 5) << "This version expects the number of solimp parameters to be 5";
 		EXPECT_EQ(mjNREF, 2) << "This version expects the number of solref parameters to be 2";
 
