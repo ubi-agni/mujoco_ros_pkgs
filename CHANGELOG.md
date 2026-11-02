@@ -24,7 +24,7 @@
 ### Fixed
 * [patch] Surface save-XML failures in the ROS log and as a viewer notice.
 * [patch] Keep a runtime-set weld `relpose` across `mj_setConst` (mass and inertia edits) on MuJoCo 3.17, which otherwise re-derives it.
-* [patch] Runtime option patches write only the flags they model, so model flags such as `autoreset=disable` no longer revert to the default.
+* [patch] Runtime option patches write only the flags they model, so model flags such as `autoreset=disable`, or a spring-only or damper-only passive disable, no longer revert to the default.
 * [patch] Take the physics lock in `GetEqualityConstraintParameters` / `SetEqualityConstraintParameters` so equality edits no longer race the physics step.
 * [patch] Read exactly the 7 weld `relpose` values in `GetEqualityConstraintParameters` instead of 10, and stop the debug log from reading past the caller buffer.
 * [patch] Resize the offscreen framebuffer when a camera is wider/taller than the model `offwidth`/`offheight` default, so `mjr_readPixels` past the FBO is no longer garbage on the image edge.
