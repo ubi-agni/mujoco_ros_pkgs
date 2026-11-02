@@ -189,9 +189,10 @@ element:
 always track the URDF's own ``<limit>``.
 
 **Mimic joints:** a joint that is a URDF ``<mimic>`` follower and is also claimed by
-``<ros2_control>`` is a hard error (it would fight the driver joint's actuator). Full
-``<mimic>`` → MJCF ``<equality>`` porting is separate, tracked roadmap work; this converter does
-not generate equality constraints today.
+``<ros2_control>`` is a hard error (it would fight the driver joint's actuator). From MuJoCo
+3.13 the URDF parser emits the joint equality itself. The converter reuses that row, names it
+``<follower>_mimic_eq``, writes the parsed offset and multiplier, and keeps the armature floor
+on the follower. It throws if that native equality is missing or ambiguous.
 
 **Attach prefix:** the compose-time body/joint/actuator name prefix (``ComposeOptions::prefix``,
 ``description.attach_prefix``) defaults to an empty string, not a hardcoded value -- a
