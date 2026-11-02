@@ -42,7 +42,7 @@
 
 namespace mujoco_ros {
 
-// MuJoCo 3.3.5 rejects STL meshes with more than this many faces (misleading
+// MuJoCo 3.3.6 rejects STL meshes with more than this many faces (misleading
 // "perhaps ASCII" error). OBJ has no such cap.
 constexpr uint32_t kMujocoMaxStlFaces = 200000;
 
