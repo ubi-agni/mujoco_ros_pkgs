@@ -504,7 +504,11 @@ void WriteRuntimeOptions(const RuntimeOptionsSnapshot &snapshot, mjOption &optio
 	SetBit(option.disableflags, mjDSBL_FRICTIONLOSS, snapshot.frictionloss_disabled);
 	SetBit(option.disableflags, mjDSBL_LIMIT, snapshot.limit_disabled);
 	SetBit(option.disableflags, mjDSBL_CONTACT, snapshot.contact_disabled);
-	SetBit(option.disableflags, mjDSBL_SPRING | mjDSBL_DAMPER, snapshot.passive_disabled);
+	// passive_disabled reads true only when both bits are set; leave a spring-only or damper-only model untouched
+	// unless the patch changes the combined value.
+	if (snapshot.passive_disabled != ReadRuntimeOptions(option).passive_disabled) {
+		SetBit(option.disableflags, mjDSBL_SPRING | mjDSBL_DAMPER, snapshot.passive_disabled);
+	}
 	SetBit(option.disableflags, mjDSBL_GRAVITY, snapshot.gravity_disabled);
 	SetBit(option.disableflags, mjDSBL_CLAMPCTRL, snapshot.clampctrl_disabled);
 	SetBit(option.disableflags, mjDSBL_WARMSTART, snapshot.warmstart_disabled);
