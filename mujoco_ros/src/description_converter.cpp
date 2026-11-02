@@ -695,7 +695,7 @@ void ApplyGlbVisualMaterials(mjSpec *robot_spec, const std::vector<GlbVisualBind
 
 		const std::string tex_name = binding.material_name + "_tex";
 
-		mjsTexture *tex = mjs_addTexture(robot_spec);
+		mjsTexture *tex = mjs_addTexture(robot_spec, nullptr);
 		mjs_setName(tex->element, tex_name.c_str());
 		tex->type = mjTEXTURE_2D;
 		mjs_setString(tex->file, binding.texture_basename.c_str());
