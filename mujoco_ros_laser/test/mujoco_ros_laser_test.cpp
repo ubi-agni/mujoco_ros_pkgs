@@ -78,12 +78,12 @@ template <typename MessageT>
 using MessageConstPtr = typename MessageT::ConstSharedPtr;
 #endif
 
-std::string get_laser_model_path()
+std::string get_laser_model_path(const char *asset = "laser_world.xml")
 {
 #if MJR_ROS_VERSION == ROS_1
-	return ros::package::getPath("mujoco_ros_laser") + "/assets/laser_world.xml";
+	return ros::package::getPath("mujoco_ros_laser") + "/assets/" + asset;
 #else
-	return ament_index_cpp::get_package_share_directory("mujoco_ros_laser") + "/assets/laser_world.xml";
+	return ament_index_cpp::get_package_share_directory("mujoco_ros_laser") + "/assets/" + asset;
 #endif
 }
 
@@ -228,6 +228,7 @@ protected:
 	std::unique_ptr<MujocoEnvTestWrapper> env_ptr;
 
 	virtual void ConfigureExtraParams() {}
+	virtual std::string ModelPath() const { return get_laser_model_path(); }
 
 	void SetUp() override
 	{
@@ -243,7 +244,7 @@ protected:
 
 		env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 
-		const std::string xml_path = get_laser_model_path();
+		const std::string xml_path = ModelPath();
 		env_ptr->StartWithXML(xml_path);
 
 		float seconds = 0;
@@ -429,6 +430,40 @@ TEST(LaserNoise, RaysDrawDistinctNoiseSamples)
 	}
 	EXPECT_EQ(scan.ranges, scan2.ranges);
 }
+
+// The laser's own mount body carries a geom in the beam path. The scan must ignore it and report the real target.
+class SelfHitLaserFixture : public NoiseFreeLaserFixture
+{
+protected:
+	std::string ModelPath() const override { return get_laser_model_path("laser_self_hit_world.xml"); }
+};
+
+TEST_P(SelfHitLaserFixture, MountBodyGeomIsNotHit)
+{
+	const auto msg = wait_for_scan_message(env_ptr.get(), nh.get());
+	ASSERT_TRUE(msg != nullptr) << "Could not get message on " << scan_topic_name(env_ptr.get());
+
+	const mjModel *m  = env_ptr->getModelPtr();
+	const mjData *d   = env_ptr->getDataPtr();
+	const int site    = mj_name2id(m, mjOBJ_SITE, "laser_site");
+	const int target  = mj_name2id(m, mjOBJ_GEOM, "target_wall");
+	const int bracket = mj_name2id(m, mjOBJ_GEOM, "mount_bracket");
+	ASSERT_GE(site, 0);
+	ASSERT_GE(target, 0);
+	ASSERT_GE(bracket, 0);
+	ASSERT_EQ(m->geom_bodyid[bracket], m->site_bodyid[site]) << "bracket must belong to the laser's mount body";
+
+	// Ray along the site x axis: expected range is the distance to the target wall's -x face.
+	const size_t idx      = static_cast<size_t>(std::lround(-msg->angle_min / msg->angle_increment));
+	const double angle    = msg->angle_min + static_cast<double>(idx) * msg->angle_increment;
+	const double face_x   = d->geom_xpos[3 * target] - m->geom_size[3 * target];
+	const double expected = (face_x - d->site_xpos[3 * site]) / std::cos(angle);
+	EXPECT_GT(expected, 2.0);
+	EXPECT_NEAR(msg->ranges[idx], expected, 1e-3) << "Ray reports the mount body's own bracket instead of the target";
+}
+
+INSTANTIATE_TEST_SUITE_P(LaserSelfHit, SelfHitLaserFixture, ::testing::Values(1),
+                         [](const ::testing::TestParamInfo<int> &) { return "SingleThreaded"; });
 
 INSTANTIATE_TEST_SUITE_P(LaserRanges, NoiseFreeLaserFixture, ::testing::Values(1, 2),
                          [](const ::testing::TestParamInfo<int> &info) {
