@@ -378,7 +378,9 @@ protected:
 		nh->setParam("eval_mode", eval_mode);
 		nh->setParam("unpause", true);
 		nh->setParam("no_render", true);
+#if MJR_ROS_VERSION == ROS_1
 		nh->setParam("use_sim_time", true);
+#endif
 		configure_plugin_params(*nh);
 
 		env_ptr = std::make_unique<MujocoEnvTestWrapper>(eval_mode ? "some_hash" : "", nh.get());
