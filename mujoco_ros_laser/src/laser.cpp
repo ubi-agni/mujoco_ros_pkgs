@@ -425,7 +425,9 @@ void LaserPlugin::ComputeLasers(const mjModel *model, mjData *data)
 		for (uint i = 0; i < laser_config.nrays; ++i) {
 			mju_mulMatVec3(dirs.data() + 3 * i, rot, laser_config.rays + 3 * i);
 		}
-		mj_multiRay(model, data, pos, dirs.data(), ignore_groups, 1, -1, geomids.data(), dists.data(), nullptr,
+		// Exclude the mount body. mj_multiRay takes one body id, so the rest of the kinematic chain can still be hit.
+		const int mount_body = model->site_bodyid[laser_config.site_attached];
+		mj_multiRay(model, data, pos, dirs.data(), ignore_groups, 1, mount_body, geomids.data(), dists.data(), nullptr,
 		            static_cast<int>(laser_config.nrays), mjMAXVAL);
 
 		for (uint i = 0; i < laser_config.nrays; ++i) {

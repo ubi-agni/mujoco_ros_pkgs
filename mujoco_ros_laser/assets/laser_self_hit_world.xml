@@ -1,0 +1,20 @@
+<mujoco model="Laser Self Hit">
+    <option timestep="0.001" gravity="0 0 -9.81" />
+    <compiler angle="radian" />
+
+    <worldbody>
+        <geom name="ground_plane" type="plane" size="10 10 10" rgba="1 1 1 1" />
+
+        <!-- Far wall across the whole scan fan; the only intended target. -->
+        <body name="target" pos="3 0 0.3">
+            <geom name="target_wall" type="box" size="0.1 5 0.3" rgba="1 0 0 1" />
+        </body>
+
+        <!-- The bracket is part of the laser's own mount body and sits in the beam path. -->
+        <body name="laser" pos="0 0 .3">
+            <geom name="mount_base" type="box" size=".1 .1 .1" pos="-0.15 0 0" rgba="0.8 0.8 0.8 1" />
+            <geom name="mount_bracket" type="box" size=".05 .3 .1" pos="0.3 0 0" rgba="0.8 0.8 0.8 1" />
+            <site pos="0 0 0" name="laser_site" size="0.05" />
+        </body>
+    </worldbody>
+</mujoco>
