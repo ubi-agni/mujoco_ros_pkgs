@@ -56,7 +56,7 @@ concurrency:
 
 env:
   ROS_DISTRO: humble
-  MUJOCO_VERSION: "3.16.0"
+  MUJOCO_VERSION: "3.17.0"
   DOCKER_IMAGE: ubiagni/mujoco_ros:humble-ci
   CCACHE_DIR: ${{ github.workspace }}/.ccache
   # Share object keys across baseline/candidate workspace paths in one campaign.
@@ -165,7 +165,7 @@ jobs:
     container:
       image: ubiagni/mujoco_ros:humble-ci
       env:
-        MUJOCO_DIR: /root/mujoco/3.16.0
+        MUJOCO_DIR: /root/mujoco/3.17.0
         CCACHE_DIR: ${{ github.workspace }}/.ccache
         CCACHE_NOHASHDIR: "1"
     steps:

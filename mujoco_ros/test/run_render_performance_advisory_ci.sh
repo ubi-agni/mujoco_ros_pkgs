@@ -20,7 +20,7 @@ BASELINE_SHA=""
 CANDIDATE_SHA=""
 ARTIFACTS_DIR=""
 ROS_DISTRO="${ROS_DISTRO:-humble}"
-MUJOCO_DIR="${MUJOCO_DIR:-/root/mujoco/3.16.0}"
+MUJOCO_DIR="${MUJOCO_DIR:-/root/mujoco/3.17.0}"
 CAMERA_COUNTS=(1 2 4)
 ITERATIONS=1000
 # Fast DDS rejects domain IDs above 232 (see docs/guardrails.md).
