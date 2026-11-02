@@ -724,7 +724,7 @@ void MakePhysicsSection(mujoco_ros::Viewer *viewer)
 	mjOption *opt                = viewer->is_passive_ ? &viewer->m_passive_->opt : &viewer->m_->opt;
 	mjuiDef defPhysics[]         = { { mjITEM_SECTION, "Physics", mjPRESERVE, nullptr, "AP" },
 		                              { mjITEM_SELECT, "Integrator", 2, &(opt->integrator),
-		                                "Euler\nRK4\nimplicit\nimplicitfast" },
+		                                "Euler\nRK4\nimplicit\nimplicitfast\ndiscrete" },
 		                              { mjITEM_SELECT, "Cone", 2, &(opt->cone), "Pyramidal\nElliptic" },
 		                              { mjITEM_SELECT, "Jacobian", 2, &(opt->jacobian), "Dense\nSparse\nAuto" },
 		                              { mjITEM_SELECT, "Solver", 2, &(opt->solver), "PGS\nCG\nNewton" },
@@ -3156,8 +3156,8 @@ void Viewer::RenderLoop(std::function<void()> on_ready)
 					int ngeom     = std::min(nusergeom, this->scn.maxgeom - this->scn.ngeom);
 					if (ngeom < nusergeom && !warned_user_geoms_truncated_) {
 						// MuJoCo no longer reports a full scene as a warning; log once so truncation is not silent.
-						MJR_WARN_NAMED("Viewer", "Scene is full (maxgeom=%d): dropping %d of %d user geoms", this->scn.maxgeom,
-						               nusergeom - ngeom, nusergeom);
+						MJR_WARN_NAMED("Viewer", "Scene is full (maxgeom=%d): dropping %d of %d user geoms",
+						               this->scn.maxgeom, nusergeom - ngeom, nusergeom);
 						warned_user_geoms_truncated_ = true;
 					}
 					std::memcpy(this->scn.geoms + this->scn.ngeom, user_scn_geoms_.data(), ngeom * sizeof(mjvGeom));

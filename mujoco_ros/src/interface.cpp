@@ -950,6 +950,7 @@ bool MujocoEnv::SetEqualityConstraintParameters(const std::string &eq_name, cons
 		}
 		return false;
 	}
+	RecursiveLock sim_lock(physics_thread_mutex_);
 	int eq_id = mj_name2id(model_.get(), mjOBJ_EQUALITY, eq_name.c_str());
 	if (eq_id == -1) {
 		message = "Could not find equality constraint named '" + eq_name + "'";
@@ -1012,8 +1013,7 @@ bool MujocoEnv::SetEqualityConstraintParameters(const std::string &eq_name, cons
 			if (relpose != nullptr) {
 				MJR_DEBUG_STREAM("\tSetting relpose of weld eqc to "
 				                 << relpose[0] << ", " << relpose[1] << ", " << relpose[2] << ", " << relpose[3] << ", "
-				                 << relpose[4] << ", " << relpose[5] << ", " << relpose[6] << ", " << relpose[7] << ", "
-				                 << relpose[8] << ", " << relpose[9]);
+				                 << relpose[4] << ", " << relpose[5] << ", " << relpose[6]);
 				mju_copy(model_->eq_data + eq_id * mjNEQDATA + 3, relpose, 7);
 				// MuJoCo >= 3.17 flags welds compiled without relpose in the last eq_data slot; mj_setConst re-derives
 				// relpose for flagged welds. An explicit relpose must not be overwritten by later mj_setConst calls.
@@ -1105,6 +1105,7 @@ bool MujocoEnv::GetEqualityConstraintParameters(const std::string &eq_name, int 
 		}
 		return false;
 	}
+	RecursiveLock sim_lock(physics_thread_mutex_);
 	int eq_id = mj_name2id(model_.get(), mjOBJ_EQUALITY, eq_name.c_str());
 	if (eq_id == -1) {
 		std::string message = "Could not find equality constraint named '" + eq_name + "'";
@@ -1144,7 +1145,7 @@ bool MujocoEnv::GetEqualityConstraintParameters(const std::string &eq_name, int 
 				element2 = e2_c;
 			}
 			mju_copy(anchor, model_->eq_data + eq_id * mjNEQDATA, 3);
-			mju_copy(relpose, model_->eq_data + eq_id * mjNEQDATA + 3, 10);
+			mju_copy(relpose, model_->eq_data + eq_id * mjNEQDATA + 3, 7);
 			torquescale = model_->eq_data[eq_id * mjNEQDATA + 10];
 			break;
 		}

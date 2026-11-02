@@ -179,7 +179,7 @@ RuntimeOptionsSnapshot ReadRuntimeOptions(const mjOption &option)
 	result.frictionloss_disabled = (option.disableflags & mjDSBL_FRICTIONLOSS) != 0;
 	result.limit_disabled        = (option.disableflags & mjDSBL_LIMIT) != 0;
 	result.contact_disabled      = (option.disableflags & mjDSBL_CONTACT) != 0;
-	result.passive_disabled      = (option.disableflags & (mjDSBL_SPRING | mjDSBL_DAMPER)) == (mjDSBL_SPRING | mjDSBL_DAMPER);
+	result.passive_disabled = (option.disableflags & (mjDSBL_SPRING | mjDSBL_DAMPER)) == (mjDSBL_SPRING | mjDSBL_DAMPER);
 	result.gravity_disabled      = (option.disableflags & mjDSBL_GRAVITY) != 0;
 	result.clampctrl_disabled    = (option.disableflags & mjDSBL_CLAMPCTRL) != 0;
 	result.warmstart_disabled    = (option.disableflags & mjDSBL_WARMSTART) != 0;
@@ -349,8 +349,8 @@ RuntimeOptionsPatchResult ParseRuntimeOptionsPatch(const std::vector<RuntimeOpti
 
 RuntimeOptionsValidationResult ValidateRuntimeOptions(const RuntimeOptionsSnapshot &snapshot)
 {
-	if (snapshot.integrator < 0 || snapshot.integrator > 3)
-		return RejectValidation("integrator", "must be in range 0..3");
+	if (snapshot.integrator < mjINT_EULER || snapshot.integrator > mjINT_DISCRETE)
+		return RejectValidation("integrator", "must be in range 0.." + std::to_string(mjINT_DISCRETE));
 	if (snapshot.cone < 0 || snapshot.cone > 1)
 		return RejectValidation("cone", "must be in range 0..1");
 	if (snapshot.jacobian < 0 || snapshot.jacobian > 2)
@@ -499,7 +499,6 @@ void WriteRuntimeOptions(const RuntimeOptionsSnapshot &snapshot, mjOption &optio
 	WriteArray(snapshot.solimp, option.o_solimp);
 	WriteArray(snapshot.solref, option.o_solref);
 	WriteArray(snapshot.friction, option.o_friction);
-	option.disableflags = 0;
 	SetBit(option.disableflags, mjDSBL_CONSTRAINT, snapshot.constraint_disabled);
 	SetBit(option.disableflags, mjDSBL_EQUALITY, snapshot.equality_disabled);
 	SetBit(option.disableflags, mjDSBL_FRICTIONLOSS, snapshot.frictionloss_disabled);
@@ -515,7 +514,6 @@ void WriteRuntimeOptions(const RuntimeOptionsSnapshot &snapshot, mjOption &optio
 	SetBit(option.disableflags, mjDSBL_SENSOR, snapshot.sensor_disabled);
 	SetBit(option.disableflags, mjDSBL_MIDPHASE, snapshot.midphase_disabled);
 	SetBit(option.disableflags, mjDSBL_EULERDAMP, snapshot.eulerdamp_disabled);
-	option.enableflags = 0;
 	SetBit(option.enableflags, mjENBL_OVERRIDE, snapshot.override_contacts);
 	SetBit(option.enableflags, mjENBL_ENERGY, snapshot.energy);
 	SetBit(option.enableflags, mjENBL_FWDINV, snapshot.fwd_inv);
