@@ -394,6 +394,42 @@ TEST_P(NoiseFreeLaserFixture, RangesMatchSerialMjRay)
 	EXPECT_GT(hits, 5) << "Scan should hit the obstacles in the laser world";
 }
 
+// Every ray of a scan must advance the shared noise generator. Rays with identical true range then get distinct noise.
+TEST(LaserNoise, RaysDrawDistinctNoiseSamples)
+{
+	const LaserConfig config("scan", "scan", 0, false, 10.0, 0.1, 30.0, 0.01, 0.02, -0.1, 0.1, 0.05);
+	ASSERT_TRUE(config.is_set);
+	ASSERT_GE(config.nrays, 3u);
+
+	std::mt19937 generator(42);
+	std::normal_distribution<double> noise_dist(0.0, 1.0);
+	const mjtNum pos[3]     = { 0, 0, 0 };
+	const mjtNum dir[3]     = { 1, 0, 0 };
+	const float rgba[4]     = { 0, 0, 1, 1 };
+	const mjtNum true_range = 5.0;
+
+	LaserScan scan;
+	scan.ranges.resize(config.nrays);
+	for (uint i = 0; i < config.nrays; ++i) {
+		ProcessRay(generator, noise_dist, config, nullptr, pos, dir, true_range, rgba, scan, static_cast<int>(i));
+	}
+
+	std::vector<float> distinct(scan.ranges.begin(), scan.ranges.end());
+	std::sort(distinct.begin(), distinct.end());
+	distinct.erase(std::unique(distinct.begin(), distinct.end()), distinct.end());
+	EXPECT_GT(distinct.size(), config.nrays / 2) << "Rays of one scan reuse the same noise draw";
+
+	// Same seed, same scan: reproducible.
+	std::mt19937 generator2(42);
+	std::normal_distribution<double> noise_dist2(0.0, 1.0);
+	LaserScan scan2;
+	scan2.ranges.resize(config.nrays);
+	for (uint i = 0; i < config.nrays; ++i) {
+		ProcessRay(generator2, noise_dist2, config, nullptr, pos, dir, true_range, rgba, scan2, static_cast<int>(i));
+	}
+	EXPECT_EQ(scan.ranges, scan2.ranges);
+}
+
 INSTANTIATE_TEST_SUITE_P(LaserRanges, NoiseFreeLaserFixture, ::testing::Values(1, 2),
                          [](const ::testing::TestParamInfo<int> &info) {
 	                         return info.param == 1 ? "SingleThreaded" : "MultiThreaded";
