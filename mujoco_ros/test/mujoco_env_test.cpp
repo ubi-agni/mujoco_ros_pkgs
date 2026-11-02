@@ -3515,6 +3515,70 @@ TEST_F(PendulumEnvFixture, SetBodyInertialPropertiesUpdatesModelAndPreservesQpos
 	}
 }
 
+// MuJoCo >= 3.17: mj_setConst re-derives eq_data relpose of a weld compiled without relpose (flagged in
+// eq_data[mjNEQDATA - 1]). A relpose written at runtime must survive a mass edit and keep driving the weld.
+TEST_F(BaseEnvFixture, RuntimeWeldRelposeSurvivesMassChange)
+{
+	nh->setParam("unpause", false);
+	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	env_ptr->StartWithXML(
+	    "<mujoco><option gravity=\"0 0 0\" timestep=\"0.002\"/>"
+	    "<worldbody><body name=\"welded\" pos=\"0.5 0 1\"><freejoint/><geom type=\"sphere\" size=\"0.05\" mass=\"1\"/></body></worldbody>"
+	    "<equality><weld name=\"weld_derived\" body1=\"welded\"/></equality></mujoco>");
+	float seconds = 0;
+	while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		seconds += 0.001;
+	}
+	mjModel *m = env_ptr->getModelPtr();
+	mjData *d  = env_ptr->getDataPtr();
+	ASSERT_NE(m, nullptr);
+	const int eq_id   = mj_name2id(m, mjOBJ_EQUALITY, "weld_derived");
+	const int body_id = mj_name2id(m, mjOBJ_BODY, "welded");
+	ASSERT_GE(eq_id, 0);
+	ASSERT_GE(body_id, 1);
+	std::lock_guard<MujocoEnvMutex> lock(*env_ptr->getMutexPtr()); // keep the paused physics loop out of the model
+	mjtNum *eq_data = m->eq_data + eq_id * mjNEQDATA;
+
+	// Explicit relpose that differs from the compiled one (shifted by 0.1 m along x of body1).
+	mjtNum relpose[7];
+	mju_copy(relpose, eq_data + 3, 7);
+	relpose[0] += 0.1;
+	mjtNum solver_params[mjNIMP + mjNREF];
+	mju_copy(solver_params, m->eq_solimp + eq_id * mjNIMP, mjNIMP);
+	mju_copy(solver_params + mjNIMP, m->eq_solref + eq_id * mjNREF, mjNREF);
+	ASSERT_TRUE(env_ptr->SetEqualityConstraintParameters("weld_derived", mjEQ_WELD, solver_params, true, "", "", -1,
+	                                                     nullptr, relpose, nullptr));
+
+	// Reference: same model and explicit relpose.
+	mjModel *m_ref = mj_copyModel(nullptr, m);
+	mjData *d_ref  = mj_makeData(m_ref);
+	mj_copyData(d_ref, m_ref, d);
+	// Reference applies the same mass edit directly; its weld is unflagged so mj_setConst keeps the relpose.
+	std::vector<mjtNum> qpos_ref(d_ref->qpos, d_ref->qpos + m_ref->nq);
+	m_ref->body_mass[body_id] = 2.0;
+	mj_setConst(m_ref, d_ref);
+	mju_copy(d_ref->qpos, qpos_ref.data(), m_ref->nq);
+
+	ASSERT_TRUE(env_ptr->SetBodyInertialProperties("welded", 2.0, m->body_ipos + body_id * 3,
+	                                               m->body_inertia + body_id * 3, m->body_iquat + body_id * 4));
+
+	for (int i = 0; i < 7; ++i) {
+		EXPECT_DOUBLE_EQ(eq_data[3 + i], relpose[i]) << "weld relpose[" << i << "] changed by mass edit";
+	}
+	EXPECT_DOUBLE_EQ(eq_data[mjNEQDATA - 1], 0.0) << "runtime relpose must clear the derive-at-setConst flag";
+
+	for (int i = 0; i < 2000; ++i) {
+		mj_step(m, d);
+		mj_step(m_ref, d_ref);
+	}
+	for (int i = 0; i < 3; ++i) {
+		EXPECT_NEAR(d->xpos[body_id * 3 + i], d_ref->xpos[body_id * 3 + i], 1e-3) << "welded body moved, axis " << i;
+	}
+	mj_deleteData(d_ref);
+	mj_deleteModel(m_ref);
+}
+
 TEST_F(PendulumEnvFixture, SaveModelXmlAfterInertialEditSucceedsWithoutNotice)
 {
 	ASSERT_TRUE(
