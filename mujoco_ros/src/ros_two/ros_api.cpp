@@ -146,9 +146,9 @@ RosAPI::RosAPI(MujocoEnvPtr env_ptr) : env_ptr_(env_ptr)
 	DeclareRuntimeParameter(env_ptr_, "admin_hash", std::string(""),
 	                        "Admin hash used for protected runtime operations.");
 
-	DeclareRuntimeParameter(
-	    env_ptr_, "integrator", mjINT_EULER,
-	    MakeEnumDescriptor("MuJoCo integrator.", 0, 3, "0: Euler, 1: RK4, 2: Implicit, 3: Implicitfast"));
+	DeclareRuntimeParameter(env_ptr_, "integrator", mjINT_EULER,
+	                        MakeEnumDescriptor("MuJoCo integrator.", mjINT_EULER, mjINT_DISCRETE,
+	                                           "0: Euler, 1: RK4, 2: Implicit, 3: Implicitfast, 4: Discrete"));
 	DeclareRuntimeParameter(env_ptr_, "cone", mjCONE_ELLIPTIC,
 	                        MakeEnumDescriptor("MuJoCo cone type.", 0, 1, "0: Pyramidal, 1: Elliptic"));
 	DeclareRuntimeParameter(env_ptr_, "jacobian", mjJAC_AUTO,
@@ -357,7 +357,8 @@ void RosAPI::UpdateDynamicParams()
 		parameters.emplace_back("frictionloss_disabled", static_cast<bool>(opt.disableflags & mjDSBL_FRICTIONLOSS));
 		parameters.emplace_back("limit_disabled", static_cast<bool>(opt.disableflags & mjDSBL_LIMIT));
 		parameters.emplace_back("contact_disabled", static_cast<bool>(opt.disableflags & mjDSBL_CONTACT));
-		parameters.emplace_back("passive_disabled", (opt.disableflags & (mjDSBL_SPRING | mjDSBL_DAMPER)) == (mjDSBL_SPRING | mjDSBL_DAMPER));
+		parameters.emplace_back("passive_disabled",
+		                        (opt.disableflags & (mjDSBL_SPRING | mjDSBL_DAMPER)) == (mjDSBL_SPRING | mjDSBL_DAMPER));
 		parameters.emplace_back("gravity_disabled", static_cast<bool>(opt.disableflags & mjDSBL_GRAVITY));
 		parameters.emplace_back("clampctrl_disabled", static_cast<bool>(opt.disableflags & mjDSBL_CLAMPCTRL));
 		parameters.emplace_back("warmstart_disabled", static_cast<bool>(opt.disableflags & mjDSBL_WARMSTART));
@@ -488,7 +489,7 @@ rcl_interfaces::msg::SetParametersResult RosAPI::DynamicParamsCallbackLegacy(con
 				}
 				mju::strcpy_arr(env_ptr_->settings_.admin_hash, parameter.as_string().c_str());
 			} else if (name == "integrator") {
-				ValidateIntegerRange(parameter, 0, 3);
+				ValidateIntegerRange(parameter, mjINT_EULER, mjINT_DISCRETE);
 				env_ptr_->model_->opt.integrator = parameter.as_int();
 			} else if (name == "cone") {
 				ValidateIntegerRange(parameter, 0, 1);

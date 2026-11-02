@@ -3085,6 +3085,35 @@ TEST_F(BaseEnvFixture, RuntimeOptionsTransactionsAdvanceEpochAndRollback)
 	env_ptr->shutdown();
 }
 
+TEST_F(BaseEnvFixture, RuntimeOptionPatchKeepsModelAutoresetDisabled)
+{
+	nh->setParam("unpause", false);
+	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	env_ptr->StartWithXML("<mujoco><option><flag autoreset=\"disable\"/></option><worldbody/></mujoco>");
+	ASSERT_NE(env_ptr->getModelPtr(), nullptr);
+	ASSERT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_AUTORESET);
+
+	ASSERT_TRUE(env_ptr->ApplyRuntimeOptions({ { "timestep", 0.002 } }).ok());
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_AUTORESET);
+
+	env_ptr->shutdown();
+}
+
+TEST_F(BaseEnvFixture, RuntimeOptionPatchAcceptsDiscreteIntegratorModel)
+{
+	nh->setParam("unpause", false);
+	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	env_ptr->StartWithXML("<mujoco><option integrator=\"implicitfast\"/><worldbody/></mujoco>");
+	ASSERT_NE(env_ptr->getModelPtr(), nullptr);
+	env_ptr->getModelPtr()->opt.integrator = mjINT_DISCRETE;
+
+	const auto applied = env_ptr->ApplyRuntimeOptions({ { "timestep", 0.002 } });
+	EXPECT_TRUE(applied.ok());
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.integrator, mjINT_DISCRETE);
+
+	env_ptr->shutdown();
+}
+
 TEST_F(BaseEnvFixture, RuntimeOptionsUpdateWaitsForHeldPhysicsBoundary)
 {
 	nh->setParam("unpause", false);
@@ -3521,10 +3550,10 @@ TEST_F(BaseEnvFixture, RuntimeWeldRelposeSurvivesMassChange)
 {
 	nh->setParam("unpause", false);
 	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
-	env_ptr->StartWithXML(
-	    "<mujoco><option gravity=\"0 0 0\" timestep=\"0.002\"/>"
-	    "<worldbody><body name=\"welded\" pos=\"0.5 0 1\"><freejoint/><geom type=\"sphere\" size=\"0.05\" mass=\"1\"/></body></worldbody>"
-	    "<equality><weld name=\"weld_derived\" body1=\"welded\"/></equality></mujoco>");
+	env_ptr->StartWithXML("<mujoco><option gravity=\"0 0 0\" timestep=\"0.002\"/>"
+	                      "<worldbody><body name=\"welded\" pos=\"0.5 0 1\"><freejoint/><geom type=\"sphere\" "
+	                      "size=\"0.05\" mass=\"1\"/></body></worldbody>"
+	                      "<equality><weld name=\"weld_derived\" body1=\"welded\"/></equality></mujoco>");
 	float seconds = 0;
 	while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -3537,7 +3566,6 @@ TEST_F(BaseEnvFixture, RuntimeWeldRelposeSurvivesMassChange)
 	const int body_id = mj_name2id(m, mjOBJ_BODY, "welded");
 	ASSERT_GE(eq_id, 0);
 	ASSERT_GE(body_id, 1);
-	std::lock_guard<MujocoEnvMutex> lock(*env_ptr->getMutexPtr()); // keep the paused physics loop out of the model
 	mjtNum *eq_data = m->eq_data + eq_id * mjNEQDATA;
 
 	// Explicit relpose that differs from the compiled one (shifted by 0.1 m along x of body1).
@@ -3551,8 +3579,12 @@ TEST_F(BaseEnvFixture, RuntimeWeldRelposeSurvivesMassChange)
 	                                                     nullptr, relpose, nullptr));
 
 	// Reference: same model and explicit relpose.
-	mjModel *m_ref = mj_copyModel(nullptr, m);
-	mjData *d_ref  = mj_makeData(m_ref);
+	std::unique_ptr<mjModel, decltype(&mj_deleteModel)> m_ref_owner(mj_copyModel(nullptr, m), mj_deleteModel);
+	ASSERT_NE(m_ref_owner, nullptr);
+	mjModel *m_ref = m_ref_owner.get();
+	std::unique_ptr<mjData, decltype(&mj_deleteData)> d_ref_owner(mj_makeData(m_ref), mj_deleteData);
+	ASSERT_NE(d_ref_owner, nullptr);
+	mjData *d_ref = d_ref_owner.get();
 	mj_copyData(d_ref, m_ref, d);
 	// Reference applies the same mass edit directly; its weld is unflagged so mj_setConst keeps the relpose.
 	std::vector<mjtNum> qpos_ref(d_ref->qpos, d_ref->qpos + m_ref->nq);
@@ -3568,15 +3600,17 @@ TEST_F(BaseEnvFixture, RuntimeWeldRelposeSurvivesMassChange)
 	}
 	EXPECT_DOUBLE_EQ(eq_data[mjNEQDATA - 1], 0.0) << "runtime relpose must clear the derive-at-setConst flag";
 
-	for (int i = 0; i < 2000; ++i) {
-		mj_step(m, d);
-		mj_step(m_ref, d_ref);
+	{
+		// Stepping the shared model directly must not overlap the (paused) physics loop.
+		std::lock_guard<MujocoEnvMutex> lock(*env_ptr->getMutexPtr());
+		for (int i = 0; i < 2000; ++i) {
+			mj_step(m, d);
+			mj_step(m_ref, d_ref);
+		}
 	}
 	for (int i = 0; i < 3; ++i) {
 		EXPECT_NEAR(d->xpos[body_id * 3 + i], d_ref->xpos[body_id * 3 + i], 1e-3) << "welded body moved, axis " << i;
 	}
-	mj_deleteData(d_ref);
-	mj_deleteModel(m_ref);
 }
 
 TEST_F(PendulumEnvFixture, SaveModelXmlAfterInertialEditSucceedsWithoutNotice)
@@ -3599,8 +3633,8 @@ TEST_F(PendulumEnvFixture, SaveModelXmlFailureIsSurfacedWithoutTerminating)
 	// Loading another XML replaces MuJoCo's last-loaded spec, so the env model no longer matches it and
 	// mj_saveLastXML fails through its error buffer.
 	char load_error[200] = "";
-	mjModel *other       = mj_loadXML((std::string(TEST_RESOURCES_DIR) + "/minimal_world.xml").c_str(), nullptr, load_error,
-	                                  sizeof(load_error));
+	mjModel *other = mj_loadXML((std::string(TEST_RESOURCES_DIR) + "/minimal_world.xml").c_str(), nullptr, load_error,
+	                            sizeof(load_error));
 	ASSERT_NE(other, nullptr) << load_error;
 
 	char notice[1000] = "";
