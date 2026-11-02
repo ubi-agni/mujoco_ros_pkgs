@@ -3099,6 +3099,22 @@ TEST_F(BaseEnvFixture, RuntimeOptionPatchKeepsModelAutoresetDisabled)
 	env_ptr->shutdown();
 }
 
+TEST_F(BaseEnvFixture, RuntimeOptionPatchKeepsSpringOnlyDisabled)
+{
+	nh->setParam("unpause", false);
+	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	env_ptr->StartWithXML("<mujoco><option><flag spring=\"disable\"/></option><worldbody/></mujoco>");
+	ASSERT_NE(env_ptr->getModelPtr(), nullptr);
+	ASSERT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_SPRING);
+	ASSERT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_DAMPER);
+
+	ASSERT_TRUE(env_ptr->ApplyRuntimeOptions({ { "timestep", 0.002 } }).ok());
+	EXPECT_TRUE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_SPRING);
+	EXPECT_FALSE(env_ptr->getModelPtr()->opt.disableflags & mjDSBL_DAMPER);
+
+	env_ptr->shutdown();
+}
+
 TEST_F(BaseEnvFixture, RuntimeOptionPatchAcceptsDiscreteIntegratorModel)
 {
 	nh->setParam("unpause", false);

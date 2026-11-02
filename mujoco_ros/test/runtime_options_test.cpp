@@ -111,6 +111,29 @@ TEST(RuntimeOptions, WriteKeepsFlagsThatAreNotModeled)
 	EXPECT_EQ(option.disableflags & unmodeled_disable, unmodeled_disable);
 }
 
+TEST(RuntimeOptions, WriteKeepsPartiallyDisabledPassiveForces)
+{
+	for (const int partial : { mjDSBL_SPRING, mjDSBL_DAMPER }) {
+		mjOption option;
+		mj_defaultOption(&option);
+		option.disableflags |= partial;
+
+		RuntimeOptionsSnapshot snapshot = ReadRuntimeOptions(option);
+		EXPECT_FALSE(snapshot.passive_disabled);
+		snapshot.timestep = 0.002;
+		WriteRuntimeOptions(snapshot, option);
+		EXPECT_EQ(option.disableflags & (mjDSBL_SPRING | mjDSBL_DAMPER), partial);
+
+		snapshot.passive_disabled = true;
+		WriteRuntimeOptions(snapshot, option);
+		EXPECT_EQ(option.disableflags & (mjDSBL_SPRING | mjDSBL_DAMPER), mjDSBL_SPRING | mjDSBL_DAMPER);
+
+		snapshot.passive_disabled = false;
+		WriteRuntimeOptions(snapshot, option);
+		EXPECT_EQ(option.disableflags & (mjDSBL_SPRING | mjDSBL_DAMPER), 0);
+	}
+}
+
 TEST(RuntimeOptions, AcceptsEveryIntegratorUpToDiscrete)
 {
 	for (int integrator = mjINT_EULER; integrator <= mjINT_DISCRETE; ++integrator) {
