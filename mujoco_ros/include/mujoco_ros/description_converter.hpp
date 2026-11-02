@@ -185,7 +185,7 @@ ConversionResult ConvertDescription(const std::string &urdf_path, const std::str
 // unrecoverable state: the caller MUST discard it and rebuild from scratch,
 // never call ComposeIntoWorld or mj_deleteSpec again on that same pointer
 // (even mjs_copy on a poisoned spec has been observed to segfault).
-// Note: MuJoCo 3.3.5's mjs_attach does not return nullptr on duplicate
+// Note: MuJoCo 3.3.6's mjs_attach does not return nullptr on duplicate
 // prefixed names (collision surfaces only at mj_compile); the up-front
 // prefix check is what makes that class of failure loud at compose time.
 mjsElement *ComposeIntoWorld(mjSpec *world_spec, mjSpec *robot_spec, const ComposeOptions &options);
