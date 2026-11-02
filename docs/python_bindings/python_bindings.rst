@@ -126,6 +126,16 @@ Writable fields are:
 
 Use ``env.settings.snapshot()`` to retrieve the raw read-only settings value object for debugging or tests.
 
+Log Handler
+-----------
+
+Importing ``mujoco_ros`` and constructing or loading a ``MujocoEnv`` does not
+replace the MuJoCo log handler that the ``mujoco`` Python module installed
+(verified against MuJoCo 3.17.0: the handler pointer is unchanged and a bad
+model in the same process still raises ``ValueError``). The ROS log routing and
+process exit on ``mju_error`` therefore apply to the C++ node, not to Python
+sessions.
+
 Runtime Options
 ---------------
 

@@ -7,10 +7,26 @@
 * [patch] Publish `/clock` with a stack `rosgraph_msgs::msg::Clock` every physics step and stop gating clock setup/publish on `EnvSettings::use_sim_time` (ROS `use_sim_time` remains for graph consumers), removing a per-step heap allocation on the clock path.
 * [minor] Pin MuJoCo 3.3.6 (from 3.3.5) across CMake, Docker, CI, and docs; building against an older MuJoCo is no longer supported.
 * [minor] Enable constraint islands by default through the inverted `mjDSBL_ISLAND` disable bit (runtime option `island`), and split the passive disable into `mjDSBL_SPRING` and `mjDSBL_DAMPER` (`passive_disabled` still covers both).
+* [minor] Pin MuJoCo 3.17.0 (from 3.3.6) across CMake, Docker, CI, and docs; building against an older MuJoCo is no longer supported.
+* [minor] Enable multi-CCD by default through the inverted `mjDSBL_MULTICCD` disable bit (runtime option `multiccd`).
+* [patch] Cast all laser rays with one serial `mj_multiRay` call per scan instead of one `mj_ray` per ray. The cast excludes the laser's mount body, and range noise is drawn once per ray from a shared generator.
+* [patch] Create the MuJoCo engine threadpool only when `num_mj_threads` is at least 2; the default runs single-threaded without a pool.
+* [minor] Route the MuJoCo log handler to the ROS log; a `mju_error` is logged at error level and exits the process.
+* [minor] `SetBodyInertialProperties` rejects `ipos`/`iquat` edits on `simple` bodies instead of silently applying them.
+* [minor] The URDF converter reuses MuJoCo's native mimic equality for URDF `<mimic>` joints (requires MuJoCo 3.13 or newer).
+* [minor] Accept the `discrete` integrator (`mjINT_DISCRETE`) in runtime option validation, the ROS 2 `integrator` parameter, the ROS 1 `integrator` enum, and the viewer integrator list.
 * [chore] Document the ROS 2 MuJoCo server `use_sim_time=false` + rcl ros-time override workaround in `docs/ros_api/mujoco_server_options/mujoco_server_options.rst` (fix-ros-time-update)
 * [chore] Always run the CI push-skip gate on pull requests (emit `skip=false`) so matrix job outputs propagate; Format runs unconditionally with no skip gate. (fix-ros-time-update)
 
+### Removed
+* [minor] Remove the unused viewer `apirate` and control-noise sliders.
+
 ### Fixed
+* [patch] Surface save-XML failures in the ROS log and as a viewer notice.
+* [patch] Keep a runtime-set weld `relpose` across `mj_setConst` (mass and inertia edits) on MuJoCo 3.17, which otherwise re-derives it.
+* [patch] Runtime option patches write only the flags they model, so model flags such as `autoreset=disable` no longer revert to the default.
+* [patch] Take the physics lock in `GetEqualityConstraintParameters` / `SetEqualityConstraintParameters` so equality edits no longer race the physics step.
+* [patch] Read exactly the 7 weld `relpose` values in `GetEqualityConstraintParameters` instead of 10, and stop the debug log from reading past the caller buffer.
 * [patch] Resize the offscreen framebuffer when a camera is wider/taller than the model `offwidth`/`offheight` default, so `mjr_readPixels` past the FBO is no longer garbage on the image edge.
 * [patch] Render and publish only planes that currently have ROS subscribers (intersected with `stream_type`), so unused RGB/depth/segmentation work is skipped and missing unsubscribed planes no longer spam ERROR logs each step.
 * [patch] Push sim time into in-process ROS clocks each step without `/clock` yield-wait (ROS 1 `setNow` + re-assert; ROS 2 ros-time override). `/clock` remains an outbound mirror. Fixes #20. (fix-ros-time-update)
