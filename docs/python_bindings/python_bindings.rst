@@ -129,12 +129,11 @@ Use ``env.settings.snapshot()`` to retrieve the raw read-only settings value obj
 Log Handler
 -----------
 
-Importing ``mujoco_ros`` and constructing or loading a ``MujocoEnv`` does not
-replace the MuJoCo log handler that the ``mujoco`` Python module installed
-(verified against MuJoCo 3.17.0: the handler pointer is unchanged and a bad
-model in the same process still raises ``ValueError``). The ROS log routing and
-process exit on ``mju_error`` therefore apply to the C++ node, not to Python
-sessions.
+MuJoCo errors raised inside the env's engine (physics thread, setters) are routed
+to the ROS log and exit the process, including in Python sessions, because
+``MujocoEnv`` installs the log handler in the ROS copy of libmujoco. Calls made
+through the pip ``mujoco`` module keep raising Python exceptions, because that
+module has its own libmujoco.
 
 Runtime Options
 ---------------
