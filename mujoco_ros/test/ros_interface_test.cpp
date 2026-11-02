@@ -3240,10 +3240,11 @@ TEST_F(PendulumEnvFixture, RuntimeParameterDescriptors)
 {
 	const auto integrator_descriptor = env_ptr->describe_parameter("integrator");
 	ASSERT_EQ(integrator_descriptor.integer_range.size(), 1u);
-	EXPECT_EQ(integrator_descriptor.integer_range.front().from_value, 0);
-	EXPECT_EQ(integrator_descriptor.integer_range.front().to_value, 3);
+	EXPECT_EQ(integrator_descriptor.integer_range.front().from_value, mjINT_EULER);
+	EXPECT_EQ(integrator_descriptor.integer_range.front().to_value, mjINT_DISCRETE);
 	EXPECT_NE(integrator_descriptor.additional_constraints.find("Euler"), std::string::npos);
 	EXPECT_NE(integrator_descriptor.additional_constraints.find("Implicitfast"), std::string::npos);
+	EXPECT_NE(integrator_descriptor.additional_constraints.find("Discrete"), std::string::npos);
 	EXPECT_FALSE(integrator_descriptor.read_only);
 
 	const auto cone_descriptor = env_ptr->describe_parameter("cone");
@@ -3470,8 +3471,10 @@ TEST_F(PendulumEnvFixture, RuntimeParameterFlagsMapToNamedBits)
 	}
 
 	const std::pair<const char *, int> enable_cases[] = {
-		{ "override_contacts", mjENBL_OVERRIDE }, { "energy", mjENBL_ENERGY },
-		{ "fwd_inv", mjENBL_FWDINV },             { "inv_discrete", mjENBL_INVDISCRETE },
+		{ "override_contacts", mjENBL_OVERRIDE },
+		{ "energy", mjENBL_ENERGY },
+		{ "fwd_inv", mjENBL_FWDINV },
+		{ "inv_discrete", mjENBL_INVDISCRETE },
 	};
 	for (const auto &flag : enable_cases) {
 		const int before = env_ptr->getModelPtr()->opt.enableflags;

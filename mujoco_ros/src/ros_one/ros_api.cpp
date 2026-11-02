@@ -146,7 +146,8 @@ void ReadSimParams(SimParamsConfig &config, mjModel *model_, const RosAPISetting
 		config.frictionloss_disabled = ((model_->opt.disableflags & mjDSBL_FRICTIONLOSS) != 0);
 		config.limit_disabled        = ((model_->opt.disableflags & mjDSBL_LIMIT) != 0);
 		config.contact_disabled      = ((model_->opt.disableflags & mjDSBL_CONTACT) != 0);
-		config.passive_disabled      = ((model_->opt.disableflags & (mjDSBL_SPRING | mjDSBL_DAMPER)) == (mjDSBL_SPRING | mjDSBL_DAMPER));
+		config.passive_disabled =
+		    ((model_->opt.disableflags & (mjDSBL_SPRING | mjDSBL_DAMPER)) == (mjDSBL_SPRING | mjDSBL_DAMPER));
 		config.gravity_disabled      = ((model_->opt.disableflags & mjDSBL_GRAVITY) != 0);
 		config.clampctrl_disabled    = ((model_->opt.disableflags & mjDSBL_CLAMPCTRL) != 0);
 		config.warmstart_disabled    = ((model_->opt.disableflags & mjDSBL_WARMSTART) != 0);

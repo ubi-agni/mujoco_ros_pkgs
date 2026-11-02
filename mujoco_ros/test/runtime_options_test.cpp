@@ -84,6 +84,42 @@ TEST(RuntimeOptions, ReadsAndWritesEveryNamedField)
 	EXPECT_EQ(ReadRuntimeOptions(option), expected);
 }
 
+TEST(RuntimeOptions, WriteKeepsFlagsThatAreNotModeled)
+{
+	mjOption option;
+	mj_defaultOption(&option);
+	const int unmodeled_disable = mjDSBL_AUTORESET | mjDSBL_NATIVECCD;
+	const int unmodeled_enable  = mjENBL_SLEEP | mjENBL_DIAGEXACT | mjENBL_IPC;
+	option.disableflags |= unmodeled_disable;
+	option.enableflags |= unmodeled_enable;
+
+	RuntimeOptionsSnapshot snapshot = ReadRuntimeOptions(option);
+	snapshot.energy                 = true;
+	snapshot.gravity_disabled       = true;
+	WriteRuntimeOptions(snapshot, option);
+
+	EXPECT_EQ(option.disableflags & unmodeled_disable, unmodeled_disable);
+	EXPECT_EQ(option.enableflags & unmodeled_enable, unmodeled_enable);
+	EXPECT_TRUE(option.enableflags & mjENBL_ENERGY);
+	EXPECT_TRUE(option.disableflags & mjDSBL_GRAVITY);
+
+	snapshot.energy           = false;
+	snapshot.gravity_disabled = false;
+	WriteRuntimeOptions(snapshot, option);
+	EXPECT_FALSE(option.enableflags & mjENBL_ENERGY);
+	EXPECT_FALSE(option.disableflags & mjDSBL_GRAVITY);
+	EXPECT_EQ(option.disableflags & unmodeled_disable, unmodeled_disable);
+}
+
+TEST(RuntimeOptions, AcceptsEveryIntegratorUpToDiscrete)
+{
+	for (int integrator = mjINT_EULER; integrator <= mjINT_DISCRETE; ++integrator) {
+		RuntimeOptionsSnapshot value;
+		value.integrator = integrator;
+		EXPECT_TRUE(ValidateRuntimeOptions(value).ok()) << "integrator " << integrator;
+	}
+}
+
 TEST(RuntimeOptions, IslandingIsOnByDefaultAndOnlyDisabledOnRequest)
 {
 	mjOption option;
@@ -176,7 +212,7 @@ TEST(RuntimeOptions, RejectsInvalidDomainsWithFieldSpecificErrors)
 		{ "integrator",
 		  [] {
 		     RuntimeOptionsSnapshot value;
-		     value.integrator = 4;
+		     value.integrator = mjINT_DISCRETE + 1;
 		     return value;
 		  }() },
 		{ "cone",
