@@ -1,37 +1,24 @@
 name: Docker ROS 1
 
+# Weekly/manual image refresh, and reusable build for CI when docker inputs change.
+# PR/push path triggers live in ci.ros1.yaml (call this workflow, then test).
 on:
   schedule:
     # 6 AM UTC every Sunday
     - cron: "0 6 * * 6"
   workflow_dispatch:
-  push:
-    branches:
-      - hybrid-devel
-    paths:
-      - '**/package.xml'
-      - .docker
-      - .dockignore
-      - .github/workflows/docker.ros1.yaml
-      - .github/workflows/*.ros1.rosinstall
-  pull_request:
-    branches:
-      - hybrid-devel
-    paths:
-      - '**/package.xml'
-      - .docker
-      - .dockerignore
-      - .github/workflows/docker.ros1.yaml
-      - .github/workflows/*.ros1.rosinstall
+  workflow_call:
 
-concurrency: # cancel any previous workflow(s) from the same PR or branch/tag
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+# Fixed group (not github.workflow): CI may call this via workflow_call; using
+# github.workflow would collide with the caller concurrency group.
+concurrency:
+  group: docker-ros1-image
   cancel-in-progress: true
 
 jobs:
   push-gate:
     name: Push skip gate
-    # Always run so job outputs propagate on pull_request. Non-push → skip=false;
+    # Always run so job outputs propagate. Non-push / workflow_call → skip=false;
     # push uses ci_push_skip.py (Version Bot; docker does not pass merged-PR bases).
     runs-on: ubuntu-24.04
     permissions:
@@ -62,7 +49,7 @@ jobs:
           python3 .versioning/scripts/ci_push_skip.py \
             --author-name "${author_name}" --author-email "${author_email}"
 
-  ci_ros1:
+  build:
     needs: push-gate
     if: ${{ !cancelled() && needs.push-gate.result != 'failure' && needs.push-gate.result != 'cancelled' && needs.push-gate.outputs.skip == 'false' }}
     strategy:
@@ -74,7 +61,8 @@ jobs:
       packages: write
       contents: read
     env:
-      IMAGE: ubiagni/mujoco_ros:${{ matrix.ROS_DISTRO }}-${{ github.job }}
+      # Must match CI DOCKER_IMAGE (…/<distro>-ci), not github.job.
+      IMAGE: ubiagni/mujoco_ros:${{ matrix.ROS_DISTRO }}-ci
       MUJOCO_VERSIONS: 3.3.5
 
     steps:
@@ -91,7 +79,7 @@ jobs:
             echo "no_cache=$have_updates" >> "$GITHUB_OUTPUT"
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name != 'schedule' || steps.apt.outputs.no_cache }}
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name != 'schedule' || steps.apt.outputs.no_cache }}
       - name: Login to Container Registry
         uses: docker/login-action@v3
         with:
@@ -99,7 +87,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build and push
         uses: docker/build-push-action@v5
-        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name != 'schedule' || steps.apt.outputs.no_cache }}
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name != 'schedule' || steps.apt.outputs.no_cache }}
         with:
           file: .docker/Dockerfile.ros1
           build-args: |
