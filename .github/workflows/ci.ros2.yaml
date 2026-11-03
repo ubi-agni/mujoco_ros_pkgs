@@ -76,10 +76,50 @@ jobs:
           python3 .versioning/scripts/ci_push_skip.py \
             --author-name "${author_name}" --author-email "${author_email}" "${args[@]}"
 
-  ci-policy:
-    name: Select CI matrix
+  docker-paths:
+    name: Detect docker image inputs
     needs: push-gate
     if: ${{ !cancelled() && needs.push-gate.result != 'failure' && needs.push-gate.result != 'cancelled' && needs.push-gate.outputs.skip == 'false' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      changed: ${{ steps.filter.outputs.docker }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            docker:
+              - '.docker/**'
+              - '.dockerignore'
+              - '.github/workflows/docker.ros2.yaml'
+              - '.github/workflows/*.ros2.rosinstall'
+
+  docker-image:
+    name: Refresh docker image
+    needs: [push-gate, docker-paths]
+    if: ${{ needs.docker-paths.outputs.changed == 'true' }}
+    uses: ./.github/workflows/docker.ros2.yaml
+    secrets: inherit
+
+  ci-policy:
+    name: Select CI matrix
+    needs: [push-gate, docker-paths, docker-image]
+    # When docker inputs are unchanged, docker-image is skipped — still run CI.
+    if: |
+      always()
+      && !cancelled()
+      && needs.push-gate.result != 'failure'
+      && needs.push-gate.result != 'cancelled'
+      && needs.push-gate.outputs.skip == 'false'
+      && needs.docker-paths.result == 'success'
+      && (
+        needs.docker-paths.outputs.changed != 'true'
+        || needs.docker-image.result == 'success'
+      )
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.policy.outputs.matrix }}
