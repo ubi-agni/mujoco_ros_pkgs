@@ -555,6 +555,50 @@ void ExpectChildScenarioSuccess(const char *filter, int expected_result = kScena
 	FAIL() << "child process timed out";
 }
 
+// Like ExpectChildScenarioSuccess, but does not treat exit code 1 as a GLFW skip.
+// Needed when the child is expected to exit with EXIT_FAILURE (also 1 on POSIX).
+void ExpectChildExitsWithCode(const char *filter, int expected_exit)
+{
+	ScopedLifetimeParentEnvScrubber scrub_parent_child_mode;
+	const std::string executable = CurrentTestExecutablePath();
+	ASSERT_FALSE(executable.empty()) << "failed to resolve current test executable path";
+
+	std::string filter_arg           = std::string("--gtest_filter=") + filter;
+	std::array<char *, 3> child_args = {
+		const_cast<char *>(executable.c_str()),
+		const_cast<char *>(filter_arg.c_str()),
+		nullptr,
+	};
+
+	LifetimeChildEnvironment child_env;
+	pid_t child = -1;
+	ASSERT_EQ(posix_spawn(&child, executable.c_str(), nullptr, nullptr, child_args.data(), child_env.envp.data()), 0)
+	    << "posix_spawn failed for child scenario";
+
+	int status               = 0;
+	const auto wait_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+	while (std::chrono::steady_clock::now() < wait_deadline) {
+		const pid_t waited = ::waitpid(child, &status, WNOHANG);
+		if (waited == child) {
+			if (WIFSIGNALED(status)) {
+				FAIL() << "child terminated by signal " << WTERMSIG(status);
+			}
+			ASSERT_TRUE(WIFEXITED(status)) << "child did not exit cleanly";
+			EXPECT_EQ(WEXITSTATUS(status), expected_exit)
+			    << "child exit code " << WEXITSTATUS(status) << " (expected " << expected_exit << ")";
+			return;
+		}
+		if (waited < 0) {
+			FAIL() << "waitpid failed";
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	}
+
+	::kill(child, SIGKILL);
+	::waitpid(child, &status, 0);
+	FAIL() << "child process timed out";
+}
+
 void ExpectChildScenarioAborts(const char *filter)
 {
 	ScopedLifetimeParentEnvScrubber scrub_parent_child_mode;
@@ -2681,13 +2725,22 @@ TEST(MujocoLogBridge, WarningIsRoutedToRosLogger)
 }
 #endif
 
-// mju_error never returns with MuJoCo's default handler; the bridge must keep that guarantee. ROS console output goes
-// to stdout, so only the exit status is matched.
-TEST(MujocoLogBridgeDeathTest, ErrorIsLoggedAndTerminates)
+// mju_error never returns with MuJoCo's default handler; the bridge must keep that guarantee.
+// Do not use gtest EXPECT_EXIT here: under rostest a death-test re-exec / exit can kill the parent
+// before XML results are written. Spawn a Lifetime child instead (same pattern as *Child/*Isolated).
+TEST(MujocoLogBridge, ErrorTerminatesProcessChild)
 {
-	::testing::GTEST_FLAG(death_test_style) = "threadsafe";
+	if (std::getenv("MUJOCO_ROS_LIFETIME_CHILD") == nullptr) {
+		GTEST_SKIP() << "child-only scenario entrypoint";
+	}
 	InstallMujocoLogHandler();
-	EXPECT_EXIT(mju_error("bridge-error %d", 7), ::testing::ExitedWithCode(EXIT_FAILURE), "");
+	mju_error("bridge-error %d", 7);
+	FAIL() << "mju_error returned after custom log handler; process must exit";
+}
+
+TEST(MujocoLogBridge, ErrorTerminatesProcess)
+{
+	ExpectChildExitsWithCode("MujocoLogBridge.ErrorTerminatesProcessChild", EXIT_FAILURE);
 }
 
 TEST_F(BaseEnvFixture, LoadPayloadPublishesBeforeRequestInsideControlBoundary)
