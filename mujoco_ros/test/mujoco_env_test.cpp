@@ -557,6 +557,8 @@ void ExpectChildScenarioSuccess(const char *filter, int expected_result = kScena
 
 // Like ExpectChildScenarioSuccess, but does not treat exit code 1 as a GLFW skip.
 // Needed when the child is expected to exit with EXIT_FAILURE (also 1 on POSIX).
+// Remap __name so ros::init in the child does not replace the parent's rostest node
+// (same-name registration would shut the parent down mid-suite).
 void ExpectChildExitsWithCode(const char *filter, int expected_exit)
 {
 	ScopedLifetimeParentEnvScrubber scrub_parent_child_mode;
@@ -564,9 +566,11 @@ void ExpectChildExitsWithCode(const char *filter, int expected_exit)
 	ASSERT_FALSE(executable.empty()) << "failed to resolve current test executable path";
 
 	std::string filter_arg           = std::string("--gtest_filter=") + filter;
-	std::array<char *, 3> child_args = {
+	std::string name_arg             = "__name:=mujoco_log_bridge_exit_child";
+	std::array<char *, 4> child_args = {
 		const_cast<char *>(executable.c_str()),
 		const_cast<char *>(filter_arg.c_str()),
+		const_cast<char *>(name_arg.c_str()),
 		nullptr,
 	};
 
