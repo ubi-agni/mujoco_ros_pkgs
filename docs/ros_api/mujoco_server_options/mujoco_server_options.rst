@@ -138,6 +138,8 @@ Access Control and Logging
 
 MuJoCo's own warnings and errors are routed through the ROS logger (``[MuJoCo]`` prefix) via ``mju_setLogHandler``. After logging a MuJoCo error the server exits, as with MuJoCo's default handler.
 
+Interactive viewer **Save XML** (and the shared ``SaveModelXml`` helper) surface ``mj_saveLastXML`` failures in the ROS error log and in the viewer's bottom notice. Those failures do not go through ``mju_error``, so they do not exit the process.
+
 ``eval_mode``
   Enables evaluation restrictions. Mutating service calls require a matching ``admin_hash``, and the sensors plugin suppresses ground-truth topics.
   Defaults to ``false``.

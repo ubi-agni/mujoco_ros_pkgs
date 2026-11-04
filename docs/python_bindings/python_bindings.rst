@@ -143,7 +143,8 @@ active MuJoCo ``mjOption`` fields. ``env.apply_runtime_options(dict)`` applies a
 partial patch through the same transaction path as ROS dynamic reconfigure and
 ROS 2 parameters.
 
-Field names match the configuration reference: integrator and solver settings,
+Field names match the configuration reference: integrator and solver settings
+(``integrator`` is the MuJoCo int ``0..4``, including ``4`` for Discrete),
 scalars such as ``timestep`` and ``iterations``, space-delimited arrays such as
 ``gravity`` and ``solimp``, disable flags ending in ``_disabled``, and enable
 flags such as ``energy``. ``island`` and ``multiccd`` are on by default and map
@@ -304,6 +305,10 @@ raise ``RuntimeError("viewer is not running")``.
 
 Closing a passive window (Exit button, ``handle.close()``, or handle context
 exit) stops only that viewer. The environment and physics loop stay available.
+
+Viewer **Save XML** failures from ``mj_saveLastXML`` are logged through ROS and
+shown in the viewer's bottom notice. They do not exit the process (unlike
+``mju_error`` through the log handler).
 
 Automatic passive mode (``auto_sync=True``) synchronizes the viewer on each
 rendered frame and around supported binding access while Python is idle.

@@ -29,6 +29,11 @@ Supported field names match ``RuntimeOptionsSnapshot``:
 * Enable flags: ``override_contacts``, ``energy``, ``fwd_inv``,
   ``inv_discrete``, ``multiccd``, ``island``
 
+``integrator`` is the MuJoCo integer enum ``0`` Euler, ``1`` RK4, ``2`` Implicit,
+``3`` Implicitfast, ``4`` Discrete (``mjINT_DISCRETE``). ROS 1 dynamic reconfigure
+and ROS 2 parameter descriptors expose those labels; Python and the typed
+Runtime Options patch use the integer. Values outside ``0..4`` are rejected.
+
 ``passive_disabled`` disables both spring and damper forces. ``island`` is
 ``true`` by default (constraint islanding on, as in MuJoCo); setting it to
 ``false`` sets MuJoCo's ``mjDSBL_ISLAND``. ``multiccd`` is likewise ``true`` by
