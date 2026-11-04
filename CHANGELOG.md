@@ -11,7 +11,7 @@
 * [minor] Enable multi-CCD by default through the inverted `mjDSBL_MULTICCD` disable bit (runtime option `multiccd`).
 * [patch] Cast all laser rays with one serial `mj_multiRay` call per scan instead of one `mj_ray` per ray. The cast excludes the laser's mount body, and range noise is drawn once per ray from a shared generator.
 * [patch] Create the MuJoCo engine threadpool only when `num_mj_threads` is at least 2; the default runs single-threaded without a pool.
-* [minor] Route the MuJoCo log handler to the ROS log; a `mju_error` is logged at error level and exits the process.
+* [minor] Route the MuJoCo log handler to the ROS log; a `mju_error` is logged at error level and exits the process. `MujocoEnv` installs that handler on the ROS copy of libmujoco (including in Python sessions). Calls through the pip `mujoco` module keep raising, because that module loads its own libmujoco.
 * [minor] `SetBodyInertialProperties` rejects `ipos`/`iquat` edits on `simple` bodies instead of silently applying them.
 * [minor] The URDF converter reuses MuJoCo's native mimic equality for URDF `<mimic>` joints (requires MuJoCo 3.13 or newer).
 * [minor] Accept the `discrete` integrator (`mjINT_DISCRETE`) in runtime option validation, the ROS 2 `integrator` parameter, the ROS 1 `integrator` enum, and the viewer integrator list.
