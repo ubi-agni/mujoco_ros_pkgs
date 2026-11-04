@@ -34,13 +34,13 @@ State and Property Services
 ---------------------------
 
 ``get_body_state`` / ``set_body_state``
-  Read or update a body by body name or by a geom belonging to that body. The setter can selectively apply pose, twist, mass, and qpos reset behavior.
+  Read or update a body by body name or by a geom belonging to that body. The setter can selectively apply pose, twist, mass, and qpos reset behavior. Changing a body's inertial frame (``ipos`` / ``iquat``) is rejected when the body is compiled as MuJoCo ``simple`` (MuJoCo ≥ 3.11 would otherwise abort via ``mju_error``). Declare ``simple="false"`` on the body in MJCF if runtime inertial-frame edits are required.
 
 ``get_geom_properties`` / ``set_geom_properties``
-  Read or update geom type, body mass, friction, and size fields.
+  Read or update geom type, body mass, friction, and size fields. Mass and inertia edits that go through ``mj_setConst`` keep a weld equality's runtime ``relpose`` when that pose was set through ``set_eq_constraint_parameters`` (the write clears MuJoCo's "re-derive relpose" flag).
 
 ``get_eq_constraint_parameters`` / ``set_eq_constraint_parameters``
-  Read or update equality constraint parameters by name, including active state, solver parameters, anchor/relative pose fields, torquescale, and polynomial coefficients.
+  Read or update equality constraint parameters by name, including active state, solver parameters, anchor/relative pose fields, torquescale, and polynomial coefficients. Both calls take the physics lock and fail with a status message when no model is loaded. For welds, only the 7 ``relpose`` values are read or written; writing ``relpose`` clears the flag that would let a later ``mj_setConst`` (for example after a mass edit) overwrite it.
 
 ``get_gravity`` / ``set_gravity``
   Read or update the simulation gravity vector.
@@ -72,7 +72,7 @@ The most important user-facing groups are:
 
 * Pause/resume through ``running``.
 * Runtime ``admin_hash`` updates.
-* Physics options: integrator, friction cone, Jacobian type, and solver.
+* Physics options: integrator (``0..4``, including Discrete), friction cone, Jacobian type, and solver.
 * Algorithmic options: timestep, solver iterations/tolerances, CCD, and SDF iteration settings.
 * Physical options: gravity, wind, magnetic field, density, viscosity, and impedance ratio.
 * MuJoCo enable/disable flags such as gravity, contact, actuation, warmstart, and related solver/runtime flags.
