@@ -97,6 +97,10 @@ jobs:
     name: Refresh docker image
     needs: [push-gate, docker-paths]
     if: ${{ needs.docker-paths.outputs.changed == 'true' }}
+    # Caller ceiling for reusable docker.ros1.yaml (build asks packages: write).
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/docker.ros1.yaml
     secrets: inherit
 
