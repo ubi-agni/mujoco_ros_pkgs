@@ -180,7 +180,7 @@ RuntimeOptionsSnapshot ReadRuntimeOptions(const mjOption &option)
 	result.limit_disabled        = (option.disableflags & mjDSBL_LIMIT) != 0;
 	result.contact_disabled      = (option.disableflags & mjDSBL_CONTACT) != 0;
 	result.passive_disabled = (option.disableflags & (mjDSBL_SPRING | mjDSBL_DAMPER)) == (mjDSBL_SPRING | mjDSBL_DAMPER);
-	result.gravity_disabled      = (option.disableflags & mjDSBL_GRAVITY) != 0;
+	result.gravity_disabled = (option.disableflags & mjDSBL_GRAVITY) != 0;
 	result.clampctrl_disabled    = (option.disableflags & mjDSBL_CLAMPCTRL) != 0;
 	result.warmstart_disabled    = (option.disableflags & mjDSBL_WARMSTART) != 0;
 	result.filterparent_disabled = (option.disableflags & mjDSBL_FILTERPARENT) != 0;
