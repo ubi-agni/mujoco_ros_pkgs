@@ -555,54 +555,6 @@ void ExpectChildScenarioSuccess(const char *filter, int expected_result = kScena
 	FAIL() << "child process timed out";
 }
 
-// Like ExpectChildScenarioSuccess, but does not treat exit code 1 as a GLFW skip.
-// Needed when the child is expected to exit with EXIT_FAILURE (also 1 on POSIX).
-// Remap __name so ros::init in the child does not replace the parent's rostest node
-// (same-name registration would shut the parent down mid-suite).
-void ExpectChildExitsWithCode(const char *filter, int expected_exit)
-{
-	ScopedLifetimeParentEnvScrubber scrub_parent_child_mode;
-	const std::string executable = CurrentTestExecutablePath();
-	ASSERT_FALSE(executable.empty()) << "failed to resolve current test executable path";
-
-	std::string filter_arg           = std::string("--gtest_filter=") + filter;
-	std::string name_arg             = "__name:=mujoco_log_bridge_exit_child";
-	std::array<char *, 4> child_args = {
-		const_cast<char *>(executable.c_str()),
-		const_cast<char *>(filter_arg.c_str()),
-		const_cast<char *>(name_arg.c_str()),
-		nullptr,
-	};
-
-	LifetimeChildEnvironment child_env;
-	pid_t child = -1;
-	ASSERT_EQ(posix_spawn(&child, executable.c_str(), nullptr, nullptr, child_args.data(), child_env.envp.data()), 0)
-	    << "posix_spawn failed for child scenario";
-
-	int status               = 0;
-	const auto wait_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
-	while (std::chrono::steady_clock::now() < wait_deadline) {
-		const pid_t waited = ::waitpid(child, &status, WNOHANG);
-		if (waited == child) {
-			if (WIFSIGNALED(status)) {
-				FAIL() << "child terminated by signal " << WTERMSIG(status);
-			}
-			ASSERT_TRUE(WIFEXITED(status)) << "child did not exit cleanly";
-			EXPECT_EQ(WEXITSTATUS(status), expected_exit)
-			    << "child exit code " << WEXITSTATUS(status) << " (expected " << expected_exit << ")";
-			return;
-		}
-		if (waited < 0) {
-			FAIL() << "waitpid failed";
-		}
-		std::this_thread::sleep_for(std::chrono::milliseconds(20));
-	}
-
-	::kill(child, SIGKILL);
-	::waitpid(child, &status, 0);
-	FAIL() << "child process timed out";
-}
-
 void ExpectChildScenarioAborts(const char *filter)
 {
 	ScopedLifetimeParentEnvScrubber scrub_parent_child_mode;
@@ -1935,6 +1887,105 @@ TEST_F(BaseEnvFixture, LateConnectingViewerDuringReloadDoesNotDeadlock)
 
 } // namespace
 #endif
+
+// Log-bridge exit child must compile for every RENDER_BACKEND (not only GLFW).
+// Remap __name so ROS 1 ros::init in the child does not replace the parent's rostest node.
+namespace {
+
+std::string LogBridgeExitChildExecutablePath()
+{
+	char path[PATH_MAX] = {};
+	if (::readlink("/proc/self/exe", path, sizeof(path) - 1) < 0) {
+		return {};
+	}
+	return path;
+}
+
+class ScopedLogBridgeLifetimeChildFlagScrubber
+{
+public:
+	ScopedLogBridgeLifetimeChildFlagScrubber()
+	{
+		if (const char *value = std::getenv("MUJOCO_ROS_LIFETIME_CHILD")) {
+			had_previous_ = true;
+			previous_     = value;
+			::unsetenv("MUJOCO_ROS_LIFETIME_CHILD");
+		}
+	}
+
+	~ScopedLogBridgeLifetimeChildFlagScrubber()
+	{
+		if (had_previous_) {
+			::setenv("MUJOCO_ROS_LIFETIME_CHILD", previous_.c_str(), 1);
+		}
+	}
+
+private:
+	bool had_previous_ = false;
+	std::string previous_;
+};
+
+void ExpectChildExitsWithCode(const char *filter, int expected_exit)
+{
+	ScopedLogBridgeLifetimeChildFlagScrubber scrub_parent_child_mode;
+	const std::string executable = LogBridgeExitChildExecutablePath();
+	ASSERT_FALSE(executable.empty()) << "failed to resolve current test executable path";
+
+	std::string filter_arg           = std::string("--gtest_filter=") + filter;
+	std::string name_arg             = "__name:=mujoco_log_bridge_exit_child";
+	std::array<char *, 4> child_args = {
+		const_cast<char *>(executable.c_str()),
+		const_cast<char *>(filter_arg.c_str()),
+		const_cast<char *>(name_arg.c_str()),
+		nullptr,
+	};
+
+	std::vector<std::string> entries;
+	std::vector<char *> envp;
+	constexpr const char kChildFlagPrefix[] = "MUJOCO_ROS_LIFETIME_CHILD=";
+	constexpr const char kViolationPrefix[] = "MUJOCO_ROS_LIFETIME_VIOLATION_MARKER_FD=";
+	for (char **var = environ; var != nullptr && *var != nullptr; ++var) {
+		if (std::strncmp(*var, kChildFlagPrefix, sizeof(kChildFlagPrefix) - 1) != 0 &&
+		    std::strncmp(*var, kViolationPrefix, sizeof(kViolationPrefix) - 1) != 0) {
+			entries.emplace_back(*var);
+		}
+	}
+	entries.emplace_back("MUJOCO_ROS_LIFETIME_CHILD=1");
+	envp.reserve(entries.size() + 1);
+	for (auto &entry : entries) {
+		envp.push_back(entry.data());
+	}
+	envp.push_back(nullptr);
+
+	pid_t child = -1;
+	ASSERT_EQ(posix_spawn(&child, executable.c_str(), nullptr, nullptr, child_args.data(), envp.data()), 0)
+	    << "posix_spawn failed for child scenario";
+
+	int status               = 0;
+	const auto wait_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+	while (std::chrono::steady_clock::now() < wait_deadline) {
+		const pid_t waited = ::waitpid(child, &status, WNOHANG);
+		if (waited == child) {
+			if (WIFSIGNALED(status)) {
+				FAIL() << "child terminated by signal " << WTERMSIG(status);
+			}
+			ASSERT_TRUE(WIFEXITED(status)) << "child did not exit cleanly";
+			EXPECT_EQ(WEXITSTATUS(status), expected_exit)
+			    << "child exit code " << WEXITSTATUS(status) << " (expected " << expected_exit << ")";
+			return;
+		}
+		if (waited < 0) {
+			FAIL() << "waitpid failed";
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	}
+
+	::kill(child, SIGKILL);
+	::waitpid(child, &status, 0);
+	FAIL() << "child process timed out";
+}
+
+} // namespace
 
 namespace mujoco_ros {
 
