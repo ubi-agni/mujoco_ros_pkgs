@@ -1,6 +1,9 @@
 <a name="unreleased"></a>
 ## Unreleased
 
+<a name="2.1.0"></a>
+## [2.1.0] - 2026-11-05
+
 ### Changed
 * [patch] Gate `mujoco_ros_control` Jazzy `hardware_interface` APIs behind `RCLCPP_VERSION_GTE(28,0,0)` so Humble keeps `HardwareInfo` call sites and both distros build from one tree.
 * [patch] Render RGB and depth in one `mjr_render` / `mjr_readPixels` pass when both planes are demanded, so RGB+D offscreen capture no longer pays for two full render+readback cycles (segmentation stays a separate pass).
