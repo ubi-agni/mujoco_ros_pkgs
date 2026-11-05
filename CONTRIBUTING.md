@@ -10,7 +10,7 @@ This is an open source project welcoming contributions. In this document we list
 | `hybrid-main` | Stable releases. Default branch. | Release pull request from `hybrid-devel`, merged by rebase |
 
 Release tags use the form `vX.Y.Z` (for example `v2.0.0`) and point at `hybrid-main`.
-CI creates them after a release merge. Do not create release tags by hand.
+CI creates the tag and the matching GitHub Release after a release merge. Do not create either by hand.
 
 Older history used `noetic-devel` as the integration branch. New work does not target it.
 
@@ -83,7 +83,7 @@ A release is a pull request from `hybrid-devel` into `hybrid-main`.
     * moves `## Unreleased` into `## [X.Y.Z] - <date>`.
 5. The **Version match** and **pre-commit** checks run on the bumped commit in the same workflow run. Wait for them to pass.
 6. Merge with **rebase merge** only. Do not squash or create a merge commit.
-7. After the merge, CI pushes the tag `vX.Y.Z` to `hybrid-main`. The tag run builds the released documentation.
+7. After the merge, CI pushes the tag `vX.Y.Z` to `hybrid-main`. The same tag run builds the released documentation and publishes the GitHub Release (Merged PRs from generate-notes, tip CHANGELOG section, New Contributors when any, Full Changelog compare link). Do not create the tag or the GitHub Release by hand.
 
 ### Version rules
 
@@ -106,7 +106,7 @@ A release is a pull request from `hybrid-devel` into `hybrid-main`.
 | Pull request into `hybrid-devel` | Full CI (ROS 2, ROS 1, format, docker) |
 | Push to `hybrid-devel` | Full CI, except Version Bot pushes and commits that came in through a merged pull request into `hybrid-devel` |
 | Pull request into `hybrid-main` | Release checks only: changelog gate, version bump, version match, docs, pre-commit |
-| Push to `hybrid-main` | Tag job only |
+| Push to `hybrid-main` | Tag job, GitHub Release, released docs |
 
 > [!NOTE]
 > ponytail: The skip for commits that came in through a merged pull request is best effort. It depends on GitHub linking rebase-merged commits to their pull request, which is not yet confirmed on this fork. If the link is missing, full CI runs again. It assumes the pull request was green before merge, so keep the full CI check required on `hybrid-devel`. The Version Bot skip is based on the commit author and is reliable.
