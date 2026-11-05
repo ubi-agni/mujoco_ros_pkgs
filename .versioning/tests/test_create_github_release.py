@@ -1,4 +1,4 @@
-"""Unit tests for GitHub Release note composition (changelog + generate-notes)."""
+"""Unit tests for GitHub Release note composition (changelog + hybrid-devel PRs)."""
 
 import sys
 from pathlib import Path
@@ -11,7 +11,9 @@ sys.path.insert(0, str(VERSIONING_DIR / "scripts"))
 from create_github_release import (  # noqa: E402
     compose_release_body,
     extract_tip_released_section,
-    rewrite_generate_notes,
+    format_merged_prs,
+    format_new_contributors,
+    full_changelog_url,
 )
 
 CHANGELOG_TWO_RELEASES = """# Changelog
@@ -37,21 +39,26 @@ Contributors: @DavidPL1
 * [minor] Initial release.
 """
 
-GENERATE_NOTES_WITH_CONTRIBUTORS = """## What's Changed
-* feat: load descriptions by @Alice in https://github.com/ubi-agni/mujoco_ros_pkgs/pull/52
-* fix: pedantic GCC9 by @sugikazu75 in https://github.com/ubi-agni/mujoco_ros_pkgs/pull/51
-
-## New Contributors
-* @sugikazu75 made their first contribution in https://github.com/ubi-agni/mujoco_ros_pkgs/pull/51
-
-**Full Changelog**: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/v2.0.0...v2.1.0
-"""
-
-GENERATE_NOTES_NO_CONTRIBUTORS = """## What's Changed
-* ci: hybrid-main release flow by @DavidPL1 in https://github.com/ubi-agni/mujoco_ros_pkgs/pull/56
-
-**Full Changelog**: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/v2.0.0...v2.1.0
-"""
+DEVEL_PRS = [
+    {
+        "number": 57,
+        "title": "fix: push sim time into ROS clocks without /clock yield-wait",
+        "author": "DavidPL1",
+        "mergedAt": "2026-10-29T15:35:38Z",
+    },
+    {
+        "number": 58,
+        "title": "feat: gate mujoco_ros_control Jazzy APIs with Humble backwards compat",
+        "author": "DavidPL1",
+        "mergedAt": "2026-10-30T09:42:27Z",
+    },
+    {
+        "number": 59,
+        "title": "Bump MuJoCo from 3.3.5 to 3.17.0",
+        "author": "DavidPL1",
+        "mergedAt": "2026-11-05T12:16:20Z",
+    },
+]
 
 
 def test_extract_tip_released_section_drops_heading_and_contributors():
@@ -70,31 +77,45 @@ def test_extract_tip_released_section_requires_a_released_heading():
         extract_tip_released_section("# Changelog\n\n## Unreleased\n\n* [patch] Only pending.\n")
 
 
-def test_rewrite_generate_notes_renames_and_shortens_pr_links():
-    merged, new_contrib, full = rewrite_generate_notes(GENERATE_NOTES_WITH_CONTRIBUTORS)
+def test_format_merged_prs_lists_devel_prs_only():
+    merged = format_merged_prs(DEVEL_PRS)
 
     assert merged == (
         "## Merged PRs\n"
-        "- feat: load descriptions by @Alice in #52\n"
-        "- fix: pedantic GCC9 by @sugikazu75 in #51"
+        "- fix: push sim time into ROS clocks without /clock yield-wait by @DavidPL1 in #57\n"
+        "- feat: gate mujoco_ros_control Jazzy APIs with Humble backwards compat by @DavidPL1 in #58\n"
+        "- Bump MuJoCo from 3.3.5 to 3.17.0 by @DavidPL1 in #59"
     )
-    assert new_contrib == (
-        "## New Contributors\n" "- @sugikazu75 made their first contribution in #51"
+    assert "#56" not in merged
+    assert "#60" not in merged
+
+
+def test_format_merged_prs_omits_section_when_empty():
+    assert format_merged_prs([]) is None
+
+
+def test_format_new_contributors_omits_when_empty():
+    assert format_new_contributors([]) is None
+
+
+def test_format_new_contributors_lists_first_prs():
+    text = format_new_contributors([("sugikazu75", 51)])
+
+    assert text == "## New Contributors\n- @sugikazu75 made their first contribution in #51"
+
+
+def test_full_changelog_url_uses_tag_compare():
+    assert (
+        full_changelog_url("ubi-agni/mujoco_ros_pkgs", "v2.0.0", "v2.1.0")
+        == "https://github.com/ubi-agni/mujoco_ros_pkgs/compare/v2.0.0...v2.1.0"
     )
-    assert full == "https://github.com/ubi-agni/mujoco_ros_pkgs/compare/v2.0.0...v2.1.0"
-
-
-def test_rewrite_generate_notes_omits_new_contributors_when_absent():
-    merged, new_contrib, full = rewrite_generate_notes(GENERATE_NOTES_NO_CONTRIBUTORS)
-
-    assert merged.startswith("## Merged PRs\n- ci: hybrid-main release flow")
-    assert new_contrib is None
-    assert "v2.1.0" in full
 
 
 def test_compose_release_body_orders_merged_changelog_contributors_full():
     version, changelog = extract_tip_released_section(CHANGELOG_TWO_RELEASES)
-    merged, new_contrib, full = rewrite_generate_notes(GENERATE_NOTES_WITH_CONTRIBUTORS)
+    merged = format_merged_prs(DEVEL_PRS)
+    new_contrib = format_new_contributors([("sugikazu75", 51)])
+    full = full_changelog_url("ubi-agni/mujoco_ros_pkgs", "v2.0.0", "v2.1.0")
 
     body = compose_release_body(changelog, merged, new_contrib, full)
 
@@ -102,16 +123,17 @@ def test_compose_release_body_orders_merged_changelog_contributors_full():
     assert body.index("## Merged PRs") < body.index("### Changed")
     assert body.index("### Changed") < body.index("## New Contributors")
     assert body.index("## New Contributors") < body.index("**Full Changelog**")
-    assert "What's Changed" not in body
-    assert "https://github.com/" not in body.split("**Full Changelog**")[0]
+    assert "hybrid-main" not in body
+    assert "#60" not in body
 
 
-def test_compose_release_body_skips_new_contributors_block_when_none():
+def test_compose_release_body_skips_optional_sections_when_none():
     _, changelog = extract_tip_released_section(CHANGELOG_TWO_RELEASES)
-    merged, new_contrib, full = rewrite_generate_notes(GENERATE_NOTES_NO_CONTRIBUTORS)
+    full = full_changelog_url("ubi-agni/mujoco_ros_pkgs", "v2.0.0", "v2.1.0")
 
-    body = compose_release_body(changelog, merged, new_contrib, full)
+    body = compose_release_body(changelog, None, None, full)
 
+    assert "## Merged PRs" not in body
     assert "## New Contributors" not in body
     assert body.rstrip().endswith(
         "**Full Changelog**: https://github.com/ubi-agni/mujoco_ros_pkgs/compare/v2.0.0...v2.1.0"

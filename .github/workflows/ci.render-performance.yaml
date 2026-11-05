@@ -8,6 +8,10 @@ name: CI render performance advisory
 
 on:
   pull_request:
+    # Feature / integration PRs only. Release PRs into hybrid-main must not
+    # run this advisory or post the opt-in comment (slim release.yaml owns that base).
+    branches:
+      - hybrid-devel
     types: [opened, synchronize, reopened, labeled, unlabeled]
     paths:
       - "mujoco_ros/render_core/**"
@@ -125,6 +129,7 @@ jobs:
       - name: Ask on the pull request
         if: >-
           github.event_name == 'pull_request' &&
+          github.base_ref == 'hybrid-devel' &&
           steps.gate.outputs.run_benchmark != 'true' &&
           (github.event.action == 'opened' || github.event.action == 'reopened')
         uses: peter-evans/create-or-update-comment@v4
@@ -144,7 +149,10 @@ jobs:
             Remove the label later to stop re-running it on new pushes.
 
       - name: Confirm trigger on the pull request
-        if: github.event_name == 'pull_request' && steps.gate.outputs.run_benchmark == 'true'
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.base_ref == 'hybrid-devel' &&
+          steps.gate.outputs.run_benchmark == 'true'
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.pull_request.number }}
