@@ -51,9 +51,12 @@ site. It runs in four cases:
   next `hybrid-devel` push (or after merge).
 - A new `vX.Y.Z` tag created by the tag-release workflow after a release merge
   to `hybrid-main` builds the released trees in the same run. The call passes
-  `ref: hybrid-devel`, so the unstable tree still comes from `hybrid-devel`.
-  Tags pushed with `GITHUB_TOKEN` do not start other workflows, so this call is
-  the only automatic path for those tags.
+  `ref: ${{ github.sha }}` (the `hybrid-main` tip of that push). After
+  rebase-merge that tip matches what `hybrid-devel` had; using the tip avoids
+  depending on `hybrid-devel` still existing (GitHub may delete the PR head
+  when "Automatically delete head branches" is on). Tags pushed with
+  `GITHUB_TOKEN` do not start other workflows, so this call is the only
+  automatic path for those tags.
 - A `v*` tag pushed by a person starts the workflow directly. The checkout is
   still `hybrid-devel`, so the unstable tree is unchanged. Tags that already
   exist do not rebuild the site from the tag-release run.

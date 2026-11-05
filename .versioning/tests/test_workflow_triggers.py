@@ -153,6 +153,16 @@ def test_release_uses_neutral_naming():
 
 
 TAG_RELEASE = "tag-release.yaml"
+# Opt-in advisory workflows: never listen to release PRs into hybrid-main.
+ADVISORY_PR_ONLY_DEVEL = ("ci.render-performance.yaml", "ci.egl.yaml")
+
+
+@pytest.mark.parametrize("name", ADVISORY_PR_ONLY_DEVEL)
+def test_advisory_pull_requests_target_devel_only(name):
+    _, triggers = _load(name)
+
+    assert triggers["pull_request"]["branches"] == DEVEL
+    assert "hybrid-main" not in triggers["pull_request"].get("branches", [])
 
 
 def test_tag_release_triggers_on_hybrid_main_push_only():
@@ -287,7 +297,8 @@ def test_tag_release_builds_released_docs_in_same_run():
     assert docs["uses"] == "./.github/workflows/sphinxdoc.yaml"
     assert docs["needs"] == "tag"
     assert docs["if"] == "needs.tag.outputs.tag != 'tag exists'"
-    assert docs["with"]["ref"] == "hybrid-devel"
+    # hybrid-main tip of this push — not hybrid-devel (may be deleted on merge).
+    assert docs["with"]["ref"] == "${{ github.sha }}"
     assert docs["permissions"] == {"contents": "read", "pages": "write", "id-token": "write"}
 
 
@@ -296,7 +307,8 @@ def test_tag_release_docs_ref_is_never_the_new_tag():
     docs = doc["jobs"]["docs"]
 
     assert "needs.tag.outputs.tag" not in docs["with"]["ref"]
-    assert docs["with"]["ref"] == "hybrid-devel"
+    assert docs["with"]["ref"] == "${{ github.sha }}"
+    assert "hybrid-devel" not in docs["with"]["ref"]
     # The tag job still fetches tags so the new tag reaches `make versioned`.
     assert doc["jobs"]["tag"]["steps"][0]["with"]["fetch-tags"] is True
 
@@ -325,7 +337,8 @@ def test_docs_readme_states_tags_never_become_the_checkout():
     text = (VERSIONING_DIR.parent / "docs" / "README.md").read_text(encoding="utf-8")
 
     assert "is never the checkout" in text
-    assert "ref: hybrid-devel" in text
+    assert "github.sha" in text
+    assert "hybrid-devel" in text
 
 
 def test_contributing_warns_against_pushing_after_version_bot_bump():

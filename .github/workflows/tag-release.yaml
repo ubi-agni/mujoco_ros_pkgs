@@ -70,8 +70,11 @@ jobs:
 
   # GITHUB_TOKEN tag pushes do not start other workflows, so build released docs here
   # in the same run. Runs only when this run created the tag.
-  # The ref is hybrid-devel, not the new tag: `make versioned` builds devel/ from the
-  # checkout, and the new tag is still visible there (fetch-tags) for its release tree.
+  # Checkout the hybrid-main tip that triggered this push (`github.sha`), not
+  # `hybrid-devel`: a release PR with head hybrid-devel + delete_branch_on_merge
+  # deletes that branch before this job runs. After rebase-merge the tip tree
+  # matches what hybrid-devel had. Tags stay available via fetch-tags for
+  # `make versioned` release trees.
   docs:
     name: Released documentation
     needs: tag
@@ -82,4 +85,4 @@ jobs:
       id-token: write
     uses: ./.github/workflows/sphinxdoc.yaml
     with:
-      ref: hybrid-devel
+      ref: ${{ github.sha }}

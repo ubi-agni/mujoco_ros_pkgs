@@ -12,6 +12,8 @@ This is an open source project welcoming contributions. In this document we list
 Release tags use the form `vX.Y.Z` (for example `v2.0.0`) and point at `hybrid-main`.
 CI creates the tag and the matching GitHub Release after a release merge. Do not create either by hand.
 
+**Never delete `hybrid-devel` when merging into `hybrid-main`.** The release PR head is always `hybrid-devel`. Turn off GitHub “Automatically delete head branches”, and protect `hybrid-devel` against deletion (ruleset / branch protection).
+
 Older history used `noetic-devel` as the integration branch. New work does not target it.
 
 ## Workflow
@@ -83,7 +85,7 @@ A release is a pull request from `hybrid-devel` into `hybrid-main`.
     * moves `## Unreleased` into `## [X.Y.Z] - <date>`.
 5. The **Version match** and **pre-commit** checks run on the bumped commit in the same workflow run. Wait for them to pass.
 6. Merge with **rebase merge** only. Do not squash or create a merge commit.
-7. After the merge, CI pushes the tag `vX.Y.Z` to `hybrid-main`. The same tag run builds the released documentation and publishes the GitHub Release (Merged PRs from generate-notes, tip CHANGELOG section, New Contributors when any, Full Changelog compare link). Do not create the tag or the GitHub Release by hand.
+7. After the merge, CI pushes the tag `vX.Y.Z` to `hybrid-main`. The same tag run builds the released documentation and publishes the GitHub Release (Merged PRs = PRs into **`hybrid-devel`** since the previous tag, tip CHANGELOG section, New Contributors when any, Full Changelog compare link). Do not create the tag or the GitHub Release by hand. Do not delete `hybrid-devel` on that merge.
 
 ### Version rules
 
@@ -125,10 +127,11 @@ Do these once, in this order.
     * allow only rebase merge,
     * require the release checks only: **Changelog gate**, **Version match**, **pre-commit**, and **Unstable documentation** (recommended; drop it only if the environment cannot allow it).
 4. `hybrid-devel`: keep direct pushes allowed for maintainers. Optionally require the full CI checks on pull requests into `hybrid-devel`. The merged-pull-request skip assumes those checks were green.
-5. Actions: under repository workflow permissions, set the `GITHUB_TOKEN` to read and write. Only the release **Version bump** job requests `contents: write`.
-6. Allow `github-actions[bot]` to push to `hybrid-devel`. Do this if branch rules or rulesets would block the Version Bot push. Without it the bump job fails loudly and the version-match check stays red.
-7. Do not add a personal access token. The default design uses only `GITHUB_TOKEN`. Pushes made with it do not start new workflow runs, so the release workflow runs its own checks after the bump.
-8. `github-pages` environment: allow deployments from `hybrid-devel` docs pushes, `hybrid-main` (tag-release), and `v*` tag pushes. Release PRs build docs but do not deploy.
+5. **Turn off "Automatically delete head branches".** Release PRs always use `hybrid-devel` as the head into `hybrid-main`. That setting deletes `hybrid-devel` on merge and breaks the integration line. Also add a ruleset that **forbids deleting** `hybrid-devel`.
+6. Actions: under repository workflow permissions, set the `GITHUB_TOKEN` to read and write. Only the release **Version bump** job requests `contents: write`.
+7. Allow `github-actions[bot]` to push to `hybrid-devel`. Do this if branch rules or rulesets would block the Version Bot push. Without it the bump job fails loudly and the version-match check stays red.
+8. Do not add a personal access token. The default design uses only `GITHUB_TOKEN`. Pushes made with it do not start new workflow runs, so the release workflow runs its own checks after the bump.
+9. `github-pages` environment: allow deployments from `hybrid-devel` docs pushes, `hybrid-main` (tag-release), and `v*` tag pushes. Release PRs build docs but do not deploy.
 
 ### Acceptance after cutover
 

@@ -9,6 +9,9 @@ name: CI EGL (optional self-hosted)
 on:
   workflow_dispatch:
   pull_request:
+    # Feature / integration PRs only — not release PRs into hybrid-main.
+    branches:
+      - hybrid-devel
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:

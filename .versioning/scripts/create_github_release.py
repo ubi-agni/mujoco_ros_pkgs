@@ -9,19 +9,20 @@ Body shape (agreed for hybrid-main tag runs):
 
   <tip CHANGELOG section body>
 
-  ## New Contributors          # omitted when generate-notes has none
+  ## New Contributors          # omitted when none
   - @user made their first contribution in #N
   ...
 
   **Full Changelog**: <compare URL>
 
+Merged PRs are pull requests with base ``hybrid-devel`` merged after the
+previous release tag and through the new tag time. GitHub generate-notes is
+not used for that list: tags live on ``hybrid-main``, so generate-notes only
+sees PRs into ``hybrid-main`` (release / cutover PRs).
+
 Usage:
   create_github_release.py [--repo PATH] --tag vX.Y.Z [--dry-run]
   create_github_release.py [--repo PATH] --compose-only --tag vX.Y.Z
-      [--generate-notes-file PATH]
-
-`--compose-only` prints the body to stdout (no API create). Without
-`--generate-notes-file`, generate-notes is fetched via `gh api`.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ import os
 import re
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from versioning_common import (
@@ -43,11 +45,7 @@ from versioning_common import (
     split_changelog,
 )
 
-PR_LINE_RE = re.compile(r"^\* (.+) by (@\S+) in https://github\.com/[^/]+/[^/]+/pull/(\d+)\s*$")
-CONTRIB_LINE_RE = re.compile(
-    r"^\* (@\S+) made their first contribution in https://github\.com/[^/]+/[^/]+/pull/(\d+)\s*$"
-)
-FULL_CHANGELOG_RE = re.compile(r"^\*\*Full Changelog\*\*: (\S+)\s*$", re.MULTILINE)
+DEVEL_BASE = "hybrid-devel"
 CONTRIBUTORS_FOOTER_RE = re.compile(r"(?:\n---)?\nContributors:[^\n]*(?:\n|$)", re.IGNORECASE)
 
 
@@ -61,7 +59,6 @@ def extract_tip_released_section(changelog_text: str) -> tuple[str, str]:
     if match is None:
         raise VersioningError(f"{CHANGELOG_NAME} has no released version section")
     version = match.group(1)
-    # Body starts after the heading line.
     heading_end = match.end()
     after_heading = released_tail[heading_end:]
     if after_heading.startswith("\n"):
@@ -89,66 +86,33 @@ def extract_tip_released_section(changelog_text: str) -> tuple[str, str]:
     return version, body
 
 
-def rewrite_generate_notes(auto_body: str) -> tuple[str, str | None, str]:
-    """Parse GitHub generate-notes body into Merged PRs, optional New Contributors, compare URL."""
-    full_match = FULL_CHANGELOG_RE.search(auto_body)
-    if full_match is None:
-        raise VersioningError("generate-notes body has no Full Changelog line")
-    full_url = full_match.group(1)
+def format_merged_prs(prs: list[dict]) -> str | None:
+    """Format Merged PRs section; ``prs`` oldest-first. None when empty."""
+    if not prs:
+        return None
+    lines = [f"- {pr['title']} by @{pr['author']} in #{pr['number']}" for pr in prs]
+    return "## Merged PRs\n" + "\n".join(lines)
 
-    whats = re.search(
-        r"## What's Changed\n(.*?)(?=\n## |\n\*\*Full Changelog\*\*|\Z)",
-        auto_body,
-        re.S,
-    )
-    if whats is None:
-        raise VersioningError("generate-notes body has no What's Changed section")
 
-    merged_lines = []
-    for line in whats.group(1).strip().splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        match = PR_LINE_RE.match(line)
-        if match is None:
-            raise VersioningError(f"unrecognized What's Changed line: {line!r}")
-        title, user, number = match.groups()
-        merged_lines.append(f"- {title} by {user} in #{number}")
-    if not merged_lines:
-        raise VersioningError("generate-notes What's Changed section is empty")
-    merged = "## Merged PRs\n" + "\n".join(merged_lines)
-
-    new_contrib = None
-    contrib = re.search(
-        r"## New Contributors\n(.*?)(?=\n\*\*Full Changelog\*\*|\Z)",
-        auto_body,
-        re.S,
-    )
-    if contrib is not None:
-        contrib_lines = []
-        for line in contrib.group(1).strip().splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            match = CONTRIB_LINE_RE.match(line)
-            if match is None:
-                raise VersioningError(f"unrecognized New Contributors line: {line!r}")
-            user, number = match.groups()
-            contrib_lines.append(f"- {user} made their first contribution in #{number}")
-        if contrib_lines:
-            new_contrib = "## New Contributors\n" + "\n".join(contrib_lines)
-
-    return merged, new_contrib, full_url
+def format_new_contributors(entries: list[tuple[str, int]]) -> str | None:
+    """Format New Contributors; entries are (login, first_pr_number). None when empty."""
+    if not entries:
+        return None
+    lines = [f"- @{login} made their first contribution in #{number}" for login, number in entries]
+    return "## New Contributors\n" + "\n".join(lines)
 
 
 def compose_release_body(
     changelog_section: str,
-    merged_prs: str,
+    merged_prs: str | None,
     new_contributors: str | None,
     full_changelog_url: str,
 ) -> str:
     """Assemble the agreed GitHub Release body."""
-    parts = [merged_prs.strip(), "", changelog_section.strip(), ""]
+    parts: list[str] = []
+    if merged_prs:
+        parts.extend([merged_prs.strip(), ""])
+    parts.extend([changelog_section.strip(), ""])
     if new_contributors:
         parts.extend([new_contributors.strip(), ""])
     parts.append(f"**Full Changelog**: {full_changelog_url}")
@@ -178,20 +142,22 @@ def _repo_slug(repo: Path) -> str:
     return url
 
 
-def fetch_generate_notes(repo_slug: str, tag: str, previous_tag: str | None) -> str:
-    args = [
-        "api",
-        f"repos/{repo_slug}/releases/generate-notes",
-        "-f",
-        f"tag_name={tag}",
-    ]
-    if previous_tag:
-        args.extend(["-f", f"previous_tag_name={previous_tag}"])
-    payload = json.loads(_gh(*args))
-    body = payload.get("body")
-    if not body:
-        raise VersioningError("generate-notes returned an empty body")
-    return body
+def _parse_iso(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def tag_creatordate(repo: Path, tag: str) -> datetime:
+    """Return the tag creation time (tagger date for annotated tags)."""
+    raw = subprocess.run(
+        ["git", "for-each-ref", "--format=%(creatordate:iso-strict)", f"refs/tags/{tag}"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    if not raw:
+        raise VersioningError(f"no creatordate for tag {tag}")
+    return _parse_iso(raw)
 
 
 def previous_tag_name(repo: Path, tag: str) -> str | None:
@@ -203,7 +169,6 @@ def previous_tag_name(repo: Path, tag: str) -> str | None:
         text=True,
         check=True,
     ).stdout.splitlines()
-    # Prefer tags that look like releases (optional v + semver).
     version_tags = [name for name in listed if re.fullmatch(r"v?\d+\.\d+\.\d+", name)]
     if tag not in version_tags:
         version_tags = [tag, *version_tags]
@@ -214,6 +179,86 @@ def previous_tag_name(repo: Path, tag: str) -> str | None:
     if idx + 1 >= len(version_tags):
         return None
     return version_tags[idx + 1]
+
+
+def full_changelog_url(repo_slug: str, previous_tag: str | None, tag: str) -> str:
+    if previous_tag:
+        return f"https://github.com/{repo_slug}/compare/{previous_tag}...{tag}"
+    return f"https://github.com/{repo_slug}/commits/{tag}"
+
+
+def fetch_merged_devel_prs(repo_slug: str, after: datetime | None, until: datetime) -> list[dict]:
+    """Merged PRs with base hybrid-devel in (after, until], oldest first."""
+    raw = _gh(
+        "pr",
+        "list",
+        "--repo",
+        repo_slug,
+        "--base",
+        DEVEL_BASE,
+        "--state",
+        "merged",
+        "--limit",
+        "100",
+        "--json",
+        "number,title,author,mergedAt",
+    )
+    selected: list[dict] = []
+    for item in json.loads(raw):
+        merged_at = _parse_iso(item["mergedAt"])
+        if after is not None and not (after < merged_at):
+            continue
+        if merged_at > until:
+            continue
+        selected.append(
+            {
+                "number": item["number"],
+                "title": item["title"],
+                "author": item["author"]["login"],
+                "mergedAt": item["mergedAt"],
+            }
+        )
+    selected.sort(key=lambda pr: pr["mergedAt"])
+    return selected
+
+
+def first_merged_pr_number(repo_slug: str, login: str) -> int | None:
+    """Return the author's earliest merged PR number in this repo, or None."""
+    raw = _gh(
+        "pr",
+        "list",
+        "--repo",
+        repo_slug,
+        "--author",
+        login,
+        "--state",
+        "merged",
+        "--limit",
+        "100",
+        "--json",
+        "number,mergedAt",
+    )
+    items = json.loads(raw)
+    if not items:
+        return None
+    items.sort(key=lambda pr: pr["mergedAt"])
+    return items[0]["number"]
+
+
+def new_contributor_entries(repo_slug: str, prs: list[dict]) -> list[tuple[str, int]]:
+    """Authors whose first-ever merged PR in the repo is one of ``prs``."""
+    window_numbers = {pr["number"] for pr in prs}
+    seen: set[str] = set()
+    entries: list[tuple[str, int]] = []
+    for pr in prs:
+        login = pr["author"]
+        if login in seen:
+            continue
+        seen.add(login)
+        first = first_merged_pr_number(repo_slug, login)
+        if first is not None and first in window_numbers:
+            entries.append((login, first))
+    return entries
 
 
 def release_exists(tag: str) -> bool:
@@ -245,16 +290,21 @@ def create_release(tag: str, title: str, body: str, *, dry_run: bool) -> None:
     print(f"created release: {tag}")
 
 
-def build_body(repo: Path, tag: str, generate_notes_text: str | None) -> tuple[str, str]:
+def build_body(repo: Path, tag: str) -> tuple[str, str]:
     changelog = (repo / CHANGELOG_NAME).read_text(encoding="utf-8")
     version, section = extract_tip_released_section(changelog)
     expected_tag = f"{load_config(repo)['tag_prefix']}{version}"
     if tag != expected_tag:
         raise VersioningError(f"tag {tag} does not match tip CHANGELOG version tag {expected_tag}")
-    if generate_notes_text is None:
-        prev = previous_tag_name(repo, tag)
-        generate_notes_text = fetch_generate_notes(_repo_slug(repo), tag, prev)
-    merged, new_contrib, full = rewrite_generate_notes(generate_notes_text)
+
+    slug = _repo_slug(repo)
+    prev = previous_tag_name(repo, tag)
+    until = tag_creatordate(repo, tag)
+    after = tag_creatordate(repo, prev) if prev else None
+    prs = fetch_merged_devel_prs(slug, after, until)
+    merged = format_merged_prs(prs)
+    new_contrib = format_new_contributors(new_contributor_entries(slug, prs))
+    full = full_changelog_url(slug, prev, tag)
     return version, compose_release_body(section, merged, new_contrib, full)
 
 
@@ -268,19 +318,11 @@ def main(argv=None) -> int:
         action="store_true",
         help="Print composed body to stdout; do not create the release",
     )
-    parser.add_argument(
-        "--generate-notes-file",
-        type=Path,
-        help="Optional path to a generate-notes body (skips gh api)",
-    )
     args = parser.parse_args(argv)
     repo = args.repo.resolve()
 
     try:
-        notes_text = None
-        if args.generate_notes_file is not None:
-            notes_text = args.generate_notes_file.read_text(encoding="utf-8")
-        version, body = build_body(repo, args.tag, notes_text)
+        version, body = build_body(repo, args.tag)
         if args.compose_only:
             sys.stdout.write(body)
             return 0
