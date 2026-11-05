@@ -185,6 +185,18 @@ def test_tag_release_creates_then_pushes_tag_only():
     assert "tag exists" in run
 
 
+def test_tag_release_publishes_github_release_after_new_tag():
+    doc, _ = _load(TAG_RELEASE)
+    job = doc["jobs"]["github-release"]
+
+    assert job["needs"] == "tag"
+    assert job["if"] == "needs.tag.outputs.tag != 'tag exists'"
+    assert job["permissions"] == {"contents": "write"}
+    run = "\n".join(step.get("run", "") for step in job["steps"])
+    assert "create_github_release.py --repo . --tag" in run
+    assert "GH_TOKEN" in str(job)
+
+
 def test_tag_release_uses_neutral_naming():
     text = (WORKFLOWS / TAG_RELEASE).read_text(encoding="utf-8")
 

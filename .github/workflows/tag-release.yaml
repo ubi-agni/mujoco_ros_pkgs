@@ -42,6 +42,32 @@ jobs:
           set -euo pipefail
           git push origin "refs/tags/${TAG}"
 
+  # Compose Merged PRs + CHANGELOG + New Contributors? + Full Changelog, then publish.
+  # Runs only when this run created the tag (same gate as docs).
+  github-release:
+    name: Create GitHub Release
+    needs: tag
+    if: needs.tag.outputs.tag != 'tag exists'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pyyaml
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          python3 .versioning/scripts/create_github_release.py --repo . --tag "${TAG}"
+
   # GITHUB_TOKEN tag pushes do not start other workflows, so build released docs here
   # in the same run. Runs only when this run created the tag.
   # The ref is hybrid-devel, not the new tag: `make versioned` builds devel/ from the
