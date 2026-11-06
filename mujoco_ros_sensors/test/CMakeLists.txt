@@ -20,10 +20,32 @@ if(ROS_VERSION EQUAL 1)
     Eigen3::Eigen
   )
 
-  catkin_add_gtest(sensor_stream_test sensor_stream_test.cpp)
+  # Master-free unit: compile stream + hub sources only. Linking ${PROJECT_NAME}
+  # pulls libmujoco_ros / plugin NodeHandle paths that advertise against a ROS
+  # master and hang with Connection refused when none is running.
+  find_library(MJR_ROS1_ROSLIB_LIBRARY NAMES roslib PATHS ${catkin_LIBRARY_DIRS})
+  find_library(MJR_ROS1_ROSCONSOLE_LIBRARY NAMES rosconsole PATHS ${catkin_LIBRARY_DIRS})
+  find_library(MJR_ROS1_ROSCPP_LIBRARY NAMES roscpp PATHS ${catkin_LIBRARY_DIRS})
+  if(NOT MJR_ROS1_ROSLIB_LIBRARY OR NOT MJR_ROS1_ROSCONSOLE_LIBRARY OR NOT MJR_ROS1_ROSCPP_LIBRARY)
+    message(FATAL_ERROR "sensor_stream_test (ROS1) requires roslib, rosconsole, and roscpp")
+  endif()
+  catkin_add_gtest(sensor_stream_test
+    sensor_stream_test.cpp
+    ../src/native_sensor_streams.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../mujoco_ros/src/sensor_hub.cpp
+  )
+  target_include_directories(sensor_stream_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+  )
+  target_include_directories(sensor_stream_test SYSTEM PRIVATE
+    ${catkin_INCLUDE_DIRS}
+  )
   target_link_libraries(sensor_stream_test
-    ${PROJECT_NAME}
-    ${catkin_LIBRARIES}
+    gtest_main
+    mujoco::mujoco
+    ${MJR_ROS1_ROSLIB_LIBRARY}
+    ${MJR_ROS1_ROSCONSOLE_LIBRARY}
+    ${MJR_ROS1_ROSCPP_LIBRARY}
   )
 
   target_include_directories(mujoco_sensors_test SYSTEM
