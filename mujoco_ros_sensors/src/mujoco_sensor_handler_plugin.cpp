@@ -337,17 +337,21 @@ void MujocoRosSensorsPlugin::InitGapSensor(int type, const std::string &sensor_n
 double MujocoRosSensorsPlugin::ReadUpdateRate(const std::string &sensor_name) const
 {
 #if MJR_ROS_VERSION == ROS_1
-	if (rosparam_config_.hasMember(sensor_name)) {
-		const XmlRpc::XmlRpcValue &sensor_cfg = rosparam_config_[sensor_name];
-		if (sensor_cfg.hasMember("update_rate")) {
-			const XmlRpc::XmlRpcValue &value = sensor_cfg["update_rate"];
-			if (value.getType() == XmlRpc::XmlRpcValue::TypeDouble) {
-				return static_cast<double>(value);
-			}
-			if (value.getType() == XmlRpc::XmlRpcValue::TypeInt) {
-				return static_cast<int>(value);
-			}
-		}
+	// XmlRpcValue's conversion operators are non-const, so work on copies.
+	XmlRpc::XmlRpcValue plugin_cfg = rosparam_config_;
+	if (!plugin_cfg.hasMember(sensor_name)) {
+		return 0.0;
+	}
+	XmlRpc::XmlRpcValue sensor_cfg = plugin_cfg[sensor_name];
+	if (!sensor_cfg.hasMember("update_rate")) {
+		return 0.0;
+	}
+	XmlRpc::XmlRpcValue value = sensor_cfg["update_rate"];
+	if (value.getType() == XmlRpc::XmlRpcValue::TypeDouble) {
+		return static_cast<double>(value);
+	}
+	if (value.getType() == XmlRpc::XmlRpcValue::TypeInt) {
+		return static_cast<int>(value);
 	}
 	return 0.0;
 #else
