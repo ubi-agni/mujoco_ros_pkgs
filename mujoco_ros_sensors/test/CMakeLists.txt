@@ -23,13 +23,13 @@ if(ROS_VERSION EQUAL 1)
   # Master-free unit: compile stream + hub sources only. Linking ${PROJECT_NAME}
   # pulls libmujoco_ros / plugin NodeHandle paths that advertise against a ROS
   # master and hang with Connection refused when none is running.
+  # Use find_package(roscpp) so rostime/serialization/cpp_common come transitively
+  # — hand-picking DSOs one-by-one fails the next link on CI.
+  find_package(roscpp REQUIRED)
   find_library(MJR_ROS1_ROSLIB_LIBRARY NAMES roslib PATHS ${catkin_LIBRARY_DIRS})
   find_library(MJR_ROS1_ROSCONSOLE_LIBRARY NAMES rosconsole PATHS ${catkin_LIBRARY_DIRS})
-  find_library(MJR_ROS1_ROSCPP_LIBRARY NAMES roscpp PATHS ${catkin_LIBRARY_DIRS})
-  find_library(MJR_ROS1_ROSTIME_LIBRARY NAMES rostime PATHS ${catkin_LIBRARY_DIRS})
-  if(NOT MJR_ROS1_ROSLIB_LIBRARY OR NOT MJR_ROS1_ROSCONSOLE_LIBRARY OR NOT MJR_ROS1_ROSCPP_LIBRARY OR
-     NOT MJR_ROS1_ROSTIME_LIBRARY)
-    message(FATAL_ERROR "sensor_stream_test (ROS1) requires roslib, rosconsole, roscpp, and rostime")
+  if(NOT MJR_ROS1_ROSLIB_LIBRARY OR NOT MJR_ROS1_ROSCONSOLE_LIBRARY)
+    message(FATAL_ERROR "sensor_stream_test (ROS1) requires roslib and rosconsole")
   endif()
   catkin_add_gtest(sensor_stream_test
     sensor_stream_test.cpp
@@ -41,14 +41,14 @@ if(ROS_VERSION EQUAL 1)
   )
   target_include_directories(sensor_stream_test SYSTEM PRIVATE
     ${catkin_INCLUDE_DIRS}
+    ${roscpp_INCLUDE_DIRS}
   )
   target_link_libraries(sensor_stream_test
     gtest_main
     mujoco::mujoco
+    ${roscpp_LIBRARIES}
     ${MJR_ROS1_ROSLIB_LIBRARY}
     ${MJR_ROS1_ROSCONSOLE_LIBRARY}
-    ${MJR_ROS1_ROSCPP_LIBRARY}
-    ${MJR_ROS1_ROSTIME_LIBRARY}
   )
 
   target_include_directories(mujoco_sensors_test SYSTEM
