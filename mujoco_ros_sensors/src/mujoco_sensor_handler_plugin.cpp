@@ -334,6 +334,39 @@ void MujocoRosSensorsPlugin::InitGapSensor(int type, const std::string &sensor_n
 	sensor_map_[sensor_name] = std::move(config);
 }
 
+double MujocoRosSensorsPlugin::ReadUpdateRate(const std::string &sensor_name) const
+{
+#if MJR_ROS_VERSION == ROS_1
+	if (rosparam_config_.hasMember(sensor_name)) {
+		const XmlRpc::XmlRpcValue &sensor_cfg = rosparam_config_[sensor_name];
+		if (sensor_cfg.hasMember("update_rate")) {
+			const XmlRpc::XmlRpcValue &value = sensor_cfg["update_rate"];
+			if (value.getType() == XmlRpc::XmlRpcValue::TypeDouble) {
+				return static_cast<double>(value);
+			}
+			if (value.getType() == XmlRpc::XmlRpcValue::TypeInt) {
+				return static_cast<int>(value);
+			}
+		}
+	}
+	return 0.0;
+#else
+	const std::string param = "MujocoPlugins." + get_name() + "." + sensor_name + ".update_rate";
+	if (!env_ptr_->has_parameter(param)) {
+		return 0.0;
+	}
+	const auto value = env_ptr_->get_parameter(param);
+	if (value.get_type() == rclcpp::ParameterType::PARAMETER_INTEGER) {
+		return static_cast<double>(value.as_int());
+	}
+	if (value.get_type() == rclcpp::ParameterType::PARAMETER_DOUBLE) {
+		return value.as_double();
+	}
+	MJR_WARN_STREAM_NAMED("sensors", "Ignoring non-numeric update_rate for sensor " << sensor_name);
+	return 0.0;
+#endif
+}
+
 void MujocoRosSensorsPlugin::InitSensors(const mjModel *model, mjData * /*data*/)
 {
 	std::string sensor_name, site, frame_id;
@@ -524,6 +557,7 @@ void MujocoRosSensorsPlugin::InitSensors(const mjModel *model, mjData * /*data*/
 		if (config_it == sensor_map_.end()) {
 			continue;
 		}
+		config_it->second->update_rate = ReadUpdateRate(name);
 		auto stream = MakeNativeStream(model, n, name, *config_it->second, noise_, env_ptr_->settings_.eval_mode);
 		if (!stream) {
 			MJR_ERROR_STREAM_NAMED("sensors", "Sensor " << name << " has a config but no stream (type "
