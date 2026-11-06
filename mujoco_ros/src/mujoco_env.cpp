@@ -828,6 +828,7 @@ void MujocoEnv::HandleReloadFailure(const char *message) noexcept
 	    "PluginHost quiescence",
 	    [this] {
 		    RecursiveLock physics_lock(physics_thread_mutex_);
+		    sensor_hub_.Clear();
 		    if (plugin_host_) {
 			    plugin_host_->QuiesceAndDestroy();
 		    }

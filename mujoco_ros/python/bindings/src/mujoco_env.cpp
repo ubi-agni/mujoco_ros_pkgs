@@ -204,6 +204,29 @@ class ViewerLock;
 constexpr const char kViewerAlreadyRunningError[]   = "a viewer is already running for this MujocoEnv";
 constexpr const char kViewerCloseWhileLockedError[] = "cannot close viewer while holding viewer lock";
 
+struct SensorStreamSnapshot
+{
+	std::string name;
+	bool is_public;
+};
+
+class TestSensorProvider : public ISensorStreamProvider, public SensorStreamBase
+{
+public:
+	explicit TestSensorProvider(std::string name) : name_(std::move(name)) {}
+	SensorProviderKind kind() const override { return SensorProviderKind::kNative; }
+	SensorStreamBase *Find(const std::string &name) const override
+	{
+		return name == name_ ? const_cast<TestSensorProvider *>(this) : nullptr;
+	}
+	std::vector<std::string> PublicNames() const override { return { name_ }; }
+	const std::string &name() const override { return name_; }
+	bool is_public() const override { return true; }
+
+private:
+	std::string name_;
+};
+
 class MujocoEnvWrapper : public MujocoEnv
 {
 	friend class ViewerLock;
@@ -822,6 +845,13 @@ public:
 
 	std::vector<PluginStat> PluginStats() { return MujocoEnv::GetPluginStats(); }
 
+	/// Test hook: registers a provider that is not owned by any plugin, so reload drops only its registration.
+	void RegisterTestSensorProvider(const std::string &name)
+	{
+		test_sensor_providers_.push_back(std::make_unique<TestSensorProvider>(name));
+		sensors().RegisterProvider(*test_sensor_providers_.back());
+	}
+
 	std::vector<std::string> PluginNames() const
 	{
 		std::vector<std::string> plugins;
@@ -853,6 +883,7 @@ public:
 	}
 
 private:
+	std::vector<std::unique_ptr<TestSensorProvider> > test_sensor_providers_;
 	static std::uintptr_t PythonMujocoAddress(const py::object &object)
 	{
 		if (object.is_none()) {
@@ -1353,6 +1384,37 @@ void InitMujocoEnv(py::module_ &module)
 	    .def("__enter__", &ViewerHandle::Enter, py::return_value_policy::reference_internal)
 	    .def("__exit__", &ViewerHandle::Exit);
 
+	// By value: providers destroy their streams on reload, so Python must never hold a stream pointer.
+	py::class_<SensorStreamSnapshot>(module, "_SensorStream")
+	    .def_readonly("name", &SensorStreamSnapshot::name)
+	    .def_readonly("is_public", &SensorStreamSnapshot::is_public);
+
+	const auto stream_or_key_error = [](SensorStreamBase *stream, const std::string &name) -> SensorStreamSnapshot {
+		if (stream == nullptr) {
+			throw py::key_error("no public sensor named '" + name + "'");
+		}
+		return { stream->name(), stream->is_public() };
+	};
+	py::class_<SensorHubView>(module, "_SensorHubView")
+	    .def("names", &SensorHubView::Names)
+	    .def(
+	        "__getitem__",
+	        [stream_or_key_error](const SensorHubView &view, const std::string &name) -> SensorStreamSnapshot {
+		        return stream_or_key_error(view.Get(name), name);
+	        })
+	    .def("__contains__", [](const SensorHubView &view, const std::string &name) { return view.Get(name) != nullptr; });
+	py::class_<SensorHub>(module, "_SensorHub")
+	    .def("empty", &SensorHub::empty)
+	    .def("names", &SensorHub::Names)
+	    .def_property_readonly("native", &SensorHub::Native, py::keep_alive<0, 1>())
+	    .def_property_readonly("custom", &SensorHub::Custom, py::keep_alive<0, 1>())
+	    .def(
+	        "__getitem__",
+	        [stream_or_key_error](const SensorHub &hub, const std::string &name) -> SensorStreamSnapshot {
+		        return stream_or_key_error(hub.Get(name), name);
+	        })
+	    .def("__contains__", [](const SensorHub &hub, const std::string &name) { return hub.Get(name) != nullptr; });
+
 	py::class_<MujocoEnvWrapper, std::shared_ptr<MujocoEnvWrapper>>(module, "_MujocoEnvWrapper")
 	    .def(py::init([](std::optional<std::string> admin_hash, bool python_reload_service, py::object runtime_options) {
 		         auto wrapper = std::make_shared<MujocoEnvWrapper>(admin_hash.value_or(""), python_reload_service);
@@ -1397,6 +1459,10 @@ void InitMujocoEnv(py::module_ &module)
 	    .def_property_readonly("plugin_stats", &MujocoEnvWrapper::PluginStats)
 	    .def_property_readonly("plugins", &MujocoEnvWrapper::PluginObjects)
 	    .def_property_readonly("plugin_names", &MujocoEnvWrapper::PluginNames)
+	    .def("_register_test_sensor_provider", &MujocoEnvWrapper::RegisterTestSensorProvider, py::arg("name"))
+	    .def_property_readonly(
+	        "sensors", [](MujocoEnvWrapper &env) -> SensorHub & { return env.sensors(); },
+	        py::return_value_policy::reference_internal)
 	    .def_property_readonly("_camera_publication_transport", &MujocoEnvWrapper::GetCameraPublicationTransport,
 	                           py::return_value_policy::reference_internal)
 	    .def_property_readonly("model", &MujocoEnvWrapper::ModelPy)

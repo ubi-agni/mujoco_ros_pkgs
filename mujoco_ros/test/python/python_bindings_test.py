@@ -219,6 +219,43 @@ class PythonBindingsTest(unittest.TestCase):
                 self.assertEqual([], env.plugin_stats)
                 previous_load_count = env.load_count
 
+    def test_sensors_hub_is_valid_and_empty_without_sensor_plugin(self):
+        model_path = get_package_share_directory("mujoco_ros") / "assets" / "pendulum_world.xml"
+
+        with MujocoEnv() as env:
+            self.assertTrue(env.load_model_from_string(str(model_path)))
+            wait_for_idle(env)
+
+            self.assertTrue(env.sensors.empty())
+            self.assertEqual([], env.sensors.names())
+            self.assertEqual([], env.sensors.native.names())
+            self.assertEqual([], env.sensors.custom.names())
+            self.assertNotIn("missing", env.sensors)
+            with self.assertRaises(KeyError):
+                env.sensors["missing"]
+            with self.assertRaises(KeyError):
+                env.sensors.native["missing"]
+
+    def test_held_sensor_handle_is_safe_across_reload(self):
+        model_path = get_package_share_directory("mujoco_ros") / "assets" / "pendulum_world.xml"
+
+        with MujocoEnv() as env:
+            self.assertTrue(env.load_model_from_string(str(model_path)))
+            wait_for_idle(env)
+            env._env._register_test_sensor_provider("probe")
+            held = env.sensors["probe"]
+            self.assertEqual("probe", held.name)
+
+            self.assertTrue(env.load_model_from_string(str(model_path)))
+            wait_for_idle(env)
+
+            self.assertTrue(env.sensors.empty())
+            # The held handle is a snapshot, never a pointer into a destroyed stream.
+            self.assertEqual("probe", held.name)
+            self.assertTrue(held.is_public)
+            with self.assertRaises(KeyError):
+                env.sensors["probe"]
+
     def test_python_api_mutations_reach_cpp_state(self):
         model_path = get_package_share_directory("mujoco_ros") / "assets" / "pendulum_world.xml"
 

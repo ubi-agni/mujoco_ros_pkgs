@@ -723,6 +723,10 @@ class MujocoEnv:
         return self._env.plugin_names
 
     @property
+    def sensors(self):
+        return self._env.sensors
+
+    @property
     def model(self):
         return self._env.model
 

@@ -85,6 +85,8 @@ void MujocoEnv::PrepareReload()
 
 	// This phase runs under physics_thread_mutex_. PluginHost quiesces before
 	// RenderCore teardown, matching the physics -> PluginHost -> RenderCore order.
+	// Drop provider pointers before their plugins are destroyed.
+	sensor_hub_.Clear();
 	plugin_host_->QuiesceAndDestroy();
 	if (render_core_) {
 		render_core_->StopAcceptingSnapshots();
