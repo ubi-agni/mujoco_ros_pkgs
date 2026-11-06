@@ -382,6 +382,9 @@ protected:
 	mjModel *m = nullptr;
 	mjData *d  = nullptr;
 
+	/// Hook for params that must exist before the plugin loads (e.g. update_rate).
+	virtual void ConfigureExtraParams() {}
+
 	void setup(bool eval_mode, const std::string &model_file = "sensors_world.xml")
 	{
 		nh = std::make_unique<testing::TestNodeHandle>("~");
@@ -392,6 +395,7 @@ protected:
 		nh->setParam("use_sim_time", true);
 #endif
 		configure_plugin_params(*nh);
+		ConfigureExtraParams();
 
 		env_ptr = std::make_unique<MujocoEnvTestWrapper>(eval_mode ? "some_hash" : "", nh.get());
 
@@ -1066,4 +1070,122 @@ TEST_F(SkipWorldFixture, IgnoreTypesHaveNoTopicsOrHubEntries)
 		EXPECT_EQ(env_ptr->sensors().Native().Get(name), nullptr) << name;
 	}
 	EXPECT_EQ(env_ptr->sensors().Native().Names().size(), 1u);
+}
+
+namespace {
+
+mujoco_ros::sensors::ISensorStream *native_stream(MujocoEnvTestWrapper *env_ptr, const std::string &name)
+{
+	return const_cast<mujoco_ros::sensors::ISensorStream *>(
+	    static_cast<const mujoco_ros::sensors::ISensorStream *>(env_ptr->sensors().Native().Get(name)));
+}
+
+constexpr double RATE_HZ = 10.0;
+
+} // namespace
+
+TEST_F(TrainEnvFixture, NoValuePublishWithoutSubscriber)
+{
+	auto *stream = native_stream(env_ptr.get(), "vel_joint2");
+	ASSERT_NE(stream, nullptr);
+	auto gt_sub = subscribe_to<ScalarStamped>(env_ptr.get(), nh.get(), sensor_topic_name(env_ptr.get(), "vel_joint2_GT"),
+	                                          10, [](MessageConstPtr<ScalarStamped>) {});
+	wait_for_subscription_discovery();
+	env_ptr->togglePaused(true);
+	env_ptr->step(20);
+	EXPECT_EQ(stream->value_publish_count(), 0u);
+	EXPECT_GT(stream->gt_publish_count(), 0u);
+}
+
+TEST_F(TrainEnvFixture, NoGtPublishWithoutSubscriber)
+{
+	auto *stream = native_stream(env_ptr.get(), "vel_joint2");
+	ASSERT_NE(stream, nullptr);
+	auto sub = subscribe_to<ScalarStamped>(env_ptr.get(), nh.get(), sensor_topic_name(env_ptr.get(), "vel_joint2"), 10,
+	                                       [](MessageConstPtr<ScalarStamped>) {});
+	wait_for_subscription_discovery();
+	env_ptr->togglePaused(true);
+	env_ptr->step(20);
+	EXPECT_GT(stream->value_publish_count(), 0u);
+	EXPECT_EQ(stream->gt_publish_count(), 0u);
+}
+
+TEST_F(TrainEnvFixture, NoPublishWithoutAnySubscriber)
+{
+	auto *stream = native_stream(env_ptr.get(), "vel_joint2");
+	ASSERT_NE(stream, nullptr);
+	env_ptr->togglePaused(true);
+	env_ptr->step(20);
+	EXPECT_EQ(stream->value_publish_count(), 0u);
+	EXPECT_EQ(stream->gt_publish_count(), 0u);
+}
+
+TEST_F(TrainEnvFixture, UnsetUpdateRatePublishesEveryStep)
+{
+	auto *stream = native_stream(env_ptr.get(), "vel_joint2");
+	ASSERT_NE(stream, nullptr);
+	EXPECT_EQ(stream->config().update_rate, 0.0);
+	auto sub = subscribe_to<ScalarStamped>(env_ptr.get(), nh.get(), sensor_topic_name(env_ptr.get(), "vel_joint2"), 10,
+	                                       [](MessageConstPtr<ScalarStamped>) {});
+	wait_for_subscription_discovery();
+	env_ptr->togglePaused(true);
+	const auto before = stream->value_publish_count();
+	env_ptr->step(20);
+	EXPECT_EQ(stream->value_publish_count() - before, 20u);
+}
+
+class RateFixture : public SensorsFixture
+{
+protected:
+	void SetUp() override { setup(false); }
+	void ConfigureExtraParams() override
+	{
+#if MJR_ROS_VERSION == ROS_2
+		nh->setParam("MujocoPlugins.mujoco_ros_sensors.vel_joint2.update_rate", RATE_HZ);
+#endif
+	}
+};
+
+// Python reads BuildValue every step regardless of rate; asserted in Task 6.
+TEST_F(RateFixture, UpdateRateLimitsRosPublishCadence)
+{
+	auto *stream = native_stream(env_ptr.get(), "vel_joint2");
+	ASSERT_NE(stream, nullptr);
+	EXPECT_DOUBLE_EQ(stream->config().update_rate, RATE_HZ);
+	auto sub = subscribe_to<ScalarStamped>(env_ptr.get(), nh.get(), sensor_topic_name(env_ptr.get(), "vel_joint2"), 10,
+	                                       [](MessageConstPtr<ScalarStamped>) {});
+	wait_for_subscription_discovery();
+	env_ptr->togglePaused(true);
+
+	const int steps         = static_cast<int>(std::ceil(1.0 / m->opt.timestep));
+	const auto before       = stream->value_publish_count();
+	const double start_time = d->time;
+	env_ptr->step(steps);
+	const double elapsed = d->time - start_time;
+	const auto published = stream->value_publish_count() - before;
+	// One publish per period, plus the first step after the (possibly stale) last publish.
+	EXPECT_NEAR(static_cast<double>(published), elapsed * RATE_HZ, 1.5) << "elapsed " << elapsed;
+	EXPECT_LT(published, static_cast<uint64_t>(steps) / 2);
+	EXPECT_GE(published, 1u);
+}
+
+TEST_F(RateFixture, UpdateRateResetsOnSimTimeRewind)
+{
+	auto *stream = native_stream(env_ptr.get(), "vel_joint2");
+	ASSERT_NE(stream, nullptr);
+	auto sub = subscribe_to<ScalarStamped>(env_ptr.get(), nh.get(), sensor_topic_name(env_ptr.get(), "vel_joint2"), 10,
+	                                       [](MessageConstPtr<ScalarStamped>) {});
+	wait_for_subscription_discovery();
+	env_ptr->togglePaused(true);
+	env_ptr->step(5);
+	// Move far ahead so the period is long over, then rewind: only the rewind rule can allow the next publish.
+	d->time += 100.0;
+	env_ptr->step(1);
+	const auto after_forward = stream->value_publish_count();
+	d->time                  = 0.0;
+	env_ptr->step(1);
+	EXPECT_EQ(stream->value_publish_count(), after_forward + 1);
+	env_ptr->step(1);
+	EXPECT_EQ(stream->value_publish_count(), after_forward + 1)
+	    << "rate limit must apply again after the rewind publish";
 }
