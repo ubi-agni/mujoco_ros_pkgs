@@ -189,9 +189,15 @@ bool MujocoRosSensorsPlugin::Load(const mjModel *model, mjData *data)
 	InitSensors(model, data);
 	MJR_INFO_NAMED("sensors", "All sensors initialized");
 
-	// Throws on a duplicate public name; a half-registered plugin must not load.
-	env_ptr_->sensors().RegisterProvider(*this);
-	hub_registered_ = true;
+	// A public name already taken by another provider (e.g. a laser) must fail the load loudly; a half-registered
+	// plugin must not load and must not leave an uncaught throw behind.
+	try {
+		env_ptr_->sensors().RegisterProvider(*this);
+		hub_registered_ = true;
+	} catch (const std::exception &e) {
+		MJR_ERROR_STREAM_NAMED("sensors", "Could not register sensor streams on the sensor hub: " << e.what());
+		return false;
+	}
 
 #if MJR_ROS_VERSION == ROS_1
 	register_noise_model_server_ = sensors_nh_.advertiseService("sensors/register_noise_models",

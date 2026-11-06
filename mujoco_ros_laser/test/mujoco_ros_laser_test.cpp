@@ -367,12 +367,16 @@ TEST_P(LoadedPluginFixture, ScanStampRestartsAfterReset)
 }
 
 #if MJR_ROS_VERSION == ROS_2
-// Native sensors plugin first, then the laser: both want the public name "scan".
-class LaserSensorsCoexistenceFixture : public ::testing::Test
+// Two plugins want the public name "scan"; the first one loaded keeps it, the second one's Load fails loud.
+class HubCollisionFixture : public ::testing::Test
 {
 protected:
 	std::unique_ptr<testing::TestNodeHandle> nh;
 	std::unique_ptr<MujocoEnvTestWrapper> env_ptr;
+
+	virtual std::vector<std::string> PluginOrder() const = 0;
+	virtual void ConfigureExtraParams() {}
+	virtual std::string ModelName() const { return "laser_native_collision_world.xml"; }
 
 	void SetUp() override
 	{
@@ -380,11 +384,12 @@ protected:
 		nh->setParam("unpause", false);
 		nh->setParam("no_render", true);
 		configure_plugin_params(*nh);
-		nh->setParam("MujocoPlugins.names", std::vector<std::string>{ "mujoco_ros_sensors", "mujoco_ros_laser" });
+		nh->setParam("MujocoPlugins.names", PluginOrder());
 		nh->setParam("MujocoPlugins.mujoco_ros_sensors.type", "mujoco_ros_sensors/MujocoRosSensorsPlugin");
+		ConfigureExtraParams();
 
 		env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
-		env_ptr->StartWithXML(get_laser_model_path("laser_native_collision_world.xml"));
+		env_ptr->StartWithXML(get_laser_model_path(ModelName().c_str()));
 		float seconds = 0;
 		while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -404,7 +409,35 @@ protected:
 	}
 };
 
-TEST_F(LaserSensorsCoexistenceFixture, DuplicateNameWithNativeFailsLoud)
+class LaserAfterNativeFixture : public HubCollisionFixture
+{
+protected:
+	std::vector<std::string> PluginOrder() const override { return { "mujoco_ros_sensors", "mujoco_ros_laser" }; }
+};
+
+class NativeAfterLaserFixture : public HubCollisionFixture
+{
+protected:
+	std::vector<std::string> PluginOrder() const override { return { "mujoco_ros_laser", "mujoco_ros_sensors" }; }
+};
+
+class DuplicateLaserNameFixture : public HubCollisionFixture
+{
+protected:
+	std::vector<std::string> PluginOrder() const override { return { "mujoco_ros_laser" }; }
+	std::string ModelName() const override { return "laser_world.xml"; }
+	void ConfigureExtraParams() override
+	{
+		nh->setParam("MujocoPlugins.mujoco_ros_laser.sensors", std::vector<std::string>{ "first", "second" });
+		for (const char *key : { "first", "second" }) {
+			const std::string prefix = std::string("MujocoPlugins.mujoco_ros_laser.") + key;
+			nh->setParam(prefix + ".site_attached", "laser_site");
+			nh->setParam(prefix + ".name", "dup");
+		}
+	}
+};
+
+TEST_F(LaserAfterNativeFixture, DuplicateNameWithNativeFailsLoud)
 {
 	// The native stream registered first and stays; the laser's Load failed, so it never reached the hub.
 	const auto &hub = env_ptr->sensors();
@@ -414,6 +447,26 @@ TEST_F(LaserSensorsCoexistenceFixture, DuplicateNameWithNativeFailsLoud)
 	EXPECT_EQ(hub.Get("scan"), hub.Native().Get("scan"));
 
 	EXPECT_EQ(env_ptr->GetNumCBReadyPlugins(), 1) << "Only the native plugin may be callback-ready";
+}
+
+TEST_F(NativeAfterLaserFixture, NativeCollisionWithLaserFailsLoud)
+{
+	// The laser registered first and stays; the native plugin's Load failed instead of throwing uncaught.
+	const auto &hub = env_ptr->sensors();
+	ASSERT_NE(hub.Custom().Get("scan"), nullptr);
+	EXPECT_EQ(hub.Native().Get("scan"), nullptr);
+	EXPECT_EQ(hub.Native().Names().size(), 0u);
+	EXPECT_EQ(hub.Get("scan"), hub.Custom().Get("scan"));
+
+	EXPECT_EQ(env_ptr->GetNumCBReadyPlugins(), 1) << "Only the laser plugin may be callback-ready";
+}
+
+TEST_F(DuplicateLaserNameFixture, DuplicateNamesInsideLaserPluginFailLoad)
+{
+	const auto &hub = env_ptr->sensors();
+	EXPECT_EQ(hub.Custom().Names().size(), 0u);
+	EXPECT_EQ(hub.Get("dup"), nullptr);
+	EXPECT_EQ(env_ptr->GetNumCBReadyPlugins(), 0) << "A laser plugin with duplicate names must not load";
 }
 
 class NoiseFreeLaserFixture : public LoadedPluginFixture
