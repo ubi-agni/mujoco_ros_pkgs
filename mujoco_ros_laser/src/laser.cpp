@@ -46,6 +46,7 @@
 #include <mujoco_ros/util.hpp>
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -160,18 +161,6 @@ double GetDoubleParam(const rclcpp::Node *node, const std::string &name, double 
 }
 #endif
 
-// Sim time keeps stamps and the rate gate valid when the node clock is not sim time. A rewind (sim reset)
-// clears the gate, otherwise scans would be skipped until sim time catches up with the old last update.
-RosTime SimNow(const mjData *data, const RosTime &last_update, bool &last_update_initialized)
-{
-	const RosTime now = util::toRosTime(util::simTimeToNanoseconds(data->time));
-	if (last_update_initialized && now < last_update) {
-		MJR_DEBUG_NAMED("lasers", "Sim time moved backward, resetting laser rate gate");
-		last_update_initialized = false;
-	}
-	return now;
-}
-
 void InitRays(LaserConfig &config)
 {
 	config.nrays = static_cast<uint>((config.max_angle - config.min_angle) / config.angular_resolution);
@@ -229,6 +218,13 @@ LaserConfig::LaserConfig(std::string frame_id, std::string name, int site_attach
 	InitRays(*this);
 }
 
+namespace {
+// Defined below next to the stream class; Load only needs to construct streams.
+std::unique_ptr<mujoco_ros::sensors::ISensorStream> MakeLaserStream(const LaserConfig &config, mjvGeom *geoms,
+                                                                    std::mt19937 &generator,
+                                                                    std::normal_distribution<double> &noise_dist);
+} // namespace
+
 bool LaserPlugin::Load(const mjModel *model, mjData *data)
 {
 	MJR_INFO_NAMED("lasers", "Loading laser plugin ...");
@@ -278,16 +274,36 @@ bool LaserPlugin::Load(const mjModel *model, mjData *data)
 
 	ngeom_ = 0;
 	for (const auto &laser_config : laser_configs_) {
-		if (laser_config.visualize) {
-			ngeom_ += laser_config.nrays;
+		if (laser_config->visualize) {
+			ngeom_ += laser_config->nrays;
 		}
 	}
 
 	delete[] laser_geoms_;
 	laser_geoms_ = new mjvGeom[ngeom_];
 
+	int geom_offset = 0;
+	for (const auto &laser_config : laser_configs_) {
+		mjvGeom *geoms = nullptr;
+		if (laser_config->visualize) {
+			geoms = laser_geoms_ + geom_offset;
+			geom_offset += static_cast<int>(laser_config->nrays);
+		}
+		streams_.push_back(MakeLaserStream(*laser_config, geoms, rand_generator, noise_dist));
+	}
+
 	m_ = model;
 	d_ = data;
+
+	// A public name already taken by a native stream (or another provider) must fail the load loudly: silently
+	// shadowing a stream would make hub lookups ambiguous.
+	try {
+		env_ptr_->sensors().RegisterProvider(*this);
+		hub_registered_ = true;
+	} catch (const std::exception &e) {
+		MJR_ERROR_STREAM_NAMED("lasers", "Could not register laser streams on the sensor hub: " << e.what());
+		return false;
+	}
 	return true;
 }
 
@@ -344,13 +360,13 @@ bool LaserPlugin::InitSensor(const mjModel *model, const std::string &sensor_nam
 #endif
 
 	laser_config.RegisterPub(CreatePublisher<LaserScan>(lasers_nh_, topic_name));
-	laser_configs_.push_back(laser_config);
+	laser_configs_.push_back(std::make_unique<LaserConfig>(laser_config));
 	return true;
 }
 
 void LaserPlugin::RenderCallback(const mjModel * /*model*/, mjData * /*data*/, mjvScene *scene)
 {
-	if (!has_render_data_) {
+	if (!HasRenderData()) {
 		return;
 	}
 
@@ -384,80 +400,182 @@ void ProcessRay(std::mt19937 &rand_generator, std::normal_distribution<double> &
 	mjv_connector(geom, mjGEOM_LINE, 1., pos, target);
 }
 
-void LaserPlugin::ComputeLasers(const mjModel *model, mjData *data)
+namespace {
+
+/**
+ * One laser = one public custom stream. The rate gate is per stream and runs against sim time, so a rewind
+ * (sim reset) must clear it, otherwise scans would be skipped until sim time catches up with the old last publish.
+ * Scans are built and published regardless of subscribers: visualization geoms come out of the same build.
+ */
+class LaserStream : public mujoco_ros::sensors::ISensorStream
 {
-	uint n_vGeom        = 0;
-	const float rgba[4] = { 0., 0., 1., 0.8 };
-	mjtNum rot[9];
-
-	mjtByte ignore_groups[mjNGROUP] = { 0 };
-	for (unsigned char &ignore_group : ignore_groups) {
-		ignore_group = 1;
+public:
+	LaserStream(const LaserConfig &config, mjvGeom *geoms, std::mt19937 &generator,
+	            std::normal_distribution<double> &noise_dist)
+	    : ISensorStream(config.name, config, true)
+	    , laser_(config)
+	    , geoms_(geoms)
+	    , generator_(generator)
+	    , noise_dist_(noise_dist)
+	{
 	}
-	ignore_groups[1] = 0;
 
-	for (const auto &laser_config : laser_configs_) {
-		const RosTime now = SimNow(data, last_update_time_, last_update_time_initialized_);
-		if (last_update_time_initialized_ && SecondsSince(now, last_update_time_) < 1.0 / laser_config.update_rate) {
-			skip_ema_ = true;
-			continue;
+	void MaybePublish(const mjModel *model, const mjData *data) override
+	{
+		computed_         = false;
+		const RosTime now = util::toRosTime(util::simTimeToNanoseconds(data->time));
+		if (has_last_ && now < last_) {
+			MJR_DEBUG_NAMED("lasers", "Sim time moved backward, resetting laser rate gate");
+			has_last_ = false;
+		}
+		if (has_last_ && SecondsSince(now, last_) < 1.0 / laser_.update_rate) {
+			return;
 		}
 
-		LaserScan scan_msg;
-		scan_msg.header.stamp    = now;
-		scan_msg.header.frame_id = laser_config.frame_id;
-		scan_msg.angle_min       = laser_config.min_angle;
-		scan_msg.angle_max       = laser_config.max_angle;
-		scan_msg.angle_increment = laser_config.angular_resolution;
-		scan_msg.range_min       = laser_config.min_range;
-		scan_msg.range_max       = laser_config.max_range;
-		scan_msg.ranges.resize(laser_config.nrays);
+		computed_ = true;
+		Publish<LaserScan>(laser_, std::any_cast<const LaserScan &>(Value(model, data)));
+		last_     = now;
+		has_last_ = true;
+		value_publish_count_.fetch_add(1, std::memory_order_release);
+	}
 
-		mju_copy(rot, data->site_xmat + 9 * laser_config.site_attached, 9);
+	std::any BuildValue(const mjModel *model, const mjData *data) override
+	{
+		static const float rgba[4]                   = { 0., 0., 1., 0.8 };
+		static const mjtByte ignore_groups[mjNGROUP] = { 1, 0, 1, 1, 1, 1 };
+
+		LaserScan scan_msg;
+		scan_msg.header.stamp    = util::toRosTime(util::simTimeToNanoseconds(data->time));
+		scan_msg.header.frame_id = laser_.frame_id;
+		scan_msg.angle_min       = laser_.min_angle;
+		scan_msg.angle_max       = laser_.max_angle;
+		scan_msg.angle_increment = laser_.angular_resolution;
+		scan_msg.range_min       = laser_.min_range;
+		scan_msg.range_max       = laser_.max_range;
+		scan_msg.ranges.resize(laser_.nrays);
+
+		mjtNum rot[9];
+		mju_copy(rot, data->site_xmat + 9 * laser_.site_attached, 9);
 
 		// Rotate all rays into the world frame, then cast them in one serial mj_multiRay call.
 		// Static geoms are included. The mount body is excluded. The cutoff is effectively unbounded.
 		mjtNum pos[3];
-		mju_copy3(pos, data->site_xpos + 3 * laser_config.site_attached);
-		std::vector<mjtNum> dirs(3 * laser_config.nrays);
-		std::vector<mjtNum> dists(laser_config.nrays);
-		std::vector<int> geomids(laser_config.nrays);
-		for (uint i = 0; i < laser_config.nrays; ++i) {
-			mju_mulMatVec3(dirs.data() + 3 * i, rot, laser_config.rays + 3 * i);
+		mju_copy3(pos, data->site_xpos + 3 * laser_.site_attached);
+		std::vector<mjtNum> dirs(3 * laser_.nrays);
+		std::vector<mjtNum> dists(laser_.nrays);
+		std::vector<int> geomids(laser_.nrays);
+		for (uint i = 0; i < laser_.nrays; ++i) {
+			mju_mulMatVec3(dirs.data() + 3 * i, rot, laser_.rays + 3 * i);
 		}
 		// Exclude the mount body. mj_multiRay takes one body id, so the rest of the kinematic chain can still be hit.
-		const int mount_body = model->site_bodyid[laser_config.site_attached];
-		mj_multiRay(model, data, pos, dirs.data(), ignore_groups, 1, mount_body, geomids.data(), dists.data(), nullptr,
-		            static_cast<int>(laser_config.nrays), mjMAXVAL);
+		const int mount_body = model->site_bodyid[laser_.site_attached];
+		// mj_multiRay only reads the kinematics but its C signature takes a mutable mjData.
+		mj_multiRay(model, const_cast<mjData *>(data), pos, dirs.data(), ignore_groups, 1, mount_body, geomids.data(),
+		            dists.data(), nullptr, static_cast<int>(laser_.nrays), mjMAXVAL);
 
-		for (uint i = 0; i < laser_config.nrays; ++i) {
-			mjvGeom *g = nullptr;
-			if (laser_config.visualize) {
-				g = laser_geoms_ + n_vGeom;
-				n_vGeom++;
-			}
-			ProcessRay(rand_generator, noise_dist, laser_config, g, pos, dirs.data() + 3 * i, dists[i], rgba, scan_msg, i);
+		for (uint i = 0; i < laser_.nrays; ++i) {
+			mjvGeom *g = geoms_ == nullptr ? nullptr : geoms_ + i;
+			ProcessRay(generator_, noise_dist_, laser_, g, pos, dirs.data() + 3 * i, dists[i], rgba, scan_msg,
+			           static_cast<int>(i));
 		}
-
-		Publish<LaserScan>(laser_config, scan_msg);
-		last_update_time_             = now;
-		last_update_time_initialized_ = true;
-		has_render_data_              = has_render_data_ || laser_config.visualize;
+		has_render_data_ = has_render_data_ || laser_.visualize;
+		return scan_msg;
 	}
+
+	void ResetGate()
+	{
+		has_last_ = false;
+		computed_ = false;
+	}
+	bool ComputedLastStep() const { return computed_; }
+	bool HasRenderData() const { return has_render_data_; }
+
+private:
+	const LaserConfig &laser_;
+	mjvGeom *geoms_;
+	std::mt19937 &generator_;
+	std::normal_distribution<double> &noise_dist_;
+	RosTime last_;
+	bool has_last_        = false;
+	bool computed_        = false;
+	bool has_render_data_ = false;
+};
+
+std::unique_ptr<mujoco_ros::sensors::ISensorStream> MakeLaserStream(const LaserConfig &config, mjvGeom *geoms,
+                                                                    std::mt19937 &generator,
+                                                                    std::normal_distribution<double> &noise_dist)
+{
+	return std::make_unique<LaserStream>(config, geoms, generator, noise_dist);
 }
+
+} // namespace
+
+LaserPlugin::LaserPlugin() = default;
 
 void LaserPlugin::LastStageCallback(const mjModel *model, mjData *data)
 {
-	ComputeLasers(model, data);
+	bool any_computed = false;
+	for (auto &stream : streams_) {
+		// New step: drop last step's cache so publish and reads share one build (one noise sample set) per step.
+		stream->InvalidateCache();
+		stream->MaybePublish(model, data);
+		any_computed = any_computed || static_cast<LaserStream &>(*stream).ComputedLastStep();
+	}
+	// Steps where every laser was rate-gated are nearly free and would skew the callback-time average.
+	skip_ema_ = !streams_.empty() && !any_computed;
 }
 
 void LaserPlugin::Reset()
 {
-	last_update_time_initialized_ = false;
+	for (auto &stream : streams_) {
+		stream->InvalidateCache();
+		static_cast<LaserStream &>(*stream).ResetGate();
+	}
+}
+
+std::vector<LaserConfig> LaserPlugin::GetLaserConfigs() const
+{
+	std::vector<LaserConfig> configs;
+	configs.reserve(laser_configs_.size());
+	for (const auto &config : laser_configs_) {
+		configs.push_back(*config);
+	}
+	return configs;
+}
+
+bool LaserPlugin::HasRenderData() const
+{
+	return std::any_of(streams_.begin(), streams_.end(),
+	                   [](const auto &stream) { return static_cast<LaserStream &>(*stream).HasRenderData(); });
+}
+
+mujoco_ros::SensorStreamBase *LaserPlugin::Find(const std::string &name) const
+{
+	for (const auto &stream : streams_) {
+		if (stream->name() == name && stream->is_public()) {
+			return stream.get();
+		}
+	}
+	return nullptr;
+}
+
+std::vector<std::string> LaserPlugin::PublicNames() const
+{
+	std::vector<std::string> names;
+	for (const auto &stream : streams_) {
+		if (stream->is_public()) {
+			names.push_back(stream->name());
+		}
+	}
+	return names;
 }
 
 LaserPlugin::~LaserPlugin()
 {
+	if (hub_registered_) {
+		env_ptr_->sensors().UnregisterProvider(*this);
+	}
+	streams_.clear();
 	delete[] laser_geoms_;
 }
 

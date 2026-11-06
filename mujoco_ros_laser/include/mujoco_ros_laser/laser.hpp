@@ -53,9 +53,11 @@
 #endif
 
 #include <mujoco_ros/mujoco_env.hpp>
+#include <mujoco_ros/sensor_hub.hpp>
 #include <mujoco_ros_sensors/mujoco_sensor_handler_plugin.hpp>
+#include <mujoco_ros_sensors/sensor_stream.hpp>
 
-// #include <memory>
+#include <memory>
 #include <random>
 #include <string>
 #include <vector>
@@ -115,9 +117,16 @@ void ProcessRay(std::mt19937 &rand_generator, std::normal_distribution<double> &
                 const LaserConfig &laser_config, mjvGeom *geom, const mjtNum (&pos)[3], const mjtNum *dir, mjtNum dist,
                 const float (&rgba)[4], LaserScan &scan_msg, int ray_idx);
 
-class LaserPlugin : public mujoco_ros::MujocoPlugin
+/**
+ * Laser provider on the sensor hub (kCustom). Each configured laser is one public stream referencing its
+ * LaserConfig 1:1, so lasers show up in hub.Custom() and the unified hub.Get() next to native sensors.
+ */
+class LaserPlugin : public mujoco_ros::MujocoPlugin, public mujoco_ros::ISensorStreamProvider
 {
 public:
+	LaserPlugin();
+	LaserPlugin(const LaserPlugin &)            = delete;
+	LaserPlugin &operator=(const LaserPlugin &) = delete;
 	~LaserPlugin() override;
 
 	bool Load(const mjModel *m, mjData *d) override;
@@ -125,15 +134,26 @@ public:
 
 	void RenderCallback(const mjModel *model, mjData *data, mjvScene *scene) override;
 	void LastStageCallback(const mjModel *model, mjData *data) override;
-	const std::vector<LaserConfig> &GetLaserConfigs() const { return laser_configs_; }
-	bool HasRenderData() const { return has_render_data_; }
+	// By value: streams hold references into laser_configs_, so the owning container is never handed out.
+	std::vector<LaserConfig> GetLaserConfigs() const;
+	bool HasRenderData() const;
+
+	mujoco_ros::SensorProviderKind kind() const override { return mujoco_ros::SensorProviderKind::kCustom; }
+	mujoco_ros::SensorStreamBase *Find(const std::string &name) const override;
+	std::vector<std::string> PublicNames() const override;
 	int GetRenderGeomCount() const { return ngeom_; }
 
 protected:
 	const mjModel *m_{ nullptr };
 	mjData *d_{ nullptr };
 
-	std::vector<LaserConfig> laser_configs_;
+	// Declaration order matters: streams reference configs, geoms and the noise source, so they die first.
+	std::mt19937 rand_generator = std::mt19937(std::random_device{}());
+	std::normal_distribution<double> noise_dist;
+	// unique_ptr keeps config addresses stable for the streams that reference them.
+	std::vector<std::unique_ptr<LaserConfig>> laser_configs_;
+	std::vector<std::unique_ptr<mujoco_ros::sensors::ISensorStream>> streams_;
+	bool hub_registered_ = false;
 
 #if MJR_ROS_VERSION == ROS_1
 	ros::NodeHandle lasers_nh_;
@@ -141,23 +161,13 @@ protected:
 	rclcpp_lifecycle::LifecycleNode::SharedPtr lasers_nh_;
 #endif
 
-	RosTime last_update_time_;
-	bool last_update_time_initialized_ = false;
-
 #if MJR_ROS_VERSION == ROS_1
 	bool InitSensor(const mjModel *model, const XmlRpc::XmlRpcValue &config);
 #else
 	bool InitSensor(const mjModel *model, const std::string &sensor_name);
 #endif
 
-	void ComputeLasers(const mjModel *model, mjData *data);
-
 	mjvGeom *laser_geoms_{ nullptr };
 	int ngeom_ = 0;
-
-	bool has_render_data_ = false;
-
-	std::mt19937 rand_generator = std::mt19937(std::random_device{}());
-	std::normal_distribution<double> noise_dist;
 };
 } // namespace mujoco_ros::sensors::laser
