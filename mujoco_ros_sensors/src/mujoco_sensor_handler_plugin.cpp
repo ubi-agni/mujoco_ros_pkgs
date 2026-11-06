@@ -15,6 +15,8 @@
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/QuaternionStamped.h>
 #include <geometry_msgs/Vector3Stamped.h>
+#include <mujoco_ros_msgs/CamProjectionStamped.h>
+#include <mujoco_ros_msgs/GeomFromToStamped.h>
 #include <mujoco_ros_msgs/ScalarStamped.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
@@ -24,6 +26,8 @@
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <geometry_msgs/msg/quaternion_stamped.hpp>
 #include <geometry_msgs/msg/vector3_stamped.hpp>
+#include <mujoco_ros_msgs/msg/cam_projection_stamped.hpp>
+#include <mujoco_ros_msgs/msg/geom_from_to_stamped.hpp>
 #include <mujoco_ros_msgs/msg/scalar_stamped.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #endif
@@ -39,10 +43,12 @@ namespace mujoco_ros::sensors {
 static constexpr std::size_t SENSOR_PUBLISHER_QUEUE_SIZE = 1000;
 
 #if MJR_ROS_VERSION == ROS_1
-using PointStamped      = geometry_msgs::PointStamped;
-using QuaternionStamped = geometry_msgs::QuaternionStamped;
-using ScalarStamped     = mujoco_ros_msgs::ScalarStamped;
-using Vector3Stamped    = geometry_msgs::Vector3Stamped;
+using CamProjectionStamped = mujoco_ros_msgs::CamProjectionStamped;
+using GeomFromToStamped    = mujoco_ros_msgs::GeomFromToStamped;
+using PointStamped         = geometry_msgs::PointStamped;
+using QuaternionStamped    = geometry_msgs::QuaternionStamped;
+using ScalarStamped        = mujoco_ros_msgs::ScalarStamped;
+using Vector3Stamped       = geometry_msgs::Vector3Stamped;
 
 template <typename MessageT>
 ros::Publisher CreatePublisher(ros::NodeHandle &node, const std::string &topic, const std::string & /*ros2_type*/)
@@ -51,10 +57,12 @@ ros::Publisher CreatePublisher(ros::NodeHandle &node, const std::string &topic, 
 }
 
 #else
-using PointStamped      = geometry_msgs::msg::PointStamped;
-using QuaternionStamped = geometry_msgs::msg::QuaternionStamped;
-using ScalarStamped     = mujoco_ros_msgs::msg::ScalarStamped;
-using Vector3Stamped    = geometry_msgs::msg::Vector3Stamped;
+using CamProjectionStamped = mujoco_ros_msgs::msg::CamProjectionStamped;
+using GeomFromToStamped    = mujoco_ros_msgs::msg::GeomFromToStamped;
+using PointStamped         = geometry_msgs::msg::PointStamped;
+using QuaternionStamped    = geometry_msgs::msg::QuaternionStamped;
+using ScalarStamped        = mujoco_ros_msgs::msg::ScalarStamped;
+using Vector3Stamped       = geometry_msgs::msg::Vector3Stamped;
 
 template <typename MessageT>
 typename rclcpp::Publisher<MessageT>::SharedPtr CreatePublisher(rclcpp_lifecycle::LifecycleNode::SharedPtr &node,
@@ -67,6 +75,24 @@ typename rclcpp::Publisher<MessageT>::SharedPtr CreatePublisher(rclcpp_lifecycle
 #endif
 
 namespace {
+bool IsGapSensorType(int type)
+{
+	switch (type) {
+		case mjSENS_FRAMEANGVEL:
+		case mjSENS_TENDONACTFRC:
+		case mjSENS_E_POTENTIAL:
+		case mjSENS_E_KINETIC:
+		case mjSENS_INSIDESITE:
+		case mjSENS_GEOMDIST:
+		case mjSENS_GEOMNORMAL:
+		case mjSENS_GEOMFROMTO:
+		case mjSENS_CAMPROJECTION:
+			return true;
+		default:
+			return false;
+	}
+}
+
 void InitSensorStrings()
 {
 	SENSOR_STRING[mjSENS_TOUCH]          = "touch";
@@ -279,28 +305,78 @@ std::vector<std::string> MujocoRosSensorsPlugin::PublicNames() const
 	return names;
 }
 
+void MujocoRosSensorsPlugin::InitGapSensor(int type, const std::string &sensor_name, const std::string &frame_id)
+{
+	auto config   = std::make_unique<SensorConfig>(frame_id);
+	const bool gt = !env_ptr_->settings_.eval_mode;
+	auto add      = [&](auto tag, const char *ros2_type) {
+      using MsgT = decltype(tag);
+      config->RegisterPub(CreatePublisher<MsgT>(sensors_nh_, sensor_name, ros2_type));
+      if (gt) {
+         config->RegisterGTPub(CreatePublisher<MsgT>(sensors_nh_, sensor_name + "_GT", ros2_type));
+      }
+	};
+	switch (type) {
+		case mjSENS_FRAMEANGVEL:
+		case mjSENS_GEOMNORMAL:
+			add(Vector3Stamped{}, "geometry_msgs/msg/Vector3Stamped");
+			break;
+		case mjSENS_CAMPROJECTION:
+			add(CamProjectionStamped{}, "mujoco_ros_msgs/msg/CamProjectionStamped");
+			break;
+		case mjSENS_GEOMFROMTO:
+			add(GeomFromToStamped{}, "mujoco_ros_msgs/msg/GeomFromToStamped");
+			break;
+		default:
+			add(ScalarStamped{}, "mujoco_ros_msgs/msg/ScalarStamped");
+			break;
+	}
+	sensor_map_[sensor_name] = std::move(config);
+}
+
 void MujocoRosSensorsPlugin::InitSensors(const mjModel *model, mjData * /*data*/)
 {
 	std::string sensor_name, site, frame_id;
 	for (int n = 0; n < model->nsensor; n++) {
-		int site_id   = model->sensor_objid[n];
-		int parent_id = model->site_bodyid[site_id];
-		int type      = model->sensor_type[n];
+		const int type = model->sensor_type[n];
 
-		if (type == mjSENS_USER) {
-			MJR_DEBUG_STREAM_NAMED("sensors", "Skipping USER sensor");
+		if (IsIgnoredSensorType(type)) {
+			MJR_WARN_STREAM_NAMED("sensors", "Skipping sensor " << n << " of type " << type
+			                                                    << ": no ROS message exists for this sensor type");
 			continue;
 		}
 
-		site = mj_id2name(const_cast<mjModel *>(model), model->sensor_objtype[n], site_id);
-
-		if (model->names[model->name_sensoradr[n]]) {
-			sensor_name = mj_id2name(const_cast<mjModel *>(model), mjOBJ_SENSOR, n);
-		} else {
+		if (!model->names[model->name_sensoradr[n]]) {
 			MJR_WARN_STREAM_NAMED("sensors",
-			                      "Sensor name resolution error. Skipping sensor of type " << type << " on site " << site);
+			                      "Sensor name resolution error. Skipping unnamed sensor " << n << " of type " << type);
 			continue;
 		}
+		sensor_name = mj_id2name(const_cast<mjModel *>(model), mjOBJ_SENSOR, n);
+
+		// A mismatch would make the stream read into the next sensor's data or drop values.
+		const int expected_dim = ExpectedNativeDim(type);
+		if (expected_dim >= 0 && model->sensor_dim[n] != expected_dim) {
+			MJR_ERROR_STREAM_NAMED("sensors", "Skipping sensor " << sensor_name << " (type " << type << "): dim "
+			                                                     << model->sensor_dim[n] << " != expected "
+			                                                     << expected_dim);
+			continue;
+		}
+
+		if (IsGapSensorType(type)) {
+			std::string error;
+			if (!ResolveGapFrameId(model, n, frame_id, error)) {
+				MJR_ERROR_STREAM_NAMED("sensors", "Skipping sensor " << sensor_name << " (type " << type << "): " << error);
+				continue;
+			}
+			InitGapSensor(type, sensor_name, frame_id);
+			MJR_DEBUG_STREAM_NAMED("sensors", "Setting up sensor " << sensor_name << " (frame_id: " << frame_id << ")");
+			continue;
+		}
+
+		const int site_id     = model->sensor_objid[n];
+		const int parent_id   = model->site_bodyid[site_id];
+		const char *site_cstr = mj_id2name(const_cast<mjModel *>(model), model->sensor_objtype[n], site_id);
+		site                  = site_cstr ? site_cstr : "<unnamed>";
 
 		bool global_frame = false;
 		frame_id          = "world";
