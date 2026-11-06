@@ -189,7 +189,8 @@ PYBIND11_MODULE(pymujoco_ros_sensors, module)
 	    .def("__len__", [](const SensorMap &map) { return Names(map).size(); })
 	    .def("__iter__", [](const SensorMap &map) { return py::iter(py::cast(Names(map))); })
 	    .def("keys", [](const SensorMap &map) { return Names(map); })
-	    .def("__repr__", [](const SensorMap &map) { return "<SensorMap " + std::string(py::repr(py::cast(Names(map)))) + ">"; });
+	    .def("__repr__",
+	         [](const SensorMap &map) { return "<SensorMap " + std::string(py::repr(py::cast(Names(map)))) + ">"; });
 
 	py::class_<mujoco_ros::sensors::SensorConfig>(module, "_SensorConfig")
 	    .def_property_readonly("frame_id",
@@ -216,20 +217,25 @@ PYBIND11_MODULE(pymujoco_ros_sensors, module)
 	    .def_property_readonly("config",
 	                           [](const SensorStreamHandle &stream) {
 		                           return stream.With([&](auto &plugin) {
-			                           return mujoco_ros::sensors::SensorConfig(*plugin.GetSensorConfigs().at(stream.name));
+			                           return mujoco_ros::sensors::SensorConfig(
+			                               *plugin.GetSensorConfigs().at(stream.name));
 		                           });
 	                           })
-	    .def_property_readonly("data",
-	                           [](const SensorStreamHandle &stream) {
-		                           return stream.With(
-		                               [&](auto &plugin) { return AnyToPython(plugin.ReadSensorValue(stream.name)); });
-	                           })
-	    .def_property_readonly("gt_data",
-	                           [](const SensorStreamHandle &stream) {
-		                           return stream.With([&](auto &plugin) {
-			                           return AnyToPython(plugin.ReadSensorGroundTruth(stream.name));
-		                           });
-	                           })
+	    .def_property_readonly(
+	        "data",
+	        [](const SensorStreamHandle &stream) {
+		        return stream.With([&](auto &plugin) { return AnyToPython(plugin.ReadSensorValue(stream.name)); });
+	        },
+	        "Latest sensor value as a message. Cached per step until the next LastStage/step: "
+	        "edits made while paused (e.g. changing mjData) are NOT visible until you step "
+	        "(or otherwise invalidate the cache).")
+	    .def_property_readonly(
+	        "gt_data",
+	        [](const SensorStreamHandle &stream) {
+		        return stream.With([&](auto &plugin) { return AnyToPython(plugin.ReadSensorGroundTruth(stream.name)); });
+	        },
+	        "Latest noise-free ground-truth value as a message. Cached per step until the next "
+	        "LastStage/step, like `data`: edits made while paused need a step before fresh values.")
 	    .def("__repr__", [](const SensorStreamHandle &stream) { return "<SensorStream name='" + stream.name + "'>"; });
 
 	// Dict-like, read-only view; keys are re-read on every call so it never goes stale silently.
