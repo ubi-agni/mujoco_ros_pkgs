@@ -96,13 +96,13 @@ public:
 	{
 		const double now = data->time;
 		if (RateAllows(now, value_last_, value_has_last_) && HasSubscribers<MsgT>(config().value_pub)) {
-			Publish(config().value_pub, Noisy(model, data));
+			Publish(config().value_pub, std::any_cast<const MsgT &>(Value(model, data)));
 			value_last_     = now;
 			value_has_last_ = true;
 			value_publish_count_.fetch_add(1, std::memory_order_release);
 		}
 		if (!eval_mode_ && RateAllows(now, gt_last_, gt_has_last_) && HasSubscribers<MsgT>(config().gt_pub)) {
-			Publish(config().gt_pub, Truth(model, data));
+			Publish(config().gt_pub, std::any_cast<const MsgT &>(GroundTruth(model, data)));
 			gt_last_     = now;
 			gt_has_last_ = true;
 			gt_publish_count_.fetch_add(1, std::memory_order_release);
@@ -110,6 +110,17 @@ public:
 	}
 
 	std::any BuildValue(const mjModel *model, const mjData *data) override { return Noisy(model, data); }
+
+	bool HasGroundTruth() const override { return !eval_mode_; }
+
+	std::any BuildGroundTruth(const mjModel *model, const mjData *data) override
+	{
+		// Loud on purpose: silently returning noisy data as "truth" would corrupt evaluation.
+		if (eval_mode_) {
+			return ISensorStream::BuildGroundTruth(model, data);
+		}
+		return Truth(model, data);
+	}
 
 protected:
 	virtual MsgT Noisy(const mjModel *model, const mjData *data) = 0;

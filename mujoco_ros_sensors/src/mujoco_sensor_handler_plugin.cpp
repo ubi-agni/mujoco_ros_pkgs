@@ -173,6 +173,8 @@ bool MujocoRosSensorsPlugin::Load(const mjModel *model, mjData *data)
 	}
 
 	InitSensorStrings();
+	model_ = model;
+	data_  = data;
 
 #if MJR_ROS_VERSION == ROS_1
 	std::string sensors_namespace;
@@ -279,6 +281,8 @@ void MujocoRosSensorsPlugin::RegisterNoiseModelsCB(
 void MujocoRosSensorsPlugin::LastStageCallback(const mjModel *model, mjData *data)
 {
 	for (const auto &[name, stream] : streams_) {
+		// New step: drop last step's cache so publish and Python share exactly one build per step.
+		stream->InvalidateCache();
 		if (stream->is_public()) {
 			stream->MaybePublish(model, data);
 		}
@@ -292,6 +296,24 @@ mujoco_ros::SensorStreamBase *MujocoRosSensorsPlugin::Find(const std::string &na
 		return nullptr;
 	}
 	return it->second.get();
+}
+
+std::any MujocoRosSensorsPlugin::ReadSensorValue(const std::string &name)
+{
+	auto *stream = static_cast<ISensorStream *>(Find(name));
+	if (stream == nullptr) {
+		throw std::out_of_range("no public sensor stream named '" + name + "'");
+	}
+	return stream->Value(model_, data_);
+}
+
+std::any MujocoRosSensorsPlugin::ReadSensorGroundTruth(const std::string &name)
+{
+	auto *stream = static_cast<ISensorStream *>(Find(name));
+	if (stream == nullptr) {
+		throw std::out_of_range("no public sensor stream named '" + name + "'");
+	}
+	return stream->GroundTruth(model_, data_);
 }
 
 std::vector<std::string> MujocoRosSensorsPlugin::PublicNames() const
@@ -572,7 +594,12 @@ void MujocoRosSensorsPlugin::InitSensors(const mjModel *model, mjData * /*data*/
 	}
 }
 
-void MujocoRosSensorsPlugin::Reset() {}
+void MujocoRosSensorsPlugin::Reset()
+{
+	for (const auto &[name, stream] : streams_) {
+		stream->InvalidateCache();
+	}
+}
 
 } // namespace mujoco_ros::sensors
 

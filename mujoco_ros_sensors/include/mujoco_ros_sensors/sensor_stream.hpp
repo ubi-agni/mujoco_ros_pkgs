@@ -15,6 +15,7 @@
 #include <any>
 #include <atomic>
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -52,6 +53,43 @@ public:
 	/// Eager build of the current value for in-process (Python) reads; never waits for a subscriber.
 	virtual std::any BuildValue(const mjModel *model, const mjData *data) = 0;
 
+	/**
+	 * Per-step shared cache: ROS publish and Python reads go through these, so one
+	 * step yields one build (one noise sample set) no matter how many readers. Valid until
+	 * InvalidateCache(), which the owning provider calls at the start of every LastStage and on
+	 * Reset. Caller holds physics_thread_mutex_; the cache itself is unsynchronized.
+	 * State changed outside a step (e.g. qvel written while paused) is not seen until the next step.
+	 */
+	const std::any &Value(const mjModel *model, const mjData *data)
+	{
+		if (!value_cache_.has_value()) {
+			value_cache_ = BuildValue(model, data);
+		}
+		return value_cache_;
+	}
+	/// Throws (without caching) when HasGroundTruth() is false.
+	const std::any &GroundTruth(const mjModel *model, const mjData *data)
+	{
+		if (!gt_cache_.has_value()) {
+			gt_cache_ = BuildGroundTruth(model, data);
+		}
+		return gt_cache_;
+	}
+	void InvalidateCache()
+	{
+		value_cache_.reset();
+		gt_cache_.reset();
+	}
+
+	/// True if a ground-truth value exists (never in eval mode: the agent must not see it).
+	virtual bool HasGroundTruth() const { return false; }
+
+	/// Eager ground-truth build for in-process reads. Throws std::runtime_error when HasGroundTruth() is false.
+	virtual std::any BuildGroundTruth(const mjModel * /*model*/, const mjData * /*data*/)
+	{
+		throw std::runtime_error("sensor '" + name_ + "' has no ground truth: not available in eval mode");
+	}
+
 	/// Number of ROS messages actually published on the value / ground-truth topic since construction.
 	uint64_t value_publish_count() const { return value_publish_count_.load(std::memory_order_acquire); }
 	uint64_t gt_publish_count() const { return gt_publish_count_.load(std::memory_order_acquire); }
@@ -62,6 +100,8 @@ protected:
 	std::atomic<uint64_t> gt_publish_count_{ 0 };
 
 private:
+	std::any value_cache_;
+	std::any gt_cache_;
 	std::string name_;
 	const SensorConfig &config_;
 	bool is_public_;
