@@ -47,6 +47,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -271,6 +272,18 @@ bool LaserPlugin::Load(const mjModel *model, mjData *data)
 		}
 	}
 #endif
+
+	// Two lasers of this plugin sharing a name would shadow each other on the hub (and share one topic).
+	{
+		std::set<std::string> seen_names;
+		for (const auto &laser_config : laser_configs_) {
+			if (!seen_names.insert(laser_config->name).second) {
+				MJR_ERROR_STREAM_NAMED("lasers", "Duplicate laser name '" << laser_config->name
+				                                                          << "' within the laser plugin config");
+				return false;
+			}
+		}
+	}
 
 	ngeom_ = 0;
 	for (const auto &laser_config : laser_configs_) {
