@@ -1134,6 +1134,8 @@ TEST_F(TrainEnvFixture, UnsetUpdateRatePublishesEveryStep)
 	EXPECT_EQ(stream->value_publish_count() - before, 20u);
 }
 
+// update_rate is only injected through ROS2 params; the ROS1 plugin config has no equivalent hook in this fixture.
+#if MJR_ROS_VERSION == ROS_2
 class RateFixture : public SensorsFixture
 {
 protected:
@@ -1189,3 +1191,4 @@ TEST_F(RateFixture, UpdateRateResetsOnSimTimeRewind)
 	EXPECT_EQ(stream->value_publish_count(), after_forward + 1)
 	    << "rate limit must apply again after the rewind publish";
 }
+#endif
