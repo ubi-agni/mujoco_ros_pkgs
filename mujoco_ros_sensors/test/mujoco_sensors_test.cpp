@@ -429,6 +429,27 @@ TEST_F(TrainEnvFixture, PluginLoaded)
 	EXPECT_EQ(env_ptr->GetPluginStats().front().type, "mujoco_ros_sensors/MujocoRosSensorsPlugin");
 }
 
+TEST_F(TrainEnvFixture, NativeStreamsRegisteredInHub)
+{
+	wait_for_sensor_topics(env_ptr.get(), m, true);
+	const auto native = env_ptr->sensors().Native();
+	int named         = 0;
+	for (int n = 0; n < m->nsensor; n++) {
+		if (!m->names[m->name_sensoradr[n]]) {
+			continue;
+		}
+		named++;
+		const std::string sensor_name = mj_id2name(m, mjOBJ_SENSOR, n);
+		const auto *stream            = native.Get(sensor_name);
+		ASSERT_NE(stream, nullptr) << "No native stream for sensor " << sensor_name;
+		EXPECT_TRUE(stream->is_public());
+		EXPECT_EQ(stream->name(), sensor_name);
+	}
+	EXPECT_GT(named, 0);
+	EXPECT_EQ(native.Names().size(), static_cast<std::size_t>(named));
+	EXPECT_EQ(env_ptr->sensors().Custom().Names().size(), 0u);
+}
+
 TEST_F(TrainEnvFixture, SensorCreatedTrain)
 {
 	const auto topics = wait_for_sensor_topics(env_ptr.get(), m, true);
