@@ -13,6 +13,8 @@
 #include <mujoco/mujoco.h>
 
 #include <any>
+#include <atomic>
+#include <cstdint>
 #include <string>
 #include <utility>
 
@@ -49,6 +51,15 @@ public:
 
 	/// Eager build of the current value for in-process (Python) reads; never waits for a subscriber.
 	virtual std::any BuildValue(const mjModel *model, const mjData *data) = 0;
+
+	/// Number of ROS messages actually published on the value / ground-truth topic since construction.
+	uint64_t value_publish_count() const { return value_publish_count_.load(std::memory_order_acquire); }
+	uint64_t gt_publish_count() const { return gt_publish_count_.load(std::memory_order_acquire); }
+
+protected:
+	// Atomic: the sim thread publishes while tests (and later Python) read from another thread.
+	std::atomic<uint64_t> value_publish_count_{ 0 };
+	std::atomic<uint64_t> gt_publish_count_{ 0 };
 
 private:
 	std::string name_;

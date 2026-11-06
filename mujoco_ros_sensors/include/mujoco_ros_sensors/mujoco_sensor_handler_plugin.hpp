@@ -136,6 +136,9 @@ protected:
 	                           const mujoco_ros_msgs::srv::RegisterSensorNoiseModels::Response::SharedPtr &rep);
 #endif
 
+	/// Optional per-sensor update_rate (Hz, sim time); 0 when unset so every step publishes.
+	double ReadUpdateRate(const std::string &sensor_name) const;
+
 	NoiseSource noise_;
 	// Streams reference their config and the noise source, so they must be destroyed first.
 	std::map<std::string, SensorConfigPtr> sensor_map_;
