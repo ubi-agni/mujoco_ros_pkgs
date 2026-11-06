@@ -7,6 +7,8 @@ find_package(actionlib_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
     "msg/StateUint.msg"
     "msg/ScalarStamped.msg"
+    "msg/CamProjectionStamped.msg"
+    "msg/GeomFromToStamped.msg"
     "msg/BodyState.msg"
     "msg/GeomProperties.msg"
     "msg/GeomType.msg"
