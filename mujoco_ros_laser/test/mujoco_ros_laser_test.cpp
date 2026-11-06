@@ -281,6 +281,19 @@ TEST_P(LoadedPluginFixture, PluginLoaded)
 	EXPECT_EQ(env_ptr->GetPluginStats().front().type, "mujoco_ros_laser/LaserPlugin") << "Plugin loading failed!";
 }
 
+// The laser is a custom-kind provider: it is on hub.Custom() and the unified Get, not on hub.Native().
+TEST_P(LoadedPluginFixture, RegistersOnHubUnderCustom)
+{
+	const auto &hub = env_ptr->sensors();
+	const auto *s   = hub.Custom().Get("scan");
+	ASSERT_NE(s, nullptr);
+	EXPECT_TRUE(s->is_public());
+	EXPECT_EQ(s->name(), "scan");
+	EXPECT_EQ(hub.Get("scan"), s);
+	EXPECT_EQ(hub.Native().Get("scan"), nullptr);
+	EXPECT_EQ(hub.Custom().Names(), std::vector<std::string>{ "scan" });
+}
+
 TEST_P(LoadedPluginFixture, ScanTopicCreated)
 {
 	const auto topics = wait_for_scan_topic(env_ptr.get());
@@ -354,6 +367,55 @@ TEST_P(LoadedPluginFixture, ScanStampRestartsAfterReset)
 }
 
 #if MJR_ROS_VERSION == ROS_2
+// Native sensors plugin first, then the laser: both want the public name "scan".
+class LaserSensorsCoexistenceFixture : public ::testing::Test
+{
+protected:
+	std::unique_ptr<testing::TestNodeHandle> nh;
+	std::unique_ptr<MujocoEnvTestWrapper> env_ptr;
+
+	void SetUp() override
+	{
+		nh = std::make_unique<testing::TestNodeHandle>("~");
+		nh->setParam("unpause", false);
+		nh->setParam("no_render", true);
+		configure_plugin_params(*nh);
+		nh->setParam("MujocoPlugins.names", std::vector<std::string>{ "mujoco_ros_sensors", "mujoco_ros_laser" });
+		nh->setParam("MujocoPlugins.mujoco_ros_sensors.type", "mujoco_ros_sensors/MujocoRosSensorsPlugin");
+
+		env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+		env_ptr->StartWithXML(get_laser_model_path("laser_native_collision_world.xml"));
+		float seconds = 0;
+		while (env_ptr->GetOperationalStatus() != 0 && seconds < 2) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			seconds += 0.001f;
+		}
+	}
+
+	void TearDown() override
+	{
+		if (env_ptr != nullptr) {
+			env_ptr->shutdown();
+			env_ptr.reset();
+		}
+		if (nh != nullptr) {
+			clear_test_params(*nh);
+		}
+	}
+};
+
+TEST_F(LaserSensorsCoexistenceFixture, DuplicateNameWithNativeFailsLoud)
+{
+	// The native stream registered first and stays; the laser's Load failed, so it never reached the hub.
+	const auto &hub = env_ptr->sensors();
+	ASSERT_NE(hub.Native().Get("scan"), nullptr);
+	EXPECT_EQ(hub.Custom().Get("scan"), nullptr);
+	EXPECT_EQ(hub.Custom().Names().size(), 0u);
+	EXPECT_EQ(hub.Get("scan"), hub.Native().Get("scan"));
+
+	EXPECT_EQ(env_ptr->GetNumCBReadyPlugins(), 1) << "Only the native plugin may be callback-ready";
+}
+
 class NoiseFreeLaserFixture : public LoadedPluginFixture
 {
 protected:
