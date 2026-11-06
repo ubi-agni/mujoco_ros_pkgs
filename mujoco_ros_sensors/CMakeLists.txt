@@ -88,7 +88,7 @@ if(ROS_VERSION EQUAL 1)
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
   )
 
-  install(FILES test/sensors_world.xml
+  install(FILES test/sensors_world.xml test/sensors_skip_world.xml
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/test
   )
 
@@ -177,7 +177,7 @@ elseif(ROS_VERSION EQUAL 2)
   endif()
   ament_python_install_package(${PROJECT_NAME} PACKAGE_DIR python/src/${PROJECT_NAME})
 
-  install(FILES test/sensors_world.xml
+  install(FILES test/sensors_world.xml test/sensors_skip_world.xml
     DESTINATION share/${PROJECT_NAME}/test
   )
 

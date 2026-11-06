@@ -40,12 +40,15 @@
 #include <mujoco_ros/ros_version.hpp>
 #include <mujoco_ros/util.hpp>
 #include <mujoco_ros_sensors/mujoco_sensor_handler_plugin.hpp>
+#include <mujoco_ros_sensors/sensor_stream.hpp>
 #include <mujoco_ros_testing_utils/mujoco_env_fixture.hpp>
 
 #if MJR_ROS_VERSION == ROS_1
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/QuaternionStamped.h>
 #include <geometry_msgs/Vector3Stamped.h>
+#include <mujoco_ros_msgs/CamProjectionStamped.h>
+#include <mujoco_ros_msgs/GeomFromToStamped.h>
 #include <mujoco_ros_msgs/RegisterSensorNoiseModels.h>
 #include <mujoco_ros_msgs/ScalarStamped.h>
 #include <mujoco_ros_msgs/SensorNoiseModel.h>
@@ -58,6 +61,8 @@
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <geometry_msgs/msg/quaternion_stamped.hpp>
 #include <geometry_msgs/msg/vector3_stamped.hpp>
+#include <mujoco_ros_msgs/msg/cam_projection_stamped.hpp>
+#include <mujoco_ros_msgs/msg/geom_from_to_stamped.hpp>
 #include <mujoco_ros_msgs/msg/scalar_stamped.hpp>
 #include <mujoco_ros_msgs/msg/sensor_noise_model.hpp>
 #include <mujoco_ros_msgs/srv/register_sensor_noise_models.hpp>
@@ -71,6 +76,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -88,6 +94,8 @@ static constexpr double NOISY_MEAN_TOLERANCE          = 2e-3;
 static constexpr double NOISY_VARIANCE_TOLERANCE      = 1e-4;
 
 #if MJR_ROS_VERSION == ROS_1
+using CamProjectionStamped      = mujoco_ros_msgs::CamProjectionStamped;
+using GeomFromToStamped         = mujoco_ros_msgs::GeomFromToStamped;
 using PointStamped              = geometry_msgs::PointStamped;
 using QuaternionStamped         = geometry_msgs::QuaternionStamped;
 using RegisterSensorNoiseModels = mujoco_ros_msgs::RegisterSensorNoiseModels;
@@ -98,6 +106,8 @@ using Vector3Stamped            = geometry_msgs::Vector3Stamped;
 template <typename MessageT>
 using MessageConstPtr = typename MessageT::ConstPtr;
 #else
+using CamProjectionStamped      = mujoco_ros_msgs::msg::CamProjectionStamped;
+using GeomFromToStamped         = mujoco_ros_msgs::msg::GeomFromToStamped;
 using PointStamped              = geometry_msgs::msg::PointStamped;
 using QuaternionStamped         = geometry_msgs::msg::QuaternionStamped;
 using RegisterSensorNoiseModels = mujoco_ros_msgs::srv::RegisterSensorNoiseModels;
@@ -109,12 +119,12 @@ template <typename MessageT>
 using MessageConstPtr = typename MessageT::ConstSharedPtr;
 #endif
 
-std::string get_sensors_model_path()
+std::string get_sensors_model_path(const std::string &file = "sensors_world.xml")
 {
 #if MJR_ROS_VERSION == ROS_1
-	return ros::package::getPath("mujoco_ros_sensors") + "/test/sensors_world.xml";
+	return ros::package::getPath("mujoco_ros_sensors") + "/test/" + file;
 #else
-	return ament_index_cpp::get_package_share_directory("mujoco_ros_sensors") + "/test/sensors_world.xml";
+	return ament_index_cpp::get_package_share_directory("mujoco_ros_sensors") + "/test/" + file;
 #endif
 }
 
@@ -372,7 +382,7 @@ protected:
 	mjModel *m = nullptr;
 	mjData *d  = nullptr;
 
-	void setup(bool eval_mode)
+	void setup(bool eval_mode, const std::string &model_file = "sensors_world.xml")
 	{
 		nh = std::make_unique<testing::TestNodeHandle>("~");
 		nh->setParam("eval_mode", eval_mode);
@@ -385,7 +395,7 @@ protected:
 
 		env_ptr = std::make_unique<MujocoEnvTestWrapper>(eval_mode ? "some_hash" : "", nh.get());
 
-		const std::string xml_path = get_sensors_model_path();
+		const std::string xml_path = get_sensors_model_path(model_file);
 		env_ptr->StartWithXML(xml_path);
 
 		float seconds = 0;
@@ -420,6 +430,13 @@ class EvalEnvFixture : public SensorsFixture
 {
 protected:
 	void SetUp() override { setup(true); }
+};
+
+/// World with sensors the plugin must skip (Ignore types, unresolvable refs) next to one valid sensor.
+class SkipWorldFixture : public SensorsFixture
+{
+protected:
+	void SetUp() override { setup(false, "sensors_skip_world.xml"); }
 };
 
 TEST_F(TrainEnvFixture, PluginLoaded)
@@ -904,4 +921,149 @@ TEST_F(TrainEnvFixture, UnknownSensorAddNoise)
 
 	EXPECT_TRUE(call_register_noise_models(env_ptr.get(), srv)) << "Service call failed!";
 	EXPECT_TRUE(srv.response.success) << "Service call should have succeeded!";
+}
+
+namespace {
+
+bool is_finite(double v)
+{
+	return std::isfinite(v);
+}
+
+template <typename MessageT>
+MessageConstPtr<MessageT> expect_value_and_gt(MujocoEnvTestWrapper *env_ptr, const std::string &sensor)
+{
+	wait_for_subscription_discovery();
+	const auto gt =
+	    wait_for_message<MessageT>(env_ptr, sensor_topic_name(env_ptr, sensor + "_GT"), FIRST_MESSAGE_TIMEOUT_SECONDS);
+	const auto value =
+	    wait_for_message<MessageT>(env_ptr, sensor_topic_name(env_ptr, sensor), FIRST_MESSAGE_TIMEOUT_SECONDS);
+	EXPECT_TRUE(gt != nullptr) << "No GT message for " << sensor;
+	EXPECT_TRUE(value != nullptr) << "No value message for " << sensor;
+	return value;
+}
+
+} // namespace
+
+TEST_F(TrainEnvFixture, FrameAngVelPublishesVector3)
+{
+	const auto world = expect_value_and_gt<Vector3Stamped>(env_ptr.get(), "angvel_world");
+	ASSERT_TRUE(world != nullptr);
+	EXPECT_EQ(world->header.frame_id, "world");
+	EXPECT_TRUE(is_finite(world->vector.x) && is_finite(world->vector.y) && is_finite(world->vector.z));
+
+	const auto ref = expect_value_and_gt<Vector3Stamped>(env_ptr.get(), "angvel_ref");
+	ASSERT_TRUE(ref != nullptr);
+	EXPECT_EQ(ref->header.frame_id, "base_link");
+}
+
+TEST_F(TrainEnvFixture, TendonActFrcPublishesScalar)
+{
+	const auto msg = expect_value_and_gt<ScalarStamped>(env_ptr.get(), "tendon_act_frc");
+	ASSERT_TRUE(msg != nullptr);
+	EXPECT_EQ(msg->header.frame_id, "world");
+	EXPECT_TRUE(is_finite(msg->value));
+}
+
+TEST_F(TrainEnvFixture, EnergySensorsPublishScalarWorldFrame)
+{
+	for (const char *name : { "energy_pot", "energy_kin" }) {
+		const auto msg = expect_value_and_gt<ScalarStamped>(env_ptr.get(), name);
+		ASSERT_TRUE(msg != nullptr) << name;
+		EXPECT_EQ(msg->header.frame_id, "world") << name;
+		EXPECT_TRUE(is_finite(msg->value)) << name;
+	}
+}
+
+TEST_F(TrainEnvFixture, InsideSitePublishesScalar)
+{
+	const auto msg = expect_value_and_gt<ScalarStamped>(env_ptr.get(), "inside_ball");
+	ASSERT_TRUE(msg != nullptr);
+	// Frame is the body owning the ref site (joint2_site sits on end_link).
+	EXPECT_EQ(msg->header.frame_id, "end_link");
+	EXPECT_TRUE(msg->value == 0.0 || msg->value == 1.0);
+}
+
+TEST_F(TrainEnvFixture, GeomDistNormalFromToPublish)
+{
+	const int dist_id = getSensorByName("geom_dist", m);
+	const int from_id = getSensorByName("geom_fromto", m);
+	ASSERT_GE(dist_id, 0);
+	ASSERT_GE(from_id, 0);
+
+	const auto dist = expect_value_and_gt<ScalarStamped>(env_ptr.get(), "geom_dist");
+	ASSERT_TRUE(dist != nullptr);
+	EXPECT_EQ(dist->header.frame_id, "world");
+	EXPECT_TRUE(is_finite(dist->value));
+
+	const auto normal = expect_value_and_gt<Vector3Stamped>(env_ptr.get(), "geom_normal");
+	ASSERT_TRUE(normal != nullptr);
+	EXPECT_EQ(normal->header.frame_id, "world");
+	EXPECT_TRUE(is_finite(normal->vector.x) && is_finite(normal->vector.y) && is_finite(normal->vector.z));
+
+	const auto from_to = expect_value_and_gt<GeomFromToStamped>(env_ptr.get(), "geom_fromto");
+	ASSERT_TRUE(from_to != nullptr);
+	EXPECT_EQ(from_to->header.frame_id, "world");
+	EXPECT_TRUE(is_finite(from_to->point_from.x) && is_finite(from_to->point_to.z));
+}
+
+TEST_F(TrainEnvFixture, GeomFromToValueMatchesSensordata)
+{
+	const int n = getSensorByName("geom_fromto", m);
+	ASSERT_GE(n, 0);
+	// A truncated or shifted 6-wide read would show up here as a mismatch.
+	ASSERT_EQ(m->sensor_dim[n], 6);
+
+	env_ptr->togglePaused(true);
+	const auto *stream = env_ptr->sensors().Native().Get("geom_fromto");
+	ASSERT_NE(stream, nullptr);
+	auto *native_stream = const_cast<mujoco_ros::sensors::ISensorStream *>(
+	    static_cast<const mujoco_ros::sensors::ISensorStream *>(stream));
+	const auto msg      = std::any_cast<GeomFromToStamped>(native_stream->BuildValue(m, d));
+	const int adr       = m->sensor_adr[n];
+	const double cutoff = m->sensor_cutoff[n] > 0 ? m->sensor_cutoff[n] : 1;
+	EXPECT_NEAR(msg.point_from.x, d->sensordata[adr] / cutoff, 1e-6);
+	EXPECT_NEAR(msg.point_from.z, d->sensordata[adr + 2] / cutoff, 1e-6);
+	EXPECT_NEAR(msg.point_to.x, d->sensordata[adr + 3] / cutoff, 1e-6);
+	EXPECT_NEAR(msg.point_to.z, d->sensordata[adr + 5] / cutoff, 1e-6);
+}
+
+TEST_F(TrainEnvFixture, CamProjectionPublishesUV)
+{
+	const auto msg = expect_value_and_gt<CamProjectionStamped>(env_ptr.get(), "cam_proj");
+	ASSERT_TRUE(msg != nullptr);
+	EXPECT_EQ(msg->header.frame_id, "cam1");
+	EXPECT_TRUE(is_finite(msg->u) && is_finite(msg->v));
+}
+
+TEST_F(SkipWorldFixture, ValidSensorSurvivesSkippedNeighbours)
+{
+	const auto topics = wait_for_sensor_topics(env_ptr.get(), m, false);
+	EXPECT_TRUE(testing::has_topic(topics, sensor_topic_name(env_ptr.get(), "ball_pos")));
+	EXPECT_NE(env_ptr->sensors().Native().Get("ball_pos"), nullptr);
+}
+
+TEST_F(SkipWorldFixture, UnresolvedInsideSiteSkipped)
+{
+	wait_for_sensor_topics(env_ptr.get(), m, false);
+	const auto topics = testing::get_available_topics_for_test(env_ptr.get());
+	for (const char *suffix : { "", "_GT" }) {
+		EXPECT_FALSE(
+		    testing::has_topic(topics, sensor_topic_name(env_ptr.get(), std::string("inside_unnamed_body") + suffix)));
+	}
+	EXPECT_EQ(env_ptr->sensors().Native().Get("inside_unnamed_body"), nullptr);
+}
+
+TEST_F(SkipWorldFixture, IgnoreTypesHaveNoTopicsOrHubEntries)
+{
+	wait_for_sensor_topics(env_ptr.get(), m, false);
+	const auto topics = testing::get_available_topics_for_test(env_ptr.get());
+	for (const char *name : { "sim_clock", "ball_contact", "user_sensor" }) {
+		for (const char *suffix : { "", "_GT" }) {
+			EXPECT_FALSE(testing::has_topic(topics, sensor_topic_name(env_ptr.get(), std::string(name) + suffix)))
+			    << name << suffix;
+		}
+		EXPECT_EQ(env_ptr->sensors().Native().Get(name), nullptr) << name;
+	}
+	EXPECT_EQ(env_ptr->sensors().Native().Names().size(), 1u);
 }

@@ -48,12 +48,12 @@ public:
 	void RegisterGTPub(const ros::Publisher &pub) { gt_pub = pub; }
 #else
 	template <typename MessageT, typename AllocatorT>
-	void RegisterPub(const std::shared_ptr<rclcpp::Publisher<MessageT, AllocatorT> > &pub)
+	void RegisterPub(const std::shared_ptr<rclcpp::Publisher<MessageT, AllocatorT>> &pub)
 	{
 		value_pub = pub;
 	}
 	template <typename MessageT, typename AllocatorT>
-	void RegisterGTPub(const std::shared_ptr<rclcpp::Publisher<MessageT, AllocatorT> > &pub)
+	void RegisterGTPub(const std::shared_ptr<rclcpp::Publisher<MessageT, AllocatorT>> &pub)
 	{
 		gt_pub = pub;
 	}
@@ -88,7 +88,7 @@ struct NoiseSource
 	double Sample() { return dist(generator); }
 
 	std::mt19937 generator = std::mt19937(std::random_device{}());
-	std::normal_distribution<double> dist{0.0, 1.0};
+	std::normal_distribution<double> dist{ 0.0, 1.0 };
 };
 
 class MujocoRosSensorsPlugin : public mujoco_ros::MujocoPlugin, public mujoco_ros::ISensorStreamProvider
@@ -121,12 +121,16 @@ protected:
 #if MJR_ROS_VERSION == ROS_1
 	ros::NodeHandle sensors_nh_;
 	void InitSensors(const mjModel *model, mjData *data);
+	/// Creates config and publishers for a gap-closing sensor type whose frame_id is already resolved.
+	void InitGapSensor(int type, const std::string &sensor_name, const std::string &frame_id);
 	ros::ServiceServer register_noise_model_server_;
 	bool RegisterNoiseModelsCB(mujoco_ros_msgs::RegisterSensorNoiseModels::Request &req,
 	                           mujoco_ros_msgs::RegisterSensorNoiseModels::Response &rep);
 #else
 	rclcpp_lifecycle::LifecycleNode::SharedPtr sensors_nh_;
 	void InitSensors(const mjModel *model, mjData *data);
+	/// Creates config and publishers for a gap-closing sensor type whose frame_id is already resolved.
+	void InitGapSensor(int type, const std::string &sensor_name, const std::string &frame_id);
 	rclcpp::Service<mujoco_ros_msgs::srv::RegisterSensorNoiseModels>::SharedPtr register_noise_model_server_;
 	void RegisterNoiseModelsCB(const mujoco_ros_msgs::srv::RegisterSensorNoiseModels::Request::SharedPtr &req,
 	                           const mujoco_ros_msgs::srv::RegisterSensorNoiseModels::Response::SharedPtr &rep);
