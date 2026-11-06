@@ -20,6 +20,12 @@ if(ROS_VERSION EQUAL 1)
     Eigen3::Eigen
   )
 
+  catkin_add_gtest(sensor_stream_test sensor_stream_test.cpp)
+  target_link_libraries(sensor_stream_test
+    ${PROJECT_NAME}
+    ${catkin_LIBRARIES}
+  )
+
   target_include_directories(mujoco_sensors_test SYSTEM
     PRIVATE
       ${catkin_INCLUDE_DIRS}
@@ -43,6 +49,19 @@ elseif(ROS_VERSION EQUAL 2)
     rclcpp
     tf2
     tf2_geometry_msgs
+  )
+
+  ament_add_gtest(sensor_stream_test
+    sensor_stream_test.cpp
+  )
+
+  target_link_libraries(sensor_stream_test
+    ${PROJECT_NAME}
+  )
+
+  ament_target_dependencies(sensor_stream_test
+    rclcpp
+    mujoco_ros_msgs
   )
 
   add_launch_test(launch/mujoco_sensors.test.py

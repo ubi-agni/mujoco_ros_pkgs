@@ -71,6 +71,9 @@ public:
 	double mean[3];
 	double sigma[3];
 
+	/// Publish rate in Hz against sim time; 0 publishes every step.
+	double update_rate = 0.0;
+
 	uint8_t is_set = 0;
 };
 

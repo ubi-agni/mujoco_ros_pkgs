@@ -106,6 +106,7 @@ using TransformStamped = geometry_msgs::msg::TransformStamped;
 #include <mujoco_ros/simulation_control_state.hpp>
 #include <mujoco_ros/runtime_options.hpp>
 #include <mujoco_ros/plugin_host.hpp>
+#include <mujoco_ros/sensor_hub.hpp>
 #include <mujoco_ros/rendering/render_core.hpp>
 #include <mujoco_ros/rendering/render_snapshot.hpp>
 #include <mujoco_ros/offscreen_camera_config.hpp>
@@ -514,6 +515,10 @@ public:
 	bool SetRealTimeFactor(const float &rt_factor, const std::string &admin_hash = std::string(),
 	                       char *status_message = nullptr, const int status_sz = 0);
 	std::vector<PluginStat> GetPluginStats() const;
+
+	/// Valid for the env lifetime; empty when no plugin with sensor capability is loaded.
+	SensorHub &sensors() { return sensor_hub_; }
+	const SensorHub &sensors() const { return sensor_hub_; }
 	int GetPluginStats(std::vector<std::string> &plugin_names, std::vector<std::string> &types,
 	                   std::vector<double> &load_times, std::vector<double> &reset_times,
 	                   std::vector<double> &ema_steptimes_control, std::vector<double> &ema_steptimes_passive,
@@ -613,6 +618,8 @@ protected:
 		return batch_snapshot_assembly_count_.load(std::memory_order_relaxed);
 	}
 
+	// Declared before plugin_host_ so it outlives plugins that unregister in their destructors.
+	SensorHub sensor_hub_;
 	std::unique_ptr<IPluginAdapterFactory> plugin_factory_;
 	std::unique_ptr<PluginHost> plugin_host_;
 	std::shared_ptr<void> plugin_lifetime_ = std::make_shared<int>(0);
