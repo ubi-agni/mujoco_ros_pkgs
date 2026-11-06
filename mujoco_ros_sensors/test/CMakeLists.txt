@@ -68,4 +68,14 @@ elseif(ROS_VERSION EQUAL 2)
     TARGET mujoco_sensors_test_launch
     ARGS "test_binary:=$<TARGET_FILE:mujoco_sensors_test>"
   )
+
+  if(BUILD_PYTHON_BINDINGS)
+    add_launch_test(launch/sensor_stream_python.test.py
+      TARGET sensor_stream_python_test
+      ARGS
+        "test_script:=${CMAKE_CURRENT_SOURCE_DIR}/test_sensor_stream_python.py"
+        "python_module_path:=$<TARGET_FILE_DIR:pymujoco_ros_sensors>"
+        "python_package_path:=${PROJECT_SOURCE_DIR}/python/src"
+    )
+  endif()
 endif()

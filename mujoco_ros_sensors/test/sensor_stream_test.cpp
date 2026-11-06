@@ -7,6 +7,11 @@
 
 #include <gtest/gtest.h>
 
+#include <mujoco_ros/ros_version.hpp>
+#if MJR_ROS_VERSION == ROS_2
+#include <mujoco_ros_msgs/msg/scalar_stamped.hpp>
+#endif
+
 #include <mujoco_ros_sensors/native_sensor_streams.hpp>
 #include <mujoco_ros_sensors/sensor_stream.hpp>
 
@@ -176,3 +181,98 @@ TEST(GapFrameTest, IgnoreAndDimTables)
 	EXPECT_EQ(ExpectedNativeDim(mjSENS_FRAMEQUAT), 4);
 	EXPECT_FALSE(IsIgnoredSensorType(mjSENS_GEOMDIST));
 }
+
+#if MJR_ROS_VERSION == ROS_2
+namespace {
+
+constexpr char kJointVelXml[] = R"(
+<mujoco>
+  <worldbody><body><joint name="j" type="hinge" axis="0 1 0"/><geom size="0.1"/></body></worldbody>
+  <sensor><jointvel name="jv" joint="j"/></sensor>
+</mujoco>)";
+
+// Noisy scalar stream over a real model; seeded noise makes sample consumption observable.
+struct NoisyScalar
+{
+	NoisyScalar()
+	{
+		char err[256] = "";
+		mjSpec *spec  = mj_parseXMLString(kJointVelXml, nullptr, err, sizeof(err));
+		EXPECT_NE(spec, nullptr) << err;
+		model = mj_compile(spec, nullptr);
+		mj_deleteSpec(spec);
+		data = mj_makeData(model);
+		data->qvel[0] = 1.0;
+		mj_forward(model, data);
+		config.frame_id = "f";
+		config.is_set   = 1;
+		config.mean[0]  = 0.0;
+		config.sigma[0] = 1.0;
+		noise.generator.seed(42);
+		stream = MakeNativeStream(model, 0, "jv", config, noise, false);
+	}
+	~NoisyScalar()
+	{
+		mj_deleteData(data);
+		mj_deleteModel(model);
+	}
+	double Value() { return std::any_cast<const mujoco_ros_msgs::msg::ScalarStamped &>(stream->Value(model, data)).value; }
+
+	mjModel *model = nullptr;
+	mjData *data   = nullptr;
+	SensorConfig config;
+	NoiseSource noise;
+	std::unique_ptr<ISensorStream> stream;
+};
+
+} // namespace
+
+TEST(StreamCacheTest, TwoReadsInOneStepAreEqualWithNoise)
+{
+	NoisyScalar s;
+	const double first = s.Value();
+	EXPECT_EQ(first, s.Value());
+	EXPECT_NE(first, 1.0) << "noise must actually be applied";
+	s.stream->InvalidateCache();
+	EXPECT_NE(first, s.Value()) << "a new step must draw new noise";
+}
+
+TEST(StreamCacheTest, ExtraReadsDoNotShiftNoiseSequence)
+{
+	// "Python" reads three times per step, "ROS-only" once: the per-step values must still match.
+	NoisyScalar many;
+	NoisyScalar once;
+	for (int step = 0; step < 4; ++step) {
+		many.stream->InvalidateCache();
+		once.stream->InvalidateCache();
+		many.Value();
+		many.Value();
+		EXPECT_EQ(many.Value(), once.Value()) << "step " << step;
+	}
+}
+
+TEST(StreamCacheTest, ResetStyleInvalidationRebuilds)
+{
+	NoisyScalar s;
+	const double a = s.Value();
+	s.stream->InvalidateCache();
+	EXPECT_NE(a, s.Value());
+}
+
+TEST(StreamCacheTest, GroundTruthIsCachedAndDoesNotUseNoise)
+{
+	NoisyScalar s;
+	const auto &gt1 = std::any_cast<const mujoco_ros_msgs::msg::ScalarStamped &>(s.stream->GroundTruth(s.model, s.data));
+	EXPECT_NEAR(gt1.value, 1.0, 1e-6);
+	// Noisy sequence must be untouched by the GT read.
+	NoisyScalar fresh;
+	EXPECT_EQ(s.Value(), fresh.Value());
+}
+
+TEST(StreamCacheTest, GroundTruthThrowsInEvalMode)
+{
+	NoisyScalar s;
+	auto eval = MakeNativeStream(s.model, 0, "jv", s.config, s.noise, true);
+	EXPECT_THROW(eval->GroundTruth(s.model, s.data), std::runtime_error);
+}
+#endif

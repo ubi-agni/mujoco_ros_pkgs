@@ -108,6 +108,15 @@ public:
 	mujoco_ros::SensorStreamBase *Find(const std::string &name) const override;
 	std::vector<std::string> PublicNames() const override;
 
+	/**
+	 * In-process reads (Python): build the current value now from the live mjData.
+	 * Caller must hold physics_thread_mutex_ (PluginHandle::WithBackend does). Never waits for
+	 * LastStage and never needs a subscriber. Throws std::out_of_range for unknown/non-public
+	 * names and std::runtime_error for ground truth in eval mode.
+	 */
+	std::any ReadSensorValue(const std::string &name);
+	std::any ReadSensorGroundTruth(const std::string &name);
+
 #if MJR_ROS_VERSION == ROS_2
 	mujoco_ros::CallbackReturn on_configure(const rclcpp_lifecycle::State & /*previous_state*/) override
 	{
@@ -144,6 +153,9 @@ protected:
 	std::map<std::string, SensorConfigPtr> sensor_map_;
 	std::map<std::string, std::unique_ptr<ISensorStream>> streams_;
 	bool hub_registered_ = false;
+	// Valid for this plugin generation only: a reload destroys the plugin before replacing model/data.
+	const mjModel *model_ = nullptr;
+	mjData *data_         = nullptr;
 };
 
 inline const char *SENSOR_STRING[49] = {};
