@@ -150,9 +150,14 @@ function(add_mujoco_ros_unit_test TEST_NAME)
     )
     if(NOT MJR_UNIT_LINK_MAIN)
       if(ROS_VERSION EQUAL 1)
+        # Master-free units compile package .cpp directly. Sources that call
+        # MJR_* macros need rosconsole; roslib alone is not enough (sensor_hub).
         target_include_directories(${TEST_NAME} SYSTEM PRIVATE ${catkin_INCLUDE_DIRS})
         target_link_libraries(${TEST_NAME} gtest_main)
-        target_link_libraries(${TEST_NAME} ${MJR_ROS1_ROSLIB_LIBRARY})
+        target_link_libraries(${TEST_NAME}
+          ${MJR_ROS1_ROSLIB_LIBRARY}
+          ${MJR_ROS1_ROSCONSOLE_LIBRARY}
+        )
       endif()
     endif()
     if(ROS_VERSION EQUAL 2)
