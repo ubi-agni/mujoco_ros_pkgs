@@ -92,6 +92,8 @@ static constexpr int NUM_SAMPLES                      = 5000;
 static constexpr double FIRST_MESSAGE_TIMEOUT_SECONDS = 2.0;
 static constexpr double NOISY_MEAN_TOLERANCE          = 2e-3;
 static constexpr double NOISY_VARIANCE_TOLERANCE      = 1e-4;
+// GT samples are constant; Eigen variance is still denormal FP noise (~1e-28), not exact 0.
+static constexpr double GT_VARIANCE_TOLERANCE = 1e-12;
 
 #if MJR_ROS_VERSION == ROS_1
 using CamProjectionStamped      = mujoco_ros_msgs::CamProjectionStamped;
@@ -590,9 +592,9 @@ TEST_F(TrainEnvFixture, Sensor3DOF)
 	EXPECT_NEAR(means_gt(1), d->sensordata[adr + 1] / cutoff, 1e-3);
 	EXPECT_NEAR(means_gt(2), d->sensordata[adr + 2] / cutoff, 1e-3);
 
-	EXPECT_EQ(variances_gt(0), 0);
-	EXPECT_EQ(variances_gt(1), 0);
-	EXPECT_EQ(variances_gt(2), 0);
+	EXPECT_NEAR(variances_gt(0), 0, GT_VARIANCE_TOLERANCE);
+	EXPECT_NEAR(variances_gt(1), 0, GT_VARIANCE_TOLERANCE);
+	EXPECT_NEAR(variances_gt(2), 0, GT_VARIANCE_TOLERANCE);
 }
 
 TEST_F(TrainEnvFixture, StampFollowsSimTime)
@@ -700,9 +702,9 @@ TEST_F(TrainEnvFixture, Framepos)
 	EXPECT_NEAR(means_gt[1], d->sensordata[adr + 1] / cutoff, 1e-3);
 	EXPECT_NEAR(means_gt[2], d->sensordata[adr + 2] / cutoff, 1e-3);
 
-	EXPECT_EQ(variances_gt[0], 0);
-	EXPECT_EQ(variances_gt[1], 0);
-	EXPECT_EQ(variances_gt[2], 0);
+	EXPECT_NEAR(variances_gt[0], 0, GT_VARIANCE_TOLERANCE);
+	EXPECT_NEAR(variances_gt[1], 0, GT_VARIANCE_TOLERANCE);
+	EXPECT_NEAR(variances_gt[2], 0, GT_VARIANCE_TOLERANCE);
 }
 
 TEST_F(TrainEnvFixture, ScalarStamped)
@@ -771,7 +773,7 @@ TEST_F(TrainEnvFixture, ScalarStamped)
 	double variance_gt = (values_gt_map.rowwise() - values_gt_map.colwise().mean()).array().square().colwise().mean()(0);
 
 	EXPECT_NEAR(mean_gt, d->sensordata[adr] / cutoff, 0.0001);
-	EXPECT_EQ(variance_gt, 0);
+	EXPECT_NEAR(variance_gt, 0, GT_VARIANCE_TOLERANCE);
 }
 
 TEST_F(TrainEnvFixture, Quaternion)
@@ -856,8 +858,8 @@ TEST_F(TrainEnvFixture, Quaternion)
 	EXPECT_EQ(means(1), 0);
 	EXPECT_NEAR(means(2), 1, 0.01);
 
-	EXPECT_EQ(variances(0), 0);
-	EXPECT_EQ(variances(1), 0);
+	EXPECT_NEAR(variances(0), 0., 5e-5);
+	EXPECT_NEAR(variances(1), 0., 5e-5);
 	EXPECT_NEAR(variances(2), 0.000625, 0.0001);
 
 	Eigen::Matrix<double, 1, 3> means_gt = values_gt_map.colwise().mean();
@@ -874,9 +876,9 @@ TEST_F(TrainEnvFixture, Quaternion)
 	EXPECT_NEAR(means_gt(1), P, 0.0001);
 	EXPECT_NEAR(means_gt(2), Y, 0.0001);
 
-	EXPECT_EQ(variances_gt(0), 0);
-	EXPECT_EQ(variances_gt(1), 0);
-	EXPECT_EQ(variances_gt(2), 0);
+	EXPECT_NEAR(variances_gt(0), 0, GT_VARIANCE_TOLERANCE);
+	EXPECT_NEAR(variances_gt(1), 0, GT_VARIANCE_TOLERANCE);
+	EXPECT_NEAR(variances_gt(2), 0, GT_VARIANCE_TOLERANCE);
 }
 
 TEST_F(EvalEnvFixture, NoAdmEvalNoiseModelChange)
