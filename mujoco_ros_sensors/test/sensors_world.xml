@@ -1,5 +1,7 @@
 <mujoco model="3DOF">
-    <option timestep="0.001" gravity="0 0 -9.81" cone="elliptic" />
+    <option timestep="0.001" gravity="0 0 -9.81" cone="elliptic">
+        <flag energy="enable" />
+    </option>
     <compiler angle="radian" />
 
     <visual>
@@ -13,6 +15,7 @@
 
     <worldbody>
         <light pos="0 0 1000" castshadow="false" />
+        <camera name="cam1" pos="0 -2 1" xyaxes="1 0 0 0 0.5 1" />
         <geom name="ground_plane" type="plane" size="5 5 10" material="MatPlane" rgba="1 1 1 1"/>
 
         <body name="base_link">
@@ -39,6 +42,17 @@
         </body>
     </worldbody>
 
+    <tendon>
+        <fixed name="tendon1">
+            <joint joint="joint1" coef="1" />
+            <joint joint="joint2" coef="1" />
+        </fixed>
+    </tendon>
+
+    <actuator>
+        <motor name="tendon_motor" tendon="tendon1" />
+    </actuator>
+
     <sensor>
         <framepos   name="immovable_pos"  objtype="xbody" objname="immovable" />
         <framequat  name="immovable_quat" objtype="xbody" objname="immovable" />
@@ -48,5 +62,16 @@
         <jointvel    name="vel_joint2"  joint="joint2" />
 
         <subtreecom  name="subtree_end_link" body="end_link" />
+
+        <frameangvel name="angvel_world" objtype="xbody" objname="end_link" />
+        <frameangvel name="angvel_ref"   objtype="xbody" objname="end_link" reftype="xbody" refname="base_link" />
+        <tendonactuatorfrc name="tendon_act_frc" tendon="tendon1" />
+        <e_potential name="energy_pot" />
+        <e_kinetic   name="energy_kin" />
+        <insidesite  name="inside_ball" site="joint2_site" objtype="xbody" objname="body_ball" />
+        <distance    name="geom_dist"   geom1="EE" geom2="ball" cutoff="10" />
+        <normal      name="geom_normal" geom1="EE" geom2="ball" cutoff="10" />
+        <fromto      name="geom_fromto" geom1="EE" geom2="ball" cutoff="10" />
+        <camprojection name="cam_proj" site="joint2_site" camera="cam1" />
     </sensor>
 </mujoco>

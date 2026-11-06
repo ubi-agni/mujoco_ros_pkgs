@@ -1,0 +1,27 @@
+<mujoco model="skip_world">
+    <option timestep="0.001" gravity="0 0 -9.81" />
+
+    <worldbody>
+        <geom name="ground_plane" type="plane" size="5 5 10" />
+        <body name="ball_body" pos="1 0 0.06">
+            <freejoint name="ball_freejoint"/>
+            <geom name="ball" type="sphere" size="0.05" mass="0.1"/>
+            <site name="ball_site" size="0.001" />
+        </body>
+        <!-- Unnamed body: a site on it has no TF frame to publish in. -->
+        <body pos="0 1 0.5">
+            <geom type="sphere" size="0.05" mass="0.1"/>
+            <site name="orphan_site" size="0.001" />
+        </body>
+    </worldbody>
+
+    <sensor>
+        <framepos name="ball_pos" objtype="xbody" objname="ball_body" />
+
+        <insidesite name="inside_unnamed_body" site="orphan_site" objtype="xbody" objname="ball_body" />
+
+        <clock name="sim_clock" />
+        <contact name="ball_contact" geom1="ball" geom2="ground_plane" data="found" num="1" />
+        <user name="user_sensor" dim="1" />
+    </sensor>
+</mujoco>

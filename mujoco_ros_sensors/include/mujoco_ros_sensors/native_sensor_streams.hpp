@@ -16,6 +16,24 @@
 
 namespace mujoco_ros::sensors {
 
+/// Types that never get a stream, publisher or hub entry (no meaningful ROS message).
+bool IsIgnoredSensorType(int sensor_type);
+
+/**
+ * Number of sensordata values a native stream reads for `sensor_type`, or -1
+ * if the type has no native stream. Init compares this with the model's
+ * `sensor_dim` so a differently-sized sensor is skipped instead of truncated.
+ */
+int ExpectedNativeDim(int sensor_type);
+
+/**
+ * Resolves the `frame_id` of the gap-closing sensor types (FRAMEANGVEL,
+ * TENDONACTFRC, E_*, INSIDESITE, GEOM*, CAMPROJECTION). Returns false and sets
+ * `error` if the object this frame depends on is missing or unnamed; the caller
+ * must then skip the sensor rather than publish a wrong frame.
+ */
+bool ResolveGapFrameId(const mjModel *model, int sensor_id, std::string &frame_id, std::string &error);
+
 /**
  * Builds the stream that publishes mjSENS_* sensor `sensor_id` through the
  * publishers already registered on `config`. Returns nullptr for sensor types
