@@ -26,8 +26,10 @@ if(ROS_VERSION EQUAL 1)
   find_library(MJR_ROS1_ROSLIB_LIBRARY NAMES roslib PATHS ${catkin_LIBRARY_DIRS})
   find_library(MJR_ROS1_ROSCONSOLE_LIBRARY NAMES rosconsole PATHS ${catkin_LIBRARY_DIRS})
   find_library(MJR_ROS1_ROSCPP_LIBRARY NAMES roscpp PATHS ${catkin_LIBRARY_DIRS})
-  if(NOT MJR_ROS1_ROSLIB_LIBRARY OR NOT MJR_ROS1_ROSCONSOLE_LIBRARY OR NOT MJR_ROS1_ROSCPP_LIBRARY)
-    message(FATAL_ERROR "sensor_stream_test (ROS1) requires roslib, rosconsole, and roscpp")
+  find_library(MJR_ROS1_ROSTIME_LIBRARY NAMES rostime PATHS ${catkin_LIBRARY_DIRS})
+  if(NOT MJR_ROS1_ROSLIB_LIBRARY OR NOT MJR_ROS1_ROSCONSOLE_LIBRARY OR NOT MJR_ROS1_ROSCPP_LIBRARY OR
+     NOT MJR_ROS1_ROSTIME_LIBRARY)
+    message(FATAL_ERROR "sensor_stream_test (ROS1) requires roslib, rosconsole, roscpp, and rostime")
   endif()
   catkin_add_gtest(sensor_stream_test
     sensor_stream_test.cpp
@@ -46,6 +48,7 @@ if(ROS_VERSION EQUAL 1)
     ${MJR_ROS1_ROSLIB_LIBRARY}
     ${MJR_ROS1_ROSCONSOLE_LIBRARY}
     ${MJR_ROS1_ROSCPP_LIBRARY}
+    ${MJR_ROS1_ROSTIME_LIBRARY}
   )
 
   target_include_directories(mujoco_sensors_test SYSTEM
