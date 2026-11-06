@@ -31,6 +31,7 @@
 #include <random>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace mujoco_ros::sensors {
 
@@ -79,10 +80,21 @@ public:
 
 using SensorConfigPtr = std::unique_ptr<SensorConfig>;
 
-class MujocoRosSensorsPlugin : public mujoco_ros::MujocoPlugin
+class ISensorStream;
+
+/// Gaussian noise source shared by all native streams of one plugin.
+struct NoiseSource
+{
+	double Sample() { return dist(generator); }
+
+	std::mt19937 generator = std::mt19937(std::random_device{}());
+	std::normal_distribution<double> dist{0.0, 1.0};
+};
+
+class MujocoRosSensorsPlugin : public mujoco_ros::MujocoPlugin, public mujoco_ros::ISensorStreamProvider
 {
 public:
-	MujocoRosSensorsPlugin()                                          = default;
+	MujocoRosSensorsPlugin();
 	MujocoRosSensorsPlugin(const MujocoRosSensorsPlugin &)            = delete;
 	MujocoRosSensorsPlugin &operator=(const MujocoRosSensorsPlugin &) = delete;
 	~MujocoRosSensorsPlugin() override;
@@ -91,6 +103,10 @@ public:
 	void Reset() override;
 	void LastStageCallback(const mjModel *model, mjData *data) override;
 	const std::map<std::string, SensorConfigPtr> &GetSensorConfigs() const { return sensor_map_; }
+
+	mujoco_ros::SensorProviderKind kind() const override { return mujoco_ros::SensorProviderKind::kNative; }
+	mujoco_ros::SensorStreamBase *Find(const std::string &name) const override;
+	std::vector<std::string> PublicNames() const override;
 
 #if MJR_ROS_VERSION == ROS_2
 	mujoco_ros::CallbackReturn on_configure(const rclcpp_lifecycle::State & /*previous_state*/) override
@@ -116,9 +132,11 @@ protected:
 	                           const mujoco_ros_msgs::srv::RegisterSensorNoiseModels::Response::SharedPtr &rep);
 #endif
 
-	std::mt19937 rand_generator = std::mt19937(std::random_device{}());
-	std::normal_distribution<double> noise_dist;
+	NoiseSource noise_;
+	// Streams reference their config and the noise source, so they must be destroyed first.
 	std::map<std::string, SensorConfigPtr> sensor_map_;
+	std::map<std::string, std::unique_ptr<ISensorStream>> streams_;
+	bool hub_registered_ = false;
 };
 
 inline const char *SENSOR_STRING[49] = {};
