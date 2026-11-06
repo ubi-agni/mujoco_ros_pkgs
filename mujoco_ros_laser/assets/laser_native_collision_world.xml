@@ -1,0 +1,49 @@
+<mujoco model="Laser Example">
+    <option timestep="0.001" gravity="0 0 -9.81" cone="elliptic" />
+    <compiler angle="radian" />
+
+    <visual>
+        <headlight ambient="0.4 0.4 0.4" diffuse="0.4 0.4 0.4" specular="0.0 0.0 0.0" active="1" />
+    </visual>
+
+    <asset>
+        <texture builtin="checker" height="512" name="texplane" rgb1=".2 .3 .4" rgb2=".1 .15 .2" type="2d" width="512" />
+        <material name="MatPlane" reflectance="0.5" shininess="0.01" specular="0.1" texrepeat="1 1" texture="texplane" texuniform="true" />
+    </asset>
+
+    <worldbody>
+        <light pos="0 0 1000" castshadow="false" />
+        <geom name="ground_plane" type="plane" size="10 10 10" material="MatPlane" rgba="1 1 1 1"/>
+
+        <body name="obs0" pos="5. -2.5 0.2" euler="0 0 1.2">
+            <freejoint />
+            <geom type="box" size="0.2 0.2 0.2" rgba="1. 0 0. 1." />
+        </body>
+
+        <body name="obs1" pos="7. 0. 0.2">
+            <freejoint />
+            <geom type="box" size="0.2 0.2 0.2" rgba="1. 0 0. 1." />
+        </body>
+
+        <body name="obs2" pos="6. 2.5 0.2" euler="0 0 .9">
+            <freejoint />
+            <geom type="box" size="0.2 0.2 0.2" rgba="1. 0 0. 1." />
+        </body>
+
+        <geom name="static_wall" type="box" pos="2. 4. 0.2" size="0.2 0.2 0.2" rgba="0. 1. 0. 1." />
+
+        <body name="mocap_obs" mocap="true" pos="3. -0.8 0.2">
+            <geom type="box" size="0.2 0.2 0.2" rgba="0. 0 1. 1." />
+        </body>
+
+        <body name="laser" pos="0 0 .3">
+            <geom type="box" size=".2 .2 .3" rgba="0.8 0.8 0.8 0.2" />
+            <site pos=".21 0 -0.1" name="laser_site" size="0.05" />
+        </body>
+    </worldbody>
+
+    <!-- Native sensor sharing its public name with the laser stream "scan": used to test hub collisions. -->
+    <sensor>
+        <gyro name="scan" site="laser_site" />
+    </sensor>
+</mujoco>
