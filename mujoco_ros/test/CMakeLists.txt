@@ -128,6 +128,9 @@ function(add_mujoco_ros_unit_test TEST_NAME)
     elseif(TEST_NAME STREQUAL "plugin_host_test")
       set(MJR_UNIT_LINK_MAIN FALSE)
       target_sources(${TEST_NAME} PRIVATE ../src/plugin_host.cpp)
+    elseif(TEST_NAME STREQUAL "sensor_hub_test")
+      set(MJR_UNIT_LINK_MAIN FALSE)
+      target_sources(${TEST_NAME} PRIVATE ../src/sensor_hub.cpp)
     elseif(TEST_NAME STREQUAL "offscreen_transport_test")
       # Keep transport validation master-free. The production transport methods
       # remain in mujoco_ros for runtime/integration coverage; this unit uses
@@ -229,6 +232,7 @@ add_mujoco_ros_unit_test(viewer_geom_defaults_test SOURCES viewer_geom_defaults_
 add_mujoco_ros_unit_test(viewer_branding_test SOURCES viewer_branding_test.cpp)
 add_mujoco_ros_unit_test(runtime_options_test SOURCES runtime_options_test.cpp)
 add_mujoco_ros_unit_test(plugin_host_test SOURCES plugin_host_test.cpp)
+add_mujoco_ros_unit_test(sensor_hub_test SOURCES sensor_hub_test.cpp)
 add_mujoco_ros_unit_test(offscreen_transport_test SOURCES offscreen_transport_test.cpp)
 add_mujoco_ros_unit_test(render_core_consumer_test SOURCES render_core_consumer_test.cpp)
 if(ROS_VERSION EQUAL 1)

@@ -43,6 +43,7 @@ if(ROS_VERSION EQUAL "1")
     physics.cpp
     runtime_options.cpp
     plugin_host.cpp
+    sensor_hub.cpp
     interface.cpp
     loading.cpp
     threading.cpp
@@ -70,6 +71,7 @@ else()
     physics.cpp
     runtime_options.cpp
     plugin_host.cpp
+    sensor_hub.cpp
     interface.cpp
     loading.cpp
     threading.cpp

@@ -3430,6 +3430,39 @@ TEST_F(BaseEnvFixture, Reset)
 }
 
 // Test reloading
+namespace {
+class EmptyNameProvider : public ISensorStreamProvider
+{
+public:
+	SensorProviderKind kind() const override { return SensorProviderKind::kNative; }
+	SensorStreamBase *Find(const std::string &) const override { return nullptr; }
+	std::vector<std::string> PublicNames() const override { return {}; }
+};
+} // namespace
+
+TEST_F(BaseEnvFixture, SensorHubIsEmptyAndClearedOnReload)
+{
+	nh->setParam("unpause", false);
+	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	env_ptr->StartWithXML(testing::get_test_model_path("empty_world.xml"));
+
+	auto &hub = env_ptr->sensors();
+	EXPECT_TRUE(hub.empty());
+	EXPECT_EQ(hub.EmptyWarningCountForTest(), 0u);
+	EXPECT_EQ(hub.Get("any"), nullptr);
+	EXPECT_EQ(hub.Get("any"), nullptr);
+	EXPECT_EQ(hub.EmptyWarningCountForTest(), 1u);
+
+	EmptyNameProvider provider;
+	hub.RegisterProvider(provider);
+	ASSERT_FALSE(hub.empty());
+
+	env_ptr->load_queued_model();
+	EXPECT_TRUE(hub.empty()) << "Reload must drop provider registrations";
+	EXPECT_EQ(hub.Get("any"), nullptr);
+	EXPECT_EQ(hub.EmptyWarningCountForTest(), 2u) << "Empty warning must re-arm per plugin generation";
+}
+
 TEST_F(BaseEnvFixture, Reload)
 {
 	nh->setParam("unpause", false);
