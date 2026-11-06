@@ -10,6 +10,8 @@ add_message_files(
   FILES
     StateUint.msg
     ros1/ScalarStamped.msg
+    ros1/CamProjectionStamped.msg
+    ros1/GeomFromToStamped.msg
     BodyState.msg
     GeomProperties.msg
     GeomType.msg
