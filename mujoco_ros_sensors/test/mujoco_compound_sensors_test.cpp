@@ -21,6 +21,8 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/wrench_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 #include <rclcpp/rclcpp.hpp>
 #endif
 
@@ -448,6 +450,109 @@ TEST_F(CompoundStreamFixture, PoseCompoundUsesPositionFrameAndWorldQuaternion)
 	EXPECT_NE(gt.pose.position.z, 0.0);
 	EXPECT_EQ(value.pose.position, gt.pose.position);
 	EXPECT_EQ(value.pose.orientation, gt.pose.orientation);
+}
+
+TEST_F(CompoundStreamFixture, ImuCompoundPublishesAndDemotesParts)
+{
+	// quat_a is a world-frame framequat on link_a: object identity ties it to the acc_a/gyro_a anchor
+	Start({ { "ee_imu",
+	          "IMU",
+	          { { "linear_acceleration", "acc_a" }, { "angular_velocity", "gyro_a" }, { "orientation", "quat_a" } } } });
+	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	ExpectDemoted("ee_imu", { "acc_a", "gyro_a", "quat_a" });
+
+	sensor_msgs::msg::Imu value, gt;
+	ReceiveValueAndGt("ee_imu", value, gt);
+	EXPECT_EQ(value.header.frame_id, "link_a");
+	EXPECT_EQ(gt.header.frame_id, "link_a");
+	EXPECT_SAMPLE(gt.linear_acceleration.x, Sensor("acc_a", 0));
+	EXPECT_SAMPLE(gt.linear_acceleration.z, Sensor("acc_a", 2));
+	EXPECT_SAMPLE(gt.angular_velocity.x, Sensor("gyro_a", 0));
+	EXPECT_SAMPLE(gt.angular_velocity.y, Sensor("gyro_a", 1));
+	EXPECT_SAMPLE(gt.angular_velocity.z, Sensor("gyro_a", 2));
+	EXPECT_SAMPLE(gt.orientation.w, Sensor("quat_a", 0));
+	EXPECT_SAMPLE(gt.orientation.x, Sensor("quat_a", 1));
+	EXPECT_SAMPLE(gt.orientation.y, Sensor("quat_a", 2));
+	EXPECT_SAMPLE(gt.orientation.z, Sensor("quat_a", 3));
+	EXPECT_NE(gt.linear_acceleration.z, 0.0) << "acceleration role must carry data, not a default message";
+	EXPECT_NE(gt.angular_velocity.y, 0.0) << "gyro role must carry data, not a default message";
+	EXPECT_NE(gt.orientation.y, 0.0) << "orientation role must carry data, not a default message";
+	// no noise registered: value equals GT
+	EXPECT_EQ(value.linear_acceleration, gt.linear_acceleration);
+	EXPECT_EQ(value.angular_velocity, gt.angular_velocity);
+	EXPECT_EQ(value.orientation, gt.orientation);
+	// covariances unknown (first element -1), never filled from sigma
+	for (const auto *msg : { &value, &gt }) {
+		EXPECT_EQ(msg->orientation_covariance[0], -1.0);
+		EXPECT_EQ(msg->angular_velocity_covariance[0], -1.0);
+		EXPECT_EQ(msg->linear_acceleration_covariance[0], -1.0);
+		for (std::size_t i = 1; i < 9; ++i) {
+			EXPECT_EQ(msg->orientation_covariance[i], 0.0);
+			EXPECT_EQ(msg->angular_velocity_covariance[i], 0.0);
+			EXPECT_EQ(msg->linear_acceleration_covariance[i], 0.0);
+		}
+	}
+}
+
+TEST_F(CompoundStreamFixture, ImuBallquatOrientationPublishes)
+{
+	// ballquat_b measures joint ball_b of link_b, the same body as acc_b/gyro_b's site_b
+	Start({ { "imu_b",
+	          "IMU",
+	          { { "linear_acceleration", "acc_b" }, { "angular_velocity", "gyro_b" }, { "orientation", "ballquat_b" } } } });
+	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	ExpectDemoted("imu_b", { "acc_b", "gyro_b", "ballquat_b" });
+
+	sensor_msgs::msg::Imu value, gt;
+	ReceiveValueAndGt("imu_b", value, gt);
+	EXPECT_EQ(value.header.frame_id, "link_b");
+	EXPECT_SAMPLE(gt.orientation.w, Sensor("ballquat_b", 0));
+	EXPECT_SAMPLE(gt.orientation.x, Sensor("ballquat_b", 1));
+	EXPECT_SAMPLE(gt.orientation.y, Sensor("ballquat_b", 2));
+	EXPECT_SAMPLE(gt.orientation.z, Sensor("ballquat_b", 3));
+	EXPECT_SAMPLE(gt.linear_acceleration.z, Sensor("acc_b", 2));
+}
+
+TEST_F(CompoundStreamFixture, OdometryCompoundUsesPoseParentAndTwistChildFrame)
+{
+	// Pose pair in link_a (pos_b_in_a + quat_b, same body link_b); twist pair in world: parent and child differ
+	Start({ { "ee_odom",
+	          "Odometry",
+	          { { "position", "pos_b_in_a" },
+	            { "orientation", "quat_b" },
+	            { "linear", "linvel_world" },
+	            { "angular", "angvel_world" } } } });
+	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	ExpectDemoted("ee_odom", { "pos_b_in_a", "quat_b", "linvel_world", "angvel_world" });
+
+	nav_msgs::msg::Odometry value, gt;
+	ReceiveValueAndGt("ee_odom", value, gt);
+	EXPECT_EQ(value.header.frame_id, "link_a");
+	EXPECT_EQ(gt.header.frame_id, "link_a");
+	EXPECT_EQ(value.child_frame_id, "world");
+	EXPECT_EQ(gt.child_frame_id, "world");
+	EXPECT_SAMPLE(gt.pose.pose.position.x, Sensor("pos_b_in_a", 0));
+	EXPECT_SAMPLE(gt.pose.pose.position.z, Sensor("pos_b_in_a", 2));
+	EXPECT_SAMPLE(gt.pose.pose.orientation.w, Sensor("quat_b", 0));
+	EXPECT_SAMPLE(gt.pose.pose.orientation.x, Sensor("quat_b", 1));
+	EXPECT_SAMPLE(gt.pose.pose.orientation.y, Sensor("quat_b", 2));
+	EXPECT_SAMPLE(gt.pose.pose.orientation.z, Sensor("quat_b", 3));
+	EXPECT_SAMPLE(gt.twist.twist.linear.x, Sensor("linvel_world", 0));
+	EXPECT_SAMPLE(gt.twist.twist.linear.z, Sensor("linvel_world", 2));
+	EXPECT_SAMPLE(gt.twist.twist.angular.y, Sensor("angvel_world", 1));
+	EXPECT_NE(gt.pose.pose.position.z, 0.0);
+	EXPECT_NE(gt.twist.twist.linear.x, 0.0);
+	EXPECT_NE(gt.twist.twist.angular.y, 0.0);
+	EXPECT_EQ(value.pose.pose.position, gt.pose.pose.position);
+	EXPECT_EQ(value.pose.pose.orientation, gt.pose.pose.orientation);
+	EXPECT_EQ(value.twist.twist.linear, gt.twist.twist.linear);
+	EXPECT_EQ(value.twist.twist.angular, gt.twist.twist.angular);
+	for (const auto *msg : { &value, &gt }) {
+		EXPECT_EQ(msg->pose.covariance[0], -1.0);
+		EXPECT_EQ(msg->twist.covariance[0], -1.0);
+		EXPECT_EQ(msg->pose.covariance[1], 0.0);
+		EXPECT_EQ(msg->twist.covariance[35], 0.0);
+	}
 }
 
 TEST_F(CompoundStreamFixture, InProcessReadDoesNotLeaveStalePartValuesForNextStep)

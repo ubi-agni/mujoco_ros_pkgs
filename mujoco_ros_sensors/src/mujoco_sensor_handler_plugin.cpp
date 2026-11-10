@@ -658,12 +658,9 @@ bool MujocoRosSensorsPlugin::InitCompounds(const mjModel *model)
 void MujocoRosSensorsPlugin::ApplyCompounds()
 {
 	for (const auto &desc : compounds_) {
+		// Validation guarantees a stream exists for every kind; fail loudly if that ever changes.
 		if (!HasCompoundStream(desc.kind)) {
-			// Demoting would drop the parts without any stream taking their place.
-			MJR_WARN_STREAM_NAMED("sensors", "Compound sensor '" << desc.name
-			                                                     << "' has no stream implementation for this type yet; "
-			                                                        "its parts stay public and it is not published");
-			continue;
+			throw std::logic_error("compound sensor '" + desc.name + "' has no stream implementation");
 		}
 
 		auto config         = std::make_unique<SensorConfig>(desc.frame_id);

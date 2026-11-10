@@ -83,14 +83,15 @@ bool ValidateCompounds(const mjModel *model, const std::vector<CompoundSpec> &sp
 class ISensorStream;
 struct SensorConfig;
 
-/// True for the kinds MakeCompoundStream can build (Wrench, Twist, Pose, Accel).
+/// True for the kinds MakeCompoundStream can build (all six).
 bool HasCompoundStream(CompoundKind kind);
 
 /**
  * Builds the public stream of a validated compound from its already built part streams (`parts`: role -> stream).
  * Value and ground truth are composed from the parts' own per-step cached Value()/GroundTruth(), so the parts must
  * outlive the compound and be invalidated before it publishes each step. `config` carries the compound's frame_id,
- * update_rate and publishers (msg type per kind: WrenchStamped, TwistStamped, PoseStamped, AccelStamped).
+ * update_rate and publishers (msg type per kind: WrenchStamped, TwistStamped, PoseStamped, AccelStamped,
+ * sensor_msgs/Imu, nav_msgs/Odometry; IMU/Odometry covariances are left unknown, first element -1).
  * Returns nullptr when HasCompoundStream(desc.kind) is false.
  */
 std::unique_ptr<ISensorStream> MakeCompoundStream(const CompoundDescriptor &desc, const SensorConfig &config,
