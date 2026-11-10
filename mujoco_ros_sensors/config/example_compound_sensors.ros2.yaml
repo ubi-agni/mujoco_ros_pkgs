@@ -1,0 +1,58 @@
+# ROS 2 encoding of `compound_sensors` (same flat-parameter pattern as the laser plugin):
+# a string array of compound names plus flat `compound_sensors.<name>.<key>` parameters.
+# ROS 1 uses the list-of-maps shape in example_compound_sensors.yaml.
+#
+# Each role value is an MJCF sensor name. A claimed sensor is no longer published or exposed
+# on its own; the compound topic `<name>` (and `<name>_GT` outside eval mode) replaces it.
+# `update_rate` (Hz, sim time) is optional and throttles the ROS publish only; Python `data`
+# is still built every step. Unset or <= 0 publishes every step.
+# Sensor names match test/sensors_compound_world.xml; test_sensor_stream_python.py loads these files
+# so a typo in a role key or sensor name fails the test.
+# Role noise is registered on the dotted name `<compound>.<role>`, e.g. `ee_wrench.force`.
+/mujoco_server:
+  ros__parameters:
+    MujocoPlugins.names:
+      - mujoco_ros_sensors
+    MujocoPlugins.mujoco_ros_sensors.type: mujoco_ros_sensors/MujocoRosSensorsPlugin
+    # Every name listed here needs a `.type` and its role keys below.
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors:
+      - ee_wrench
+      - ee_twist
+      - ee_accel
+      - ee_pose
+      - ee_imu
+      - ee_odom
+
+    # geometry_msgs/WrenchStamped
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_wrench.type: Wrench
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_wrench.force: force_a
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_wrench.torque: torque_a
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_wrench.update_rate: 100.0
+
+    # geometry_msgs/TwistStamped; linear and angular must share one frame_id
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_twist.type: Twist
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_twist.linear: linvel_world
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_twist.angular: angvel_world
+
+    # geometry_msgs/AccelStamped; linear and angular must share one frame_id
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_accel.type: Accel
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_accel.linear: linacc_tip
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_accel.angular: angacc_a
+
+    # geometry_msgs/PoseStamped; position and orientation must measure the same body
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_pose.type: Pose
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_pose.position: pos_a
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_pose.orientation: quat_a
+
+    # sensor_msgs/Imu; covariances stay "unknown" (-1 / 0)
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_imu.type: IMU
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_imu.linear_acceleration: acc_b
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_imu.angular_velocity: gyro_b
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_imu.orientation: ballquat_b
+
+    # nav_msgs/Odometry; header frame from position, child_frame_id from linear/angular
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_odom.type: Odometry
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_odom.position: pos_b_in_a
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_odom.orientation: quat_b
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_odom.linear: linvel_a
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_odom.angular: angvel_a

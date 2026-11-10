@@ -52,34 +52,58 @@
 #include <mujoco_ros_sensors/mujoco_sensor_handler_plugin.hpp>
 
 #if MJR_ROS_VERSION == ROS_1
+#include <geometry_msgs/AccelStamped.h>
 #include <geometry_msgs/PointStamped.h>
+#include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/QuaternionStamped.h>
+#include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/Vector3Stamped.h>
+#include <geometry_msgs/WrenchStamped.h>
+#include <nav_msgs/Odometry.h>
+#include <sensor_msgs/Imu.h>
 #include <mujoco_ros_msgs/CamProjectionStamped.h>
 #include <mujoco_ros_msgs/GeomFromToStamped.h>
 #include <mujoco_ros_msgs/ScalarStamped.h>
 namespace sensor_msgs_ns {
+using AccelStamped         = geometry_msgs::AccelStamped;
 using CamProjectionStamped = mujoco_ros_msgs::CamProjectionStamped;
 using GeomFromToStamped    = mujoco_ros_msgs::GeomFromToStamped;
+using Imu                  = sensor_msgs::Imu;
+using Odometry             = nav_msgs::Odometry;
 using PointStamped         = geometry_msgs::PointStamped;
+using PoseStamped          = geometry_msgs::PoseStamped;
 using QuaternionStamped    = geometry_msgs::QuaternionStamped;
 using ScalarStamped        = mujoco_ros_msgs::ScalarStamped;
+using TwistStamped         = geometry_msgs::TwistStamped;
 using Vector3Stamped       = geometry_msgs::Vector3Stamped;
+using WrenchStamped        = geometry_msgs::WrenchStamped;
 } // namespace sensor_msgs_ns
 #else
+#include <geometry_msgs/msg/accel_stamped.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/quaternion_stamped.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/vector3_stamped.hpp>
+#include <geometry_msgs/msg/wrench_stamped.hpp>
 #include <mujoco_ros_msgs/msg/cam_projection_stamped.hpp>
 #include <mujoco_ros_msgs/msg/geom_from_to_stamped.hpp>
 #include <mujoco_ros_msgs/msg/scalar_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 namespace sensor_msgs_ns {
+using AccelStamped         = geometry_msgs::msg::AccelStamped;
 using CamProjectionStamped = mujoco_ros_msgs::msg::CamProjectionStamped;
 using GeomFromToStamped    = mujoco_ros_msgs::msg::GeomFromToStamped;
+using Imu                  = sensor_msgs::msg::Imu;
+using Odometry             = nav_msgs::msg::Odometry;
 using PointStamped         = geometry_msgs::msg::PointStamped;
+using PoseStamped          = geometry_msgs::msg::PoseStamped;
 using QuaternionStamped    = geometry_msgs::msg::QuaternionStamped;
 using ScalarStamped        = mujoco_ros_msgs::msg::ScalarStamped;
+using TwistStamped         = geometry_msgs::msg::TwistStamped;
 using Vector3Stamped       = geometry_msgs::msg::Vector3Stamped;
+using WrenchStamped        = geometry_msgs::msg::WrenchStamped;
 } // namespace sensor_msgs_ns
 #endif
 
@@ -119,6 +143,12 @@ py::object AnyToPython(const std::any &value)
 	if (TryCast<Vector3Stamped>(value, result) || TryCast<PointStamped>(value, result) ||
 	    TryCast<QuaternionStamped>(value, result) || TryCast<ScalarStamped>(value, result) ||
 	    TryCast<CamProjectionStamped>(value, result) || TryCast<GeomFromToStamped>(value, result)) {
+		return result;
+	}
+	// Compound sensors (ADR: compound streams share the native hierarchy).
+	if (TryCast<WrenchStamped>(value, result) || TryCast<TwistStamped>(value, result) ||
+	    TryCast<AccelStamped>(value, result) || TryCast<PoseStamped>(value, result) || TryCast<Imu>(value, result) ||
+	    TryCast<Odometry>(value, result)) {
 		return result;
 	}
 	throw std::runtime_error("sensor stream produced a message type without a Python conversion");
@@ -217,8 +247,8 @@ PYBIND11_MODULE(pymujoco_ros_sensors, module)
 	    .def_property_readonly("config",
 	                           [](const SensorStreamHandle &stream) {
 		                           return stream.With([&](auto &plugin) {
-			                           return mujoco_ros::sensors::SensorConfig(
-			                               *plugin.GetSensorConfigs().at(stream.name));
+			                           // Native sensor or compound; With() already proved the stream exists.
+			                           return mujoco_ros::sensors::SensorConfig(*plugin.FindConfig(stream.name));
 		                           });
 	                           })
 	    .def_property_readonly(

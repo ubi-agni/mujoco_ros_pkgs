@@ -15,6 +15,26 @@ from mujoco_ros.plugins import bind_plugin
 
 PLUGIN = {"name": "mujoco_ros_sensors", "type": "mujoco_ros_sensors/MujocoRosSensorsPlugin"}
 MODEL = Path(get_package_share_directory("mujoco_ros_sensors")) / "test" / "sensors_world.xml"
+COMPOUND_MODEL = Path(get_package_share_directory("mujoco_ros_sensors")) / "test" / "sensors_compound_world.xml"
+CMP = "MujocoPlugins.mujoco_ros_sensors.compound_sensors"
+CONFIG_DIR = Path(get_package_share_directory("mujoco_ros_sensors")) / "config"
+
+
+def load_example_configs():
+    """Example YAMLs are the single source: ROS 1 list-of-maps -> {name: (type, roles, rate)}, ROS 2 -> params."""
+    import yaml
+
+    ros1 = yaml.safe_load((CONFIG_DIR / "example_compound_sensors.yaml").read_text())
+    compounds = {}
+    for entry in ros1["MujocoPlugins"][0]["compound_sensors"]:
+        roles = {k: v for k, v in entry.items() if k not in ("name", "type", "update_rate")}
+        compounds[entry["name"]] = (entry["type"], roles, entry.get("update_rate", 0.0))
+    ros2 = yaml.safe_load((CONFIG_DIR / "example_compound_sensors.ros2.yaml").read_text())
+    params = {k: v for k, v in ros2["/mujoco_server"]["ros__parameters"].items() if k.startswith(CMP)}
+    return compounds, params
+
+
+COMPOUNDS, EXAMPLE_PARAMS = load_example_configs()
 
 
 def wait_for_idle(env, timeout=5.0):
@@ -57,7 +77,13 @@ def register_noise(env, sensor, sigma):
 
 
 class SensorStreamPythonTest(unittest.TestCase):
-    def open_env(self, eval_mode=False, parameters=None):
+    def compound_params(self, **rates):
+        params = dict(EXAMPLE_PARAMS)
+        for name, rate in rates.items():
+            params[f"{CMP}.{name}.update_rate"] = rate
+        return params
+
+    def open_env(self, eval_mode=False, parameters=None, model=MODEL):
         params = dict(parameters or {})
         if eval_mode:
             params["eval_mode"] = True
@@ -65,7 +91,7 @@ class SensorStreamPythonTest(unittest.TestCase):
             plugin_config=[PLUGIN], admin_hash="some_hash" if eval_mode else None, parameters=params
         )
         self.addCleanup(env.__exit__, None, None, None)
-        self.assertTrue(env.load_from_path(str(MODEL)))
+        self.assertTrue(env.load_from_path(str(model)))
         wait_for_idle(env)
         # Paused: only explicit step() advances physics, so reads are deterministic.
         env.pause("some_hash" if eval_mode else "")
@@ -130,6 +156,65 @@ class SensorStreamPythonTest(unittest.TestCase):
             env.step(1)
             seen.append(s.data.value)
             self.assertAlmostEqual(seen[-1], env.data.sensordata[adr], delta=1e-4)
+        self.assertGreater(len(set(seen)), 1, "value must change step to step")
+
+    def test_example_configs_agree(self):
+        # ROS 1 list-of-maps and ROS 2 flat keys must describe the same compounds.
+        self.assertEqual(set(COMPOUNDS), {"ee_wrench", "ee_twist", "ee_accel", "ee_pose", "ee_imu", "ee_odom"})
+        self.assertEqual(EXAMPLE_PARAMS[CMP], list(COMPOUNDS))
+        rebuilt = {CMP: list(COMPOUNDS)}
+        for name, (kind, roles, rate) in COMPOUNDS.items():
+            rebuilt[f"{CMP}.{name}.type"] = kind
+            for role, sensor in roles.items():
+                rebuilt[f"{CMP}.{name}.{role}"] = sensor
+            if rate:
+                rebuilt[f"{CMP}.{name}.update_rate"] = rate
+        self.assertEqual(rebuilt, EXAMPLE_PARAMS)
+
+    def test_compound_types_and_parts_hidden(self):
+        self.run_isolated("inner_compound_types_and_parts_hidden")
+
+    def test_compound_data_ignores_update_rate(self):
+        self.run_isolated("inner_compound_data_ignores_update_rate")
+
+    def inner_compound_types_and_parts_hidden(self):
+        env, plugin = self.open_env(parameters=self.compound_params(), model=COMPOUND_MODEL)
+        env.data.qvel[:] = 0.5
+        env.step(5)
+        expected = {
+            "ee_wrench": "WrenchStamped",
+            "ee_twist": "TwistStamped",
+            "ee_accel": "AccelStamped",
+            "ee_pose": "PoseStamped",
+            "ee_imu": "Imu",
+            "ee_odom": "Odometry",
+        }
+        for name, type_name in expected.items():
+            s = plugin.sensors[name]
+            self.assertEqual(type(s.data).__name__, type_name, name)
+            self.assertEqual(type(s.gt_data).__name__, type_name, name)
+            self.assertEqual(s.config.update_rate, COMPOUNDS[name][2], name)
+            for sensor in COMPOUNDS[name][1].values():
+                self.assertNotIn(sensor, plugin.sensors, f"{sensor} claimed by {name}")
+        w = plugin.sensors["ee_wrench"]
+        self.assertEqual(w.config.frame_id, "link_a")
+        self.assertEqual(w.data.header.frame_id, "link_a")
+        adr = sensor_adr(env, "force_a")
+        self.assertAlmostEqual(w.data.wrench.force.x, env.data.sensordata[adr], delta=1e-3)
+        self.assertEqual(plugin.sensors["ee_odom"].data.child_frame_id, "link_a")
+
+    def inner_compound_data_ignores_update_rate(self):
+        # 1 Hz throttles the ROS publish only; Python must still see every step.
+        env, plugin = self.open_env(parameters=self.compound_params(ee_wrench=1.0), model=COMPOUND_MODEL)
+        s = plugin.sensors["ee_wrench"]
+        self.assertEqual(s.config.update_rate, 1.0)
+        adr = sensor_adr(env, "force_a")
+        env.data.qvel[:] = 1.0
+        seen = []
+        for _ in range(5):
+            env.step(1)
+            seen.append(s.data.wrench.force.x)
+            self.assertAlmostEqual(seen[-1], env.data.sensordata[adr], delta=1e-3)
         self.assertGreater(len(set(seen)), 1, "value must change step to step")
 
     def test_removed_configs_api(self):
