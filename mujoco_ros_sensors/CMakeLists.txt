@@ -23,7 +23,9 @@ if(ROS_VERSION EQUAL 1)
     geometry_msgs
     mujoco_ros
     mujoco_ros_msgs
+    nav_msgs
     pluginlib
+    sensor_msgs
     tf2
     tf2_geometry_msgs
     tf2_ros
@@ -47,7 +49,9 @@ if(ROS_VERSION EQUAL 1)
       geometry_msgs
       mujoco_ros
       mujoco_ros_msgs
+      nav_msgs
       pluginlib
+      sensor_msgs
       tf2
       tf2_geometry_msgs
       tf2_ros
@@ -111,6 +115,8 @@ elseif(ROS_VERSION EQUAL 2)
   find_package(rclcpp_lifecycle REQUIRED)
   find_package(mujoco_ros REQUIRED)
   find_package(geometry_msgs REQUIRED)
+  find_package(nav_msgs REQUIRED)
+  find_package(sensor_msgs REQUIRED)
   find_package(mujoco_ros_msgs REQUIRED)
   if(BUILD_PYTHON_BINDINGS)
     find_package(py_binding_tools QUIET)
@@ -151,6 +157,8 @@ elseif(ROS_VERSION EQUAL 2)
     rclcpp
     rclcpp_lifecycle
     geometry_msgs
+    nav_msgs
+    sensor_msgs
     mujoco_ros_msgs
     mujoco_ros
     pluginlib
@@ -195,6 +203,8 @@ elseif(ROS_VERSION EQUAL 2)
     rclcpp
     rclcpp_lifecycle
     geometry_msgs
+    nav_msgs
+    sensor_msgs
     mujoco_ros_msgs
     tf2
     tf2_ros

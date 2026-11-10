@@ -111,7 +111,9 @@ elseif(ROS_VERSION EQUAL 2)
     geometry_msgs
     mujoco_ros_testing_utils
     mujoco_ros_msgs
+    nav_msgs
     rclcpp
+    sensor_msgs
   )
 
   add_launch_test(launch/mujoco_compound_sensors.test.py
