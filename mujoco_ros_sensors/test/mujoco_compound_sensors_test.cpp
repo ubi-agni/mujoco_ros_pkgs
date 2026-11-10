@@ -21,6 +21,8 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/wrench_stamped.hpp>
+#include <mujoco_ros_msgs/srv/register_sensor_noise_models.hpp>
+#include <mujoco_ros_msgs/msg/sensor_noise_model.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -499,7 +501,9 @@ TEST_F(CompoundStreamFixture, ImuBallquatOrientationPublishes)
 	// ballquat_b measures joint ball_b of link_b, the same body as acc_b/gyro_b's site_b
 	Start({ { "imu_b",
 	          "IMU",
-	          { { "linear_acceleration", "acc_b" }, { "angular_velocity", "gyro_b" }, { "orientation", "ballquat_b" } } } });
+	          { { "linear_acceleration", "acc_b" },
+	            { "angular_velocity", "gyro_b" },
+	            { "orientation", "ballquat_b" } } } });
 	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
 	ExpectDemoted("imu_b", { "acc_b", "gyro_b", "ballquat_b" });
 
@@ -574,6 +578,144 @@ TEST_F(CompoundStreamFixture, InProcessReadDoesNotLeaveStalePartValuesForNextSte
 	ReceiveValueAndGt("a_wrench", next, next_gt, 1);
 	EXPECT_NE(next.wrench.force.z, read.wrench.force.z) << "value of the next step is the previous step's sample";
 	EXPECT_NE(next_gt.wrench.force.z, read.wrench.force.z) << "GT of the next step is the previous step's sample";
+}
+
+namespace {
+
+constexpr double kNoiseShift = 100.0;
+
+class CompoundNoiseFixture : public CompoundStreamFixture
+{
+protected:
+	/// Registers a zero-sigma mean shift of `kNoiseShift` on all three slots of `sensor_name`; returns the response.
+	bool RegisterShift(const std::string &sensor_name) { return RegisterShifts({ sensor_name }); }
+
+	/// One request carrying a shift entry per name, in order.
+	bool RegisterShifts(const std::vector<std::string> &sensor_names)
+	{
+		testing::ServiceCall<mujoco_ros_msgs::srv::RegisterSensorNoiseModels> srv;
+		for (const auto &sensor_name : sensor_names) {
+			mujoco_ros_msgs::msg::SensorNoiseModel model;
+			model.sensor_name = sensor_name;
+			model.mean        = { kNoiseShift, kNoiseShift, kNoiseShift };
+			model.std         = { 0.0, 0.0, 0.0 };
+			model.set_flag    = 7;
+			srv.request.noise_models.push_back(model);
+		}
+		srv.request.admin_hash = "";
+		env_ptr->togglePaused(true);
+		const std::string name = env_ptr->GetHandleNamespace() + "/mujoco_ros_sensors/sensors/register_noise_models";
+		const auto deadline    = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+		while (!testing::service_exists_for_test(env_ptr.get(), name) && std::chrono::steady_clock::now() < deadline) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		}
+		EXPECT_TRUE(testing::service_call_for_test(env_ptr.get(), name, srv)) << "service call itself failed";
+		return srv.response.success;
+	}
+};
+
+} // namespace
+
+TEST_F(CompoundNoiseFixture, WrenchRoleNoiseShiftsOnlyThatRoleAndNotGt)
+{
+	Start({ { "ee_wrench", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } } } });
+	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	EXPECT_TRUE(RegisterShift("ee_wrench.force"));
+
+	geometry_msgs::msg::WrenchStamped value, gt;
+	ReceiveValueAndGt("ee_wrench", value, gt);
+	EXPECT_SAMPLE(gt.wrench.force.x, Sensor("force_a", 0));
+	EXPECT_SAMPLE(gt.wrench.force.z, Sensor("force_a", 2));
+	EXPECT_NEAR(value.wrench.force.x - gt.wrench.force.x, kNoiseShift, 1e-3);
+	EXPECT_NEAR(value.wrench.force.y - gt.wrench.force.y, kNoiseShift, 1e-3);
+	EXPECT_NEAR(value.wrench.force.z - gt.wrench.force.z, kNoiseShift, 1e-3);
+	EXPECT_EQ(value.wrench.torque, gt.wrench.torque) << "torque role has no noise";
+}
+
+TEST_F(CompoundNoiseFixture, ImuRoleNoiseShiftsValueKeepsCovarianceUnknown)
+{
+	Start({ { "ee_imu",
+	          "IMU",
+	          { { "linear_acceleration", "acc_a" }, { "angular_velocity", "gyro_a" }, { "orientation", "quat_a" } } } });
+	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	EXPECT_TRUE(RegisterShift("ee_imu.linear_acceleration"));
+
+	sensor_msgs::msg::Imu value, gt;
+	ReceiveValueAndGt("ee_imu", value, gt);
+	EXPECT_NEAR(value.linear_acceleration.z - gt.linear_acceleration.z, kNoiseShift, 1e-3);
+	EXPECT_SAMPLE(gt.linear_acceleration.z, Sensor("acc_a", 2));
+	EXPECT_EQ(value.angular_velocity, gt.angular_velocity);
+	EXPECT_EQ(value.orientation, gt.orientation);
+	// noise must never leak into covariances
+	for (const auto *msg : { &value, &gt }) {
+		EXPECT_EQ(msg->linear_acceleration_covariance[0], -1.0);
+		EXPECT_EQ(msg->angular_velocity_covariance[0], -1.0);
+		EXPECT_EQ(msg->orientation_covariance[0], -1.0);
+		for (std::size_t i = 1; i < 9; ++i) {
+			EXPECT_EQ(msg->linear_acceleration_covariance[i], 0.0);
+			EXPECT_EQ(msg->angular_velocity_covariance[i], 0.0);
+			EXPECT_EQ(msg->orientation_covariance[i], 0.0);
+		}
+	}
+}
+
+TEST_F(CompoundNoiseFixture, UnknownCompoundOrRoleIsRejected)
+{
+	Start({ { "ee_wrench", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } } } });
+	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	EXPECT_FALSE(RegisterShift("ee_wrench.bogus"));
+	EXPECT_FALSE(RegisterShift("ee_wrench."));
+	EXPECT_FALSE(RegisterShift("ee_wrench.force.extra"));
+
+	geometry_msgs::msg::WrenchStamped value, gt;
+	ReceiveValueAndGt("ee_wrench", value, gt);
+	EXPECT_EQ(value.wrench.force, gt.wrench.force);
+	EXPECT_EQ(value.wrench.torque, gt.wrench.torque);
+}
+
+TEST_F(CompoundNoiseFixture, NoiseOnDemotedPartNameAloneDoesNotChangeCompound)
+{
+	Start({ { "ee_wrench", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } } } });
+	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	EXPECT_FALSE(RegisterShift("force_a")) << "part is no public noise target";
+
+	geometry_msgs::msg::WrenchStamped value, gt;
+	ReceiveValueAndGt("ee_wrench", value, gt);
+	EXPECT_EQ(value.wrench.force, gt.wrench.force);
+}
+
+TEST_F(CompoundNoiseFixture, DottedNameWithoutCompoundPrefixTakesNativePath)
+{
+	// ROS topic names cannot contain '.', so a dotted MJCF sensor never gets a native stream and cannot be applied to
+	// here. What is testable: with no compound "ft", "ft.force" is routed as a plain name (legacy unknown-sensor skip,
+	// success) and not rejected as compound.role; "ee_wrench.bogus" has a known compound prefix and is rejected.
+	Start({ { "ee_wrench", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } } } });
+	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	EXPECT_TRUE(RegisterShift("ft.force"));
+	EXPECT_TRUE(RegisterShift("no_such.force"));
+	EXPECT_FALSE(RegisterShift("ee_wrench.bogus"));
+
+	geometry_msgs::msg::WrenchStamped value, gt;
+	ReceiveValueAndGt("ee_wrench", value, gt);
+	EXPECT_EQ(value.wrench.force, gt.wrench.force);
+}
+
+TEST_F(CompoundNoiseFixture, RejectedEntryAppliesNothingFromTheSameRequest)
+{
+	// all-or-nothing on rejection: the valid first entry must not apply when a later entry is rejected
+	Start({ { "ee_wrench", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } } } });
+	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	EXPECT_FALSE(RegisterShifts({ "ee_wrench.force", "ee_wrench.bogus" }));
+
+	geometry_msgs::msg::WrenchStamped value, gt;
+	ReceiveValueAndGt("ee_wrench", value, gt);
+	EXPECT_EQ(value.wrench.force, gt.wrench.force);
+	EXPECT_EQ(value.wrench.torque, gt.wrench.torque);
+
+	// the same valid entry alone is accepted afterwards
+	EXPECT_TRUE(RegisterShifts({ "ee_wrench.force", "no_such_plain_sensor" })) << "unknown plain sensor stays a skip";
+	ReceiveValueAndGt("ee_wrench", value, gt);
+	EXPECT_NEAR(value.wrench.force.x - gt.wrench.force.x, kNoiseShift, 1e-3);
 }
 
 TEST_F(CompoundStreamFixture, UnclaimedSensorsStayPublic)
