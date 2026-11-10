@@ -12,6 +12,7 @@
 #include <mujoco_ros_msgs/msg/scalar_stamped.hpp>
 #endif
 
+#include <mujoco_ros_sensors/compound_sensors.hpp>
 #include <mujoco_ros_sensors/native_sensor_streams.hpp>
 #include <mujoco_ros_sensors/sensor_stream.hpp>
 
@@ -276,3 +277,191 @@ TEST(StreamCacheTest, GroundTruthThrowsInEvalMode)
 	EXPECT_THROW(eval->GroundTruth(s.model, s.data), std::runtime_error);
 }
 #endif
+
+namespace {
+
+mjModel *CompileCompoundWorld()
+{
+	static const char *xml = R"(
+<mujoco>
+  <worldbody>
+    <body name="a"><geom size=".1"/><site name="sa" pos="0 0 .1"/></body>
+    <body name="b"><geom size=".1"/><joint name="ball_b" type="ball"/><site name="sb" pos="0 0 .1"/></body>
+    <body name="c"><geom size=".1"/><joint name="ball_a" type="ball"/></body>
+  </worldbody>
+  <sensor>
+    <accelerometer name="acc_a" site="sa"/>
+    <framequat name="quat_a" objtype="site" objname="sa"/>
+    <framequat name="quat_a_body" objtype="xbody" objname="a"/>
+    <framequat name="quat_b" objtype="xbody" objname="b"/>
+    <ballquat name="bq_b" joint="ball_b"/>
+    <ballquat name="bq_c" joint="ball_a"/>
+  </sensor>
+</mujoco>)";
+	char error[1000]       = "";
+	mjSpec *spec           = mj_parseXMLString(xml, nullptr, error, sizeof(error));
+	EXPECT_NE(spec, nullptr) << error;
+	mjModel *model = spec ? mj_compile(spec, nullptr) : nullptr;
+	if (spec) {
+		mj_deleteSpec(spec);
+	}
+	return model;
+}
+
+int SensorId(const mjModel *model, const char *name)
+{
+	return mj_name2id(model, mjOBJ_SENSOR, name);
+}
+
+} // namespace
+
+TEST(CompoundKindTest, ParsesExactYamlTypeStrings)
+{
+	CompoundKind kind;
+	EXPECT_TRUE(ParseCompoundKind("IMU", kind));
+	EXPECT_EQ(kind, CompoundKind::kIMU);
+	EXPECT_TRUE(ParseCompoundKind("Twist", kind));
+	EXPECT_EQ(kind, CompoundKind::kTwist);
+	EXPECT_TRUE(ParseCompoundKind("Wrench", kind));
+	EXPECT_EQ(kind, CompoundKind::kWrench);
+	EXPECT_TRUE(ParseCompoundKind("Pose", kind));
+	EXPECT_EQ(kind, CompoundKind::kPose);
+	EXPECT_TRUE(ParseCompoundKind("Accel", kind));
+	EXPECT_EQ(kind, CompoundKind::kAccel);
+	EXPECT_TRUE(ParseCompoundKind("Odometry", kind));
+	EXPECT_EQ(kind, CompoundKind::kOdometry);
+}
+
+TEST(CompoundKindTest, RejectsNonExactStrings)
+{
+	CompoundKind kind = CompoundKind::kPose;
+	for (const char *bad : { "IMUSensor", "imu", "Imu", "", "Wrench ", "Odom" }) {
+		EXPECT_FALSE(ParseCompoundKind(bad, kind)) << bad;
+	}
+	EXPECT_EQ(kind, CompoundKind::kPose);
+}
+
+TEST(CompoundRolesTest, RequiredRolesPerKind)
+{
+	using V = std::vector<std::string>;
+	EXPECT_EQ(RequiredRoles(CompoundKind::kIMU), (V{ "linear_acceleration", "angular_velocity", "orientation" }));
+	EXPECT_EQ(RequiredRoles(CompoundKind::kTwist), (V{ "linear", "angular" }));
+	EXPECT_EQ(RequiredRoles(CompoundKind::kWrench), (V{ "force", "torque" }));
+	EXPECT_EQ(RequiredRoles(CompoundKind::kPose), (V{ "position", "orientation" }));
+	EXPECT_EQ(RequiredRoles(CompoundKind::kAccel), (V{ "linear", "angular" }));
+	EXPECT_EQ(RequiredRoles(CompoundKind::kOdometry), (V{ "position", "orientation", "linear", "angular" }));
+}
+
+TEST(CompoundRolesTest, WrenchForceAndTorqueTypesDiffer)
+{
+	EXPECT_TRUE(RoleAcceptsMjType(CompoundKind::kWrench, "force", mjSENS_FORCE));
+	EXPECT_FALSE(RoleAcceptsMjType(CompoundKind::kWrench, "force", mjSENS_TORQUE));
+	EXPECT_TRUE(RoleAcceptsMjType(CompoundKind::kWrench, "torque", mjSENS_TORQUE));
+	EXPECT_FALSE(RoleAcceptsMjType(CompoundKind::kWrench, "torque", mjSENS_FORCE));
+}
+
+TEST(CompoundRolesTest, ImuRoleTypeSets)
+{
+	const auto k = CompoundKind::kIMU;
+	EXPECT_TRUE(RoleAcceptsMjType(k, "linear_acceleration", mjSENS_ACCELEROMETER));
+	EXPECT_TRUE(RoleAcceptsMjType(k, "linear_acceleration", mjSENS_FRAMELINACC));
+	EXPECT_FALSE(RoleAcceptsMjType(k, "linear_acceleration", mjSENS_GYRO));
+	EXPECT_TRUE(RoleAcceptsMjType(k, "angular_velocity", mjSENS_GYRO));
+	EXPECT_TRUE(RoleAcceptsMjType(k, "angular_velocity", mjSENS_FRAMEANGVEL));
+	EXPECT_TRUE(RoleAcceptsMjType(k, "angular_velocity", mjSENS_BALLANGVEL));
+	EXPECT_FALSE(RoleAcceptsMjType(k, "angular_velocity", mjSENS_ACCELEROMETER));
+	EXPECT_TRUE(RoleAcceptsMjType(k, "orientation", mjSENS_FRAMEQUAT));
+	EXPECT_TRUE(RoleAcceptsMjType(k, "orientation", mjSENS_BALLQUAT));
+	EXPECT_FALSE(RoleAcceptsMjType(k, "orientation", mjSENS_FRAMEPOS));
+}
+
+TEST(CompoundRolesTest, TwistPoseAccelAndOdometrySets)
+{
+	EXPECT_TRUE(RoleAcceptsMjType(CompoundKind::kTwist, "linear", mjSENS_FRAMELINVEL));
+	EXPECT_FALSE(RoleAcceptsMjType(CompoundKind::kTwist, "linear", mjSENS_FRAMELINACC));
+	EXPECT_TRUE(RoleAcceptsMjType(CompoundKind::kTwist, "angular", mjSENS_FRAMEANGVEL));
+	EXPECT_TRUE(RoleAcceptsMjType(CompoundKind::kPose, "position", mjSENS_FRAMEPOS));
+	EXPECT_FALSE(RoleAcceptsMjType(CompoundKind::kPose, "position", mjSENS_FRAMELINVEL));
+	EXPECT_TRUE(RoleAcceptsMjType(CompoundKind::kPose, "orientation", mjSENS_BALLQUAT));
+	EXPECT_TRUE(RoleAcceptsMjType(CompoundKind::kAccel, "linear", mjSENS_FRAMELINACC));
+	EXPECT_TRUE(RoleAcceptsMjType(CompoundKind::kAccel, "angular", mjSENS_FRAMEANGACC));
+	EXPECT_FALSE(RoleAcceptsMjType(CompoundKind::kAccel, "angular", mjSENS_FRAMEANGVEL));
+	EXPECT_TRUE(RoleAcceptsMjType(CompoundKind::kOdometry, "position", mjSENS_FRAMEPOS));
+	EXPECT_TRUE(RoleAcceptsMjType(CompoundKind::kOdometry, "orientation", mjSENS_FRAMEQUAT));
+	EXPECT_TRUE(RoleAcceptsMjType(CompoundKind::kOdometry, "linear", mjSENS_FRAMELINVEL));
+	EXPECT_TRUE(RoleAcceptsMjType(CompoundKind::kOdometry, "angular", mjSENS_FRAMEANGVEL));
+	EXPECT_FALSE(RoleAcceptsMjType(CompoundKind::kOdometry, "angular", mjSENS_GYRO));
+}
+
+TEST(CompoundRolesTest, UnknownRoleRejected)
+{
+	EXPECT_FALSE(RoleAcceptsMjType(CompoundKind::kWrench, "linear", mjSENS_FORCE));
+	EXPECT_FALSE(RoleAcceptsMjType(CompoundKind::kPose, "", mjSENS_FRAMEPOS));
+}
+
+TEST(CompoundBodyIdTest, ResolvesSiteBodyAndBallJointBody)
+{
+	mjModel *model = CompileCompoundWorld();
+	ASSERT_NE(model, nullptr);
+	int body = -1;
+	std::string error;
+	const int body_a = mj_name2id(model, mjOBJ_BODY, "a");
+	const int body_b = mj_name2id(model, mjOBJ_BODY, "b");
+	EXPECT_TRUE(ResolveSensorBodyId(model, SensorId(model, "acc_a"), body, error)) << error;
+	EXPECT_EQ(body, body_a);
+	EXPECT_TRUE(ResolveSensorBodyId(model, SensorId(model, "quat_a_body"), body, error)) << error;
+	EXPECT_EQ(body, body_a);
+	EXPECT_TRUE(ResolveSensorBodyId(model, SensorId(model, "bq_b"), body, error)) << error;
+	EXPECT_EQ(body, body_b);
+	mj_deleteModel(model);
+}
+
+TEST(CompoundBodyIdTest, InvalidSensorIdFails)
+{
+	mjModel *model = CompileCompoundWorld();
+	ASSERT_NE(model, nullptr);
+	int body = -2;
+	std::string error;
+	EXPECT_FALSE(ResolveSensorBodyId(model, -1, body, error));
+	EXPECT_FALSE(error.empty());
+	EXPECT_FALSE(ResolveSensorBodyId(model, model->nsensor, body, error));
+	mj_deleteModel(model);
+}
+
+TEST(CompoundBodyIdTest, SensorWithoutBodyObjectFails)
+{
+	mjModel *model = CompileCompoundWorld();
+	ASSERT_NE(model, nullptr);
+	// Emulate an object type with no body owner.
+	const int id = SensorId(model, "quat_a_body");
+	model->sensor_objtype[id] = mjOBJ_UNKNOWN;
+	int body = -2;
+	std::string error;
+	EXPECT_FALSE(ResolveSensorBodyId(model, id, body, error));
+	EXPECT_FALSE(error.empty());
+	mj_deleteModel(model);
+}
+
+TEST(CompoundAnchorTest, SameBodyMatchesAcrossSiteAndXbody)
+{
+	mjModel *model = CompileCompoundWorld();
+	ASSERT_NE(model, nullptr);
+	std::string error;
+	EXPECT_TRUE(SameAnchorBody(model, SensorId(model, "acc_a"), SensorId(model, "quat_a"), error)) << error;
+	EXPECT_TRUE(SameAnchorBody(model, SensorId(model, "acc_a"), SensorId(model, "quat_a_body"), error)) << error;
+	mj_deleteModel(model);
+}
+
+TEST(CompoundAnchorTest, MismatchedBallQuatFails)
+{
+	mjModel *model = CompileCompoundWorld();
+	ASSERT_NE(model, nullptr);
+	std::string error;
+	// ball_a lives on body "c", not on the anchor body "a".
+	EXPECT_FALSE(SameAnchorBody(model, SensorId(model, "acc_a"), SensorId(model, "bq_c"), error));
+	EXPECT_FALSE(error.empty());
+	error.clear();
+	EXPECT_FALSE(SameAnchorBody(model, SensorId(model, "acc_a"), SensorId(model, "quat_b"), error));
+	EXPECT_FALSE(error.empty());
+	mj_deleteModel(model);
+}

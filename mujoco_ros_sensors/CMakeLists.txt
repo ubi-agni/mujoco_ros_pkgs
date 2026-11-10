@@ -57,6 +57,7 @@ if(ROS_VERSION EQUAL 1)
   add_library(${PROJECT_NAME}
     src/mujoco_sensor_handler_plugin.cpp
     src/native_sensor_streams.cpp
+    src/compound_sensors.cpp
   )
 
   target_include_directories(${PROJECT_NAME} PUBLIC
@@ -138,6 +139,7 @@ elseif(ROS_VERSION EQUAL 2)
   add_library(${PROJECT_NAME} SHARED
     src/mujoco_sensor_handler_plugin.cpp
     src/native_sensor_streams.cpp
+    src/compound_sensors.cpp
   )
 
   target_include_directories(${PROJECT_NAME} PUBLIC

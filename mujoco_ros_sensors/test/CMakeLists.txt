@@ -34,6 +34,7 @@ if(ROS_VERSION EQUAL 1)
   catkin_add_gtest(sensor_stream_test
     sensor_stream_test.cpp
     ../src/native_sensor_streams.cpp
+    ../src/compound_sensors.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../mujoco_ros/src/sensor_hub.cpp
   )
   target_include_directories(sensor_stream_test PRIVATE
