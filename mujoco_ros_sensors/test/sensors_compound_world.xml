@@ -1,0 +1,43 @@
+<mujoco model="compound_world">
+    <option timestep="0.001" gravity="0 0 -9.81" />
+    <compiler angle="radian" />
+
+    <worldbody>
+        <geom name="ground_plane" type="plane" size="5 5 10" />
+        <body name="link_a" pos="0 0 1">
+            <geom type="capsule" fromto="0 0 0  0 0 -0.3" size="0.04" />
+            <joint name="hinge_a" type="hinge" axis="0 1 0" />
+            <site name="site_a" size="0.001" />
+            <body name="link_b" pos="0 0 -0.3">
+                <geom type="capsule" fromto="0 0 0  0 0 -0.3" size="0.03" />
+                <joint name="ball_b" type="ball" />
+                <site name="site_b" size="0.001" />
+            </body>
+        </body>
+    </worldbody>
+
+    <sensor>
+        <!-- link_a: sensors with frame_id link_a. MuJoCo has no ref frame for framelinacc/frameangacc, and the
+             native plugin leaves their frame_id at world, so an Accel pair always shares one frame. -->
+        <accelerometer name="acc_a"     site="site_a" />
+        <gyro          name="gyro_a"    site="site_a" />
+        <force         name="force_a"   site="site_a" />
+        <torque        name="torque_a"  site="site_a" />
+        <framequat     name="quat_a"    objtype="xbody" objname="link_a" />
+        <framepos      name="pos_a"     objtype="xbody" objname="link_a" />
+        <framelinvel   name="linvel_a"  objtype="site" objname="site_a" reftype="body" refname="link_a" />
+        <frameangvel   name="angvel_a"  objtype="site" objname="site_a" reftype="body" refname="link_a" />
+        <framelinacc   name="linacc_a"  objtype="site" objname="site_a" />
+        <frameangacc   name="angacc_a"  objtype="site" objname="site_a" />
+
+        <!-- link_b: other body, so other frame_id and other orientation identity -->
+        <accelerometer name="acc_b"      site="site_b" />
+        <gyro          name="gyro_b"     site="site_b" />
+        <torque        name="torque_b"   site="site_b" />
+        <framequat     name="quat_b"     objtype="xbody" objname="link_b" />
+        <ballquat      name="ballquat_b" joint="ball_b" />
+
+        <!-- frame_id world, differs from link_a -->
+        <frameangvel   name="angvel_world" objtype="site" objname="site_a" />
+    </sensor>
+</mujoco>

@@ -20,6 +20,27 @@ if(ROS_VERSION EQUAL 1)
     Eigen3::Eigen
   )
 
+  add_rostest_gtest(mujoco_compound_sensors_test
+    launch/mujoco_compound_sensors.test
+    mujoco_compound_sensors_test.cpp
+  )
+
+  add_dependencies(mujoco_compound_sensors_test
+    ${${PROJECT_NAME}_EXPORTED_TARGETS}
+    ${catkin_EXPORTED_TARGETS}
+  )
+
+  target_link_libraries(mujoco_compound_sensors_test
+    ${PROJECT_NAME}
+    ${catkin_LIBRARIES}
+  )
+
+  target_include_directories(mujoco_compound_sensors_test SYSTEM
+    PRIVATE
+      ${catkin_INCLUDE_DIRS}
+      ${mujoco_ros_testing_utils_INCLUDE_DIRS}
+  )
+
   # Master-free unit: compile stream + hub sources only. Linking ${PROJECT_NAME}
   # pulls libmujoco_ros / plugin NodeHandle paths that advertise against a ROS
   # master and hang with Connection refused when none is running.
@@ -75,6 +96,26 @@ elseif(ROS_VERSION EQUAL 2)
     rclcpp
     tf2
     tf2_geometry_msgs
+  )
+
+  ament_add_gtest_executable(mujoco_compound_sensors_test
+    mujoco_compound_sensors_test.cpp
+  )
+
+  target_link_libraries(mujoco_compound_sensors_test
+    ${PROJECT_NAME}
+  )
+
+  ament_target_dependencies(mujoco_compound_sensors_test
+    ament_index_cpp
+    mujoco_ros_testing_utils
+    mujoco_ros_msgs
+    rclcpp
+  )
+
+  add_launch_test(launch/mujoco_compound_sensors.test.py
+    TARGET mujoco_compound_sensors_test_launch
+    ARGS "test_binary:=$<TARGET_FILE:mujoco_compound_sensors_test>"
   )
 
   ament_add_gtest(sensor_stream_test

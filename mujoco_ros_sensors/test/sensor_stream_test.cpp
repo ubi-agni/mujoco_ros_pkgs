@@ -7,6 +7,10 @@
 
 #include <gtest/gtest.h>
 
+#include <map>
+#include <string>
+#include <vector>
+
 #include <mujoco_ros/ros_version.hpp>
 #if MJR_ROS_VERSION == ROS_2
 #include <mujoco_ros_msgs/msg/scalar_stamped.hpp>
@@ -296,6 +300,9 @@ mjModel *CompileCompoundWorld()
     <framequat name="quat_b" objtype="xbody" objname="b"/>
     <ballquat name="bq_b" joint="ball_b"/>
     <ballquat name="bq_c" joint="ball_a"/>
+    <framelinacc name="linacc_a" objtype="site" objname="sa"/>
+    <frameangacc name="angacc_a" objtype="site" objname="sa"/>
+    <gyro name="gyro_a" site="sa"/>
   </sensor>
 </mujoco>)";
 	char error[1000]       = "";
@@ -463,5 +470,69 @@ TEST(CompoundAnchorTest, MismatchedBallQuatFails)
 	error.clear();
 	EXPECT_FALSE(SameAnchorBody(model, SensorId(model, "acc_a"), SensorId(model, "quat_b"), error));
 	EXPECT_FALSE(error.empty());
+	mj_deleteModel(model);
+}
+
+namespace {
+
+CompoundSpec AccelSpec()
+{
+	return { "accel", "Accel", { { "linear", "linacc_a" }, { "angular", "angacc_a" } }, 0.0 };
+}
+
+} // namespace
+
+TEST(ValidateCompoundsTest, AccelSharedFrameIsAccepted)
+{
+	mjModel *model = CompileCompoundWorld();
+	ASSERT_NE(model, nullptr);
+	std::vector<CompoundDescriptor> out;
+	std::string error;
+	ASSERT_TRUE(ValidateCompounds(model, { AccelSpec() }, { { "linacc_a", "a" }, { "angacc_a", "a" } }, out, error))
+	    << error;
+	ASSERT_EQ(out.size(), 1u);
+	EXPECT_EQ(out[0].frame_id, "a");
+	mj_deleteModel(model);
+}
+
+TEST(ValidateCompoundsTest, AccelFrameMismatchFailsLoud)
+{
+	mjModel *model = CompileCompoundWorld();
+	ASSERT_NE(model, nullptr);
+	std::vector<CompoundDescriptor> out;
+	std::string error;
+	EXPECT_FALSE(ValidateCompounds(model, { AccelSpec() }, { { "linacc_a", "a" }, { "angacc_a", "world" } }, out, error));
+	EXPECT_NE(error.find("must share one frame_id"), std::string::npos) << error;
+	EXPECT_TRUE(out.empty());
+	mj_deleteModel(model);
+}
+
+TEST(ValidateCompoundsTest, SensorWithoutStreamCannotBeClaimed)
+{
+	mjModel *model = CompileCompoundWorld();
+	ASSERT_NE(model, nullptr);
+	std::vector<CompoundDescriptor> out;
+	std::string error;
+	// angacc_a exists in the model but is missing from the stream-backed frame map.
+	EXPECT_FALSE(ValidateCompounds(model, { AccelSpec() }, { { "linacc_a", "a" } }, out, error));
+	EXPECT_NE(error.find("no native stream"), std::string::npos) << error;
+	mj_deleteModel(model);
+}
+
+TEST(ValidateCompoundsTest, EmptyAndDuplicateNamesFail)
+{
+	mjModel *model = CompileCompoundWorld();
+	ASSERT_NE(model, nullptr);
+	const std::map<std::string, std::string> frames = { { "linacc_a", "a" }, { "angacc_a", "a" }, { "gyro_a", "a" } };
+	std::vector<CompoundDescriptor> out;
+	std::string error;
+	CompoundSpec empty_name = AccelSpec();
+	empty_name.name         = "";
+	EXPECT_FALSE(ValidateCompounds(model, { empty_name }, frames, out, error));
+	EXPECT_NE(error.find("must not be empty"), std::string::npos) << error;
+	CompoundSpec second = AccelSpec();
+	second.roles        = { { "linear", "linacc_a" }, { "angular", "gyro_a" } };
+	EXPECT_FALSE(ValidateCompounds(model, { AccelSpec(), second }, frames, out, error));
+	EXPECT_NE(error.find("duplicate compound name"), std::string::npos) << error;
 	mj_deleteModel(model);
 }
