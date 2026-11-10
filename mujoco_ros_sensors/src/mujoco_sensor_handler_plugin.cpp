@@ -46,6 +46,10 @@
 
 #include <mujoco_ros/util.hpp>
 
+#include <algorithm>
+#include <type_traits>
+#include <utility>
+
 namespace mujoco_ros::sensors {
 
 namespace {
@@ -225,51 +229,84 @@ void MujocoRosSensorsPlugin::RegisterNoiseModelsCB(
 	auto &noise_models = req->noise_models;
 #endif
 
+	// All-or-nothing for rejections: resolve every entry first, apply only if none is rejected. An unknown plain
+	// sensor stays a skip (legacy contract, UnknownSensorAddNoise) and does not block the other entries.
+	using NoiseModelT = std::decay_t<decltype(noise_models)>::value_type;
+	std::vector<std::pair<const NoiseModelT *, SensorConfig *>> resolved;
+	bool rejected = false;
 	for (const auto &noise_model : noise_models) {
 		MJR_WARN_STREAM_NAMED("sensors", "registering noise model for " << noise_model.sensor_name);
-		int noise_idx = 0;
+		const std::string &name = noise_model.sensor_name;
 
-		const auto pos = sensor_map_.find(noise_model.sensor_name);
+		// "<compound>.<role>" only when the left side is a known compound; otherwise the full name is a native sensor
+		// (MJCF names may contain dots). A compound name wins over a native sensor sharing its prefix.
+		const auto dot  = name.find('.');
+		const auto desc = dot == std::string::npos ?
+		                      compounds_.end() :
+		                      std::find_if(compounds_.begin(), compounds_.end(),
+		                                   [&](const CompoundDescriptor &d) { return d.name == name.substr(0, dot); });
+		if (desc != compounds_.end()) {
+			// The role's part config feeds the compound value; GT never reads noise.
+			const auto role_it = desc->roles.find(name.substr(dot + 1));
+			const auto part    = role_it == desc->roles.end() ? sensor_map_.end() : sensor_map_.find(role_it->second);
+			if (part == sensor_map_.end()) {
+				MJR_WARN_STREAM_NAMED("sensors", "No role '" << name << "' exists on compound. Can not apply noise model");
+				rejected = true;
+				continue;
+			}
+			resolved.emplace_back(&noise_model, part->second.get());
+			continue;
+		}
+
+		const auto pos = sensor_map_.find(name);
 		if (pos == sensor_map_.end()) {
-			MJR_WARN_STREAM_NAMED("sensors", "No sensor with name '"
-			                                     << noise_model.sensor_name
-			                                     << "' was registered on init. Can not apply noise model");
+			MJR_WARN_STREAM_NAMED("sensors", "No sensor with name '" << name
+			                                                         << "' was registered on init. Can not apply noise "
+			                                                            "model");
 			continue;
 		}
-
-		// A claimed part's config feeds its compound's value; noise there would be applied unseen.
-		const auto stream_it = streams_.find(noise_model.sensor_name);
+		// A claimed part's config feeds its compound's value; address it as "<compound>.<role>" instead.
+		const auto stream_it = streams_.find(name);
 		if (stream_it != streams_.end() && !stream_it->second->is_public()) {
-			MJR_WARN_STREAM_NAMED("sensors", "Sensor '" << noise_model.sensor_name
-			                                            << "' is claimed by a compound sensor. Can not apply noise model");
+			MJR_WARN_STREAM_NAMED("sensors", "Sensor '" << name
+			                                            << "' is claimed by a compound sensor. Can not apply "
+			                                               "noise model");
+			rejected = true;
 			continue;
 		}
-
-		const SensorConfigPtr &config = pos->second;
-
-		if (noise_model.set_flag & 0x01) {
-			config->mean[noise_idx]  = noise_model.mean[noise_idx];
-			config->sigma[noise_idx] = noise_model.std[noise_idx];
-			noise_idx += 1;
-		}
-		if (noise_model.set_flag & 0x02) {
-			config->mean[noise_idx]  = noise_model.mean[noise_idx];
-			config->sigma[noise_idx] = noise_model.std[noise_idx];
-			noise_idx += 1;
-		}
-		if (noise_model.set_flag & 0x04) {
-			config->mean[noise_idx]  = noise_model.mean[noise_idx];
-			config->sigma[noise_idx] = noise_model.std[noise_idx];
-		}
-
-		config->is_set = config->is_set | noise_model.set_flag;
+		resolved.emplace_back(&noise_model, pos->second.get());
 	}
 
+	if (rejected) {
+		MJR_ERROR_STREAM_NAMED("sensors", "Noise request rejected, no noise model was applied");
+	} else {
+		for (const auto &[noise_model_ptr, config] : resolved) {
+			const auto &noise_model = *noise_model_ptr;
+			int noise_idx           = 0;
+			if (noise_model.set_flag & 0x01) {
+				config->mean[noise_idx]  = noise_model.mean[noise_idx];
+				config->sigma[noise_idx] = noise_model.std[noise_idx];
+				noise_idx += 1;
+			}
+			if (noise_model.set_flag & 0x02) {
+				config->mean[noise_idx]  = noise_model.mean[noise_idx];
+				config->sigma[noise_idx] = noise_model.std[noise_idx];
+				noise_idx += 1;
+			}
+			if (noise_model.set_flag & 0x04) {
+				config->mean[noise_idx]  = noise_model.mean[noise_idx];
+				config->sigma[noise_idx] = noise_model.std[noise_idx];
+			}
+			config->is_set = config->is_set | noise_model.set_flag;
+		}
+	}
+	const bool all_applied = !rejected;
+
 #if MJR_ROS_VERSION == ROS_1
-	resp.success = true;
+	resp.success = all_applied;
 	return true;
 #else
-	resp->success = true;
+	resp->success = all_applied;
 #endif
 }
 
