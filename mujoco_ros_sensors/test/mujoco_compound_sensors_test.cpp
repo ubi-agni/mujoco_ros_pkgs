@@ -47,6 +47,7 @@ struct CompoundParams
 	std::string name;
 	std::string type;
 	std::map<std::string, std::string> roles;
+	double update_rate = 0.0; ///< Hz, 0 = unset
 };
 
 std::string compound_world_path()
@@ -87,6 +88,9 @@ protected:
 					continue;
 				}
 				nh->setParam(base + "." + compound.name + ".type", compound.type);
+				if (compound.update_rate > 0.0) {
+					nh->setParam(base + "." + compound.name + ".update_rate", compound.update_rate);
+				}
 				for (const auto &[role, sensor] : compound.roles) {
 					nh->setParam(base + "." + compound.name + "." + role, sensor);
 				}
@@ -728,4 +732,36 @@ TEST_F(CompoundStreamFixture, UnclaimedSensorsStayPublic)
 	const auto topics = testing::get_available_topics_for_test(env_ptr.get());
 	EXPECT_TRUE(testing::has_topic(topics, TopicOf("acc_a")));
 }
+
+// Python reads `data` every step regardless of rate; asserted in test_sensor_stream_python.py.
+TEST_F(CompoundStreamFixture, CompoundUpdateRateThrottlesRosPublish)
+{
+	constexpr double RATE_HZ = 10.0;
+	Start({ { "ee_wrench", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } }, RATE_HZ } });
+	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+
+	int received = 0;
+	std::mutex mutex;
+	env_ptr->togglePaused(true);
+	auto sub = env_ptr->template create_subscription<geometry_msgs::msg::WrenchStamped>(
+	    TopicOf("ee_wrench"), rclcpp::QoS(1000), [&](geometry_msgs::msg::WrenchStamped::ConstSharedPtr) {
+		    std::lock_guard<std::mutex> lock(mutex);
+		    received++;
+	    });
+	std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+	const mjModel *m = env_ptr->getModelPtr();
+	const int steps  = static_cast<int>(std::ceil(1.0 / m->opt.timestep));
+	const double t0  = env_ptr->getDataPtr()->time;
+	env_ptr->step(steps);
+	const double elapsed = env_ptr->getDataPtr()->time - t0;
+	std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+	std::lock_guard<std::mutex> lock(mutex);
+	// One publish per period, plus the first step after the (possibly stale) last publish.
+	EXPECT_NEAR(static_cast<double>(received), elapsed * RATE_HZ, 1.5) << "elapsed " << elapsed;
+	EXPECT_LT(received, steps / 2);
+	EXPECT_GE(received, 1);
+}
+
 #endif
