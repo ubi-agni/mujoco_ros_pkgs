@@ -17,6 +17,12 @@
                 <site name="site_b" size="0.001" />
             </body>
         </body>
+        <!-- World-parented ball joint: the only ballquat that is a world-frame orientation (IMU ballquat case) -->
+        <body name="link_c" pos="1 0 1" euler="0 0.4 0">
+            <geom type="capsule" fromto="0 0 0  0 0 -0.3" size="0.03" />
+            <joint name="ball_c" type="ball" />
+            <site name="site_c" size="0.001" />
+        </body>
     </worldbody>
 
     <sensor>
@@ -27,6 +33,7 @@
         <force         name="force_a"   site="site_a" />
         <torque        name="torque_a"  site="site_a" />
         <framequat     name="quat_a"    objtype="xbody" objname="link_a" />
+        <framequat     name="imu_quat_a" objtype="xbody" objname="link_a" />
         <framepos      name="pos_a"     objtype="xbody" objname="link_a" />
         <framelinvel   name="linvel_a"  objtype="site" objname="site_a" reftype="body" refname="link_a" />
         <frameangvel   name="angvel_a"  objtype="site" objname="site_a" reftype="body" refname="link_a" />
@@ -41,6 +48,20 @@
         <ballquat      name="ballquat_b" joint="ball_b" />
         <!-- link_b position expressed in link_a: pairs with quat_b (same body) for a Pose with frame_id link_a -->
         <framepos      name="pos_b_in_a" objtype="xbody" objname="link_b" reftype="body" refname="link_a" />
+        <!-- same body and reference as pos_b_in_a, so they form a valid Pose/Odometry pair -->
+        <framequat     name="quat_b_in_a" objtype="xbody" objname="link_b" reftype="body" refname="link_a" />
+        <!-- link_b in the world frame: pairs with quat_b -->
+        <framepos      name="pos_b"      objtype="xbody" objname="link_b" />
+        <!-- link_b motion in world: shares frame_id world with linvel_world/angvel_world but is another body -->
+        <framelinvel   name="linvel_b_world" objtype="site" objname="site_b" />
+        <frameangvel   name="angvel_b_world" objtype="site" objname="site_b" />
+        <!-- link_b angular velocity expressed in link_a: same frame_id as acc_a, other body -->
+        <frameangvel   name="angvel_b_in_a" objtype="site" objname="site_b" reftype="body" refname="link_a" />
+
+        <!-- link_c: world-parented ball joint, all sensors on one body -->
+        <accelerometer name="acc_c"       site="site_c" />
+        <ballangvel    name="ballangvel_c" joint="ball_c" />
+        <ballquat      name="ballquat_c" joint="ball_c" />
 
         <!-- frame_id world, differs from link_a -->
         <frameangvel   name="angvel_world" objtype="site" objname="site_a" />

@@ -66,10 +66,10 @@ protected:
 	std::unique_ptr<MujocoEnvTestWrapper> env_ptr;
 
 	// compound_sensors cannot be nested in ROS 2 params from this fixture; ROS 1 supplies them via launch rosparam.
-	void Start(const std::vector<CompoundParams> &compounds)
+	void Start(const std::vector<CompoundParams> &compounds, bool eval_mode = false)
 	{
 		nh = std::make_unique<testing::TestNodeHandle>("~");
-		nh->setParam("eval_mode", false);
+		nh->setParam("eval_mode", eval_mode);
 		nh->setParam("unpause", true);
 		nh->setParam("no_render", true);
 #if MJR_ROS_VERSION == ROS_1
@@ -98,7 +98,7 @@ protected:
 			nh->setParam(base, names);
 		}
 #endif
-		env_ptr                    = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+		env_ptr                    = std::make_unique<MujocoEnvTestWrapper>(eval_mode ? "some_hash" : "", nh.get());
 		const std::string xml_path = compound_world_path();
 		env_ptr->StartWithXML(xml_path);
 
@@ -166,6 +166,26 @@ TEST_F(CompoundLoadFixture, AbsentCompoundSensorsLoads)
 	ExpectLoads({});
 }
 
+#if MJR_ROS_VERSION == ROS_1
+// compound_sensors reach ROS 1 only through the launch file's rosparam; these two run from their own rostest launch
+// files (mujoco_compound_sensors_rosparam*.test) and are filtered out of the default launch.
+using Ros1Rosparam = CompoundLoadFixture;
+
+TEST_F(Ros1Rosparam, CompoundLoads)
+{
+	ExpectLoads({});
+	const auto native = env_ptr->sensors().Native();
+	EXPECT_NE(native.Get("ee_wrench"), nullptr) << "compound from rosparam must be a public stream";
+	EXPECT_EQ(native.Get("force_a"), nullptr) << "claimed part must be demoted";
+	EXPECT_EQ(native.Get("torque_a"), nullptr) << "claimed part must be demoted";
+}
+
+TEST_F(Ros1Rosparam, InvalidCompoundFailsLoad)
+{
+	ExpectLoadFails({});
+}
+#endif
+
 #if MJR_ROS_VERSION == ROS_2
 TEST_F(CompoundLoadFixture, ValidCompoundsLoad)
 {
@@ -184,9 +204,20 @@ TEST_F(CompoundLoadFixture, ValidPoseAndOdometryLoad)
 {
 	ExpectLoads({
 	    { "pose", "Pose", { { "position", "pos_a" }, { "orientation", "quat_a" } } },
-	    { "imu_b",
+	    // ballquat_b is relative to link_a (its joint parent), exactly pos_b_in_a's reference body
+	    { "pose_b", "Pose", { { "position", "pos_b_in_a" }, { "orientation", "ballquat_b" } } },
+	    // world-parented ball joint: a valid IMU orientation; ballangvel resolves its frame via the joint's body
+	    { "imu_c",
 	      "IMU",
-	      { { "linear_acceleration", "acc_b" }, { "angular_velocity", "gyro_b" }, { "orientation", "ballquat_b" } } },
+	      { { "linear_acceleration", "acc_c" },
+	        { "angular_velocity", "ballangvel_c" },
+	        { "orientation", "ballquat_c" } } },
+	    { "odom_b",
+	      "Odometry",
+	      { { "position", "pos_b" },
+	        { "orientation", "quat_b" },
+	        { "linear", "linvel_b_world" },
+	        { "angular", "angvel_b_world" } } },
 	});
 }
 
@@ -242,6 +273,75 @@ TEST_F(CompoundLoadFixture, ImuOrientationOnOtherBodyFailsLoad)
 	        { { "linear_acceleration", "acc_a" }, { "angular_velocity", "gyro_a" }, { "orientation", "quat_b" } } } });
 }
 
+TEST_F(CompoundLoadFixture, ImuAngularVelocityOnOtherBodyFailsLoad)
+{
+	// angvel_b_in_a has frame_id link_a like acc_a but measures link_b: frame strings agree, bodies do not
+	ExpectLoadFails({ { "c",
+	                    "IMU",
+	                    { { "linear_acceleration", "acc_a" },
+	                      { "angular_velocity", "angvel_b_in_a" },
+	                      { "orientation", "quat_a" } } } });
+}
+
+TEST_F(CompoundLoadFixture, ImuBallquatWithNonWorldParentFailsLoad)
+{
+	// ball_b hangs off link_a: ballquat_b is relative to link_a, not a world orientation
+	ExpectLoadFails({ { "c",
+	                    "IMU",
+	                    { { "linear_acceleration", "acc_b" },
+	                      { "angular_velocity", "gyro_b" },
+	                      { "orientation", "ballquat_b" } } } });
+}
+
+TEST_F(CompoundLoadFixture, PoseMixedReferenceFramesFailsLoad)
+{
+	// same body link_b, but position relative to link_a and orientation relative to world
+	ExpectLoadFails({ { "c", "Pose", { { "position", "pos_b_in_a" }, { "orientation", "quat_b" } } } });
+}
+
+TEST_F(CompoundLoadFixture, PoseMixedReferenceFramesOtherWayFailsLoad)
+{
+	ExpectLoadFails({ { "c", "Pose", { { "position", "pos_b" }, { "orientation", "quat_b_in_a" } } } });
+}
+
+TEST_F(CompoundLoadFixture, PoseBallquatParentMustMatchPositionReference)
+{
+	// ballquat_b is relative to link_a, the position is relative to the world
+	ExpectLoadFails({ { "c", "Pose", { { "position", "pos_b" }, { "orientation", "ballquat_b" } } } });
+}
+
+TEST_F(CompoundLoadFixture, OdometryMixedReferenceFramesFailsLoad)
+{
+	ExpectLoadFails({ { "c",
+	                    "Odometry",
+	                    { { "position", "pos_b_in_a" },
+	                      { "orientation", "quat_b" },
+	                      { "linear", "linvel_b_world" },
+	                      { "angular", "angvel_b_world" } } } });
+}
+
+TEST_F(CompoundLoadFixture, OdometryTwistOnOtherBodyThanPoseFailsLoad)
+{
+	// pose on link_b, twist on link_a (frame_id world on both twist parts)
+	ExpectLoadFails({ { "c",
+	                    "Odometry",
+	                    { { "position", "pos_b_in_a" },
+	                      { "orientation", "quat_b_in_a" },
+	                      { "linear", "linvel_world" },
+	                      { "angular", "angvel_world" } } } });
+}
+
+TEST_F(CompoundLoadFixture, OdometryLinearAndAngularOnDifferentBodiesFailsLoad)
+{
+	// both twist parts share frame_id world; linvel_world is on link_a, angvel_b_world on link_b
+	ExpectLoadFails({ { "c",
+	                    "Odometry",
+	                    { { "position", "pos_a" },
+	                      { "orientation", "quat_a" },
+	                      { "linear", "linvel_world" },
+	                      { "angular", "angvel_b_world" } } } });
+}
+
 TEST_F(CompoundLoadFixture, ImuBallquatOnOtherBodyFailsLoad)
 {
 	ExpectLoadFails({ { "c",
@@ -270,6 +370,22 @@ TEST_F(CompoundLoadFixture, DuplicateCompoundNameFailsLoad)
 {
 	ExpectLoadFails({ { "same", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } } },
 	                  { "same", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } } } });
+}
+
+// '.' separates compound and role in noise requests; the others are no valid ROS topic characters.
+TEST_F(CompoundLoadFixture, DotInCompoundNameFailsLoad)
+{
+	ExpectLoadFails({ { "a.b", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } } } });
+}
+
+TEST_F(CompoundLoadFixture, LeadingDigitInCompoundNameFailsLoad)
+{
+	ExpectLoadFails({ { "1st", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } } } });
+}
+
+TEST_F(CompoundLoadFixture, DashInCompoundNameFailsLoad)
+{
+	ExpectLoadFails({ { "bad-name", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } } } });
 }
 
 TEST_F(CompoundLoadFixture, EmptyCompoundNameFailsLoad)
@@ -437,22 +553,22 @@ TEST_F(CompoundStreamFixture, AccelCompoundPublishesAndDemotesParts)
 	EXPECT_EQ(value.accel.angular, gt.accel.angular);
 }
 
-TEST_F(CompoundStreamFixture, PoseCompoundUsesPositionFrameAndWorldQuaternion)
+TEST_F(CompoundStreamFixture, PoseCompoundSharesPositionAndOrientationReference)
 {
-	// pos_b_in_a is body-relative (frame link_a); quat_b has frame_id world but measures the same body link_b
-	Start({ { "ee_pose", "Pose", { { "position", "pos_b_in_a" }, { "orientation", "quat_b" } } } });
+	// pos_b_in_a and quat_b_in_a measure link_b relative to link_a
+	Start({ { "ee_pose", "Pose", { { "position", "pos_b_in_a" }, { "orientation", "quat_b_in_a" } } } });
 	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
-	ExpectDemoted("ee_pose", { "pos_b_in_a", "quat_b" });
+	ExpectDemoted("ee_pose", { "pos_b_in_a", "quat_b_in_a" });
 
 	geometry_msgs::msg::PoseStamped value, gt;
 	ReceiveValueAndGt("ee_pose", value, gt);
 	EXPECT_EQ(value.header.frame_id, "link_a");
 	EXPECT_SAMPLE(gt.pose.position.x, Sensor("pos_b_in_a", 0));
 	EXPECT_SAMPLE(gt.pose.position.z, Sensor("pos_b_in_a", 2));
-	EXPECT_SAMPLE(gt.pose.orientation.w, Sensor("quat_b", 0));
-	EXPECT_SAMPLE(gt.pose.orientation.x, Sensor("quat_b", 1));
-	EXPECT_SAMPLE(gt.pose.orientation.y, Sensor("quat_b", 2));
-	EXPECT_SAMPLE(gt.pose.orientation.z, Sensor("quat_b", 3));
+	EXPECT_SAMPLE(gt.pose.orientation.w, Sensor("quat_b_in_a", 0));
+	EXPECT_SAMPLE(gt.pose.orientation.x, Sensor("quat_b_in_a", 1));
+	EXPECT_SAMPLE(gt.pose.orientation.y, Sensor("quat_b_in_a", 2));
+	EXPECT_SAMPLE(gt.pose.orientation.z, Sensor("quat_b_in_a", 3));
 	EXPECT_NE(gt.pose.position.z, 0.0);
 	EXPECT_EQ(value.pose.position, gt.pose.position);
 	EXPECT_EQ(value.pose.orientation, gt.pose.orientation);
@@ -500,38 +616,41 @@ TEST_F(CompoundStreamFixture, ImuCompoundPublishesAndDemotesParts)
 	}
 }
 
-TEST_F(CompoundStreamFixture, ImuBallquatOrientationPublishes)
+TEST_F(CompoundStreamFixture, ImuWorldParentBallquatAndBallangvelPublish)
 {
-	// ballquat_b measures joint ball_b of link_b, the same body as acc_b/gyro_b's site_b
-	Start({ { "imu_b",
+	// ball_c hangs off the world body; ballangvel's frame_id must come from the joint's body link_c, not from
+	// site_bodyid indexed with the joint id (which would give link_b here)
+	Start({ { "imu_c",
 	          "IMU",
-	          { { "linear_acceleration", "acc_b" },
-	            { "angular_velocity", "gyro_b" },
-	            { "orientation", "ballquat_b" } } } });
+	          { { "linear_acceleration", "acc_c" },
+	            { "angular_velocity", "ballangvel_c" },
+	            { "orientation", "ballquat_c" } } } });
 	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
-	ExpectDemoted("imu_b", { "acc_b", "gyro_b", "ballquat_b" });
+	ExpectDemoted("imu_c", { "acc_c", "ballangvel_c", "ballquat_c" });
 
 	sensor_msgs::msg::Imu value, gt;
-	ReceiveValueAndGt("imu_b", value, gt);
-	EXPECT_EQ(value.header.frame_id, "link_b");
-	EXPECT_SAMPLE(gt.orientation.w, Sensor("ballquat_b", 0));
-	EXPECT_SAMPLE(gt.orientation.x, Sensor("ballquat_b", 1));
-	EXPECT_SAMPLE(gt.orientation.y, Sensor("ballquat_b", 2));
-	EXPECT_SAMPLE(gt.orientation.z, Sensor("ballquat_b", 3));
-	EXPECT_SAMPLE(gt.linear_acceleration.z, Sensor("acc_b", 2));
+	ReceiveValueAndGt("imu_c", value, gt);
+	EXPECT_EQ(value.header.frame_id, "link_c");
+	EXPECT_SAMPLE(gt.orientation.w, Sensor("ballquat_c", 0));
+	EXPECT_SAMPLE(gt.orientation.x, Sensor("ballquat_c", 1));
+	EXPECT_SAMPLE(gt.orientation.y, Sensor("ballquat_c", 2));
+	EXPECT_SAMPLE(gt.orientation.z, Sensor("ballquat_c", 3));
+	EXPECT_SAMPLE(gt.angular_velocity.y, Sensor("ballangvel_c", 1));
+	EXPECT_SAMPLE(gt.linear_acceleration.z, Sensor("acc_c", 2));
+	EXPECT_NE(gt.orientation.y, 0.0) << "orientation role must carry data, not a default message";
 }
 
 TEST_F(CompoundStreamFixture, OdometryCompoundUsesPoseParentAndTwistChildFrame)
 {
-	// Pose pair in link_a (pos_b_in_a + quat_b, same body link_b); twist pair in world: parent and child differ
+	// Everything measures link_b: pose relative to link_a, twist in world, so parent and child frame differ
 	Start({ { "ee_odom",
 	          "Odometry",
 	          { { "position", "pos_b_in_a" },
-	            { "orientation", "quat_b" },
-	            { "linear", "linvel_world" },
-	            { "angular", "angvel_world" } } } });
+	            { "orientation", "quat_b_in_a" },
+	            { "linear", "linvel_b_world" },
+	            { "angular", "angvel_b_world" } } } });
 	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
-	ExpectDemoted("ee_odom", { "pos_b_in_a", "quat_b", "linvel_world", "angvel_world" });
+	ExpectDemoted("ee_odom", { "pos_b_in_a", "quat_b_in_a", "linvel_b_world", "angvel_b_world" });
 
 	nav_msgs::msg::Odometry value, gt;
 	ReceiveValueAndGt("ee_odom", value, gt);
@@ -541,13 +660,13 @@ TEST_F(CompoundStreamFixture, OdometryCompoundUsesPoseParentAndTwistChildFrame)
 	EXPECT_EQ(gt.child_frame_id, "world");
 	EXPECT_SAMPLE(gt.pose.pose.position.x, Sensor("pos_b_in_a", 0));
 	EXPECT_SAMPLE(gt.pose.pose.position.z, Sensor("pos_b_in_a", 2));
-	EXPECT_SAMPLE(gt.pose.pose.orientation.w, Sensor("quat_b", 0));
-	EXPECT_SAMPLE(gt.pose.pose.orientation.x, Sensor("quat_b", 1));
-	EXPECT_SAMPLE(gt.pose.pose.orientation.y, Sensor("quat_b", 2));
-	EXPECT_SAMPLE(gt.pose.pose.orientation.z, Sensor("quat_b", 3));
-	EXPECT_SAMPLE(gt.twist.twist.linear.x, Sensor("linvel_world", 0));
-	EXPECT_SAMPLE(gt.twist.twist.linear.z, Sensor("linvel_world", 2));
-	EXPECT_SAMPLE(gt.twist.twist.angular.y, Sensor("angvel_world", 1));
+	EXPECT_SAMPLE(gt.pose.pose.orientation.w, Sensor("quat_b_in_a", 0));
+	EXPECT_SAMPLE(gt.pose.pose.orientation.x, Sensor("quat_b_in_a", 1));
+	EXPECT_SAMPLE(gt.pose.pose.orientation.y, Sensor("quat_b_in_a", 2));
+	EXPECT_SAMPLE(gt.pose.pose.orientation.z, Sensor("quat_b_in_a", 3));
+	EXPECT_SAMPLE(gt.twist.twist.linear.x, Sensor("linvel_b_world", 0));
+	EXPECT_SAMPLE(gt.twist.twist.linear.z, Sensor("linvel_b_world", 2));
+	EXPECT_SAMPLE(gt.twist.twist.angular.y, Sensor("angvel_b_world", 1));
 	EXPECT_NE(gt.pose.pose.position.z, 0.0);
 	EXPECT_NE(gt.twist.twist.linear.x, 0.0);
 	EXPECT_NE(gt.twist.twist.angular.y, 0.0);
@@ -677,6 +796,18 @@ TEST_F(CompoundNoiseFixture, UnknownCompoundOrRoleIsRejected)
 	EXPECT_EQ(value.wrench.torque, gt.wrench.torque);
 }
 
+TEST_F(CompoundNoiseFixture, BareCompoundNameIsRejectedNotSilentlySkipped)
+{
+	Start({ { "ee_wrench", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } } } });
+	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	EXPECT_FALSE(RegisterShift("ee_wrench")) << "noise is addressed as compound.role, a bare name must not succeed";
+
+	geometry_msgs::msg::WrenchStamped value, gt;
+	ReceiveValueAndGt("ee_wrench", value, gt);
+	EXPECT_EQ(value.wrench.force, gt.wrench.force);
+	EXPECT_EQ(value.wrench.torque, gt.wrench.torque);
+}
+
 TEST_F(CompoundNoiseFixture, NoiseOnDemotedPartNameAloneDoesNotChangeCompound)
 {
 	Start({ { "ee_wrench", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } } } });
@@ -720,6 +851,21 @@ TEST_F(CompoundNoiseFixture, RejectedEntryAppliesNothingFromTheSameRequest)
 	EXPECT_TRUE(RegisterShifts({ "ee_wrench.force", "no_such_plain_sensor" })) << "unknown plain sensor stays a skip";
 	ReceiveValueAndGt("ee_wrench", value, gt);
 	EXPECT_NEAR(value.wrench.force.x - gt.wrench.force.x, kNoiseShift, 1e-3);
+}
+
+TEST_F(CompoundStreamFixture, EvalModeCompoundHasNoGroundTruth)
+{
+	Start({ { "ee_wrench", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } } } }, true);
+	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	const auto topics = testing::get_available_topics_for_test(env_ptr.get());
+	EXPECT_TRUE(testing::has_topic(topics, TopicOf("ee_wrench")));
+	EXPECT_FALSE(testing::has_topic(topics, TopicOf("ee_wrench_GT"))) << "GT topic must not exist in eval mode";
+
+	auto *stream = static_cast<mujoco_ros::sensors::ISensorStream *>(env_ptr->sensors().Native().Get("ee_wrench"));
+	ASSERT_NE(stream, nullptr);
+	// Python gt_data reads through this call
+	EXPECT_THROW(stream->GroundTruth(env_ptr->getModelPtr(), env_ptr->getDataPtr()), std::runtime_error);
+	EXPECT_NO_THROW(stream->Value(env_ptr->getModelPtr(), env_ptr->getDataPtr()));
 }
 
 TEST_F(CompoundStreamFixture, UnclaimedSensorsStayPublic)

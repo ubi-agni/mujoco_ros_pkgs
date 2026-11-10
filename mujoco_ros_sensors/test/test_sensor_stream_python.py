@@ -201,7 +201,7 @@ class SensorStreamPythonTest(unittest.TestCase):
         self.assertEqual(w.data.header.frame_id, "link_a")
         adr = sensor_adr(env, "force_a")
         self.assertAlmostEqual(w.data.wrench.force.x, env.data.sensordata[adr], delta=1e-3)
-        self.assertEqual(plugin.sensors["ee_odom"].data.child_frame_id, "link_a")
+        self.assertEqual(plugin.sensors["ee_odom"].data.child_frame_id, "world")
 
     def inner_compound_data_ignores_update_rate(self):
         # 1 Hz throttles the ROS publish only; Python must still see every step.
