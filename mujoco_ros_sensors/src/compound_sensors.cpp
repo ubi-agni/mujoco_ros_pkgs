@@ -35,6 +35,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <functional>
 #include <initializer_list>
 #include <set>
@@ -191,8 +192,83 @@ bool SameAnchorBody(const mjModel *model, int anchor_sensor_id, int orientation_
 	if (anchor_body != orientation_body) {
 		const char *a = mj_id2name(model, mjOBJ_BODY, anchor_body);
 		const char *o = mj_id2name(model, mjOBJ_BODY, orientation_body);
-		error = std::string("orientation sensor measures body '") + (o ? o : "?") + "' but the anchor measures body '" +
+		error         = std::string("sensor measures body '") + (o ? o : "?") + "' but the anchor measures body '" +
 		        (a ? a : "?") + "'";
+		return false;
+	}
+	return true;
+}
+
+bool ResolveSensorReferenceBody(const mjModel *model, int sensor_id, int &body_id, std::string &error)
+{
+	if (!model || sensor_id < 0 || sensor_id >= model->nsensor) {
+		error = "sensor id " + std::to_string(sensor_id) + " out of range";
+		return false;
+	}
+	const char *name        = mj_id2name(model, mjOBJ_SENSOR, sensor_id);
+	const std::string label = name ? name : "#" + std::to_string(sensor_id);
+
+	int body = -1;
+	switch (model->sensor_type[sensor_id]) {
+		case mjSENS_BALLQUAT: {
+			// A ball joint rotates its body relative to the parent body.
+			const int jnt = model->sensor_objid[sensor_id];
+			if (model->sensor_objtype[sensor_id] == mjOBJ_JOINT && jnt >= 0 && jnt < model->njnt) {
+				body = model->body_parentid[model->jnt_bodyid[jnt]];
+			}
+			break;
+		}
+		case mjSENS_FRAMEPOS:
+		case mjSENS_FRAMEQUAT: {
+			const int refid = model->sensor_refid[sensor_id];
+			if (refid < 0) {
+				body = 0; // no reference object: world
+				break;
+			}
+			switch (model->sensor_reftype[sensor_id]) {
+				case mjOBJ_BODY:
+				case mjOBJ_XBODY:
+					body = refid < model->nbody ? refid : -1;
+					break;
+				case mjOBJ_SITE:
+					body = refid < model->nsite ? model->site_bodyid[refid] : -1;
+					break;
+				case mjOBJ_GEOM:
+					body = refid < model->ngeom ? model->geom_bodyid[refid] : -1;
+					break;
+				case mjOBJ_CAMERA:
+					body = refid < model->ncam ? model->cam_bodyid[refid] : -1;
+					break;
+				default:
+					break;
+			}
+			break;
+		}
+		default:
+			break;
+	}
+	if (body < 0) {
+		error = "sensor '" + label + "' has no resolvable reference body";
+		return false;
+	}
+	body_id = body;
+	return true;
+}
+
+bool SameReferenceBody(const mjModel *model, int position_sensor_id, int orientation_sensor_id, std::string &error)
+{
+	int position_ref = -1, orientation_ref = -1;
+	if (!ResolveSensorReferenceBody(model, position_sensor_id, position_ref, error) ||
+	    !ResolveSensorReferenceBody(model, orientation_sensor_id, orientation_ref, error)) {
+		return false;
+	}
+	if (position_ref != orientation_ref) {
+		const char *p = mj_id2name(model, mjOBJ_BODY, position_ref);
+		const char *o = mj_id2name(model, mjOBJ_BODY, orientation_ref);
+		error         = std::string("orientation is expressed relative to body '") + (o ? o : "?") +
+		        "' but the position is expressed relative to body '" + (p ? p : "?") +
+		        "'; both must share one reference frame (framequat needs the same reftype/refname as the framepos, "
+		        "a ballquat needs the position's reference body as joint parent)";
 		return false;
 	}
 	return true;
@@ -262,9 +338,14 @@ bool ValidateCompound(const mjModel *model, const CompoundSpec &spec, const std:
 		frame = frame_of(a);
 		return true;
 	};
-	auto same_body = [&](const std::string &anchor_role) {
-		return SameAnchorBody(model, ids.at(anchor_role), ids.at("orientation"), error);
+	auto same_body = [&](const std::string &anchor_role, const std::string &other_role) {
+		if (!SameAnchorBody(model, ids.at(anchor_role), ids.at(other_role), error)) {
+			error = "roles '" + anchor_role + "' and '" + other_role + "' must measure one body: " + error;
+			return false;
+		}
+		return true;
 	};
+	auto same_reference = [&]() { return SameReferenceBody(model, ids.at("position"), ids.at("orientation"), error); };
 
 	switch (desc.kind) {
 		case CompoundKind::kWrench:
@@ -273,14 +354,32 @@ bool ValidateCompound(const mjModel *model, const CompoundSpec &spec, const std:
 		case CompoundKind::kAccel:
 			return shared_frame("linear", "angular", desc.frame_id);
 		case CompoundKind::kIMU:
-			return shared_frame("linear_acceleration", "angular_velocity", desc.frame_id) &&
-			       same_body("linear_acceleration");
+			if (!shared_frame("linear_acceleration", "angular_velocity", desc.frame_id) ||
+			    !same_body("linear_acceleration", "angular_velocity") ||
+			    !same_body("linear_acceleration", "orientation")) {
+				return false;
+			}
+			// IMU orientation is a world orientation: a ballquat only is one when its joint hangs off the world body.
+			if (model->sensor_type[ids.at("orientation")] == mjSENS_BALLQUAT) {
+				int parent = -1;
+				if (!ResolveSensorReferenceBody(model, ids.at("orientation"), parent, error)) {
+					return false;
+				}
+				if (parent != 0) {
+					error = "ballquat '" + desc.roles.at("orientation") +
+					        "' is relative to its joint's parent body, not the world; an IMU needs a world-parented "
+					        "ball joint";
+					return false;
+				}
+			}
+			return true;
 		case CompoundKind::kPose:
 			desc.frame_id = frame_of("position");
-			return same_body("position");
+			return same_body("position", "orientation") && same_reference();
 		case CompoundKind::kOdometry:
 			desc.frame_id = frame_of("position");
-			return same_body("position") && shared_frame("linear", "angular", desc.child_frame_id);
+			return same_body("position", "orientation") && same_reference() && same_body("position", "linear") &&
+			       same_body("position", "angular") && shared_frame("linear", "angular", desc.child_frame_id);
 	}
 	return false;
 }
@@ -301,6 +400,13 @@ bool ValidateCompounds(const mjModel *model, const std::vector<CompoundSpec> &sp
 		};
 		if (spec.name.empty()) {
 			return fail("name must not be empty");
+		}
+		// The name becomes a ROS topic (plus "_GT") and the "<compound>.<role>" noise address.
+		const auto valid_char = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
+		if (!std::all_of(spec.name.begin(), spec.name.end(), valid_char) ||
+		    std::isdigit(static_cast<unsigned char>(spec.name[0]))) {
+			return fail("name must only contain letters, digits and '_' and must not start with a digit (it is a ROS "
+			            "topic name and '.' separates compound and role in noise requests)");
 		}
 		if (!names.insert(spec.name).second) {
 			return fail("duplicate compound name");
@@ -373,12 +479,6 @@ void MarkCovarianceUnknown(Cov &covariance)
 }
 
 } // namespace
-
-bool HasCompoundStream(CompoundKind kind)
-{
-	return kind == CompoundKind::kWrench || kind == CompoundKind::kTwist || kind == CompoundKind::kPose ||
-	       kind == CompoundKind::kAccel || kind == CompoundKind::kIMU || kind == CompoundKind::kOdometry;
-}
 
 std::unique_ptr<ISensorStream> MakeCompoundStream(const CompoundDescriptor &desc, const SensorConfig &config,
                                                   const std::map<std::string, ISensorStream *> &parts, bool eval_mode)

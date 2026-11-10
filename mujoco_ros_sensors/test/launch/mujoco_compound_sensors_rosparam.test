@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<launch>
+
+  <env name="ROSCONSOLE_FORMAT" value="[${severity}] [${time}] [${logger}] [${node}]: ${message}"/>
+  <env name="ROSCONSOLE_CONFIG_FILE"
+       value="$(find mujoco_ros)/config/rosconsole.config"/>
+
+  <!-- compound_sensors injected via launch rosparam: valid Wrench (force_a/torque_a share frame link_a) -->
+  <rosparam>
+    MujocoPlugins:
+      - type: mujoco_ros_sensors/MujocoRosSensorsPlugin
+        compound_sensors:
+          - name: ee_wrench
+            type: Wrench
+            force: force_a
+            torque: torque_a
+  </rosparam>
+
+  <param name="/use_sim_time" value="true"/>
+  <test test-name="mujoco_compound_sensors_rosparam_test" pkg="mujoco_ros_sensors" type="mujoco_compound_sensors_test" time-limit="90.0" retry="5"
+        args="--gtest_filter=Ros1Rosparam.CompoundLoads" />
+</launch>
