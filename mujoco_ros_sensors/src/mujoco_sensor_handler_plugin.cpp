@@ -12,9 +12,13 @@
 #if MJR_ROS_VERSION == ROS_1
 #include <pluginlib/class_list_macros.h>
 
+#include <geometry_msgs/AccelStamped.h>
 #include <geometry_msgs/PointStamped.h>
+#include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/QuaternionStamped.h>
+#include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/Vector3Stamped.h>
+#include <geometry_msgs/WrenchStamped.h>
 #include <mujoco_ros_msgs/CamProjectionStamped.h>
 #include <mujoco_ros_msgs/GeomFromToStamped.h>
 #include <mujoco_ros_msgs/ScalarStamped.h>
@@ -23,9 +27,13 @@
 #else
 #include <pluginlib/class_list_macros.hpp>
 
+#include <geometry_msgs/msg/accel_stamped.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/quaternion_stamped.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/vector3_stamped.hpp>
+#include <geometry_msgs/msg/wrench_stamped.hpp>
 #include <mujoco_ros_msgs/msg/cam_projection_stamped.hpp>
 #include <mujoco_ros_msgs/msg/geom_from_to_stamped.hpp>
 #include <mujoco_ros_msgs/msg/scalar_stamped.hpp>
@@ -39,40 +47,6 @@
 #include <mujoco_ros/util.hpp>
 
 namespace mujoco_ros::sensors {
-
-static constexpr std::size_t SENSOR_PUBLISHER_QUEUE_SIZE = 1000;
-
-#if MJR_ROS_VERSION == ROS_1
-using CamProjectionStamped = mujoco_ros_msgs::CamProjectionStamped;
-using GeomFromToStamped    = mujoco_ros_msgs::GeomFromToStamped;
-using PointStamped         = geometry_msgs::PointStamped;
-using QuaternionStamped    = geometry_msgs::QuaternionStamped;
-using ScalarStamped        = mujoco_ros_msgs::ScalarStamped;
-using Vector3Stamped       = geometry_msgs::Vector3Stamped;
-
-template <typename MessageT>
-ros::Publisher CreatePublisher(ros::NodeHandle &node, const std::string &topic, const std::string & /*ros2_type*/)
-{
-	return node.advertise<MessageT>(topic, SENSOR_PUBLISHER_QUEUE_SIZE, true);
-}
-
-#else
-using CamProjectionStamped = mujoco_ros_msgs::msg::CamProjectionStamped;
-using GeomFromToStamped    = mujoco_ros_msgs::msg::GeomFromToStamped;
-using PointStamped         = geometry_msgs::msg::PointStamped;
-using QuaternionStamped    = geometry_msgs::msg::QuaternionStamped;
-using ScalarStamped        = mujoco_ros_msgs::msg::ScalarStamped;
-using Vector3Stamped       = geometry_msgs::msg::Vector3Stamped;
-
-template <typename MessageT>
-typename rclcpp::Publisher<MessageT>::SharedPtr CreatePublisher(rclcpp_lifecycle::LifecycleNode::SharedPtr &node,
-                                                                const std::string &topic,
-                                                                const std::string & /*ros2_type*/)
-{
-	return node->create_publisher<MessageT>(topic, rclcpp::QoS(SENSOR_PUBLISHER_QUEUE_SIZE));
-}
-
-#endif
 
 namespace {
 bool IsGapSensorType(int type)
@@ -154,6 +128,7 @@ MujocoRosSensorsPlugin::~MujocoRosSensorsPlugin()
 		env_ptr_->sensors().UnregisterProvider(*this);
 	}
 	streams_.clear();
+	compound_configs_.clear();
 	sensor_map_.clear();
 #if MJR_ROS_VERSION == ROS_1
 	MJR_DEBUG_STREAM_NAMED("sensors", "Shutting down service " << register_noise_model_server_.getService());
@@ -192,6 +167,8 @@ bool MujocoRosSensorsPlugin::Load(const mjModel *model, mjData *data)
 	if (!InitCompounds(model)) {
 		return false;
 	}
+	// Only now, once claims are final, so a claimed part never gets a publisher.
+	AdvertisePublicStreams();
 
 	// A public name already taken by another provider (e.g. a laser) must fail the load loudly; a half-registered
 	// plugin must not load and must not leave an uncaught throw behind.
@@ -260,6 +237,14 @@ void MujocoRosSensorsPlugin::RegisterNoiseModelsCB(
 			continue;
 		}
 
+		// A claimed part's config feeds its compound's value; noise there would be applied unseen.
+		const auto stream_it = streams_.find(noise_model.sensor_name);
+		if (stream_it != streams_.end() && !stream_it->second->is_public()) {
+			MJR_WARN_STREAM_NAMED("sensors", "Sensor '" << noise_model.sensor_name
+			                                            << "' is claimed by a compound sensor. Can not apply noise model");
+			continue;
+		}
+
 		const SensorConfigPtr &config = pos->second;
 
 		if (noise_model.set_flag & 0x01) {
@@ -290,9 +275,12 @@ void MujocoRosSensorsPlugin::RegisterNoiseModelsCB(
 
 void MujocoRosSensorsPlugin::LastStageCallback(const mjModel *model, mjData *data)
 {
+	// New step: drop every cache first, claimed parts included, so a compound never composes a part's stale value
+	// (streams_ is name-ordered, a part may sort after its compound) and publish and Python share one build per step.
 	for (const auto &[name, stream] : streams_) {
-		// New step: drop last step's cache so publish and Python share exactly one build per step.
 		stream->InvalidateCache();
+	}
+	for (const auto &[name, stream] : streams_) {
 		if (stream->is_public()) {
 			stream->MaybePublish(model, data);
 		}
@@ -337,33 +325,9 @@ std::vector<std::string> MujocoRosSensorsPlugin::PublicNames() const
 	return names;
 }
 
-void MujocoRosSensorsPlugin::InitGapSensor(int type, const std::string &sensor_name, const std::string &frame_id)
+void MujocoRosSensorsPlugin::InitGapSensor(const std::string &sensor_name, const std::string &frame_id)
 {
-	auto config   = std::make_unique<SensorConfig>(frame_id);
-	const bool gt = !env_ptr_->settings_.eval_mode;
-	auto add      = [&](auto tag, const char *ros2_type) {
-      using MsgT = decltype(tag);
-      config->RegisterPub(CreatePublisher<MsgT>(sensors_nh_, sensor_name, ros2_type));
-      if (gt) {
-         config->RegisterGTPub(CreatePublisher<MsgT>(sensors_nh_, sensor_name + "_GT", ros2_type));
-      }
-	};
-	switch (type) {
-		case mjSENS_FRAMEANGVEL:
-		case mjSENS_GEOMNORMAL:
-			add(Vector3Stamped{}, "geometry_msgs/msg/Vector3Stamped");
-			break;
-		case mjSENS_CAMPROJECTION:
-			add(CamProjectionStamped{}, "mujoco_ros_msgs/msg/CamProjectionStamped");
-			break;
-		case mjSENS_GEOMFROMTO:
-			add(GeomFromToStamped{}, "mujoco_ros_msgs/msg/GeomFromToStamped");
-			break;
-		default:
-			add(ScalarStamped{}, "mujoco_ros_msgs/msg/ScalarStamped");
-			break;
-	}
-	sensor_map_[sensor_name] = std::move(config);
+	sensor_map_[sensor_name] = std::make_unique<SensorConfig>(frame_id);
 }
 
 double MujocoRosSensorsPlugin::ReadUpdateRate(const std::string &sensor_name) const
@@ -437,7 +401,7 @@ void MujocoRosSensorsPlugin::InitSensors(const mjModel *model, mjData * /*data*/
 				MJR_ERROR_STREAM_NAMED("sensors", "Skipping sensor " << sensor_name << " (type " << type << "): " << error);
 				continue;
 			}
-			InitGapSensor(type, sensor_name, frame_id);
+			InitGapSensor(sensor_name, frame_id);
 			MJR_DEBUG_STREAM_NAMED("sensors", "Setting up sensor " << sensor_name << " (frame_id: " << frame_id << ")");
 			continue;
 		}
@@ -467,26 +431,14 @@ void MujocoRosSensorsPlugin::InitSensors(const mjModel *model, mjData * /*data*/
 					}
 					frame_id = mj_id2name(const_cast<mjModel *>(model), reftype, refid);
 				}
-				config = std::make_unique<SensorConfig>(frame_id);
-				config->RegisterPub(
-				    CreatePublisher<Vector3Stamped>(sensors_nh_, sensor_name, "geometry_msgs/msg/Vector3Stamped"));
-				if (!env_ptr_->settings_.eval_mode) {
-					config->RegisterGTPub(CreatePublisher<Vector3Stamped>(sensors_nh_, sensor_name + "_GT",
-					                                                      "geometry_msgs/msg/Vector3Stamped"));
-				}
+				config                   = std::make_unique<SensorConfig>(frame_id);
 				sensor_map_[sensor_name] = std::move(config);
 				break;
 			}
 			case mjSENS_SUBTREECOM:
 			case mjSENS_SUBTREELINVEL:
 			case mjSENS_SUBTREEANGMOM:
-				config = std::make_unique<SensorConfig>(frame_id);
-				config->RegisterPub(
-				    CreatePublisher<Vector3Stamped>(sensors_nh_, sensor_name, "geometry_msgs/msg/Vector3Stamped"));
-				if (!env_ptr_->settings_.eval_mode) {
-					config->RegisterGTPub(CreatePublisher<Vector3Stamped>(sensors_nh_, sensor_name + "_GT",
-					                                                      "geometry_msgs/msg/Vector3Stamped"));
-				}
+				config                   = std::make_unique<SensorConfig>(frame_id);
 				sensor_map_[sensor_name] = std::move(config);
 				global_frame             = true;
 				break;
@@ -500,26 +452,14 @@ void MujocoRosSensorsPlugin::InitSensors(const mjModel *model, mjData * /*data*/
 					}
 					frame_id = mj_id2name(const_cast<mjModel *>(model), reftype, refid);
 				}
-				config = std::make_unique<SensorConfig>(frame_id);
-				config->RegisterPub(
-				    CreatePublisher<PointStamped>(sensors_nh_, sensor_name, "geometry_msgs/msg/PointStamped"));
-				if (!env_ptr_->settings_.eval_mode) {
-					config->RegisterGTPub(
-					    CreatePublisher<PointStamped>(sensors_nh_, sensor_name + "_GT", "geometry_msgs/msg/PointStamped"));
-				}
+				config                   = std::make_unique<SensorConfig>(frame_id);
 				sensor_map_[sensor_name] = std::move(config);
 				global_frame             = true;
 				break;
 			}
 			case mjSENS_BALLQUAT:
 			case mjSENS_FRAMEQUAT:
-				config = std::make_unique<SensorConfig>(frame_id);
-				config->RegisterPub(
-				    CreatePublisher<QuaternionStamped>(sensors_nh_, sensor_name, "geometry_msgs/msg/QuaternionStamped"));
-				if (!env_ptr_->settings_.eval_mode) {
-					config->RegisterGTPub(CreatePublisher<QuaternionStamped>(sensors_nh_, sensor_name + "_GT",
-					                                                         "geometry_msgs/msg/QuaternionStamped"));
-				}
+				config                   = std::make_unique<SensorConfig>(frame_id);
 				sensor_map_[sensor_name] = std::move(config);
 				global_frame             = true;
 				break;
@@ -543,13 +483,7 @@ void MujocoRosSensorsPlugin::InitSensors(const mjModel *model, mjData * /*data*/
 			case mjSENS_TORQUE:
 			case mjSENS_MAGNETOMETER:
 			case mjSENS_BALLANGVEL:
-				config = std::make_unique<SensorConfig>(frame_id);
-				config->RegisterPub(
-				    CreatePublisher<Vector3Stamped>(sensors_nh_, sensor_name, "geometry_msgs/msg/Vector3Stamped"));
-				if (!env_ptr_->settings_.eval_mode) {
-					config->RegisterGTPub(CreatePublisher<Vector3Stamped>(sensors_nh_, sensor_name + "_GT",
-					                                                      "geometry_msgs/msg/Vector3Stamped"));
-				}
+				config                   = std::make_unique<SensorConfig>(frame_id);
 				sensor_map_[sensor_name] = std::move(config);
 				break;
 			case mjSENS_TOUCH:
@@ -568,13 +502,7 @@ void MujocoRosSensorsPlugin::InitSensors(const mjModel *model, mjData * /*data*/
 			case mjSENS_TENDONLIMITPOS:
 			case mjSENS_TENDONLIMITVEL:
 			case mjSENS_TENDONLIMITFRC:
-				config = std::make_unique<SensorConfig>(frame_id);
-				config->RegisterPub(
-				    CreatePublisher<ScalarStamped>(sensors_nh_, sensor_name, "mujoco_ros_msgs/msg/ScalarStamped"));
-				if (!env_ptr_->settings_.eval_mode) {
-					config->RegisterGTPub(CreatePublisher<ScalarStamped>(sensors_nh_, sensor_name + "_GT",
-					                                                     "mujoco_ros_msgs/msg/ScalarStamped"));
-				}
+				config                   = std::make_unique<SensorConfig>(frame_id);
 				sensor_map_[sensor_name] = std::move(config);
 				break;
 			default:
@@ -625,7 +553,7 @@ bool MujocoRosSensorsPlugin::ParseCompoundSpecs(std::vector<CompoundSpec> &specs
 		}
 		CompoundSpec spec;
 		for (auto it = entry.begin(); it != entry.end(); ++it) {
-			const std::string &key = it->first;
+			const std::string &key    = it->first;
 			XmlRpc::XmlRpcValue value = it->second;
 			if (key == "update_rate") {
 				if (value.getType() == XmlRpc::XmlRpcValue::TypeDouble) {
@@ -723,7 +651,52 @@ bool MujocoRosSensorsPlugin::InitCompounds(const mjModel *model)
 		MJR_ERROR_STREAM_NAMED("sensors", "Invalid compound_sensors config: " << error);
 		return false;
 	}
+	ApplyCompounds();
 	return true;
+}
+
+void MujocoRosSensorsPlugin::ApplyCompounds()
+{
+	for (const auto &desc : compounds_) {
+		if (!HasCompoundStream(desc.kind)) {
+			// Demoting would drop the parts without any stream taking their place.
+			MJR_WARN_STREAM_NAMED("sensors", "Compound sensor '" << desc.name
+			                                                     << "' has no stream implementation for this type yet; "
+			                                                        "its parts stay public and it is not published");
+			continue;
+		}
+
+		auto config         = std::make_unique<SensorConfig>(desc.frame_id);
+		config->update_rate = desc.update_rate;
+
+		std::map<std::string, ISensorStream *> parts;
+		for (const auto &[role, sensor] : desc.roles) {
+			parts[role] = streams_.at(sensor).get();
+		}
+		auto stream = MakeCompoundStream(desc, *config, parts, env_ptr_->settings_.eval_mode);
+
+		// Nothing is advertised yet (see AdvertisePublicStreams), so a claimed part never reaches the topic graph.
+		for (const auto &[role, sensor] : desc.roles) {
+			streams_.at(sensor)->Demote();
+		}
+		compound_configs_[desc.name] = std::move(config);
+		streams_[desc.name]          = std::move(stream);
+		MJR_DEBUG_STREAM_NAMED("sensors",
+		                       "Compound sensor " << desc.name << " claims " << desc.roles.size() << " sensors");
+	}
+}
+
+void MujocoRosSensorsPlugin::AdvertisePublicStreams()
+{
+	const bool gt = !env_ptr_->settings_.eval_mode;
+	for (const auto &[name, stream] : streams_) {
+		if (!stream->is_public()) {
+			continue;
+		}
+		auto native  = sensor_map_.find(name);
+		auto &config = native != sensor_map_.end() ? *native->second : *compound_configs_.at(name);
+		stream->Advertise(sensors_nh_, config, gt);
+	}
 }
 
 void MujocoRosSensorsPlugin::Reset()

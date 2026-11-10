@@ -4,10 +4,13 @@
 
     <worldbody>
         <geom name="ground_plane" type="plane" size="5 5 10" />
-        <body name="link_a" pos="0 0 1">
+        <!-- Tilted off the hanging pose so gravity gives every force/velocity/acceleration part a nonzero value -->
+        <body name="link_a" pos="0 0 1" euler="0 0.4 0">
             <geom type="capsule" fromto="0 0 0  0 0 -0.3" size="0.04" />
             <joint name="hinge_a" type="hinge" axis="0 1 0" />
             <site name="site_a" size="0.001" />
+            <!-- Off the hinge axis, so its linear velocity/acceleration is nonzero -->
+            <site name="site_tip" pos="0 0 -0.3" size="0.001" />
             <body name="link_b" pos="0 0 -0.3">
                 <geom type="capsule" fromto="0 0 0  0 0 -0.3" size="0.03" />
                 <joint name="ball_b" type="ball" />
@@ -36,8 +39,13 @@
         <torque        name="torque_b"   site="site_b" />
         <framequat     name="quat_b"     objtype="xbody" objname="link_b" />
         <ballquat      name="ballquat_b" joint="ball_b" />
+        <!-- link_b position expressed in link_a: pairs with quat_b (same body) for a Pose with frame_id link_a -->
+        <framepos      name="pos_b_in_a" objtype="xbody" objname="link_b" reftype="body" refname="link_a" />
 
         <!-- frame_id world, differs from link_a -->
         <frameangvel   name="angvel_world" objtype="site" objname="site_a" />
+        <!-- Without a reference frame the velocity is the site's world motion; measured relative to link_a it is 0 -->
+        <framelinvel   name="linvel_world" objtype="site" objname="site_tip" />
+        <framelinacc   name="linacc_tip"   objtype="site" objname="site_tip" />
     </sensor>
 </mujoco>

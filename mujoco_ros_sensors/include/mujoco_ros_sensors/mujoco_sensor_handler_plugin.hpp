@@ -131,16 +131,16 @@ protected:
 #if MJR_ROS_VERSION == ROS_1
 	ros::NodeHandle sensors_nh_;
 	void InitSensors(const mjModel *model, mjData *data);
-	/// Creates config and publishers for a gap-closing sensor type whose frame_id is already resolved.
-	void InitGapSensor(int type, const std::string &sensor_name, const std::string &frame_id);
+	/// Creates the config for a gap-closing sensor type whose frame_id is already resolved.
+	void InitGapSensor(const std::string &sensor_name, const std::string &frame_id);
 	ros::ServiceServer register_noise_model_server_;
 	bool RegisterNoiseModelsCB(mujoco_ros_msgs::RegisterSensorNoiseModels::Request &req,
 	                           mujoco_ros_msgs::RegisterSensorNoiseModels::Response &rep);
 #else
 	rclcpp_lifecycle::LifecycleNode::SharedPtr sensors_nh_;
 	void InitSensors(const mjModel *model, mjData *data);
-	/// Creates config and publishers for a gap-closing sensor type whose frame_id is already resolved.
-	void InitGapSensor(int type, const std::string &sensor_name, const std::string &frame_id);
+	/// Creates the config for a gap-closing sensor type whose frame_id is already resolved.
+	void InitGapSensor(const std::string &sensor_name, const std::string &frame_id);
 	rclcpp::Service<mujoco_ros_msgs::srv::RegisterSensorNoiseModels>::SharedPtr register_noise_model_server_;
 	void RegisterNoiseModelsCB(const mujoco_ros_msgs::srv::RegisterSensorNoiseModels::Request::SharedPtr &req,
 	                           const mujoco_ros_msgs::srv::RegisterSensorNoiseModels::Response::SharedPtr &rep);
@@ -152,12 +152,18 @@ protected:
 	/// Reads the plugin's `compound_sensors` config. ROS 2 params cannot nest maps in lists, so there it is a
 	/// string array of names plus one `compound_sensors.<name>.<key>` string parameter per key.
 	bool ParseCompoundSpecs(std::vector<CompoundSpec> &specs, std::string &error) const;
-	/// Validate-only: parses and checks `compound_sensors` and stores the valid descriptors in compounds_.
+	/// Parses and validates `compound_sensors`, stores the valid descriptors in compounds_ and applies them.
 	bool InitCompounds(const mjModel *model);
+	/// Per compound with a stream: demotes its parts (no hub entry, no topics) and registers one public stream.
+	void ApplyCompounds();
+	/// Creates publishers for every stream still public after claims. Must run after InitCompounds.
+	void AdvertisePublicStreams();
 
 	NoiseSource noise_;
 	// Streams reference their config and the noise source, so they must be destroyed first.
 	std::map<std::string, SensorConfigPtr> sensor_map_;
+	// Kept apart from sensor_map_ so noise requests cannot address a compound by its bare name.
+	std::map<std::string, SensorConfigPtr> compound_configs_;
 	std::map<std::string, std::unique_ptr<ISensorStream>> streams_;
 	bool hub_registered_ = false;
 	std::vector<CompoundDescriptor> compounds_;
