@@ -17,6 +17,8 @@
 #include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/Vector3Stamped.h>
 #include <geometry_msgs/WrenchStamped.h>
+#include <nav_msgs/Odometry.h>
+#include <sensor_msgs/Imu.h>
 #else
 #include <geometry_msgs/msg/accel_stamped.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
@@ -25,11 +27,15 @@
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/vector3_stamped.hpp>
 #include <geometry_msgs/msg/wrench_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 #endif
 
 #include <mujoco_ros/util.hpp>
 
 #include <algorithm>
+#include <array>
+#include <functional>
 #include <initializer_list>
 #include <set>
 #include <utility>
@@ -44,6 +50,8 @@ using QuaternionStamped = geometry_msgs::QuaternionStamped;
 using TwistStamped      = geometry_msgs::TwistStamped;
 using Vector3Stamped    = geometry_msgs::Vector3Stamped;
 using WrenchStamped     = geometry_msgs::WrenchStamped;
+using Imu               = sensor_msgs::Imu;
+using Odometry          = nav_msgs::Odometry;
 #else
 using AccelStamped      = geometry_msgs::msg::AccelStamped;
 using PointStamped      = geometry_msgs::msg::PointStamped;
@@ -52,6 +60,8 @@ using QuaternionStamped = geometry_msgs::msg::QuaternionStamped;
 using TwistStamped      = geometry_msgs::msg::TwistStamped;
 using Vector3Stamped    = geometry_msgs::msg::Vector3Stamped;
 using WrenchStamped     = geometry_msgs::msg::WrenchStamped;
+using Imu               = sensor_msgs::msg::Imu;
+using Odometry          = nav_msgs::msg::Odometry;
 #endif
 
 bool ParseCompoundKind(const std::string &type, CompoundKind &out)
@@ -310,16 +320,16 @@ bool ValidateCompounds(const mjModel *model, const std::vector<CompoundSpec> &sp
 
 namespace {
 
-/// A two-part compound message: header + both parts' current (or ground-truth) message.
-template <typename MsgT, typename Part0, typename Part1>
+/// A compound message: header + every part's current (or ground-truth) message, in role order.
+template <typename MsgT, typename... Parts>
 class ComposedStream : public PublishingStream<MsgT>
 {
 public:
-	using Fill = void (*)(MsgT &, const Part0 &, const Part1 &);
+	using Fill = std::function<void(MsgT &, const Parts &...)>;
 
-	ComposedStream(std::string name, const SensorConfig &config, bool eval_mode, ISensorStream &first,
-	               ISensorStream &second, Fill fill)
-	    : PublishingStream<MsgT>(std::move(name), config, eval_mode), first_(first), second_(second), fill_(fill)
+	ComposedStream(std::string name, const SensorConfig &config, bool eval_mode,
+	               std::array<ISensorStream *, sizeof...(Parts)> parts, Fill fill)
+	    : PublishingStream<MsgT>(std::move(name), config, eval_mode), parts_(parts), fill_(std::move(fill))
 	{
 	}
 
@@ -327,75 +337,111 @@ protected:
 	// Parts cache per step, so value/GT built here share one noise sample set with any other reader of the part.
 	MsgT Noisy(const mjModel *model, const mjData *data) override
 	{
-		return Compose(data, std::any_cast<const Part0 &>(first_.Value(model, data)),
-		               std::any_cast<const Part1 &>(second_.Value(model, data)));
+		return ComposeFrom(data, std::index_sequence_for<Parts...>{}, [&](ISensorStream &p) -> const std::any & {
+			return p.Value(model, data);
+		});
 	}
 
 	MsgT Truth(const mjModel *model, const mjData *data) override
 	{
-		return Compose(data, std::any_cast<const Part0 &>(first_.GroundTruth(model, data)),
-		               std::any_cast<const Part1 &>(second_.GroundTruth(model, data)));
+		return ComposeFrom(data, std::index_sequence_for<Parts...>{}, [&](ISensorStream &p) -> const std::any & {
+			return p.GroundTruth(model, data);
+		});
 	}
 
 private:
-	MsgT Compose(const mjData *data, const Part0 &a, const Part1 &b) const
+	template <std::size_t... I, typename Get>
+	MsgT ComposeFrom(const mjData *data, std::index_sequence<I...>, Get get) const
 	{
 		MsgT msg;
 		msg.header.frame_id = this->config().frame_id;
 		msg.header.stamp    = util::toRosTime(util::simTimeToNanoseconds(data->time));
-		fill_(msg, a, b);
+		fill_(msg, std::any_cast<const Parts &>(get(*parts_[I]))...);
 		return msg;
 	}
 
-	ISensorStream &first_;
-	ISensorStream &second_;
+	std::array<ISensorStream *, sizeof...(Parts)> parts_;
 	Fill fill_;
 };
+
+/// ROS "unknown covariance" marker: first element -1, rest 0. Never derived from noise sigma.
+template <typename Cov>
+void MarkCovarianceUnknown(Cov &covariance)
+{
+	covariance.fill(0.0);
+	covariance[0] = -1.0;
+}
 
 } // namespace
 
 bool HasCompoundStream(CompoundKind kind)
 {
 	return kind == CompoundKind::kWrench || kind == CompoundKind::kTwist || kind == CompoundKind::kPose ||
-	       kind == CompoundKind::kAccel;
+	       kind == CompoundKind::kAccel || kind == CompoundKind::kIMU || kind == CompoundKind::kOdometry;
 }
 
 std::unique_ptr<ISensorStream> MakeCompoundStream(const CompoundDescriptor &desc, const SensorConfig &config,
                                                   const std::map<std::string, ISensorStream *> &parts, bool eval_mode)
 {
-	auto part = [&](const char *role) -> ISensorStream & { return *parts.at(role); };
+	auto part = [&](const char *role) { return parts.at(role); };
 	switch (desc.kind) {
 		case CompoundKind::kWrench:
 			return std::make_unique<ComposedStream<WrenchStamped, Vector3Stamped, Vector3Stamped>>(
-			    desc.name, config, eval_mode, part("force"), part("torque"),
+			    desc.name, config, eval_mode, std::array{ part("force"), part("torque") },
 			    [](WrenchStamped &m, const Vector3Stamped &force, const Vector3Stamped &torque) {
 				    m.wrench.force  = force.vector;
 				    m.wrench.torque = torque.vector;
 			    });
 		case CompoundKind::kTwist:
 			return std::make_unique<ComposedStream<TwistStamped, Vector3Stamped, Vector3Stamped>>(
-			    desc.name, config, eval_mode, part("linear"), part("angular"),
+			    desc.name, config, eval_mode, std::array{ part("linear"), part("angular") },
 			    [](TwistStamped &m, const Vector3Stamped &linear, const Vector3Stamped &angular) {
 				    m.twist.linear  = linear.vector;
 				    m.twist.angular = angular.vector;
 			    });
 		case CompoundKind::kAccel:
 			return std::make_unique<ComposedStream<AccelStamped, Vector3Stamped, Vector3Stamped>>(
-			    desc.name, config, eval_mode, part("linear"), part("angular"),
+			    desc.name, config, eval_mode, std::array{ part("linear"), part("angular") },
 			    [](AccelStamped &m, const Vector3Stamped &linear, const Vector3Stamped &angular) {
 				    m.accel.linear  = linear.vector;
 				    m.accel.angular = angular.vector;
 			    });
 		case CompoundKind::kPose:
 			return std::make_unique<ComposedStream<PoseStamped, PointStamped, QuaternionStamped>>(
-			    desc.name, config, eval_mode, part("position"), part("orientation"),
+			    desc.name, config, eval_mode, std::array{ part("position"), part("orientation") },
 			    [](PoseStamped &m, const PointStamped &position, const QuaternionStamped &orientation) {
 				    m.pose.position    = position.point;
 				    m.pose.orientation = orientation.quaternion;
 			    });
 		case CompoundKind::kIMU:
+			return std::make_unique<ComposedStream<Imu, Vector3Stamped, Vector3Stamped, QuaternionStamped>>(
+			    desc.name, config, eval_mode,
+			    std::array{ part("linear_acceleration"), part("angular_velocity"), part("orientation") },
+			    [](Imu &m, const Vector3Stamped &acceleration, const Vector3Stamped &angular_velocity,
+			       const QuaternionStamped &orientation) {
+				    m.linear_acceleration = acceleration.vector;
+				    m.angular_velocity    = angular_velocity.vector;
+				    m.orientation         = orientation.quaternion;
+				    MarkCovarianceUnknown(m.orientation_covariance);
+				    MarkCovarianceUnknown(m.angular_velocity_covariance);
+				    MarkCovarianceUnknown(m.linear_acceleration_covariance);
+			    });
 		case CompoundKind::kOdometry:
-			break;
+			return std::make_unique<
+			    ComposedStream<Odometry, PointStamped, QuaternionStamped, Vector3Stamped, Vector3Stamped>>(
+			    desc.name, config, eval_mode,
+			    std::array{ part("position"), part("orientation"), part("linear"), part("angular") },
+			    [child = desc.child_frame_id](Odometry &m, const PointStamped &position,
+			                                  const QuaternionStamped &orientation, const Vector3Stamped &linear,
+			                                  const Vector3Stamped &angular) {
+				    m.child_frame_id         = child;
+				    m.pose.pose.position     = position.point;
+				    m.pose.pose.orientation  = orientation.quaternion;
+				    m.twist.twist.linear     = linear.vector;
+				    m.twist.twist.angular    = angular.vector;
+				    MarkCovarianceUnknown(m.pose.covariance);
+				    MarkCovarianceUnknown(m.twist.covariance);
+			    });
 	}
 	return nullptr;
 }
