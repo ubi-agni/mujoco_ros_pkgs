@@ -7,6 +7,28 @@
 
 #include <mujoco_ros_sensors/compound_sensors.hpp>
 
+#include <mujoco_ros_sensors/sensor_stream.hpp>
+
+#if MJR_ROS_VERSION == ROS_1
+#include <geometry_msgs/AccelStamped.h>
+#include <geometry_msgs/PointStamped.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/QuaternionStamped.h>
+#include <geometry_msgs/TwistStamped.h>
+#include <geometry_msgs/Vector3Stamped.h>
+#include <geometry_msgs/WrenchStamped.h>
+#else
+#include <geometry_msgs/msg/accel_stamped.hpp>
+#include <geometry_msgs/msg/point_stamped.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/quaternion_stamped.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
+#include <geometry_msgs/msg/vector3_stamped.hpp>
+#include <geometry_msgs/msg/wrench_stamped.hpp>
+#endif
+
+#include <mujoco_ros/util.hpp>
+
 #include <algorithm>
 #include <initializer_list>
 #include <set>
@@ -14,12 +36,29 @@
 
 namespace mujoco_ros::sensors {
 
+#if MJR_ROS_VERSION == ROS_1
+using AccelStamped      = geometry_msgs::AccelStamped;
+using PointStamped      = geometry_msgs::PointStamped;
+using PoseStamped       = geometry_msgs::PoseStamped;
+using QuaternionStamped = geometry_msgs::QuaternionStamped;
+using TwistStamped      = geometry_msgs::TwistStamped;
+using Vector3Stamped    = geometry_msgs::Vector3Stamped;
+using WrenchStamped     = geometry_msgs::WrenchStamped;
+#else
+using AccelStamped      = geometry_msgs::msg::AccelStamped;
+using PointStamped      = geometry_msgs::msg::PointStamped;
+using PoseStamped       = geometry_msgs::msg::PoseStamped;
+using QuaternionStamped = geometry_msgs::msg::QuaternionStamped;
+using TwistStamped      = geometry_msgs::msg::TwistStamped;
+using Vector3Stamped    = geometry_msgs::msg::Vector3Stamped;
+using WrenchStamped     = geometry_msgs::msg::WrenchStamped;
+#endif
+
 bool ParseCompoundKind(const std::string &type, CompoundKind &out)
 {
 	static const std::pair<const char *, CompoundKind> kKinds[] = {
-		{ "IMU", CompoundKind::kIMU },     { "Twist", CompoundKind::kTwist },
-		{ "Wrench", CompoundKind::kWrench }, { "Pose", CompoundKind::kPose },
-		{ "Accel", CompoundKind::kAccel }, { "Odometry", CompoundKind::kOdometry },
+		{ "IMU", CompoundKind::kIMU },   { "Twist", CompoundKind::kTwist }, { "Wrench", CompoundKind::kWrench },
+		{ "Pose", CompoundKind::kPose }, { "Accel", CompoundKind::kAccel }, { "Odometry", CompoundKind::kOdometry },
 	};
 	for (const auto &[name, kind] : kKinds) {
 		if (type == name) {
@@ -57,7 +96,9 @@ const std::vector<std::string> &RequiredRoles(CompoundKind kind)
 
 bool RoleAcceptsMjType(CompoundKind kind, const std::string &role, int t)
 {
-	auto any_of = [t](std::initializer_list<int> allowed) { return std::find(allowed.begin(), allowed.end(), t) != allowed.end(); };
+	auto any_of = [t](std::initializer_list<int> allowed) {
+		return std::find(allowed.begin(), allowed.end(), t) != allowed.end();
+	};
 	const bool quat = any_of({ mjSENS_FRAMEQUAT, mjSENS_BALLQUAT });
 
 	switch (kind) {
@@ -97,7 +138,7 @@ bool ResolveSensorBodyId(const mjModel *model, int sensor_id, int &body_id, std:
 		error = "sensor id " + std::to_string(sensor_id) + " out of range";
 		return false;
 	}
-	const char *name = mj_id2name(model, mjOBJ_SENSOR, sensor_id);
+	const char *name        = mj_id2name(model, mjOBJ_SENSOR, sensor_id);
 	const std::string label = name ? name : "#" + std::to_string(sensor_id);
 
 	const int objid = model->sensor_objid[sensor_id];
@@ -197,11 +238,11 @@ bool ValidateCompound(const mjModel *model, const CompoundSpec &spec, const std:
 			error = "sensor '" + sensor + "' is already claimed by another role or compound";
 			return false;
 		}
-		ids[role]         = id;
-		desc.roles[role]  = sensor;
+		ids[role]        = id;
+		desc.roles[role] = sensor;
 	}
 
-	auto frame_of = [&](const std::string &role) { return frames.at(desc.roles.at(role)); };
+	auto frame_of     = [&](const std::string &role) { return frames.at(desc.roles.at(role)); };
 	auto shared_frame = [&](const std::string &a, const std::string &b, std::string &frame) {
 		if (frame_of(a) != frame_of(b)) {
 			error = "roles '" + a + "' and '" + b + "' must share one frame_id but have '" + frame_of(a) + "' and '" +
@@ -265,6 +306,98 @@ bool ValidateCompounds(const mjModel *model, const std::vector<CompoundSpec> &sp
 		out.push_back(std::move(desc));
 	}
 	return true;
+}
+
+namespace {
+
+/// A two-part compound message: header + both parts' current (or ground-truth) message.
+template <typename MsgT, typename Part0, typename Part1>
+class ComposedStream : public PublishingStream<MsgT>
+{
+public:
+	using Fill = void (*)(MsgT &, const Part0 &, const Part1 &);
+
+	ComposedStream(std::string name, const SensorConfig &config, bool eval_mode, ISensorStream &first,
+	               ISensorStream &second, Fill fill)
+	    : PublishingStream<MsgT>(std::move(name), config, eval_mode), first_(first), second_(second), fill_(fill)
+	{
+	}
+
+protected:
+	// Parts cache per step, so value/GT built here share one noise sample set with any other reader of the part.
+	MsgT Noisy(const mjModel *model, const mjData *data) override
+	{
+		return Compose(data, std::any_cast<const Part0 &>(first_.Value(model, data)),
+		               std::any_cast<const Part1 &>(second_.Value(model, data)));
+	}
+
+	MsgT Truth(const mjModel *model, const mjData *data) override
+	{
+		return Compose(data, std::any_cast<const Part0 &>(first_.GroundTruth(model, data)),
+		               std::any_cast<const Part1 &>(second_.GroundTruth(model, data)));
+	}
+
+private:
+	MsgT Compose(const mjData *data, const Part0 &a, const Part1 &b) const
+	{
+		MsgT msg;
+		msg.header.frame_id = this->config().frame_id;
+		msg.header.stamp    = util::toRosTime(util::simTimeToNanoseconds(data->time));
+		fill_(msg, a, b);
+		return msg;
+	}
+
+	ISensorStream &first_;
+	ISensorStream &second_;
+	Fill fill_;
+};
+
+} // namespace
+
+bool HasCompoundStream(CompoundKind kind)
+{
+	return kind == CompoundKind::kWrench || kind == CompoundKind::kTwist || kind == CompoundKind::kPose ||
+	       kind == CompoundKind::kAccel;
+}
+
+std::unique_ptr<ISensorStream> MakeCompoundStream(const CompoundDescriptor &desc, const SensorConfig &config,
+                                                  const std::map<std::string, ISensorStream *> &parts, bool eval_mode)
+{
+	auto part = [&](const char *role) -> ISensorStream & { return *parts.at(role); };
+	switch (desc.kind) {
+		case CompoundKind::kWrench:
+			return std::make_unique<ComposedStream<WrenchStamped, Vector3Stamped, Vector3Stamped>>(
+			    desc.name, config, eval_mode, part("force"), part("torque"),
+			    [](WrenchStamped &m, const Vector3Stamped &force, const Vector3Stamped &torque) {
+				    m.wrench.force  = force.vector;
+				    m.wrench.torque = torque.vector;
+			    });
+		case CompoundKind::kTwist:
+			return std::make_unique<ComposedStream<TwistStamped, Vector3Stamped, Vector3Stamped>>(
+			    desc.name, config, eval_mode, part("linear"), part("angular"),
+			    [](TwistStamped &m, const Vector3Stamped &linear, const Vector3Stamped &angular) {
+				    m.twist.linear  = linear.vector;
+				    m.twist.angular = angular.vector;
+			    });
+		case CompoundKind::kAccel:
+			return std::make_unique<ComposedStream<AccelStamped, Vector3Stamped, Vector3Stamped>>(
+			    desc.name, config, eval_mode, part("linear"), part("angular"),
+			    [](AccelStamped &m, const Vector3Stamped &linear, const Vector3Stamped &angular) {
+				    m.accel.linear  = linear.vector;
+				    m.accel.angular = angular.vector;
+			    });
+		case CompoundKind::kPose:
+			return std::make_unique<ComposedStream<PoseStamped, PointStamped, QuaternionStamped>>(
+			    desc.name, config, eval_mode, part("position"), part("orientation"),
+			    [](PoseStamped &m, const PointStamped &position, const QuaternionStamped &orientation) {
+				    m.pose.position    = position.point;
+				    m.pose.orientation = orientation.quaternion;
+			    });
+		case CompoundKind::kIMU:
+		case CompoundKind::kOdometry:
+			break;
+	}
+	return nullptr;
 }
 
 } // namespace mujoco_ros::sensors

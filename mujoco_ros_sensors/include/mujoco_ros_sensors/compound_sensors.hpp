@@ -10,13 +10,22 @@
 #include <mujoco/mujoco.h>
 
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace mujoco_ros::sensors {
 
 /// Compound stream kinds; each is selected by its exact YAML `type` string.
-enum class CompoundKind { kIMU, kTwist, kWrench, kPose, kAccel, kOdometry };
+enum class CompoundKind
+{
+	kIMU,
+	kTwist,
+	kWrench,
+	kPose,
+	kAccel,
+	kOdometry
+};
 
 /// Accepts only the exact YAML type strings (`IMU`, `Twist`, `Wrench`, `Pose`, `Accel`, `Odometry`).
 bool ParseCompoundKind(const std::string &type, CompoundKind &out);
@@ -70,5 +79,21 @@ struct CompoundDescriptor
 bool ValidateCompounds(const mjModel *model, const std::vector<CompoundSpec> &specs,
                        const std::map<std::string, std::string> &part_frame_ids, std::vector<CompoundDescriptor> &out,
                        std::string &error);
+
+class ISensorStream;
+struct SensorConfig;
+
+/// True for the kinds MakeCompoundStream can build (Wrench, Twist, Pose, Accel).
+bool HasCompoundStream(CompoundKind kind);
+
+/**
+ * Builds the public stream of a validated compound from its already built part streams (`parts`: role -> stream).
+ * Value and ground truth are composed from the parts' own per-step cached Value()/GroundTruth(), so the parts must
+ * outlive the compound and be invalidated before it publishes each step. `config` carries the compound's frame_id,
+ * update_rate and publishers (msg type per kind: WrenchStamped, TwistStamped, PoseStamped, AccelStamped).
+ * Returns nullptr when HasCompoundStream(desc.kind) is false.
+ */
+std::unique_ptr<ISensorStream> MakeCompoundStream(const CompoundDescriptor &desc, const SensorConfig &config,
+                                                  const std::map<std::string, ISensorStream *> &parts, bool eval_mode);
 
 } // namespace mujoco_ros::sensors
