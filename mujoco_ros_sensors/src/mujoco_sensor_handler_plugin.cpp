@@ -258,6 +258,19 @@ void MujocoRosSensorsPlugin::RegisterNoiseModelsCB(
 			continue;
 		}
 
+		// A compound is addressed per role; a bare compound name would silently do nothing.
+		const auto bare = std::find_if(compounds_.begin(), compounds_.end(),
+		                               [&](const CompoundDescriptor &d) { return d.name == name; });
+		if (bare != compounds_.end()) {
+			MJR_ERROR_STREAM_NAMED("sensors", "'" << name
+			                                      << "' is a compound sensor; noise models are registered per role as "
+			                                         "'<compound>.<role>' (e.g. '"
+			                                      << name << "." << bare->roles.begin()->first
+			                                      << "'). Can not apply noise model");
+			rejected = true;
+			continue;
+		}
+
 		const auto pos = sensor_map_.find(name);
 		if (pos == sensor_map_.end()) {
 			MJR_WARN_STREAM_NAMED("sensors", "No sensor with name '" << name
@@ -443,8 +456,19 @@ void MujocoRosSensorsPlugin::InitSensors(const mjModel *model, mjData * /*data*/
 			continue;
 		}
 
-		const int site_id     = model->sensor_objid[n];
-		const int parent_id   = model->site_bodyid[site_id];
+		// Joint sensors (ballquat, ballangvel, jointpos, ...) carry a joint id, not a site id: resolve the body per
+		// object type instead of indexing site_bodyid with it. Other objects fall back to the world body.
+		const int site_id = model->sensor_objid[n];
+		int parent_id     = 0;
+		{
+			std::string body_error;
+			int body = -1;
+			if (ResolveSensorBodyId(model, n, body, body_error)) {
+				parent_id = body;
+			} else {
+				MJR_DEBUG_STREAM_NAMED("sensors", "Sensor " << sensor_name << ": " << body_error << ", using world frame");
+			}
+		}
 		const char *site_cstr = mj_id2name(const_cast<mjModel *>(model), model->sensor_objtype[n], site_id);
 		site                  = site_cstr ? site_cstr : "<unnamed>";
 
@@ -695,11 +719,6 @@ bool MujocoRosSensorsPlugin::InitCompounds(const mjModel *model)
 void MujocoRosSensorsPlugin::ApplyCompounds()
 {
 	for (const auto &desc : compounds_) {
-		// Validation guarantees a stream exists for every kind; fail loudly if that ever changes.
-		if (!HasCompoundStream(desc.kind)) {
-			throw std::logic_error("compound sensor '" + desc.name + "' has no stream implementation");
-		}
-
 		auto config         = std::make_unique<SensorConfig>(desc.frame_id);
 		config->update_rate = desc.update_rate;
 
@@ -708,6 +727,10 @@ void MujocoRosSensorsPlugin::ApplyCompounds()
 			parts[role] = streams_.at(sensor).get();
 		}
 		auto stream = MakeCompoundStream(desc, *config, parts, env_ptr_->settings_.eval_mode);
+		// Every validated kind has a stream; fail loudly if that ever changes.
+		if (!stream) {
+			throw std::logic_error("compound sensor '" + desc.name + "' has no stream implementation");
+		}
 
 		// Nothing is advertised yet (see AdvertisePublicStreams), so a claimed part never reaches the topic graph.
 		for (const auto &[role, sensor] : desc.roles) {

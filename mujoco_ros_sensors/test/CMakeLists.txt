@@ -35,6 +35,14 @@ if(ROS_VERSION EQUAL 1)
     ${catkin_LIBRARIES}
   )
 
+  # compound_sensors can only be injected on ROS 1 through launch rosparam: one happy path, one Load failure.
+  add_rostest(launch/mujoco_compound_sensors_rosparam.test
+    DEPENDENCIES mujoco_compound_sensors_test
+  )
+  add_rostest(launch/mujoco_compound_sensors_rosparam_invalid.test
+    DEPENDENCIES mujoco_compound_sensors_test
+  )
+
   target_include_directories(mujoco_compound_sensors_test SYSTEM
     PRIVATE
       ${catkin_INCLUDE_DIRS}

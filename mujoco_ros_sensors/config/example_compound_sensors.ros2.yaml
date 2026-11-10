@@ -39,20 +39,21 @@
     MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_accel.linear: linacc_tip
     MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_accel.angular: angacc_a
 
-    # geometry_msgs/PoseStamped; position and orientation must measure the same body
+    # geometry_msgs/PoseStamped; position and orientation must measure the same body and share one reference frame
     MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_pose.type: Pose
     MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_pose.position: pos_a
     MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_pose.orientation: quat_a
 
     # sensor_msgs/Imu; covariances stay "unknown" (-1 / 0)
     MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_imu.type: IMU
-    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_imu.linear_acceleration: acc_b
-    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_imu.angular_velocity: gyro_b
-    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_imu.orientation: ballquat_b
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_imu.linear_acceleration: acc_a
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_imu.angular_velocity: gyro_a
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_imu.orientation: imu_quat_a
 
-    # nav_msgs/Odometry; header frame from position, child_frame_id from linear/angular
+    # nav_msgs/Odometry; all four roles measure one body, position and orientation must share one
+    # reference (same reftype/refname). Header frame from position, child_frame_id from linear/angular
     MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_odom.type: Odometry
     MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_odom.position: pos_b_in_a
-    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_odom.orientation: quat_b
-    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_odom.linear: linvel_a
-    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_odom.angular: angvel_a
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_odom.orientation: quat_b_in_a
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_odom.linear: linvel_b_world
+    MujocoPlugins.mujoco_ros_sensors.compound_sensors.ee_odom.angular: angvel_b_world

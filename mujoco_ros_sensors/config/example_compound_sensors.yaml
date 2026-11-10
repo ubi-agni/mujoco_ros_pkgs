@@ -28,22 +28,24 @@ MujocoPlugins:
         type: Accel
         linear: linacc_tip
         angular: angacc_a
-      # geometry_msgs/PoseStamped; position and orientation must measure the same body
+      # geometry_msgs/PoseStamped; position and orientation must measure the same body and share one reference frame
       - name: ee_pose
         type: Pose
         position: pos_a
         orientation: quat_a
-      # sensor_msgs/Imu; orientation is a framequat/ballquat of the accelerometer's body.
+      # sensor_msgs/Imu; all three roles measure one body. A ballquat orientation is only valid for a joint
+      # whose parent is the world body.
       # Covariances stay "unknown" (-1 / 0), noise is not reported in them.
       - name: ee_imu
         type: IMU
-        linear_acceleration: acc_b
-        angular_velocity: gyro_b
-        orientation: ballquat_b
-      # nav_msgs/Odometry; header frame from position, child_frame_id from linear/angular
+        linear_acceleration: acc_a
+        angular_velocity: gyro_a
+        orientation: imu_quat_a
+      # nav_msgs/Odometry; all four roles measure one body, position and orientation must share one
+      # reference (same reftype/refname). Header frame from position, child_frame_id from linear/angular
       - name: ee_odom
         type: Odometry
         position: pos_b_in_a
-        orientation: quat_b
-        linear: linvel_a
-        angular: angvel_a
+        orientation: quat_b_in_a
+        linear: linvel_b_world
+        angular: angvel_b_world
