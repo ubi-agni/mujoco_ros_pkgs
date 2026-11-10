@@ -9,6 +9,7 @@
 
 #include <mujoco/mujoco.h>
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -35,5 +36,39 @@ bool ResolveSensorBodyId(const mjModel *model, int sensor_id, int &body_id, std:
 
 /// Object-identity check: both sensors must measure the same body. Sets `error` on mismatch or unresolvable sensor.
 bool SameAnchorBody(const mjModel *model, int anchor_sensor_id, int orientation_sensor_id, std::string &error);
+
+/// One `compound_sensors` entry as written in the plugin config, before any validation.
+struct CompoundSpec
+{
+	std::string name;
+	std::string type;
+	/// Every config key except `name`, `type` and `update_rate`, mapped to the MJCF sensor name it points at.
+	std::map<std::string, std::string> roles;
+	double update_rate = 0.0;
+};
+
+/// A validated compound: all roles resolved to existing sensors with consistent frames and bodies.
+struct CompoundDescriptor
+{
+	std::string name;
+	CompoundKind kind = CompoundKind::kIMU;
+	/// Role key -> MJCF sensor name; holds exactly RequiredRoles(kind).
+	std::map<std::string, std::string> roles;
+	/// Message `header.frame_id`.
+	std::string frame_id;
+	/// Odometry `child_frame_id`; empty for every other kind.
+	std::string child_frame_id;
+	double update_rate = 0.0;
+};
+
+/**
+ * Validates every spec against the model and the native sensors' frame ids (`part_frame_ids`: sensor name -> frame_id,
+ * only sensors that got a native stream). Fails on the first problem with `error` set and `out` left empty: unknown
+ * type, compound name clash, missing/unknown role key, unknown or unstreamed sensor, wrong MuJoCo type, a sensor
+ * claimed twice, frame mismatch (Wrench/Twist/Accel/IMU/Odometry twist pair) or orientation on another body.
+ */
+bool ValidateCompounds(const mjModel *model, const std::vector<CompoundSpec> &specs,
+                       const std::map<std::string, std::string> &part_frame_ids, std::vector<CompoundDescriptor> &out,
+                       std::string &error);
 
 } // namespace mujoco_ros::sensors

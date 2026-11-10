@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <initializer_list>
+#include <set>
 #include <utility>
 
 namespace mujoco_ros::sensors {
@@ -142,6 +143,126 @@ bool SameAnchorBody(const mjModel *model, int anchor_sensor_id, int orientation_
 		error = std::string("orientation sensor measures body '") + (o ? o : "?") + "' but the anchor measures body '" +
 		        (a ? a : "?") + "'";
 		return false;
+	}
+	return true;
+}
+
+namespace {
+
+int FindSensor(const mjModel *model, const std::string &name)
+{
+	return mj_name2id(model, mjOBJ_SENSOR, name.c_str());
+}
+
+bool ValidateCompound(const mjModel *model, const CompoundSpec &spec, const std::map<std::string, std::string> &frames,
+                      std::set<std::string> &claimed, CompoundDescriptor &desc, std::string &error)
+{
+	if (!ParseCompoundKind(spec.type, desc.kind)) {
+		error = "unknown compound type '" + spec.type + "' (expected IMU, Twist, Wrench, Pose, Accel or Odometry)";
+		return false;
+	}
+	desc.name        = spec.name;
+	desc.update_rate = spec.update_rate;
+
+	const auto &required = RequiredRoles(desc.kind);
+	for (const auto &[role, sensor] : spec.roles) {
+		if (std::find(required.begin(), required.end(), role) == required.end()) {
+			error = "unknown role '" + role + "' for type " + spec.type;
+			return false;
+		}
+	}
+
+	std::map<std::string, int> ids;
+	for (const auto &role : required) {
+		const auto it = spec.roles.find(role);
+		if (it == spec.roles.end()) {
+			error = "missing required role '" + role + "'";
+			return false;
+		}
+		const std::string &sensor = it->second;
+		const int id              = FindSensor(model, sensor);
+		if (id < 0) {
+			error = "role '" + role + "' names unknown sensor '" + sensor + "'";
+			return false;
+		}
+		if (!RoleAcceptsMjType(desc.kind, role, model->sensor_type[id])) {
+			error = "sensor '" + sensor + "' has a MuJoCo type that role '" + role + "' of " + spec.type + " rejects";
+			return false;
+		}
+		if (frames.find(sensor) == frames.end()) {
+			error = "sensor '" + sensor + "' has no native stream (skipped at init), cannot be claimed";
+			return false;
+		}
+		if (!claimed.insert(sensor).second) {
+			error = "sensor '" + sensor + "' is already claimed by another role or compound";
+			return false;
+		}
+		ids[role]         = id;
+		desc.roles[role]  = sensor;
+	}
+
+	auto frame_of = [&](const std::string &role) { return frames.at(desc.roles.at(role)); };
+	auto shared_frame = [&](const std::string &a, const std::string &b, std::string &frame) {
+		if (frame_of(a) != frame_of(b)) {
+			error = "roles '" + a + "' and '" + b + "' must share one frame_id but have '" + frame_of(a) + "' and '" +
+			        frame_of(b) + "'";
+			return false;
+		}
+		frame = frame_of(a);
+		return true;
+	};
+	auto same_body = [&](const std::string &anchor_role) {
+		return SameAnchorBody(model, ids.at(anchor_role), ids.at("orientation"), error);
+	};
+
+	switch (desc.kind) {
+		case CompoundKind::kWrench:
+			return shared_frame("force", "torque", desc.frame_id);
+		case CompoundKind::kTwist:
+		case CompoundKind::kAccel:
+			return shared_frame("linear", "angular", desc.frame_id);
+		case CompoundKind::kIMU:
+			return shared_frame("linear_acceleration", "angular_velocity", desc.frame_id) &&
+			       same_body("linear_acceleration");
+		case CompoundKind::kPose:
+			desc.frame_id = frame_of("position");
+			return same_body("position");
+		case CompoundKind::kOdometry:
+			desc.frame_id = frame_of("position");
+			return same_body("position") && shared_frame("linear", "angular", desc.child_frame_id);
+	}
+	return false;
+}
+
+} // namespace
+
+bool ValidateCompounds(const mjModel *model, const std::vector<CompoundSpec> &specs,
+                       const std::map<std::string, std::string> &part_frame_ids, std::vector<CompoundDescriptor> &out,
+                       std::string &error)
+{
+	out.clear();
+	std::set<std::string> names, claimed;
+	for (const auto &spec : specs) {
+		auto fail = [&](const std::string &why) {
+			error = "compound_sensors entry '" + spec.name + "': " + why;
+			out.clear();
+			return false;
+		};
+		if (spec.name.empty()) {
+			return fail("name must not be empty");
+		}
+		if (!names.insert(spec.name).second) {
+			return fail("duplicate compound name");
+		}
+		if (FindSensor(model, spec.name) >= 0) {
+			return fail("name collides with an MJCF sensor of the same name");
+		}
+		CompoundDescriptor desc;
+		std::string why;
+		if (!ValidateCompound(model, spec, part_frame_ids, claimed, desc, why)) {
+			return fail(why);
+		}
+		out.push_back(std::move(desc));
 	}
 	return true;
 }

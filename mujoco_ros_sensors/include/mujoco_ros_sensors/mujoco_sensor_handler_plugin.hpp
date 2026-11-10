@@ -24,6 +24,7 @@
 #endif
 
 #include <mujoco_ros/mujoco_env.hpp>
+#include <mujoco_ros_sensors/compound_sensors.hpp>
 
 #include <any>
 #include <map>
@@ -148,11 +149,18 @@ protected:
 	/// Optional per-sensor update_rate (Hz, sim time); 0 when unset so every step publishes.
 	double ReadUpdateRate(const std::string &sensor_name) const;
 
+	/// Reads the plugin's `compound_sensors` config. ROS 2 params cannot nest maps in lists, so there it is a
+	/// string array of names plus one `compound_sensors.<name>.<key>` string parameter per key.
+	bool ParseCompoundSpecs(std::vector<CompoundSpec> &specs, std::string &error) const;
+	/// Validate-only: parses and checks `compound_sensors` and stores the valid descriptors in compounds_.
+	bool InitCompounds(const mjModel *model);
+
 	NoiseSource noise_;
 	// Streams reference their config and the noise source, so they must be destroyed first.
 	std::map<std::string, SensorConfigPtr> sensor_map_;
 	std::map<std::string, std::unique_ptr<ISensorStream>> streams_;
 	bool hub_registered_ = false;
+	std::vector<CompoundDescriptor> compounds_;
 	// Valid for this plugin generation only: a reload destroys the plugin before replacing model/data.
 	const mjModel *model_ = nullptr;
 	mjData *data_         = nullptr;

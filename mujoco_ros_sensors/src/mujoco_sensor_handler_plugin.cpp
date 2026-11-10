@@ -189,6 +189,10 @@ bool MujocoRosSensorsPlugin::Load(const mjModel *model, mjData *data)
 	InitSensors(model, data);
 	MJR_INFO_NAMED("sensors", "All sensors initialized");
 
+	if (!InitCompounds(model)) {
+		return false;
+	}
+
 	// A public name already taken by another provider (e.g. a laser) must fail the load loudly; a half-registered
 	// plugin must not load and must not leave an uncaught throw behind.
 	try {
@@ -598,6 +602,128 @@ void MujocoRosSensorsPlugin::InitSensors(const mjModel *model, mjData * /*data*/
 		}
 		streams_[name] = std::move(stream);
 	}
+}
+
+bool MujocoRosSensorsPlugin::ParseCompoundSpecs(std::vector<CompoundSpec> &specs, std::string &error) const
+{
+#if MJR_ROS_VERSION == ROS_1
+	// XmlRpcValue's conversion operators are non-const, so work on copies.
+	XmlRpc::XmlRpcValue plugin_cfg = rosparam_config_;
+	if (!plugin_cfg.hasMember("compound_sensors")) {
+		return true;
+	}
+	XmlRpc::XmlRpcValue list = plugin_cfg["compound_sensors"];
+	if (list.getType() != XmlRpc::XmlRpcValue::TypeArray) {
+		error = "compound_sensors must be a list";
+		return false;
+	}
+	for (int i = 0; i < list.size(); i++) {
+		XmlRpc::XmlRpcValue entry = list[i];
+		if (entry.getType() != XmlRpc::XmlRpcValue::TypeStruct) {
+			error = "compound_sensors entry " + std::to_string(i) + " must be a map";
+			return false;
+		}
+		CompoundSpec spec;
+		for (auto it = entry.begin(); it != entry.end(); ++it) {
+			const std::string &key = it->first;
+			XmlRpc::XmlRpcValue value = it->second;
+			if (key == "update_rate") {
+				if (value.getType() == XmlRpc::XmlRpcValue::TypeDouble) {
+					spec.update_rate = static_cast<double>(value);
+				} else if (value.getType() == XmlRpc::XmlRpcValue::TypeInt) {
+					spec.update_rate = static_cast<int>(value);
+				} else {
+					error = "compound_sensors entry " + std::to_string(i) + ": update_rate must be a number";
+					return false;
+				}
+				continue;
+			}
+			if (value.getType() != XmlRpc::XmlRpcValue::TypeString) {
+				error = "compound_sensors entry " + std::to_string(i) + ": '" + key + "' must be a string";
+				return false;
+			}
+			const std::string text = static_cast<std::string>(value);
+			if (key == "name") {
+				spec.name = text;
+			} else if (key == "type") {
+				spec.type = text;
+			} else {
+				spec.roles[key] = text;
+			}
+		}
+		specs.push_back(std::move(spec));
+	}
+	return true;
+#else
+	const std::string base = "MujocoPlugins." + get_name() + ".compound_sensors";
+	if (!env_ptr_->has_parameter(base)) {
+		return true;
+	}
+	const auto names_param = env_ptr_->get_parameter(base);
+	if (names_param.get_type() == rclcpp::ParameterType::PARAMETER_NOT_SET) {
+		return true;
+	}
+	if (names_param.get_type() != rclcpp::ParameterType::PARAMETER_STRING_ARRAY) {
+		error = "'" + base + "' must be a string array of compound names";
+		return false;
+	}
+	for (const auto &name : names_param.as_string_array()) {
+		const std::string prefix = base + "." + name;
+		CompoundSpec spec;
+		spec.name = name;
+		for (const auto &param_name : env_ptr_->list_parameters({ prefix }, 2).names) {
+			if (param_name.rfind(prefix + ".", 0) != 0) {
+				continue;
+			}
+			const std::string key = param_name.substr(prefix.size() + 1);
+			const auto value      = env_ptr_->get_parameter(param_name);
+			if (key == "update_rate") {
+				if (value.get_type() == rclcpp::ParameterType::PARAMETER_DOUBLE) {
+					spec.update_rate = value.as_double();
+				} else if (value.get_type() == rclcpp::ParameterType::PARAMETER_INTEGER) {
+					spec.update_rate = static_cast<double>(value.as_int());
+				} else {
+					error = "'" + param_name + "' must be a number";
+					return false;
+				}
+				continue;
+			}
+			if (value.get_type() != rclcpp::ParameterType::PARAMETER_STRING) {
+				error = "'" + param_name + "' must be a string";
+				return false;
+			}
+			if (key == "type") {
+				spec.type = value.as_string();
+			} else {
+				spec.roles[key] = value.as_string();
+			}
+		}
+		specs.push_back(std::move(spec));
+	}
+	return true;
+#endif
+}
+
+bool MujocoRosSensorsPlugin::InitCompounds(const mjModel *model)
+{
+	compounds_.clear();
+	std::vector<CompoundSpec> specs;
+	std::string error;
+	if (!ParseCompoundSpecs(specs, error)) {
+		MJR_ERROR_STREAM_NAMED("sensors", "Invalid compound_sensors config: " << error);
+		return false;
+	}
+
+	std::map<std::string, std::string> part_frame_ids;
+	// Only sensors with a live stream can be claimed; a config without a stream has nothing to demote.
+	for (const auto &[name, stream] : streams_) {
+		part_frame_ids[name] = stream->config().frame_id;
+	}
+	if (!ValidateCompounds(model, specs, part_frame_ids, compounds_, error)) {
+		MJR_ERROR_STREAM_NAMED("sensors", "Invalid compound_sensors config: " << error);
+		return false;
+	}
+	return true;
 }
 
 void MujocoRosSensorsPlugin::Reset()
