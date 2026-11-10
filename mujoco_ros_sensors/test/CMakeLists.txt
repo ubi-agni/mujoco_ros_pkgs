@@ -108,6 +108,7 @@ elseif(ROS_VERSION EQUAL 2)
 
   ament_target_dependencies(mujoco_compound_sensors_test
     ament_index_cpp
+    geometry_msgs
     mujoco_ros_testing_utils
     mujoco_ros_msgs
     rclcpp

@@ -9,6 +9,7 @@
 
 #include <mujoco_ros/mujoco_env.hpp>
 #include <mujoco_ros/ros_version.hpp>
+#include <mujoco_ros_sensors/sensor_stream.hpp>
 #include <mujoco_ros_testing_utils/mujoco_env_fixture.hpp>
 
 #if MJR_ROS_VERSION == ROS_1
@@ -16,12 +17,19 @@
 #include <ros/ros.h>
 #else
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <geometry_msgs/msg/accel_stamped.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
+#include <geometry_msgs/msg/wrench_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
 #endif
 
+#include <algorithm>
+#include <cmath>
 #include <chrono>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -82,7 +90,7 @@ protected:
 			nh->setParam(base, names);
 		}
 #endif
-		env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+		env_ptr                    = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
 		const std::string xml_path = compound_world_path();
 		env_ptr->StartWithXML(xml_path);
 
@@ -212,23 +220,27 @@ TEST_F(CompoundLoadFixture, TwistFrameMismatchFailsLoad)
 
 TEST_F(CompoundLoadFixture, ImuAccelGyroFrameMismatchFailsLoad)
 {
-	ExpectLoadFails({ { "c",
-	                    "IMU",
-	                    { { "linear_acceleration", "acc_a" }, { "angular_velocity", "gyro_b" }, { "orientation", "quat_a" } } } });
+	ExpectLoadFails(
+	    { { "c",
+	        "IMU",
+	        { { "linear_acceleration", "acc_a" }, { "angular_velocity", "gyro_b" }, { "orientation", "quat_a" } } } });
 }
 
 TEST_F(CompoundLoadFixture, ImuOrientationOnOtherBodyFailsLoad)
 {
-	ExpectLoadFails({ { "c",
-	                    "IMU",
-	                    { { "linear_acceleration", "acc_a" }, { "angular_velocity", "gyro_a" }, { "orientation", "quat_b" } } } });
+	ExpectLoadFails(
+	    { { "c",
+	        "IMU",
+	        { { "linear_acceleration", "acc_a" }, { "angular_velocity", "gyro_a" }, { "orientation", "quat_b" } } } });
 }
 
 TEST_F(CompoundLoadFixture, ImuBallquatOnOtherBodyFailsLoad)
 {
 	ExpectLoadFails({ { "c",
 	                    "IMU",
-	                    { { "linear_acceleration", "acc_a" }, { "angular_velocity", "gyro_a" }, { "orientation", "ballquat_b" } } } });
+	                    { { "linear_acceleration", "acc_a" },
+	                      { "angular_velocity", "gyro_a" },
+	                      { "orientation", "ballquat_b" } } } });
 }
 
 TEST_F(CompoundLoadFixture, PoseOrientationOnOtherBodyFailsLoad)
@@ -266,5 +278,207 @@ TEST_F(CompoundLoadFixture, DoubleClaimFailsLoad)
 TEST_F(CompoundLoadFixture, CompoundNameCollidingWithSensorFailsLoad)
 {
 	ExpectLoadFails({ { "acc_b", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } } } });
+}
+
+namespace {
+
+// The published sample comes from the last step; the model is re-forwarded afterwards, so reads drift by ~1 step.
+constexpr double kRelTol = 2e-2;
+
+#define EXPECT_SAMPLE(actual, expected) EXPECT_NEAR(actual, expected, kRelTol *std::max(1.0, std::abs(expected)))
+
+class CompoundStreamFixture : public CompoundLoadFixture
+{
+protected:
+	std::string TopicOf(const std::string &sensor) { return env_ptr->GetHandleNamespace() + "/" + sensor; }
+
+	/// Sensor value as the native streams publish it (float cast, divided by the sensor cutoff).
+	double Sensor(const std::string &name, int i = 0)
+	{
+		const mjModel *m = env_ptr->getModelPtr();
+		const int id     = mj_name2id(m, mjOBJ_SENSOR, name.c_str());
+		EXPECT_GE(id, 0) << name;
+		const double cutoff = m->sensor_cutoff[id] > 0 ? m->sensor_cutoff[id] : 1;
+		return static_cast<float>(env_ptr->getDataPtr()->sensordata[m->sensor_adr[id] + i] / cutoff);
+	}
+
+	template <typename MsgT>
+	struct Latest
+	{
+		std::mutex mutex;
+		MsgT msg;
+		bool got = false;
+	};
+
+	/// Subscribes to the compound's value and GT topics while paused, runs a few steps, returns the messages of the
+	/// final step. Sensors read velocities/accelerations of the pre-step state, so one step would only see zeros.
+	template <typename MsgT>
+	void ReceiveValueAndGt(const std::string &compound, MsgT &value, MsgT &gt, int steps = 20)
+	{
+		Latest<MsgT> v, g;
+		auto make_cb = [](Latest<MsgT> &slot) {
+			return [&slot](typename MsgT::ConstSharedPtr msg) {
+				std::lock_guard<std::mutex> lock(slot.mutex);
+				slot.msg = *msg;
+				slot.got = true;
+			};
+		};
+		env_ptr->togglePaused(true);
+		auto value_sub = env_ptr->template create_subscription<MsgT>(TopicOf(compound), rclcpp::QoS(10), make_cb(v));
+		auto gt_sub = env_ptr->template create_subscription<MsgT>(TopicOf(compound + "_GT"), rclcpp::QoS(10), make_cb(g));
+		std::this_thread::sleep_for(std::chrono::milliseconds(250));
+		env_ptr->step(steps);
+		const double final_time = env_ptr->getDataPtr()->time;
+
+		auto at_final = [&](Latest<MsgT> &slot) {
+			std::lock_guard<std::mutex> lock(slot.mutex);
+			return slot.got && std::abs(rclcpp::Time(slot.msg.header.stamp).seconds() - final_time) < 5e-4;
+		};
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+		while (!(at_final(v) && at_final(g)) && std::chrono::steady_clock::now() < deadline) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+		ASSERT_TRUE(at_final(v) && at_final(g))
+		    << "no value/GT sample of the final step on compound '" << compound << "'";
+		std::scoped_lock lock(v.mutex, g.mutex);
+		value = v.msg;
+		gt    = g.msg;
+	}
+
+	/// Compound public in the hub, claimed parts gone from hub and topic graph.
+	void ExpectDemoted(const std::string &compound, const std::vector<std::string> &parts)
+	{
+		const auto native = env_ptr->sensors().Native();
+		EXPECT_NE(native.Get(compound), nullptr);
+		const auto names = native.Names();
+		EXPECT_NE(std::find(names.begin(), names.end(), compound), names.end());
+		const auto topics = testing::get_available_topics_for_test(env_ptr.get());
+		EXPECT_TRUE(testing::has_topic(topics, TopicOf(compound))) << compound;
+		for (const auto &part : parts) {
+			EXPECT_EQ(native.Get(part), nullptr) << part << " must not be a public stream";
+			EXPECT_EQ(std::find(names.begin(), names.end(), part), names.end()) << part;
+			// Immediate check on purpose: claimed parts are never advertised, so nothing has to be torn down first.
+			EXPECT_FALSE(testing::has_topic(topics, TopicOf(part))) << part << " must not be advertised";
+			EXPECT_FALSE(testing::has_topic(topics, TopicOf(part + "_GT"))) << part << "_GT must not be advertised";
+		}
+	}
+};
+
+} // namespace
+
+TEST_F(CompoundStreamFixture, WrenchCompoundPublishesAndDemotesParts)
+{
+	Start({ { "ee_wrench", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } } } });
+	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	ExpectDemoted("ee_wrench", { "force_a", "torque_a" });
+
+	geometry_msgs::msg::WrenchStamped value, gt;
+	ReceiveValueAndGt("ee_wrench", value, gt);
+	EXPECT_EQ(value.header.frame_id, "link_a");
+	EXPECT_EQ(gt.header.frame_id, "link_a");
+	EXPECT_SAMPLE(gt.wrench.force.x, Sensor("force_a", 0));
+	EXPECT_SAMPLE(gt.wrench.force.y, Sensor("force_a", 1));
+	EXPECT_SAMPLE(gt.wrench.force.z, Sensor("force_a", 2));
+	EXPECT_SAMPLE(gt.wrench.torque.x, Sensor("torque_a", 0));
+	EXPECT_SAMPLE(gt.wrench.torque.y, Sensor("torque_a", 1));
+	EXPECT_SAMPLE(gt.wrench.torque.z, Sensor("torque_a", 2));
+	EXPECT_NE(gt.wrench.force.x, 0.0) << "force role must carry data, not a default message";
+	// no noise registered: value equals GT
+	EXPECT_EQ(value.wrench.force, gt.wrench.force);
+	EXPECT_EQ(value.wrench.torque, gt.wrench.torque);
+	EXPECT_NE(gt.wrench.torque.y, 0.0);
+}
+
+TEST_F(CompoundStreamFixture, TwistCompoundPublishesAndDemotesParts)
+{
+	// World-frame pair: a velocity measured relative to its own body would be 0 and prove nothing
+	Start({ { "ee_twist", "Twist", { { "linear", "linvel_world" }, { "angular", "angvel_world" } } } });
+	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	ExpectDemoted("ee_twist", { "linvel_world", "angvel_world" });
+
+	geometry_msgs::msg::TwistStamped value, gt;
+	ReceiveValueAndGt("ee_twist", value, gt);
+	EXPECT_EQ(value.header.frame_id, "world");
+	EXPECT_SAMPLE(gt.twist.linear.x, Sensor("linvel_world", 0));
+	EXPECT_SAMPLE(gt.twist.linear.z, Sensor("linvel_world", 2));
+	EXPECT_SAMPLE(gt.twist.angular.x, Sensor("angvel_world", 0));
+	EXPECT_SAMPLE(gt.twist.angular.y, Sensor("angvel_world", 1));
+	EXPECT_SAMPLE(gt.twist.angular.z, Sensor("angvel_world", 2));
+	EXPECT_NE(gt.twist.angular.y, 0.0) << "angular role must carry data, not a default message";
+	EXPECT_NE(gt.twist.linear.x, 0.0) << "linear role must carry data, not a default message";
+	// no noise registered: the value channel must carry the same mapped fields as GT
+	EXPECT_EQ(value.twist.linear, gt.twist.linear);
+	EXPECT_EQ(value.twist.angular, gt.twist.angular);
+}
+
+TEST_F(CompoundStreamFixture, AccelCompoundPublishesAndDemotesParts)
+{
+	Start({ { "ee_accel", "Accel", { { "linear", "linacc_tip" }, { "angular", "angacc_a" } } } });
+	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	ExpectDemoted("ee_accel", { "linacc_tip", "angacc_a" });
+
+	geometry_msgs::msg::AccelStamped value, gt;
+	ReceiveValueAndGt("ee_accel", value, gt);
+	EXPECT_EQ(value.header.frame_id, "world");
+	EXPECT_SAMPLE(gt.accel.linear.x, Sensor("linacc_tip", 0));
+	EXPECT_SAMPLE(gt.accel.linear.z, Sensor("linacc_tip", 2));
+	EXPECT_SAMPLE(gt.accel.angular.y, Sensor("angacc_a", 1));
+	EXPECT_NE(gt.accel.angular.y, 0.0) << "angular role must carry data, not a default message";
+	EXPECT_NE(gt.accel.linear.x, 0.0) << "linear role must carry data, not a default message";
+	EXPECT_EQ(value.accel.linear, gt.accel.linear);
+	EXPECT_EQ(value.accel.angular, gt.accel.angular);
+}
+
+TEST_F(CompoundStreamFixture, PoseCompoundUsesPositionFrameAndWorldQuaternion)
+{
+	// pos_b_in_a is body-relative (frame link_a); quat_b has frame_id world but measures the same body link_b
+	Start({ { "ee_pose", "Pose", { { "position", "pos_b_in_a" }, { "orientation", "quat_b" } } } });
+	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	ExpectDemoted("ee_pose", { "pos_b_in_a", "quat_b" });
+
+	geometry_msgs::msg::PoseStamped value, gt;
+	ReceiveValueAndGt("ee_pose", value, gt);
+	EXPECT_EQ(value.header.frame_id, "link_a");
+	EXPECT_SAMPLE(gt.pose.position.x, Sensor("pos_b_in_a", 0));
+	EXPECT_SAMPLE(gt.pose.position.z, Sensor("pos_b_in_a", 2));
+	EXPECT_SAMPLE(gt.pose.orientation.w, Sensor("quat_b", 0));
+	EXPECT_SAMPLE(gt.pose.orientation.x, Sensor("quat_b", 1));
+	EXPECT_SAMPLE(gt.pose.orientation.y, Sensor("quat_b", 2));
+	EXPECT_SAMPLE(gt.pose.orientation.z, Sensor("quat_b", 3));
+	EXPECT_NE(gt.pose.position.z, 0.0);
+	EXPECT_EQ(value.pose.position, gt.pose.position);
+	EXPECT_EQ(value.pose.orientation, gt.pose.orientation);
+}
+
+TEST_F(CompoundStreamFixture, InProcessReadDoesNotLeaveStalePartValuesForNextStep)
+{
+	// "a_wrench" sorts before its parts "force_a"/"torque_a". An in-process read after a step fills the parts' caches;
+	// if LastStage did not invalidate every cache before publishing, the next step would compose that stale part
+	// state and republish the previous sample.
+	Start({ { "a_wrench", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } } } });
+	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	env_ptr->togglePaused(true);
+	env_ptr->step(1);
+
+	auto *stream = static_cast<mujoco_ros::sensors::ISensorStream *>(env_ptr->sensors().Native().Get("a_wrench"));
+	ASSERT_NE(stream, nullptr);
+	const auto read = std::any_cast<const geometry_msgs::msg::WrenchStamped &>(
+	    stream->Value(env_ptr->getModelPtr(), env_ptr->getDataPtr()));
+
+	geometry_msgs::msg::WrenchStamped next, next_gt;
+	ReceiveValueAndGt("a_wrench", next, next_gt, 1);
+	EXPECT_NE(next.wrench.force.z, read.wrench.force.z) << "value of the next step is the previous step's sample";
+	EXPECT_NE(next_gt.wrench.force.z, read.wrench.force.z) << "GT of the next step is the previous step's sample";
+}
+
+TEST_F(CompoundStreamFixture, UnclaimedSensorsStayPublic)
+{
+	Start({ { "ee_wrench", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } } } });
+	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	const auto native = env_ptr->sensors().Native();
+	EXPECT_NE(native.Get("acc_a"), nullptr);
+	EXPECT_NE(native.Get("quat_b"), nullptr);
+	const auto topics = testing::get_available_topics_for_test(env_ptr.get());
+	EXPECT_TRUE(testing::has_topic(topics, TopicOf("acc_a")));
 }
 #endif

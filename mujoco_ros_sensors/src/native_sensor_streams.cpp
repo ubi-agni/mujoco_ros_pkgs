@@ -38,18 +38,6 @@ using PointStamped         = geometry_msgs::PointStamped;
 using QuaternionStamped    = geometry_msgs::QuaternionStamped;
 using ScalarStamped        = mujoco_ros_msgs::ScalarStamped;
 using Vector3Stamped       = geometry_msgs::Vector3Stamped;
-
-template <typename MessageT>
-void Publish(const ros::Publisher &publisher, const MessageT &message)
-{
-	publisher.publish(message);
-}
-
-template <typename MessageT>
-bool HasSubscribers(const ros::Publisher &publisher)
-{
-	return publisher.getNumSubscribers() > 0;
-}
 #else
 using CamProjectionStamped = mujoco_ros_msgs::msg::CamProjectionStamped;
 using GeomFromToStamped    = mujoco_ros_msgs::msg::GeomFromToStamped;
@@ -57,74 +45,21 @@ using PointStamped         = geometry_msgs::msg::PointStamped;
 using QuaternionStamped    = geometry_msgs::msg::QuaternionStamped;
 using ScalarStamped        = mujoco_ros_msgs::msg::ScalarStamped;
 using Vector3Stamped       = geometry_msgs::msg::Vector3Stamped;
-
-template <typename MessageT>
-void Publish(const std::any &publisher, const MessageT &message)
-{
-	std::any_cast<typename rclcpp::Publisher<MessageT>::SharedPtr>(publisher)->publish(message);
-}
-
-template <typename MessageT>
-bool HasSubscribers(const std::any &publisher)
-{
-	// An empty any is the ground-truth publisher in eval mode: nobody can listen.
-	if (!publisher.has_value()) {
-		return false;
-	}
-	return std::any_cast<typename rclcpp::Publisher<MessageT>::SharedPtr>(publisher)->get_subscription_count() > 0;
-}
 #endif
 
 namespace {
 
-/**
- * Publishes the (possibly noisy) value and, outside eval mode, the ground
- * truth. Each channel is gated independently by subscribers and by the
- * optional update_rate against sim time, so an unwatched channel costs no
- * message build (and consumes no noise samples).
- */
 template <typename MsgT>
-class NativeStream : public ISensorStream
+class NativeStream : public PublishingStream<MsgT>
 {
 public:
 	NativeStream(std::string name, const SensorConfig &config, int sensor_id, NoiseSource &noise, bool eval_mode)
-	    : ISensorStream(std::move(name), config, true), sensor_id_(sensor_id), noise_(noise), eval_mode_(eval_mode)
+	    : PublishingStream<MsgT>(std::move(name), config, eval_mode), sensor_id_(sensor_id), noise_(noise)
 	{
-	}
-
-	void MaybePublish(const mjModel *model, const mjData *data) override
-	{
-		const double now = data->time;
-		if (RateAllows(now, value_last_, value_has_last_) && HasSubscribers<MsgT>(config().value_pub)) {
-			Publish(config().value_pub, std::any_cast<const MsgT &>(Value(model, data)));
-			value_last_     = now;
-			value_has_last_ = true;
-			value_publish_count_.fetch_add(1, std::memory_order_release);
-		}
-		if (!eval_mode_ && RateAllows(now, gt_last_, gt_has_last_) && HasSubscribers<MsgT>(config().gt_pub)) {
-			Publish(config().gt_pub, std::any_cast<const MsgT &>(GroundTruth(model, data)));
-			gt_last_     = now;
-			gt_has_last_ = true;
-			gt_publish_count_.fetch_add(1, std::memory_order_release);
-		}
-	}
-
-	std::any BuildValue(const mjModel *model, const mjData *data) override { return Noisy(model, data); }
-
-	bool HasGroundTruth() const override { return !eval_mode_; }
-
-	std::any BuildGroundTruth(const mjModel *model, const mjData *data) override
-	{
-		// Loud on purpose: silently returning noisy data as "truth" would corrupt evaluation.
-		if (eval_mode_) {
-			return ISensorStream::BuildGroundTruth(model, data);
-		}
-		return Truth(model, data);
 	}
 
 protected:
-	virtual MsgT Noisy(const mjModel *model, const mjData *data) = 0;
-	virtual MsgT Truth(const mjModel *model, const mjData *data) = 0;
+	using PublishingStream<MsgT>::config;
 
 	int Adr(const mjModel *model) const { return model->sensor_adr[sensor_id_]; }
 	double Cutoff(const mjModel *model) const
@@ -181,32 +116,6 @@ protected:
 
 	int sensor_id_;
 	NoiseSource &noise_;
-	bool eval_mode_;
-
-private:
-	/**
-	 * Only publishes advance last-publish time (not skipped steps), so a late
-	 * subscriber on one channel is served at once. now < last means sim time was
-	 * reset; waiting out the old last would stall the stream.
-	 */
-	bool RateAllows(double now, double &last, bool &has_last) const
-	{
-		const double rate = config().update_rate;
-		if (rate <= 0.0 || !has_last) {
-			return true;
-		}
-		if (now < last) {
-			has_last = false;
-			return true;
-		}
-		// Tolerance: sim time is a float sum of timesteps and lands just below the period otherwise.
-		return now - last >= 1.0 / rate - 1e-6;
-	}
-
-	double value_last_   = 0.0;
-	double gt_last_      = 0.0;
-	bool value_has_last_ = false;
-	bool gt_has_last_    = false;
 };
 
 class Vector3Stream : public NativeStream<Vector3Stamped>
