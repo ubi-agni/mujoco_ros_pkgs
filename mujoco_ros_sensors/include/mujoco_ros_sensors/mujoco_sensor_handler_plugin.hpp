@@ -104,6 +104,16 @@ public:
 	void Reset() override;
 	void LastStageCallback(const mjModel *model, mjData *data) override;
 	const std::map<std::string, SensorConfigPtr> &GetSensorConfigs() const { return sensor_map_; }
+	/// Config of a native sensor or a compound; nullptr if neither exists.
+	const SensorConfig *FindConfig(const std::string &name) const
+	{
+		const auto native = sensor_map_.find(name);
+		if (native != sensor_map_.end()) {
+			return native->second.get();
+		}
+		const auto compound = compound_configs_.find(name);
+		return compound != compound_configs_.end() ? compound->second.get() : nullptr;
+	}
 
 	mujoco_ros::SensorProviderKind kind() const override { return mujoco_ros::SensorProviderKind::kNative; }
 	mujoco_ros::SensorStreamBase *Find(const std::string &name) const override;

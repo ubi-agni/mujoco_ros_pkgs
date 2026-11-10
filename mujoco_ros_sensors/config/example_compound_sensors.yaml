@@ -1,0 +1,49 @@
+# ROS 1 encoding of `compound_sensors` (list of maps) under the native sensors plugin entry.
+# For ROS 2 use example_compound_sensors.ros2.yaml (parameters cannot hold a list of maps).
+#
+# Each role value is an MJCF sensor name. A claimed sensor is no longer published or exposed
+# on its own; the compound topic `<name>` (and `<name>_GT` outside eval mode) replaces it.
+# Roles per type (all required, no extras): see docs/plugins/sensors.rst.
+# `update_rate` (Hz, sim time) is optional and throttles the ROS publish only; Python `data`
+# is still built every step. Unset or <= 0 publishes every step.
+# Sensor names match test/sensors_compound_world.xml; test_sensor_stream_python.py loads these files
+# so a typo in a role key or sensor name fails the test.
+# Role noise is registered on the dotted name `<compound>.<role>`, e.g. `ee_wrench.force`.
+MujocoPlugins:
+  - type: mujoco_ros_sensors/MujocoRosSensorsPlugin
+    compound_sensors:
+      # geometry_msgs/WrenchStamped
+      - name: ee_wrench
+        type: Wrench
+        force: force_a
+        torque: torque_a
+        update_rate: 100.0
+      # geometry_msgs/TwistStamped; linear and angular must share one frame_id
+      - name: ee_twist
+        type: Twist
+        linear: linvel_world
+        angular: angvel_world
+      # geometry_msgs/AccelStamped; linear and angular must share one frame_id
+      - name: ee_accel
+        type: Accel
+        linear: linacc_tip
+        angular: angacc_a
+      # geometry_msgs/PoseStamped; position and orientation must measure the same body
+      - name: ee_pose
+        type: Pose
+        position: pos_a
+        orientation: quat_a
+      # sensor_msgs/Imu; orientation is a framequat/ballquat of the accelerometer's body.
+      # Covariances stay "unknown" (-1 / 0), noise is not reported in them.
+      - name: ee_imu
+        type: IMU
+        linear_acceleration: acc_b
+        angular_velocity: gyro_b
+        orientation: ballquat_b
+      # nav_msgs/Odometry; header frame from position, child_frame_id from linear/angular
+      - name: ee_odom
+        type: Odometry
+        position: pos_b_in_a
+        orientation: quat_b
+        linear: linvel_a
+        angular: angvel_a
