@@ -206,7 +206,7 @@ struct NoisyScalar
 		EXPECT_NE(spec, nullptr) << err;
 		model = mj_compile(spec, nullptr);
 		mj_deleteSpec(spec);
-		data = mj_makeData(model);
+		data          = mj_makeData(model);
 		data->qvel[0] = 1.0;
 		mj_forward(model, data);
 		config.frame_id = "f";
@@ -221,7 +221,10 @@ struct NoisyScalar
 		mj_deleteData(data);
 		mj_deleteModel(model);
 	}
-	double Value() { return std::any_cast<const mujoco_ros_msgs::msg::ScalarStamped &>(stream->Value(model, data)).value; }
+	double Value()
+	{
+		return std::any_cast<const mujoco_ros_msgs::msg::ScalarStamped &>(stream->Value(model, data)).value;
+	}
 
 	mjModel *model = nullptr;
 	mjData *data   = nullptr;
@@ -440,9 +443,9 @@ TEST(CompoundBodyIdTest, SensorWithoutBodyObjectFails)
 	mjModel *model = CompileCompoundWorld();
 	ASSERT_NE(model, nullptr);
 	// Emulate an object type with no body owner.
-	const int id = SensorId(model, "quat_a_body");
+	const int id              = SensorId(model, "quat_a_body");
 	model->sensor_objtype[id] = mjOBJ_UNKNOWN;
-	int body = -2;
+	int body                  = -2;
 	std::string error;
 	EXPECT_FALSE(ResolveSensorBodyId(model, id, body, error));
 	EXPECT_FALSE(error.empty());
@@ -501,7 +504,8 @@ TEST(ValidateCompoundsTest, AccelFrameMismatchFailsLoud)
 	ASSERT_NE(model, nullptr);
 	std::vector<CompoundDescriptor> out;
 	std::string error;
-	EXPECT_FALSE(ValidateCompounds(model, { AccelSpec() }, { { "linacc_a", "a" }, { "angacc_a", "world" } }, out, error));
+	EXPECT_FALSE(
+	    ValidateCompounds(model, { AccelSpec() }, { { "linacc_a", "a" }, { "angacc_a", "world" } }, out, error));
 	EXPECT_NE(error.find("must share one frame_id"), std::string::npos) << error;
 	EXPECT_TRUE(out.empty());
 	mj_deleteModel(model);

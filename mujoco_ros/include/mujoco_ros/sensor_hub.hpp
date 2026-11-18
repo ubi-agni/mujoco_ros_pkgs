@@ -97,7 +97,7 @@ private:
 
 	mutable std::mutex mutex_;
 	std::vector<ISensorStreamProvider *> providers_;
-	mutable bool empty_warned_              = false;
+	mutable bool empty_warned_               = false;
 	mutable std::size_t empty_warning_count_ = 0;
 };
 

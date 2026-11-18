@@ -883,7 +883,7 @@ public:
 	}
 
 private:
-	std::vector<std::unique_ptr<TestSensorProvider> > test_sensor_providers_;
+	std::vector<std::unique_ptr<TestSensorProvider>> test_sensor_providers_;
 	static std::uintptr_t PythonMujocoAddress(const py::object &object)
 	{
 		if (object.is_none()) {
@@ -1397,22 +1397,21 @@ void InitMujocoEnv(py::module_ &module)
 	};
 	py::class_<SensorHubView>(module, "_SensorHubView")
 	    .def("names", &SensorHubView::Names)
-	    .def(
-	        "__getitem__",
-	        [stream_or_key_error](const SensorHubView &view, const std::string &name) -> SensorStreamSnapshot {
-		        return stream_or_key_error(view.Get(name), name);
-	        })
-	    .def("__contains__", [](const SensorHubView &view, const std::string &name) { return view.Get(name) != nullptr; });
+	    .def("__getitem__",
+	         [stream_or_key_error](const SensorHubView &view, const std::string &name) -> SensorStreamSnapshot {
+		         return stream_or_key_error(view.Get(name), name);
+	         })
+	    .def("__contains__",
+	         [](const SensorHubView &view, const std::string &name) { return view.Get(name) != nullptr; });
 	py::class_<SensorHub>(module, "_SensorHub")
 	    .def("empty", &SensorHub::empty)
 	    .def("names", &SensorHub::Names)
 	    .def_property_readonly("native", &SensorHub::Native, py::keep_alive<0, 1>())
 	    .def_property_readonly("custom", &SensorHub::Custom, py::keep_alive<0, 1>())
-	    .def(
-	        "__getitem__",
-	        [stream_or_key_error](const SensorHub &hub, const std::string &name) -> SensorStreamSnapshot {
-		        return stream_or_key_error(hub.Get(name), name);
-	        })
+	    .def("__getitem__",
+	         [stream_or_key_error](const SensorHub &hub, const std::string &name) -> SensorStreamSnapshot {
+		         return stream_or_key_error(hub.Get(name), name);
+	         })
 	    .def("__contains__", [](const SensorHub &hub, const std::string &name) { return hub.Get(name) != nullptr; });
 
 	py::class_<MujocoEnvWrapper, std::shared_ptr<MujocoEnvWrapper>>(module, "_MujocoEnvWrapper")
