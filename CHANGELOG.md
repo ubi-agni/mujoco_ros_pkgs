@@ -1,6 +1,15 @@
 <a name="unreleased"></a>
 ## Unreleased
 
+### Added
+* [minor] Env-owned sensor hub and typed native sensor streams; Python `plugin.sensors[name].config` / `.data` / `.gt_data` (feat/mujoco-ros-compound-sensors)
+* [minor] Compound sensors (`Wrench` / `Twist` / `Accel` / `Pose` / `IMU` / `Odometry`) via `compound_sensors`; claimed parts demoted; optional `update_rate`; role noise as `<compound>.<role>` (feat/mujoco-ros-compound-sensors)
+* [minor] `CamProjectionStamped` and `GeomFromToStamped` msgs with native stream coverage (feat/mujoco-ros-compound-sensors)
+
+### Changed
+* [patch] Laser publishes through the sensor stream hub on a custom hub (feat/mujoco-ros-compound-sensors)
+* [chore] Document compounds, CamProjection, and GeomFromTo in `docs/plugins/sensors.rst` (feat/mujoco-ros-compound-sensors)
+
 <a name="2.1.0"></a>
 ## [2.1.0] - 2026-11-05
 
