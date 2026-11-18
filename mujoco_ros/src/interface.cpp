@@ -42,8 +42,10 @@
 #include <mujoco_ros/array_safety.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 #if MJR_ROS_VERSION == ROS_1
@@ -55,7 +57,7 @@
 namespace mujoco_ros {
 namespace mju = ::mujoco::sample_util;
 
-bool MujocoEnv::TogglePaused(bool paused, const std::string &admin_hash /*= std::string*/)
+bool MujocoEnv::TogglePaused(bool paused, const std::string &admin_hash /*= std::string()*/, bool blocking /*= false*/)
 {
 	MJR_DEBUG("Trying to toggle pause");
 	if (paused && !VerifyAdminHash(admin_hash)) {
@@ -63,7 +65,25 @@ bool MujocoEnv::TogglePaused(bool paused, const std::string &admin_hash /*= std:
 		return false;
 	}
 	SetPaused(paused);
-	return true;
+	if (!blocking || !paused) {
+		return true;
+	}
+	if (std::this_thread::get_id() == physics_thread_handle_.get_id()) {
+		MJR_WARN("Cannot block for pause on the physics thread");
+		return false;
+	}
+	// running is cleared immediately; wait until physics releases the lock so any
+	// in-flight free-run step (and its LastStage publishes) has finished.
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+	while (std::chrono::steady_clock::now() < deadline) {
+		if (physics_thread_mutex_.try_lock()) {
+			physics_thread_mutex_.unlock();
+			return true;
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	MJR_ERROR("Timed out waiting for physics to acknowledge pause");
+	return false;
 }
 
 void MujocoEnv::SetPaused(bool paused)

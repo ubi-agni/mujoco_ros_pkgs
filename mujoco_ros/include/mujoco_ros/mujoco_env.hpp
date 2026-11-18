@@ -557,7 +557,9 @@ public:
 	void RunControlCbs(const mjModel *, mjData *);
 	void RunPassiveCbs(const mjModel *, mjData *);
 
-	bool TogglePaused(bool paused, const std::string &admin_hash = std::string());
+	/// When `blocking` and pausing: wait until physics finishes any in-flight step
+	/// (LastStage included) so free-run publishes stop before the caller continues.
+	bool TogglePaused(bool paused, const std::string &admin_hash = std::string(), bool blocking = false);
 	SimulationControlSnapshot GetControlSnapshot() const;
 	struct ManualStepRequest
 	{

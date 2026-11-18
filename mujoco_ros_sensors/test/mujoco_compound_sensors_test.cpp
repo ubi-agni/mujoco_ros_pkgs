@@ -447,7 +447,7 @@ protected:
 				slot.got = true;
 			};
 		};
-		env_ptr->togglePaused(true);
+		ASSERT_TRUE(env_ptr->pauseBlocking());
 		auto value_sub = env_ptr->template create_subscription<MsgT>(TopicOf(compound), rclcpp::QoS(10), make_cb(v));
 		auto gt_sub = env_ptr->template create_subscription<MsgT>(TopicOf(compound + "_GT"), rclcpp::QoS(10), make_cb(g));
 		std::this_thread::sleep_for(std::chrono::milliseconds(250));
@@ -689,7 +689,7 @@ TEST_F(CompoundStreamFixture, InProcessReadDoesNotLeaveStalePartValuesForNextSte
 	// state and republish the previous sample.
 	Start({ { "a_wrench", "Wrench", { { "force", "force_a" }, { "torque", "torque_a" } } } });
 	ASSERT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
-	env_ptr->togglePaused(true);
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 	env_ptr->step(1);
 
 	auto *stream = static_cast<mujoco_ros::sensors::ISensorStream *>(env_ptr->sensors().Native().Get("a_wrench"));
@@ -726,7 +726,7 @@ protected:
 			srv.request.noise_models.push_back(model);
 		}
 		srv.request.admin_hash = "";
-		env_ptr->togglePaused(true);
+		EXPECT_TRUE(env_ptr->pauseBlocking());
 		const std::string name = env_ptr->GetHandleNamespace() + "/mujoco_ros_sensors/sensors/register_noise_models";
 		const auto deadline    = std::chrono::steady_clock::now() + std::chrono::seconds(2);
 		while (!testing::service_exists_for_test(env_ptr.get(), name) && std::chrono::steady_clock::now() < deadline) {
@@ -888,7 +888,7 @@ TEST_F(CompoundStreamFixture, CompoundUpdateRateThrottlesRosPublish)
 
 	int received = 0;
 	std::mutex mutex;
-	env_ptr->togglePaused(true);
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 	auto sub = env_ptr->template create_subscription<geometry_msgs::msg::WrenchStamped>(
 	    TopicOf("ee_wrench"), rclcpp::QoS(1000), [&](geometry_msgs::msg::WrenchStamped::ConstSharedPtr) {
 		    std::lock_guard<std::mutex> lock(mutex);

@@ -358,11 +358,8 @@ TEST_F(PendulumEnvFixture, PauseCallback)
 	srv.request.paused = true;
 	EXPECT_TRUE(::testing::service_call_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/set_pause", srv))
 	    << "pause service call failed!";
-	seconds = 0;
-	while (seconds < 2 && env_ptr->GetControlSnapshot().running) { // wait for pause
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
-		seconds += 0.001;
-	}
+	// Service clears running immediately; pauseBlocking waits out any in-flight free-run step.
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 	EXPECT_FALSE(env_ptr->GetControlSnapshot().running) << "Simulation should be paused!";
 }
 
@@ -428,7 +425,7 @@ TEST_F(PendulumEnvFixture, ResetCallback)
 
 	env_ptr->step(100);
 
-	ASSERT_TRUE(env_ptr->togglePaused(true));
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 
 	// Make sure reset service is available
 	EXPECT_TRUE(::testing::service_exists_for_test(env_ptr.get(), env_ptr->GetHandleNamespace() + "/reset"))
@@ -458,10 +455,7 @@ TEST_F(PendulumEnvFixture, StepGoalSingle)
 	EXPECT_TRUE(found) << "Step action should be available!";
 	ros::spinOnce();
 	actionlib::SimpleActionClient<mujoco_ros_msgs::StepAction> ac(env_ptr->GetHandleNamespace() + "/step", true);
-	ASSERT_TRUE(env_ptr->togglePaused(true));
-
-	// Wait for paused state to be applied
-	std::this_thread::sleep_for(std::chrono::milliseconds(5));
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 
 	mjtNum time = env_ptr->getDataPtr()->time;
 
@@ -507,10 +501,7 @@ TEST_F(PendulumEnvFixture, StepGoalMultiple)
 #else // MJR_ROS_VERSION == ROS_2
 	mujoco_ros_msgs::action::Step::Goal goal;
 #endif
-	ASSERT_TRUE(env_ptr->togglePaused(true));
-
-	// Wait for paused state to be applied
-	std::this_thread::sleep_for(std::chrono::milliseconds(5));
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 
 	mjtNum time = env_ptr->getDataPtr()->time;
 
@@ -589,10 +580,7 @@ TEST_F(PendulumEnvFixture, StepGoalCancelPreempt)
 	ros::spinOnce();
 	actionlib::SimpleActionClient<mujoco_ros_msgs::StepAction> ac(env_ptr->GetHandleNamespace() + "/step", true);
 
-	ASSERT_TRUE(env_ptr->togglePaused(true));
-
-	// Wait for paused state to be applied
-	std::this_thread::sleep_for(std::chrono::milliseconds(5));
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 
 	mujoco_ros_msgs::StepGoal goal;
 	goal.num_steps = 10000;
