@@ -236,9 +236,11 @@ void wait_for_subscription_discovery()
 	std::this_thread::sleep_for(std::chrono::milliseconds(250));
 }
 
-bool call_register_noise_models(MujocoEnvTestWrapper *env_ptr, testing::ServiceCall<RegisterSensorNoiseModels> &srv)
+bool call_register_noise_models(MujocoEnvTestWrapper *env_ptr, testing::ServiceCall<RegisterSensorNoiseModels> &srv,
+                                const std::string &pause_admin_hash = std::string())
 {
-	env_ptr->togglePaused(true);
+	// Eval-mode envs require the constructor admin hash to pause; service hash is separate.
+	EXPECT_TRUE(env_ptr->pauseBlocking(pause_admin_hash));
 
 	const auto service_name = noise_model_service_name(env_ptr);
 	const auto deadline     = std::chrono::steady_clock::now() + std::chrono::seconds(2);
@@ -302,8 +304,8 @@ bool collect_samples(MujocoEnvTestWrapper *env_ptr, std::atomic<int> &n, std::at
 	static constexpr int STEP_BATCH_SIZE = 100;
 	static constexpr int WARMUP_SAMPLES  = 5;
 
+	EXPECT_TRUE(env_ptr->pauseBlocking());
 	wait_for_subscription_discovery();
-	env_ptr->togglePaused(true);
 
 	env_ptr->step(WARMUP_SAMPLES);
 	const auto warmup_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(250);
@@ -893,7 +895,7 @@ TEST_F(EvalEnvFixture, NoAdmEvalNoiseModelChange)
 	srv.request.noise_models.emplace_back(noise_model);
 	srv.request.admin_hash = "some_wrong_hash";
 
-	EXPECT_TRUE(call_register_noise_models(env_ptr.get(), srv)) << "Service call failed!";
+	EXPECT_TRUE(call_register_noise_models(env_ptr.get(), srv, "some_hash")) << "Service call failed!";
 	EXPECT_FALSE(srv.response.success) << "Service call should have failed!";
 }
 
@@ -909,7 +911,7 @@ TEST_F(EvalEnvFixture, AllowedEvalNoiseModelChange)
 	srv.request.noise_models.emplace_back(noise_model);
 	srv.request.admin_hash = "some_hash";
 
-	EXPECT_TRUE(call_register_noise_models(env_ptr.get(), srv)) << "Service call failed!";
+	EXPECT_TRUE(call_register_noise_models(env_ptr.get(), srv, "some_hash")) << "Service call failed!";
 	EXPECT_TRUE(srv.response.success) << "Service call should have succeeded!";
 }
 
@@ -1020,7 +1022,7 @@ TEST_F(TrainEnvFixture, GeomFromToValueMatchesSensordata)
 	// A truncated or shifted 6-wide read would show up here as a mismatch.
 	ASSERT_EQ(m->sensor_dim[n], 6);
 
-	env_ptr->togglePaused(true);
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 	const auto *stream = env_ptr->sensors().Native().Get("geom_fromto");
 	ASSERT_NE(stream, nullptr);
 	auto *native_stream = const_cast<mujoco_ros::sensors::ISensorStream *>(
@@ -1090,10 +1092,10 @@ TEST_F(TrainEnvFixture, NoValuePublishWithoutSubscriber)
 {
 	auto *stream = native_stream(env_ptr.get(), "vel_joint2");
 	ASSERT_NE(stream, nullptr);
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 	auto gt_sub = subscribe_to<ScalarStamped>(env_ptr.get(), nh.get(), sensor_topic_name(env_ptr.get(), "vel_joint2_GT"),
 	                                          10, [](MessageConstPtr<ScalarStamped>) {});
 	wait_for_subscription_discovery();
-	env_ptr->togglePaused(true);
 	env_ptr->step(20);
 	EXPECT_EQ(stream->value_publish_count(), 0u);
 	EXPECT_GT(stream->gt_publish_count(), 0u);
@@ -1103,10 +1105,10 @@ TEST_F(TrainEnvFixture, NoGtPublishWithoutSubscriber)
 {
 	auto *stream = native_stream(env_ptr.get(), "vel_joint2");
 	ASSERT_NE(stream, nullptr);
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 	auto sub = subscribe_to<ScalarStamped>(env_ptr.get(), nh.get(), sensor_topic_name(env_ptr.get(), "vel_joint2"), 10,
 	                                       [](MessageConstPtr<ScalarStamped>) {});
 	wait_for_subscription_discovery();
-	env_ptr->togglePaused(true);
 	env_ptr->step(20);
 	EXPECT_GT(stream->value_publish_count(), 0u);
 	EXPECT_EQ(stream->gt_publish_count(), 0u);
@@ -1116,7 +1118,7 @@ TEST_F(TrainEnvFixture, NoPublishWithoutAnySubscriber)
 {
 	auto *stream = native_stream(env_ptr.get(), "vel_joint2");
 	ASSERT_NE(stream, nullptr);
-	env_ptr->togglePaused(true);
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 	env_ptr->step(20);
 	EXPECT_EQ(stream->value_publish_count(), 0u);
 	EXPECT_EQ(stream->gt_publish_count(), 0u);
@@ -1127,10 +1129,10 @@ TEST_F(TrainEnvFixture, UnsetUpdateRatePublishesEveryStep)
 	auto *stream = native_stream(env_ptr.get(), "vel_joint2");
 	ASSERT_NE(stream, nullptr);
 	EXPECT_EQ(stream->config().update_rate, 0.0);
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 	auto sub = subscribe_to<ScalarStamped>(env_ptr.get(), nh.get(), sensor_topic_name(env_ptr.get(), "vel_joint2"), 10,
 	                                       [](MessageConstPtr<ScalarStamped>) {});
 	wait_for_subscription_discovery();
-	env_ptr->togglePaused(true);
 	const auto before = stream->value_publish_count();
 	env_ptr->step(20);
 	EXPECT_EQ(stream->value_publish_count() - before, 20u);
@@ -1156,10 +1158,10 @@ TEST_F(RateFixture, UpdateRateLimitsRosPublishCadence)
 	auto *stream = native_stream(env_ptr.get(), "vel_joint2");
 	ASSERT_NE(stream, nullptr);
 	EXPECT_DOUBLE_EQ(stream->config().update_rate, RATE_HZ);
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 	auto sub = subscribe_to<ScalarStamped>(env_ptr.get(), nh.get(), sensor_topic_name(env_ptr.get(), "vel_joint2"), 10,
 	                                       [](MessageConstPtr<ScalarStamped>) {});
 	wait_for_subscription_discovery();
-	env_ptr->togglePaused(true);
 
 	const int steps         = static_cast<int>(std::ceil(1.0 / m->opt.timestep));
 	const auto before       = stream->value_publish_count();
@@ -1177,10 +1179,10 @@ TEST_F(RateFixture, UpdateRateResetsOnSimTimeRewind)
 {
 	auto *stream = native_stream(env_ptr.get(), "vel_joint2");
 	ASSERT_NE(stream, nullptr);
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 	auto sub = subscribe_to<ScalarStamped>(env_ptr.get(), nh.get(), sensor_topic_name(env_ptr.get(), "vel_joint2"), 10,
 	                                       [](MessageConstPtr<ScalarStamped>) {});
 	wait_for_subscription_discovery();
-	env_ptr->togglePaused(true);
 	env_ptr->step(5);
 	// Move far ahead so the period is long over, then rewind: only the rewind rule can allow the next publish.
 	d->time += 100.0;
