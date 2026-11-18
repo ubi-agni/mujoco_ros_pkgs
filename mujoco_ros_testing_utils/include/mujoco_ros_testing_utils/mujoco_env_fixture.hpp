@@ -705,9 +705,14 @@ public:
 	void NotifyGeomChange() { NotifyGeomChanged(0); }
 
 	bool step(int num_steps = 1, bool blocking = true) { return MujocoEnv::Step(num_steps, blocking); }
-	bool togglePaused(bool paused, const std::string &admin_hash = std::string())
+	bool togglePaused(bool paused, const std::string &admin_hash = std::string(), bool blocking = false)
 	{
-		return TogglePaused(paused, admin_hash);
+		return TogglePaused(paused, admin_hash, blocking);
+	}
+	/// Pause and wait until physics finishes any in-flight free-run step.
+	bool pauseBlocking(const std::string &admin_hash = std::string())
+	{
+		return TogglePaused(true, admin_hash, /*blocking=*/true);
 	}
 	bool isRunning() const { return GetControlSnapshot().running; }
 	int pendingManualSteps() const { return GetControlSnapshot().pending_steps; }

@@ -3308,6 +3308,13 @@ TEST_F(BaseEnvFixture, PauseUnpause)
 	}
 	EXPECT_LT(seconds, 2) << "Time should have been moving forward in unpaused state, ran into 2 seconds timeout!";
 
+	ASSERT_TRUE(env_ptr->pauseBlocking());
+	EXPECT_FALSE(env_ptr->GetControlSnapshot().running);
+	const mjtNum paused_time = env_ptr->getDataPtr()->time;
+	std::this_thread::sleep_for(std::chrono::milliseconds(50));
+	EXPECT_EQ(env_ptr->getDataPtr()->time, paused_time)
+	    << "Blocking pause must finish the in-flight free-run step before returning";
+
 	env_ptr->shutdown();
 }
 
@@ -3376,7 +3383,7 @@ TEST_F(BaseEnvFixture, ManualSteps)
 
 	EXPECT_EQ(env_ptr->GetControlSnapshot().pending_steps, 0)
 	    << "pending manual steps should stay clear in unpaused mode!";
-	EXPECT_TRUE(env_ptr->TogglePaused(true));
+	EXPECT_TRUE(env_ptr->TogglePaused(true, "", /*blocking=*/true));
 
 	mjtNum time = env_ptr->getDataPtr()->time;
 
@@ -3404,7 +3411,7 @@ TEST_F(BaseEnvFixture, Reset)
 
 	EXPECT_TRUE(env_ptr->step(100)) << "Stepping failed!";
 
-	ASSERT_TRUE(env_ptr->togglePaused(true));
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 	EXPECT_NEAR(env_ptr->getDataPtr()->time, 100 * env_ptr->getModelPtr()->opt.timestep, 1e-6)
 	    << "Time should have been running!";
 
@@ -3417,7 +3424,7 @@ TEST_F(BaseEnvFixture, Reset)
 	env_ptr->Reset();
 	EXPECT_TRUE(env_ptr->GetControlSnapshot().running) << "Model should keep running after reset!";
 
-	ASSERT_TRUE(env_ptr->togglePaused(true));
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 	int id2 = mujoco_ros::util::jointName2id(env_ptr->getModelPtr(), "joint2");
 	EXPECT_NE(id2, -1) << "joint2 should exist in model!";
 	env_ptr->getDataPtr()->qpos[env_ptr->getModelPtr()->jnt_qposadr[id2]] = 0.5;

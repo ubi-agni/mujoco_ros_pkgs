@@ -186,10 +186,10 @@ std::vector<testing::TopicInfo> wait_for_scan_topic(MujocoEnvTestWrapper *env_pt
 MessageConstPtr<LaserScanMsg> wait_for_scan_message(MujocoEnvTestWrapper *env_ptr, testing::TestNodeHandle *nh)
 {
 	MessageConstPtr<LaserScanMsg> message;
+	EXPECT_TRUE(env_ptr->pauseBlocking());
 	auto sub = subscribe_to<LaserScanMsg>(env_ptr, nh, scan_topic_name(env_ptr), 10,
 	                                      [&message](const MessageConstPtr<LaserScanMsg> &msg) { message = msg; });
 
-	env_ptr->togglePaused(true);
 	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
 	while (message == nullptr && std::chrono::steady_clock::now() < deadline) {
 		env_ptr->step(25);
@@ -340,11 +340,11 @@ TEST_P(LoadedPluginFixture, PublishesLaserScan)
 TEST_P(LoadedPluginFixture, ScanStampRestartsAfterReset)
 {
 	std::atomic<int64_t> last_stamp_ns{ -1 };
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 	auto sub = subscribe_to<LaserScanMsg>(
 	    env_ptr.get(), nh.get(), scan_topic_name(env_ptr.get()), 10,
 	    [&last_stamp_ns](const MessageConstPtr<LaserScanMsg> &msg) { last_stamp_ns = stamp_to_ns(msg->header.stamp); });
 
-	env_ptr->togglePaused(true);
 	const auto deadline_run = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 	while (last_stamp_ns.load() < 200'000'000 && std::chrono::steady_clock::now() < deadline_run) {
 		env_ptr->step(25);
@@ -558,7 +558,7 @@ TEST_P(NoiseFreeLaserFixture, RangesFollowMocapObstacle)
 		return msg->ranges[idx];
 	};
 
-	env_ptr->togglePaused(true);
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 	const double near_range = mocap_range(3.0);
 	const double far_range  = mocap_range(4.0);
 	// Both ranges are checked analytically above; the oblique ray makes the delta slightly differ from 1.0.

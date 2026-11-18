@@ -343,7 +343,7 @@ TEST_F(MocapPluginFixture, ServiceUpdatesMocapPose)
 	ASSERT_TRUE(call_set_mocap_state(env_ptr.get(), srv));
 	EXPECT_TRUE(srv.response.success);
 
-	env_ptr->togglePaused(true);
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 	ASSERT_TRUE(env_ptr->step());
 
 	const int mocap_id = mocap_id_for_body(m, "mocap");
@@ -365,7 +365,7 @@ TEST_F(MocapPluginFixture, TopicUpdatesMocapPose)
 	ASSERT_NE(m, nullptr);
 	ASSERT_NE(d, nullptr);
 
-	env_ptr->togglePaused(true);
+	ASSERT_TRUE(env_ptr->pauseBlocking());
 	for (int i = 0; i < 10; ++i) {
 		ASSERT_TRUE(env_ptr->step());
 	}
