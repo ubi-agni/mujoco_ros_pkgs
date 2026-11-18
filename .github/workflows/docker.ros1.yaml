@@ -8,6 +8,12 @@ on:
     - cron: "0 6 * * 6"
   workflow_dispatch:
   workflow_call:
+    inputs:
+      rebuild:
+        description: When false, succeed without building (CI caller no-op so matrix outputs propagate).
+        type: boolean
+        required: false
+        default: true
 
 # Fixed group (not github.workflow): CI may call this via workflow_call; using
 # github.workflow would collide with the caller concurrency group.
@@ -49,9 +55,19 @@ jobs:
           python3 .versioning/scripts/ci_push_skip.py \
             --author-name "${author_name}" --author-email "${author_email}"
 
+  # No-op success when CI calls with rebuild=false. A skipped reusable-workflow
+  # job empties downstream matrix outputs; this job keeps the caller green.
+  noop:
+    name: Skip image rebuild
+    needs: push-gate
+    if: ${{ !cancelled() && needs.push-gate.result != 'failure' && needs.push-gate.result != 'cancelled' && needs.push-gate.outputs.skip == 'false' && github.event_name == 'workflow_call' && inputs.rebuild == false }}
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "Docker inputs unchanged; no image refresh."
+
   build:
     needs: push-gate
-    if: ${{ !cancelled() && needs.push-gate.result != 'failure' && needs.push-gate.result != 'cancelled' && needs.push-gate.outputs.skip == 'false' }}
+    if: ${{ !cancelled() && needs.push-gate.result != 'failure' && needs.push-gate.result != 'cancelled' && needs.push-gate.outputs.skip == 'false' && (github.event_name != 'workflow_call' || inputs.rebuild) }}
     strategy:
       fail-fast: false
       matrix:

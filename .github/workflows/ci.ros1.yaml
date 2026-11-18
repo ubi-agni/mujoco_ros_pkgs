@@ -96,18 +96,21 @@ jobs:
   docker-image:
     name: Refresh docker image
     needs: [push-gate, docker-paths]
-    if: ${{ needs.docker-paths.outputs.changed == 'true' }}
+    # Always call (when CI not push-skipped). rebuild=false → no-op success inside
+    # docker.ros1.yaml; skipping this job empties downstream matrix outputs.
+    if: ${{ !cancelled() && needs.push-gate.result != 'failure' && needs.push-gate.result != 'cancelled' && needs.push-gate.outputs.skip == 'false' && needs.docker-paths.result == 'success' }}
     # Caller ceiling for reusable docker.ros1.yaml (build asks packages: write).
     permissions:
       contents: read
       packages: write
     uses: ./.github/workflows/docker.ros1.yaml
+    with:
+      rebuild: ${{ needs.docker-paths.outputs.changed == 'true' }}
     secrets: inherit
 
   ci-policy:
     name: Select CI matrix
     needs: [push-gate, docker-paths, docker-image]
-    # When docker inputs are unchanged, docker-image is skipped — still run CI.
     if: |
       always()
       && !cancelled()
@@ -115,10 +118,7 @@ jobs:
       && needs.push-gate.result != 'cancelled'
       && needs.push-gate.outputs.skip == 'false'
       && needs.docker-paths.result == 'success'
-      && (
-        needs.docker-paths.outputs.changed != 'true'
-        || needs.docker-image.result == 'success'
-      )
+      && needs.docker-image.result == 'success'
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.policy.outputs.matrix }}
