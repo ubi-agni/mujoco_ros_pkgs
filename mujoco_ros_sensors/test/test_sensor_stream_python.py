@@ -55,6 +55,23 @@ def sensor_adr(env, name):
     return env.model.sensor_adr[mujoco.mj_name2id(env.model, mujoco.mjtObj.mjOBJ_SENSOR, name)]
 
 
+def published_sensor_sample(env, name, i=0):
+    """Match C++ CompoundStreamFixture::Sensor: float cast + cutoff divide.
+
+    Published / cached samples can drift ~1 step from a later sensordata read
+    (model re-forward after LastStage). Callers should use SAMPLE_REL_TOL.
+    """
+    import mujoco
+
+    sid = mujoco.mj_name2id(env.model, mujoco.mjtObj.mjOBJ_SENSOR, name)
+    cutoff = env.model.sensor_cutoff[sid] if env.model.sensor_cutoff[sid] > 0 else 1.0
+    return float(env.data.sensordata[env.model.sensor_adr[sid] + i]) / cutoff
+
+
+# Same as C++ kRelTol in mujoco_compound_sensors_test.cpp (EXPECT_SAMPLE).
+SAMPLE_REL_TOL = 2e-2
+
+
 def register_noise(env, sensor, sigma):
     import rclpy
     from mujoco_ros_msgs.msg import SensorNoiseModel
@@ -215,8 +232,12 @@ class SensorStreamPythonTest(unittest.TestCase):
         w = plugin.sensors["ee_wrench"]
         self.assertEqual(w.config.frame_id, "link_a")
         self.assertEqual(w.data.header.frame_id, "link_a")
-        adr = sensor_adr(env, "force_a")
-        self.assertAlmostEqual(w.data.wrench.force.x, env.data.sensordata[adr], delta=1e-3)
+        expected = published_sensor_sample(env, "force_a")
+        self.assertAlmostEqual(
+            w.data.wrench.force.x,
+            expected,
+            delta=SAMPLE_REL_TOL * max(1.0, abs(expected)),
+        )
         self.assertEqual(plugin.sensors["ee_odom"].data.child_frame_id, "world")
 
     def inner_compound_data_ignores_update_rate(self):
@@ -226,13 +247,17 @@ class SensorStreamPythonTest(unittest.TestCase):
         )
         s = plugin.sensors["ee_wrench"]
         self.assertEqual(s.config.update_rate, 1.0)
-        adr = sensor_adr(env, "force_a")
         env.data.qvel[:] = 1.0
         seen = []
         for _ in range(5):
             env.step(1)
             seen.append(s.data.wrench.force.x)
-            self.assertAlmostEqual(seen[-1], env.data.sensordata[adr], delta=1e-3)
+            expected = published_sensor_sample(env, "force_a")
+            self.assertAlmostEqual(
+                seen[-1],
+                expected,
+                delta=SAMPLE_REL_TOL * max(1.0, abs(expected)),
+            )
         self.assertGreater(len(set(seen)), 1, "value must change step to step")
 
     def test_removed_configs_api(self):
