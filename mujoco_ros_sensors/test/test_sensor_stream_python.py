@@ -15,7 +15,9 @@ from mujoco_ros.plugins import bind_plugin
 
 PLUGIN = {"name": "mujoco_ros_sensors", "type": "mujoco_ros_sensors/MujocoRosSensorsPlugin"}
 MODEL = Path(get_package_share_directory("mujoco_ros_sensors")) / "test" / "sensors_world.xml"
-COMPOUND_MODEL = Path(get_package_share_directory("mujoco_ros_sensors")) / "test" / "sensors_compound_world.xml"
+COMPOUND_MODEL = (
+    Path(get_package_share_directory("mujoco_ros_sensors")) / "test" / "sensors_compound_world.xml"
+)
 CMP = "MujocoPlugins.mujoco_ros_sensors.compound_sensors"
 CONFIG_DIR = Path(get_package_share_directory("mujoco_ros_sensors")) / "config"
 
@@ -30,7 +32,9 @@ def load_example_configs():
         roles = {k: v for k, v in entry.items() if k not in ("name", "type", "update_rate")}
         compounds[entry["name"]] = (entry["type"], roles, entry.get("update_rate", 0.0))
     ros2 = yaml.safe_load((CONFIG_DIR / "example_compound_sensors.ros2.yaml").read_text())
-    params = {k: v for k, v in ros2["/mujoco_server"]["ros__parameters"].items() if k.startswith(CMP)}
+    params = {
+        k: v for k, v in ros2["/mujoco_server"]["ros__parameters"].items() if k.startswith(CMP)
+    }
     return compounds, params
 
 
@@ -60,7 +64,10 @@ def register_noise(env, sensor, sigma):
         rclpy.init()
     node = rclpy.create_node("sensor_noise_client")
     try:
-        client = node.create_client(RegisterSensorNoiseModels, "/mujoco_server/mujoco_ros_sensors/sensors/register_noise_models")
+        client = node.create_client(
+            RegisterSensorNoiseModels,
+            "/mujoco_server/mujoco_ros_sensors/sensors/register_noise_models",
+        )
         assert client.wait_for_service(timeout_sec=5.0), "register_noise_models service missing"
         model = SensorNoiseModel()
         model.sensor_name = sensor
@@ -88,7 +95,9 @@ class SensorStreamPythonTest(unittest.TestCase):
         if eval_mode:
             params["eval_mode"] = True
         env = MujocoEnv(
-            plugin_config=[PLUGIN], admin_hash="some_hash" if eval_mode else None, parameters=params
+            plugin_config=[PLUGIN],
+            admin_hash="some_hash" if eval_mode else None,
+            parameters=params,
         )
         self.addCleanup(env.__exit__, None, None, None)
         self.assertTrue(env.load_from_path(str(model)))
@@ -113,7 +122,9 @@ class SensorStreamPythonTest(unittest.TestCase):
         self.assertAlmostEqual(msg.vector.y, env.data.sensordata[adr + 1], delta=1e-4)
         self.assertAlmostEqual(msg.vector.z, env.data.sensordata[adr + 2], delta=1e-4)
         self.assertEqual(msg.header.frame_id, s.config.frame_id)
-        self.assertTrue(abs(msg.vector.x) > 1e-3 or abs(msg.vector.z) > 1e-3, "sensor must actually move")
+        self.assertTrue(
+            abs(msg.vector.x) > 1e-3 or abs(msg.vector.z) > 1e-3, "sensor must actually move"
+        )
 
     def test_gt_data_available_in_train_mode(self):
         env, plugin = self.open_env()
@@ -124,7 +135,10 @@ class SensorStreamPythonTest(unittest.TestCase):
         # ROS params reach the node only through the first MujocoEnv of a process (argv params-file),
         # so tests that need their own params run in a fresh interpreter.
         proc = subprocess.run(
-            [sys.executable, __file__, "--inner", inner_name], capture_output=True, text=True, timeout=120
+            [sys.executable, __file__, "--inner", inner_name],
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
         self.assertEqual(0, proc.returncode, proc.stdout[-3000:] + proc.stderr[-3000:])
 
@@ -160,7 +174,9 @@ class SensorStreamPythonTest(unittest.TestCase):
 
     def test_example_configs_agree(self):
         # ROS 1 list-of-maps and ROS 2 flat keys must describe the same compounds.
-        self.assertEqual(set(COMPOUNDS), {"ee_wrench", "ee_twist", "ee_accel", "ee_pose", "ee_imu", "ee_odom"})
+        self.assertEqual(
+            set(COMPOUNDS), {"ee_wrench", "ee_twist", "ee_accel", "ee_pose", "ee_imu", "ee_odom"}
+        )
         self.assertEqual(EXAMPLE_PARAMS[CMP], list(COMPOUNDS))
         rebuilt = {CMP: list(COMPOUNDS)}
         for name, (kind, roles, rate) in COMPOUNDS.items():
@@ -205,7 +221,9 @@ class SensorStreamPythonTest(unittest.TestCase):
 
     def inner_compound_data_ignores_update_rate(self):
         # 1 Hz throttles the ROS publish only; Python must still see every step.
-        env, plugin = self.open_env(parameters=self.compound_params(ee_wrench=1.0), model=COMPOUND_MODEL)
+        env, plugin = self.open_env(
+            parameters=self.compound_params(ee_wrench=1.0), model=COMPOUND_MODEL
+        )
         s = plugin.sensors["ee_wrench"]
         self.assertEqual(s.config.update_rate, 1.0)
         adr = sensor_adr(env, "force_a")
