@@ -443,16 +443,14 @@ protected:
 	// Parts cache per step, so value/GT built here share one noise sample set with any other reader of the part.
 	MsgT Noisy(const mjModel *model, const mjData *data) override
 	{
-		return ComposeFrom(data, std::index_sequence_for<Parts...>{}, [&](ISensorStream &p) -> const std::any & {
-			return p.Value(model, data);
-		});
+		return ComposeFrom(data, std::index_sequence_for<Parts...>{},
+		                   [&](ISensorStream &p) -> const std::any & { return p.Value(model, data); });
 	}
 
 	MsgT Truth(const mjModel *model, const mjData *data) override
 	{
-		return ComposeFrom(data, std::index_sequence_for<Parts...>{}, [&](ISensorStream &p) -> const std::any & {
-			return p.GroundTruth(model, data);
-		});
+		return ComposeFrom(data, std::index_sequence_for<Parts...>{},
+		                   [&](ISensorStream &p) -> const std::any & { return p.GroundTruth(model, data); });
 	}
 
 private:
@@ -534,11 +532,11 @@ std::unique_ptr<ISensorStream> MakeCompoundStream(const CompoundDescriptor &desc
 			    [child = desc.child_frame_id](Odometry &m, const PointStamped &position,
 			                                  const QuaternionStamped &orientation, const Vector3Stamped &linear,
 			                                  const Vector3Stamped &angular) {
-				    m.child_frame_id         = child;
-				    m.pose.pose.position     = position.point;
-				    m.pose.pose.orientation  = orientation.quaternion;
-				    m.twist.twist.linear     = linear.vector;
-				    m.twist.twist.angular    = angular.vector;
+				    m.child_frame_id        = child;
+				    m.pose.pose.position    = position.point;
+				    m.pose.pose.orientation = orientation.quaternion;
+				    m.twist.twist.linear    = linear.vector;
+				    m.twist.twist.angular   = angular.vector;
 				    MarkCovarianceUnknown(m.pose.covariance);
 				    MarkCovarianceUnknown(m.twist.covariance);
 			    });

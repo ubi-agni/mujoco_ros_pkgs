@@ -35,10 +35,7 @@ class FakeProvider : public ISensorStreamProvider
 public:
 	explicit FakeProvider(SensorProviderKind kind) : kind_(kind) {}
 
-	void Add(const std::string &name, bool is_public = true)
-	{
-		streams_.emplace(name, FakeStream(name, is_public));
-	}
+	void Add(const std::string &name, bool is_public = true) { streams_.emplace(name, FakeStream(name, is_public)); }
 	SensorProviderKind kind() const override { return kind_; }
 	SensorStreamBase *Find(const std::string &name) const override
 	{
