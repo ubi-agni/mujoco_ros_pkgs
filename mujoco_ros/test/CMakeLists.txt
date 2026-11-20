@@ -749,71 +749,73 @@ add_mujoco_ros_integration_test(
   ROS2_LAUNCH launch/mujoco_render.test.py
 )
 
-if(ROS_VERSION EQUAL 1)
-  add_rostest(launch/python_bindings.test)
-  add_rostest(launch/python_bindings_config.test)
-  add_rostest(launch/python_bindings_policy.test)
-  add_rostest(launch/python_bindings_plugin.test)
-  add_rostest(launch/description_converter_bindings.test)
-elseif(ROS_VERSION EQUAL 2)
-  add_launch_test(launch/python_bindings.test.py
-    TARGET python_bindings_test
-    ARGS
-      "test_script:=${CMAKE_CURRENT_SOURCE_DIR}/python/python_bindings_test.py"
-      "python_module_path:=$<TARGET_FILE_DIR:pymujoco_ros>"
-      "python_package_path:=${PROJECT_SOURCE_DIR}/python/src"
-  )
-  if(TARGET python_bindings_test)
-    add_dependencies(python_bindings_test pymujoco_ros)
-  endif()
-  add_launch_test(launch/python_bindings.test.py
-    TARGET python_bindings_reload_test
-    ARGS
-      "test_script:=${CMAKE_CURRENT_SOURCE_DIR}/python/python_bindings_reload_test.py"
-      "python_module_path:=$<TARGET_FILE_DIR:pymujoco_ros>"
-      "python_package_path:=${PROJECT_SOURCE_DIR}/python/src"
-  )
-  if(TARGET python_bindings_reload_test)
-    add_dependencies(python_bindings_reload_test pymujoco_ros)
-  endif()
-  add_launch_test(launch/description_converter_bindings.test.py
-    TARGET description_converter_bindings_test
-    ARGS
-      "test_script:=${CMAKE_CURRENT_SOURCE_DIR}/python/description_converter_bindings_test.py"
-      "python_module_path:=$<TARGET_FILE_DIR:pymujoco_ros>"
-      "python_package_path:=${PROJECT_SOURCE_DIR}/python/src"
-  )
-  if(TARGET description_converter_bindings_test)
-    add_dependencies(description_converter_bindings_test pymujoco_ros)
-  endif()
-  add_launch_test(launch/python_bindings_config.test.py
-    TARGET python_bindings_config_test
-    ARGS
-      "test_script:=${CMAKE_CURRENT_SOURCE_DIR}/python/python_bindings_config_test.py"
-      "python_module_path:=$<TARGET_FILE_DIR:pymujoco_ros>"
-      "python_package_path:=${PROJECT_SOURCE_DIR}/python/src"
-  )
-  if(TARGET python_bindings_config_test)
-    add_dependencies(python_bindings_config_test pymujoco_ros mujoco_testplugin)
-  endif()
-  add_launch_test(launch/python_bindings_config.test.py
-    TARGET python_bindings_policy_test
-    ARGS
-      "test_script:=${CMAKE_CURRENT_SOURCE_DIR}/python/python_bindings_policy_test.py"
-      "python_module_path:=$<TARGET_FILE_DIR:pymujoco_ros>"
-      "python_package_path:=${PROJECT_SOURCE_DIR}/python/src"
-  )
-  if(TARGET python_bindings_policy_test)
-    add_dependencies(python_bindings_policy_test pymujoco_ros)
-  endif()
-  add_launch_test(launch/python_bindings_plugin.test.py
-    TARGET python_bindings_plugin_test
-    ARGS
-      "test_script:=${CMAKE_CURRENT_SOURCE_DIR}/python/python_bindings_plugin_test.py"
-      "python_module_path:=$<TARGET_FILE_DIR:pymujoco_ros>"
-      "python_package_path:=${PROJECT_SOURCE_DIR}/python/src"
-  )
-  if(TARGET python_bindings_plugin_test)
-    add_dependencies(python_bindings_plugin_test pymujoco_ros mujoco_testplugin)
+if(BUILD_PYTHON_BINDINGS)
+  if(ROS_VERSION EQUAL 1)
+    add_rostest(launch/python_bindings.test)
+    add_rostest(launch/python_bindings_config.test)
+    add_rostest(launch/python_bindings_policy.test)
+    add_rostest(launch/python_bindings_plugin.test)
+    add_rostest(launch/description_converter_bindings.test)
+  elseif(ROS_VERSION EQUAL 2)
+    add_launch_test(launch/python_bindings.test.py
+      TARGET python_bindings_test
+      ARGS
+        "test_script:=${CMAKE_CURRENT_SOURCE_DIR}/python/python_bindings_test.py"
+        "python_module_path:=$<TARGET_FILE_DIR:pymujoco_ros>"
+        "python_package_path:=${PROJECT_SOURCE_DIR}/python/src"
+    )
+    if(TARGET python_bindings_test)
+      add_dependencies(python_bindings_test pymujoco_ros)
+    endif()
+    add_launch_test(launch/python_bindings.test.py
+      TARGET python_bindings_reload_test
+      ARGS
+        "test_script:=${CMAKE_CURRENT_SOURCE_DIR}/python/python_bindings_reload_test.py"
+        "python_module_path:=$<TARGET_FILE_DIR:pymujoco_ros>"
+        "python_package_path:=${PROJECT_SOURCE_DIR}/python/src"
+    )
+    if(TARGET python_bindings_reload_test)
+      add_dependencies(python_bindings_reload_test pymujoco_ros)
+    endif()
+    add_launch_test(launch/description_converter_bindings.test.py
+      TARGET description_converter_bindings_test
+      ARGS
+        "test_script:=${CMAKE_CURRENT_SOURCE_DIR}/python/description_converter_bindings_test.py"
+        "python_module_path:=$<TARGET_FILE_DIR:pymujoco_ros>"
+        "python_package_path:=${PROJECT_SOURCE_DIR}/python/src"
+    )
+    if(TARGET description_converter_bindings_test)
+      add_dependencies(description_converter_bindings_test pymujoco_ros)
+    endif()
+    add_launch_test(launch/python_bindings_config.test.py
+      TARGET python_bindings_config_test
+      ARGS
+        "test_script:=${CMAKE_CURRENT_SOURCE_DIR}/python/python_bindings_config_test.py"
+        "python_module_path:=$<TARGET_FILE_DIR:pymujoco_ros>"
+        "python_package_path:=${PROJECT_SOURCE_DIR}/python/src"
+    )
+    if(TARGET python_bindings_config_test)
+      add_dependencies(python_bindings_config_test pymujoco_ros mujoco_testplugin)
+    endif()
+    add_launch_test(launch/python_bindings_config.test.py
+      TARGET python_bindings_policy_test
+      ARGS
+        "test_script:=${CMAKE_CURRENT_SOURCE_DIR}/python/python_bindings_policy_test.py"
+        "python_module_path:=$<TARGET_FILE_DIR:pymujoco_ros>"
+        "python_package_path:=${PROJECT_SOURCE_DIR}/python/src"
+    )
+    if(TARGET python_bindings_policy_test)
+      add_dependencies(python_bindings_policy_test pymujoco_ros)
+    endif()
+    add_launch_test(launch/python_bindings_plugin.test.py
+      TARGET python_bindings_plugin_test
+      ARGS
+        "test_script:=${CMAKE_CURRENT_SOURCE_DIR}/python/python_bindings_plugin_test.py"
+        "python_module_path:=$<TARGET_FILE_DIR:pymujoco_ros>"
+        "python_package_path:=${PROJECT_SOURCE_DIR}/python/src"
+    )
+    if(TARGET python_bindings_plugin_test)
+      add_dependencies(python_bindings_plugin_test pymujoco_ros mujoco_testplugin)
+    endif()
   endif()
 endif()
