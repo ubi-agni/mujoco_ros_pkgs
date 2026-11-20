@@ -71,15 +71,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ROS_DISTRO: [one]
+        include:
+          # Noble is the full image; jammy (Python 3.10) is smoke-only.
+          - ROS_DISTRO: one
+            BASE_DOCKER_NAME: noble
+            IMAGE_TAG: one-ci
+          - ROS_DISTRO: one
+            BASE_DOCKER_NAME: jammy
+            IMAGE_TAG: one-jammy-ci
     runs-on: ubuntu-latest
     permissions:
       packages: write
       contents: read
     env:
-      # Must match CI DOCKER_IMAGE (…/<distro>-ci), not github.job.
-      IMAGE: ubiagni/mujoco_ros:${{ matrix.ROS_DISTRO }}-ci
-      MUJOCO_VERSIONS: 3.17.0
+      # Must match CI DOCKER_IMAGE (…/<IMAGE_TAG>), not github.job.
+      IMAGE: ubiagni/mujoco_ros:${{ matrix.IMAGE_TAG }}
+      MUJOCO_VERSIONS: 4.0.1
 
     steps:
       - name: Check for apt updates
@@ -108,7 +115,7 @@ jobs:
           file: .docker/Dockerfile.ros1
           build-args: |
             ROS_DISTRO=${{ matrix.ROS_DISTRO }}
-            BASE_DOCKER_NAME=${{ matrix.ROS_DISTRO == 'one' && 'jammy' || matrix.ROS_DISTRO }}
+            BASE_DOCKER_NAME=${{ matrix.BASE_DOCKER_NAME }}
             MUJOCO_VERSIONS=${{ env.MUJOCO_VERSIONS }}
             IMAGE_PREFIX=${{ matrix.ROS_DISTRO == 'one' && 'ubiagni/' || '' }}
           push: true
