@@ -269,8 +269,8 @@ void MujocoEnv::LoadWithModelAndData()
 			if (valid.ok()) {
 				mjOption candidate_option = model_->opt;
 				WriteRuntimeOptions(candidate, candidate_option);
-				model_->opt    = candidate_option;
-				options_epoch_ = OptionsEpoch(options_epoch_.value() + 1);
+				model_->opt = candidate_option;
+				middleware_core_->AdvanceOptionsEpoch();
 			} else {
 				const std::string message =
 				    "Runtime Options startup update rejected: " + valid.error->field + ": " + valid.error->message;

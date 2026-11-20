@@ -324,7 +324,7 @@ void RosAPI::UpdateDynamicParams()
 		}
 
 		const auto &opt = env_ptr_->model_->opt;
-		parameters.emplace_back("running", env_ptr_->GetControlSnapshot().running);
+		parameters.emplace_back("running", env_ptr_->middleware_core().GetControlSnapshot().running);
 		parameters.emplace_back("admin_hash", std::string(env_ptr_->settings_.admin_hash));
 		parameters.emplace_back("render_backpressure_policy",
 		                        rendering::RenderBackpressurePolicyToString(env_ptr_->GetRenderBackpressurePolicy()));
@@ -482,12 +482,12 @@ rcl_interfaces::msg::SetParametersResult RosAPI::DynamicParamsCallbackLegacy(con
 				if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_BOOL) {
 					throw std::runtime_error("'running' must be a boolean parameter");
 				}
-				env_ptr_->ApplyPauseState(!parameter.as_bool(), false);
+				env_ptr_->middleware_core().SetPaused(!parameter.as_bool(), false);
 			} else if (name == "admin_hash") {
 				if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_STRING) {
 					throw std::runtime_error("'admin_hash' must be a string parameter");
 				}
-				mju::strcpy_arr(env_ptr_->settings_.admin_hash, parameter.as_string().c_str());
+				env_ptr_->middleware_core().SetAdminHash(parameter.as_string());
 			} else if (name == "integrator") {
 				ValidateIntegerRange(parameter, mjINT_EULER, mjINT_DISCRETE);
 				env_ptr_->model_->opt.integrator = parameter.as_int();
@@ -760,7 +760,7 @@ rcl_interfaces::msg::SetParametersResult RosAPI::DynamicParamsCallback(const std
 	}
 
 	if (touches_model) {
-		const auto transaction = env_ptr_->ApplyRuntimeOptions(input);
+		const auto transaction = env_ptr_->middleware_core().ApplyRuntimeOptions(input);
 		if (!transaction.ok()) {
 			const auto &error = *transaction.error;
 			reject((error.field.empty() ? std::string() : error.field + ": ") + error.message);
@@ -768,10 +768,10 @@ rcl_interfaces::msg::SetParametersResult RosAPI::DynamicParamsCallback(const std
 		}
 	}
 	if (running) {
-		env_ptr_->ApplyPauseState(!*running, false);
+		env_ptr_->middleware_core().SetPaused(!*running, false);
 	}
 	if (admin_hash) {
-		mju::strcpy_arr(env_ptr_->settings_.admin_hash, admin_hash->c_str());
+		env_ptr_->middleware_core().SetAdminHash(*admin_hash);
 	}
 	if (render_backpressure_policy) {
 		const auto policy_status = env_ptr_->SetRenderBackpressurePolicy(*render_backpressure_policy);
@@ -794,7 +794,7 @@ void RosAPI::ExecuteStepGoal(
 	const auto goal    = goal_handle->get_goal();
 	auto feedback      = std::make_shared<mujoco_ros_msgs::action::Step::Feedback>();
 	auto result        = std::make_shared<mujoco_ros_msgs::action::Step::Result>();
-	const auto request = env_ptr_->RequestManualStepsWithToken(goal->num_steps);
+	const auto request = env_ptr_->middleware_core().RequestManualStepsWithToken(goal->num_steps);
 	if (!request.accepted) {
 		result->success = false;
 		// Cancel can win the race against manual-step admission. Prefer canceled over abort
@@ -811,7 +811,7 @@ void RosAPI::ExecuteStepGoal(
 
 	result->success = true;
 	while (true) {
-		auto step_snapshot = env_ptr_->GetManualStepSnapshot(request.token);
+		auto step_snapshot = env_ptr_->middleware_core().GetManualStepSnapshot(request.token);
 		if (step_snapshot.status != ManualStepTerminalStatus::kPending) {
 			if (step_snapshot.status == ManualStepTerminalStatus::kCompleted) {
 				feedback->steps_left = 0;
@@ -823,13 +823,13 @@ void RosAPI::ExecuteStepGoal(
 				goal_handle->publish_feedback(feedback);
 				goal_handle->canceled(result);
 			}
-			env_ptr_->AcknowledgeManualStep(request.token);
+			env_ptr_->middleware_core().AcknowledgeManualStep(request.token);
 			return;
 		}
 
 		if (goal_handle->is_canceling() || !rclcpp::ok()) {
 			MJR_WARN("Simulation step action preempted");
-			if (!env_ptr_->CancelManualSteps(request.token)) {
+			if (!env_ptr_->middleware_core().CancelManualSteps(request.token)) {
 				continue;
 			}
 			continue;
@@ -837,14 +837,14 @@ void RosAPI::ExecuteStepGoal(
 
 		feedback->steps_left = util::as_unsigned(step_snapshot.pending_steps);
 		goal_handle->publish_feedback(feedback);
-		env_ptr_->WaitForManualStepUpdate(request.token, step_snapshot.pending_steps);
+		env_ptr_->middleware_core().WaitForManualStepUpdate(request.token, step_snapshot.pending_steps);
 	}
 }
 
 void RosAPI::SetPauseCB(const mujoco_ros_msgs::srv::SetPause::Request::SharedPtr &req,
                         const mujoco_ros_msgs::srv::SetPause::Response::SharedPtr &res)
 {
-	res->success = env_ptr_->TogglePaused(req->paused, req->admin_hash);
+	res->success = env_ptr_->middleware_core().TogglePaused(req->paused, req->admin_hash);
 }
 
 void RosAPI::ShutdownCB(const std_srvs::srv::Empty::Request::SharedPtr & /*req*/,
@@ -857,14 +857,14 @@ void RosAPI::ReloadCB(const mujoco_ros_msgs::srv::Reload::Request::SharedPtr &re
                       const mujoco_ros_msgs::srv::Reload::Response::SharedPtr &res)
 {
 	char load_error[MujocoEnv::kErrorLength];
-	res->success        = env_ptr_->LoadModelFromString(req->model, load_error);
+	res->success        = env_ptr_->middleware_core().LoadModelFromString(req->model, load_error);
 	res->status_message = load_error;
 }
 
 void RosAPI::ResetCB(const std_srvs::srv::Empty::Request::SharedPtr & /*req*/,
                      const std_srvs::srv::Empty::Response::SharedPtr & /*res*/)
 {
-	env_ptr_->Reset();
+	env_ptr_->middleware_core().Reset();
 }
 
 void RosAPI::SetBodyStateCB(const mujoco_ros_msgs::srv::SetBodyState::Request::SharedPtr &req,

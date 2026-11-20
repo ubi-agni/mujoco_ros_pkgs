@@ -39,10 +39,12 @@
 #include <mujoco_ros/logging.hpp>
 
 #include <mujoco_ros/mujoco_env.hpp>
+#include <mujoco_ros/detail/env_control_backend.hpp>
 #include <mujoco_ros/array_safety.h>
 
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <cmath>
 #include <stdexcept>
 #include <thread>
@@ -59,31 +61,7 @@ namespace mju = ::mujoco::sample_util;
 
 bool MujocoEnv::TogglePaused(bool paused, const std::string &admin_hash /*= std::string()*/, bool blocking /*= false*/)
 {
-	MJR_DEBUG("Trying to toggle pause");
-	if (paused && !VerifyAdminHash(admin_hash)) {
-		MJR_ERROR("Unauthorized pause request detected. Ignoring request");
-		return false;
-	}
-	SetPaused(paused);
-	if (!blocking || !paused) {
-		return true;
-	}
-	if (std::this_thread::get_id() == physics_thread_handle_.get_id()) {
-		MJR_WARN("Cannot block for pause on the physics thread");
-		return false;
-	}
-	// running is cleared immediately; wait until physics releases the lock so any
-	// in-flight free-run step (and its LastStage publishes) has finished.
-	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-	while (std::chrono::steady_clock::now() < deadline) {
-		if (physics_thread_mutex_.try_lock()) {
-			physics_thread_mutex_.unlock();
-			return true;
-		}
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
-	}
-	MJR_ERROR("Timed out waiting for physics to acknowledge pause");
-	return false;
+	return middleware_core_->TogglePaused(paused, admin_hash, blocking);
 }
 
 void MujocoEnv::SetPaused(bool paused)
@@ -103,47 +81,17 @@ void MujocoEnv::ApplyPauseState(bool paused, bool notify_settings_changed)
 
 SimulationControlSnapshot MujocoEnv::GetControlSnapshot() const
 {
-	return control_state_.Snapshot();
+	return middleware_core_->GetControlSnapshot();
 }
 
 RuntimeOptionsTransactionResult MujocoEnv::GetRuntimeOptions()
 {
-	const auto admission_epoch = runtime_options_admission_epoch_.load();
-	RecursiveLock lock(physics_thread_mutex_);
-	const auto lifecycle = GetControlSnapshot().model_lifecycle;
-	if (lifecycle != ModelLifecyclePhase::kOperational || model_ == nullptr ||
-	    admission_epoch != runtime_options_admission_epoch_.load()) {
-		return RuntimeOptionsTransactionResult::Rejected({ "", "Runtime Options unavailable during Loading Window" },
-		                                                 options_epoch_);
-	}
-	return RuntimeOptionsTransactionResult::Applied(ReadRuntimeOptions(model_->opt), options_epoch_);
+	return middleware_core_->GetRuntimeOptions();
 }
 
 RuntimeOptionsTransactionResult MujocoEnv::ApplyRuntimeOptions(const std::vector<RuntimeOptionInput> &input)
 {
-	const auto admission_epoch = runtime_options_admission_epoch_.load();
-	RecursiveLock lock(physics_thread_mutex_);
-	const auto lifecycle = GetControlSnapshot().model_lifecycle;
-	if (lifecycle != ModelLifecyclePhase::kOperational || model_ == nullptr ||
-	    admission_epoch != runtime_options_admission_epoch_.load()) {
-		return RuntimeOptionsTransactionResult::Rejected({ "", "Runtime Options unavailable during Loading Window" },
-		                                                 options_epoch_);
-	}
-	const auto parsed = ParseRuntimeOptionsPatch(input);
-	if (!parsed.ok()) {
-		return RuntimeOptionsTransactionResult::Rejected(*parsed.error, options_epoch_);
-	}
-	const auto candidate = MergeRuntimeOptions(ReadRuntimeOptions(model_->opt), *parsed.patch);
-	const auto valid     = ValidateRuntimeOptions(candidate);
-	if (!valid.ok()) {
-		return RuntimeOptionsTransactionResult::Rejected(*valid.error, options_epoch_);
-	}
-	mjOption candidate_option = model_->opt;
-	WriteRuntimeOptions(candidate, candidate_option);
-	model_->opt = candidate_option;
-	settings_.settings_changed.store(1);
-	options_epoch_ = OptionsEpoch(options_epoch_.value() + 1);
-	return RuntimeOptionsTransactionResult::Applied(candidate, options_epoch_);
+	return middleware_core_->ApplyRuntimeOptions(input);
 }
 
 void MujocoEnv::SetPendingRuntimeOptions(const std::vector<RuntimeOptionInput> &input)
@@ -169,56 +117,37 @@ void MujocoEnv::SetPendingRuntimeOptions(const std::vector<RuntimeOptionInput> &
 
 bool MujocoEnv::RequestManualSteps(int num_steps)
 {
-	RecursiveLock physics_lock(physics_thread_mutex_);
-	return WithControlState([this, num_steps]() {
-		if (model_ == nullptr) {
-			MJR_ERROR("No model loaded. Cannot admit manual steps");
-			return false;
-		}
-		return control_state_.RequestSteps(num_steps);
-	});
+	return middleware_core_->RequestManualSteps(num_steps);
 }
 
 MujocoEnv::ManualStepRequest MujocoEnv::RequestManualStepsWithToken(int num_steps)
 {
-	// Keep model ownership validation in the same physics -> control admission boundary as lifecycle requests.
-	RecursiveLock physics_lock(physics_thread_mutex_);
-	return WithControlState([this, num_steps]() {
-		if (model_ == nullptr) {
-			MJR_ERROR("No model loaded. Cannot admit manual steps");
-			return ManualStepRequest{};
-		}
-		ManualStepToken token = 0;
-		if (!control_state_.RequestSteps(num_steps, &token)) {
-			return ManualStepRequest{};
-		}
-		return ManualStepRequest{ true, token };
-	});
+	return middleware_core_->RequestManualStepsWithToken(num_steps);
 }
 
 ManualStepSnapshot MujocoEnv::GetManualStepSnapshot(ManualStepToken token) const
 {
-	return control_state_.GetManualStepSnapshot(token);
+	return middleware_core_->GetManualStepSnapshot(token);
 }
 
 ManualStepSnapshot MujocoEnv::WaitForManualStepUpdate(ManualStepToken token, int observed_pending_steps) const
 {
-	return control_state_.WaitForManualStepUpdate(token, observed_pending_steps);
+	return middleware_core_->WaitForManualStepUpdate(token, observed_pending_steps);
 }
 
 bool MujocoEnv::CancelManualSteps(ManualStepToken token)
 {
-	return WithControlState([this, token]() { return control_state_.CancelPendingSteps(token); });
+	return middleware_core_->CancelManualSteps(token);
 }
 
 void MujocoEnv::AcknowledgeManualStep(ManualStepToken token)
 {
-	WithControlState([this, token]() { control_state_.AcknowledgeManualStep(token); });
+	middleware_core_->AcknowledgeManualStep(token);
 }
 
 void MujocoEnv::RequestReload()
 {
-	PublishLoadRequest(3, []() {});
+	middleware_core_->RequestReload();
 }
 
 void MujocoEnv::RequestModelLoad(const std::string &filename)
@@ -301,7 +230,7 @@ void MujocoEnv::RequestLoad(int load_request)
 
 void MujocoEnv::RequestReset()
 {
-	WithControlState([this]() { control_state_.RequestReset(); });
+	middleware_core_->RequestReset();
 }
 
 void MujocoEnv::ClearResetRequest()
@@ -347,44 +276,7 @@ bool MujocoEnv::WaitForOperationalStatusIdle(std::chrono::milliseconds timeout)
 
 bool MujocoEnv::Step(int num_steps /* = 1*/, bool blocking /* = true*/)
 {
-	const auto snapshot = control_state_.Snapshot();
-	if (snapshot.shutdown_requested) {
-		MJR_WARN("Step requested after shutdown has been requested. Ignoring step request.");
-		return false;
-	}
-
-	if (!model_) {
-		MJR_ERROR("No model loaded. Cannot step");
-		return false;
-	}
-
-	if (snapshot.running) {
-		MJR_WARN("Simulation is already running. Ignoring request");
-		return false;
-	}
-
-	if (num_steps <= 0) {
-		MJR_WARN("Number of steps must be positive. Ignoring request");
-		return false;
-	}
-
-	if (blocking && std::this_thread::get_id() == physics_thread_handle_.get_id()) {
-		MJR_WARN("Simulation is running in the same thread. Cannot block! Ignoring request");
-		return false;
-	}
-
-	MJR_DEBUG("Handling request of stepping %d steps", num_steps);
-	if (!RequestManualSteps(num_steps)) {
-		return false;
-	}
-	if (blocking) {
-		MJR_DEBUG("\t blocking until steps are done");
-		while (GetControlSnapshot().pending_steps > 0) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
-		}
-	}
-
-	return true;
+	return middleware_core_->Step(num_steps, blocking);
 }
 
 void MujocoEnv::UpdateModelFlags(const mjOption *opt)
@@ -414,12 +306,7 @@ void MujocoEnv::SetJointVelocity(const double &vel, const int &joint_id, const i
 
 void MujocoEnv::Reset()
 {
-	MJR_DEBUG("Reset requested");
-	RequestReset();
-
-	while (GetOperationalStatus() > 0) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
-	}
+	middleware_core_->Reset();
 }
 
 void MujocoEnv::Shutdown()
@@ -431,22 +318,7 @@ void MujocoEnv::Shutdown()
 
 bool MujocoEnv::LoadModelFromString(const std::string &model, char *load_error, const int error_sz)
 {
-	MJR_DEBUG("Loading model from string requested");
-	if (model.size() > kMaxFilenameLength) {
-		MJR_ERROR_STREAM("Model string is too long. Max length: " << kMaxFilenameLength << " (got " << model.size()
-		                                                          << ")");
-		return false;
-	}
-	MJR_DEBUG("Issuing model load");
-	QueueModelFilenameForLoad(model, 2);
-	while (GetOperationalStatus() > 0) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
-	}
-
-	if (load_error != nullptr) {
-		std::strncpy(load_error, load_error_, error_sz);
-	}
-	return sim_state_.model_valid;
+	return middleware_core_->LoadModelFromString(model, load_error, error_sz);
 }
 
 bool MujocoEnv::SetBodyState(const std::string &body_name, mjtNum *pose, mjtNum *twist, mjtNum &mass, bool set_pose,
@@ -1373,5 +1245,168 @@ int MujocoEnv::GetPluginStats(std::vector<std::string> &names, std::vector<std::
 	}
 	return static_cast<int>(stats.size());
 }
+
+// ---- Middleware Core backend adapter (mechanics only; decision rules live in MiddlewareCore) ----
+
+std::unique_ptr<detail::EnvControlBackend> MujocoEnv::MakeControlBackend(MujocoEnv &env)
+{
+	return std::make_unique<detail::EnvControlBackend>(env);
+}
+
+std::unique_ptr<middleware::MiddlewareCore> MujocoEnv::MakeMiddlewareCore(detail::EnvControlBackend &backend)
+{
+	return std::make_unique<middleware::MiddlewareCore>(backend);
+}
+
+namespace detail {
+
+void EnvControlBackend::ControlWithPhysicsLock(const std::function<void()> &func)
+{
+	RecursiveLock lock(env_.physics_thread_mutex_);
+	func();
+}
+
+std::uint64_t EnvControlBackend::ControlAdmissionEpoch() const
+{
+	return env_.runtime_options_admission_epoch_.load();
+}
+
+SimulationControlSnapshot EnvControlBackend::ControlSnapshot() const
+{
+	return env_.control_state_.Snapshot();
+}
+
+mjOption *EnvControlBackend::ControlModelOption()
+{
+	return env_.model_ ? &env_.model_->opt : nullptr;
+}
+
+bool EnvControlBackend::ControlHasModel() const
+{
+	return env_.model_ != nullptr;
+}
+
+void EnvControlBackend::ControlNotifySettingsChanged()
+{
+	env_.settings_.settings_changed.store(1);
+}
+
+bool EnvControlBackend::ControlVerifyAdminHash(const std::string &hash)
+{
+	return env_.VerifyAdminHash(hash);
+}
+
+void EnvControlBackend::ControlSetPaused(bool paused, bool notify_settings_changed)
+{
+	env_.ApplyPauseState(paused, notify_settings_changed);
+}
+
+void EnvControlBackend::ControlSetAdminHash(const std::string &hash)
+{
+	mju::strcpy_arr(env_.settings_.admin_hash, hash.c_str());
+}
+
+bool EnvControlBackend::ControlOnPhysicsThread() const
+{
+	return std::this_thread::get_id() == env_.physics_thread_handle_.get_id();
+}
+
+bool EnvControlBackend::ControlWaitPhysicsQuiescent()
+{
+	// running is cleared immediately; wait until physics releases the lock so any
+	// in-flight free-run step (and its LastStage publishes) has finished.
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+	while (std::chrono::steady_clock::now() < deadline) {
+		if (env_.physics_thread_mutex_.try_lock()) {
+			env_.physics_thread_mutex_.unlock();
+			return true;
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	return false;
+}
+
+bool EnvControlBackend::ControlAdmitManualSteps(int num_steps, ManualStepToken *token)
+{
+	// Keep model ownership validation in the same physics -> control admission boundary as lifecycle requests.
+	RecursiveLock physics_lock(env_.physics_thread_mutex_);
+	return env_.WithControlState([this, num_steps, token]() {
+		if (env_.model_ == nullptr) {
+			MJR_ERROR("No model loaded. Cannot admit manual steps");
+			return false;
+		}
+		return env_.control_state_.RequestSteps(num_steps, token);
+	});
+}
+
+ManualStepSnapshot EnvControlBackend::ControlManualStepSnapshot(ManualStepToken token) const
+{
+	return env_.control_state_.GetManualStepSnapshot(token);
+}
+
+ManualStepSnapshot EnvControlBackend::ControlWaitManualStepUpdate(ManualStepToken token, int observed) const
+{
+	return env_.control_state_.WaitForManualStepUpdate(token, observed);
+}
+
+bool EnvControlBackend::ControlCancelManualSteps(ManualStepToken token)
+{
+	return env_.WithControlState([this, token]() { return env_.control_state_.CancelPendingSteps(token); });
+}
+
+void EnvControlBackend::ControlAcknowledgeManualStep(ManualStepToken token)
+{
+	env_.WithControlState([this, token]() { env_.control_state_.AcknowledgeManualStep(token); });
+}
+
+void EnvControlBackend::ControlRequestReset()
+{
+	env_.WithControlState([this]() { env_.control_state_.RequestReset(); });
+}
+
+void EnvControlBackend::ControlRequestReload()
+{
+	env_.PublishLoadRequest(3, []() {});
+}
+
+int EnvControlBackend::ControlOperationalStatus()
+{
+	return env_.GetOperationalStatus();
+}
+
+std::size_t EnvControlBackend::ControlMaxModelStringLength() const
+{
+	return MujocoEnv::kMaxFilenameLength;
+}
+
+void EnvControlBackend::ControlQueueModelStringLoad(const std::string &model)
+{
+	env_.QueueModelFilenameForLoad(model, 2);
+}
+
+bool EnvControlBackend::ControlLoadResult(char *load_error, int error_sz)
+{
+	if (load_error != nullptr) {
+		std::strncpy(load_error, env_.load_error_, error_sz);
+	}
+	return env_.sim_state_.model_valid;
+}
+
+void EnvControlBackend::ControlLogDebug(const std::string &message)
+{
+	MJR_DEBUG("%s", message.c_str());
+}
+
+void EnvControlBackend::ControlLogWarn(const std::string &message)
+{
+	MJR_WARN("%s", message.c_str());
+}
+
+void EnvControlBackend::ControlLogError(const std::string &message)
+{
+	MJR_ERROR("%s", message.c_str());
+}
+
+} // namespace detail
 
 } // namespace mujoco_ros

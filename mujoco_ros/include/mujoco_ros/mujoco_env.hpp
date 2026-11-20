@@ -105,6 +105,8 @@ using TransformStamped = geometry_msgs::msg::TransformStamped;
 #include <mujoco_ros/mesh_uri_prep.hpp>
 #include <mujoco_ros/simulation_control_state.hpp>
 #include <mujoco_ros/runtime_options.hpp>
+#include <mujoco_ros/middleware/middleware_core.hpp>
+#include <mujoco_ros/detail/env_control_backend.hpp>
 #include <mujoco_ros/plugin_host.hpp>
 #include <mujoco_ros/sensor_hub.hpp>
 #include <mujoco_ros/rendering/render_core.hpp>
@@ -311,9 +313,11 @@ public:
 	rclcpp::Executor::SharedPtr GetExecutorPtr();
 #endif
 
+	middleware::MiddlewareCore &middleware_core() { return *middleware_core_; }
 	bool UsesPythonReloadService() const { return python_reload_service_; }
 	// Friend declaration of RosAPI for access to private members
 	friend class RosAPI;
+	friend class detail::EnvControlBackend;
 	friend class Viewer;
 	friend class ConnectedViewersLease;
 	friend class OffscreenCameraConfig;
@@ -561,11 +565,7 @@ public:
 	/// (LastStage included) so free-run publishes stop before the caller continues.
 	bool TogglePaused(bool paused, const std::string &admin_hash = std::string(), bool blocking = false);
 	SimulationControlSnapshot GetControlSnapshot() const;
-	struct ManualStepRequest
-	{
-		bool accepted         = false;
-		ManualStepToken token = 0;
-	};
+	using ManualStepRequest = middleware::ManualStepRequest;
 	bool RequestManualSteps(int num_steps);
 	ManualStepRequest RequestManualStepsWithToken(int num_steps);
 	ManualStepSnapshot GetManualStepSnapshot(ManualStepToken token) const;
@@ -913,10 +913,15 @@ protected:
 	bool has_pending_runtime_options_  = false;
 	bool startup_runtime_options_open_ = true;
 	std::atomic<std::uint64_t> runtime_options_admission_epoch_{ 0 };
-	OptionsEpoch options_epoch_;
 	ModelGeneration model_generation_;
 	PluginGeneration plugin_generation_;
 	FrameGeneration frame_generation_;
+
+	// Simulation Control API host (Middleware Core) and its backend adapter. Declared last: destroyed first.
+	static std::unique_ptr<detail::EnvControlBackend> MakeControlBackend(MujocoEnv &env);
+	static std::unique_ptr<middleware::MiddlewareCore> MakeMiddlewareCore(detail::EnvControlBackend &backend);
+	std::unique_ptr<detail::EnvControlBackend> control_backend_  = MakeControlBackend(*this);
+	std::unique_ptr<middleware::MiddlewareCore> middleware_core_ = MakeMiddlewareCore(*control_backend_);
 };
 
 } // end namespace mujoco_ros
