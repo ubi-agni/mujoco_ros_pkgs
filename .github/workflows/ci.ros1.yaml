@@ -149,11 +149,11 @@ jobs:
           fi
 
           if [[ "${full_matrix}" != "true" ]]; then
-            matrix='{"include":[{"distro":"one","gui_backend":"GLFW","offscreen_backend":"ANY","mujoco":"3.17.0","check":"plain"}]}'
+            matrix='{"include":[{"distro":"one","image":"one-ci","gui_backend":"GLFW","offscreen_backend":"ANY","mujoco":"4.0.1","bindings":"on","check":"plain"},{"distro":"one","image":"one-jammy-ci","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"4.0.1","bindings":"off","check":"plain"}]}'
           elif [[ "${coverage}" == "true" ]]; then
-            matrix='{"include":[{"distro":"one","gui_backend":"GLFW","offscreen_backend":"ANY","mujoco":"3.17.0","check":"ccov"},{"distro":"one","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.17.0","check":"ccov"},{"distro":"one","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.17.0","check":"ccov"},{"distro":"one","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.17.0","check":"ccov"}]}'
+            matrix='{"include":[{"distro":"one","image":"one-ci","gui_backend":"GLFW","offscreen_backend":"ANY","mujoco":"4.0.1","bindings":"on","check":"ccov"},{"distro":"one","image":"one-ci","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"4.0.1","bindings":"on","check":"ccov"},{"distro":"one","image":"one-ci","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"4.0.1","bindings":"on","check":"ccov"},{"distro":"one","image":"one-ci","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"4.0.1","bindings":"on","check":"ccov"},{"distro":"one","image":"one-jammy-ci","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"4.0.1","bindings":"off","check":"plain"}]}'
           else
-            matrix='{"include":[{"distro":"one","gui_backend":"GLFW","offscreen_backend":"ANY","mujoco":"3.17.0","check":"plain"},{"distro":"one","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"3.17.0","check":"plain"},{"distro":"one","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"3.17.0","check":"plain"},{"distro":"one","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"3.17.0","check":"plain"}]}'
+            matrix='{"include":[{"distro":"one","image":"one-ci","gui_backend":"GLFW","offscreen_backend":"ANY","mujoco":"4.0.1","bindings":"on","check":"plain"},{"distro":"one","image":"one-ci","gui_backend":"GLFW","offscreen_backend":"DISABLE","mujoco":"4.0.1","bindings":"on","check":"plain"},{"distro":"one","image":"one-ci","gui_backend":"DISABLE","offscreen_backend":"OSMESA","mujoco":"4.0.1","bindings":"on","check":"plain"},{"distro":"one","image":"one-ci","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"4.0.1","bindings":"on","check":"plain"},{"distro":"one","image":"one-jammy-ci","gui_backend":"DISABLE","offscreen_backend":"DISABLE","mujoco":"4.0.1","bindings":"off","check":"plain"}]}'
           fi
 
           echo "matrix=${matrix}" >> "${GITHUB_OUTPUT}"
@@ -168,7 +168,7 @@ jobs:
       BUILDER: colcon
       MUJOCO_DIR: /vol/mujoco/mujoco-${{ matrix.mujoco }} # for self-hosted runners
       DOCKER_RUN_OPTS: -e MUJOCO_DIR=/root/mujoco/${{ matrix.mujoco }} -e DISPLAY=:99.0
-      DOCKER_IMAGE: ubiagni/mujoco_ros:${{ matrix.distro }}-ci
+      DOCKER_IMAGE: ubiagni/mujoco_ros:${{ matrix.image }}
 
       # For now we have flags defined in the CMakeLists, using all flags makes the build break
       # I'll fix this once I find some time to do it
@@ -180,7 +180,7 @@ jobs:
       AFTER_INIT: >
         apt-get update -q;
         apt-get install -qy python3-pip${{ matrix.gui_backend == 'GLFW' && ' xvfb' || '' }};
-        python3 -m pip install mujoco==${{ matrix.mujoco }};
+        ${{ matrix.bindings == 'on' && format('python3 -m pip install mujoco=={0};', matrix.mujoco) || '' }}
         ${{ matrix.gui_backend == 'GLFW' && 'Xvfb :99 & n=0; until [ -S /tmp/.X11-unix/X99 ]; do n=$((n+1)); if [ "$n" -gt 100 ]; then echo "Xvfb :99 failed to start" >&2; exit 1; fi; sleep 0.1; done' || '' }}
       # Pull any updates to the upstream workspace
       AFTER_SETUP_UPSTREAM_WORKSPACE: vcs pull $BASEDIR/upstream_ws/src
@@ -195,13 +195,14 @@ jobs:
         -DCMAKE_CXX_FLAGS="-Werror $CXXFLAGS${{ (matrix.check == 'ccov' && ' --coverage -O2 -fno-omit-frame-pointer') || '' }}"
         -DWITH_GUI=${{ matrix.gui_backend == 'GLFW' && 'ON' || 'OFF' }}
         -DOFFSCREEN_BACKEND=${{ matrix.offscreen_backend }}
+        -DBUILD_PYTHON_BINDINGS=${{ matrix.bindings == 'on' && 'ON' || 'OFF' }}
       UPSTREAM_CMAKE_ARGS: -DCMAKE_CXX_FLAGS= -DCMAKE_CXX_STANDARD=17
 
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       BASEDIR: ${{ github.workspace }}/.work
       CCOV: ${{ matrix.check == 'ccov' }}
 
-    name: "${{ matrix.distro }} mj-${{ matrix.mujoco }} ${{ matrix.gui_backend }} + ${{ matrix.offscreen_backend }}${{ matrix.check == 'plain' && ' + test' || ' ' }}${{ matrix.check == 'ccov' && ' + ccov' || ' '}}"
+    name: "${{ matrix.distro }} ${{ matrix.image }} mj-${{ matrix.mujoco }} ${{ matrix.gui_backend }} + ${{ matrix.offscreen_backend }}${{ matrix.check == 'plain' && ' + test' || ' ' }}${{ matrix.check == 'ccov' && ' + ccov' || ' '}}"
     runs-on: ${{ matrix.render_backend == 'EGL' && matrix.distro || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5
@@ -213,7 +214,7 @@ jobs:
           restore-keys: ${{ env.CACHE_PREFIX }}
         env:
           GHA_CACHE_SAVE: always
-          CACHE_PREFIX: upstream_ws-${{ matrix.distro }}-${{ hashFiles('.github/workflows/upstream.ros1.rosinstall', '.github/workflows/ci.ros1.yaml') }}
+          CACHE_PREFIX: upstream_ws-${{ matrix.image }}-${{ hashFiles('.github/workflows/upstream.ros1.rosinstall', '.github/workflows/ci.ros1.yaml') }}
       # The target directory cache doesn't include the source directory because
       # that comes from the checkout.  See "prepare target_ws for cache" task below
       - name: Cache target workspace
@@ -225,7 +226,7 @@ jobs:
           restore-keys: ${{ env.CACHE_PREFIX }}
         env:
           GHA_CACHE_SAVE: always
-          CACHE_PREFIX: target_ws${{ matrix.check == 'ccov' && '-ccov' || '' }}-${{ matrix.distro }}-${{ matrix.gui_backend }}-${{ matrix.offscreen_backend }}-${{ hashFiles('**/CMakeLists.txt', '**/package.xml', '.github/workflows/ci.ros1.yaml') }}
+          CACHE_PREFIX: target_ws${{ matrix.check == 'ccov' && '-ccov' || '' }}-${{ matrix.image }}-${{ matrix.gui_backend }}-${{ matrix.offscreen_backend }}-${{ hashFiles('**/CMakeLists.txt', '**/package.xml', '.github/workflows/ci.ros1.yaml') }}
       - name: Cache ccache
         uses: rhaschke/cache@main
         with:
@@ -236,7 +237,7 @@ jobs:
             ${{ env.CACHE_PREFIX }}
         env:
           GHA_CACHE_SAVE: always
-          CACHE_PREFIX: ccache-${{ matrix.distro }}${{ matrix.check == 'ccov' && '-ccov' || '' }}
+          CACHE_PREFIX: ccache-${{ matrix.image }}${{ matrix.check == 'ccov' && '-ccov' || '' }}
 
       - id: ici
         name: Run industrial_ci
@@ -246,7 +247,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: failure() && (steps.ici.outputs.run_target_test || steps.ici.outputs.target_test_results)
         with:
-          name: test-results-${{ matrix.distro }}-${{ matrix.gui_backend }}-${{ matrix.offscreen_backend }}
+          name: test-results-${{ matrix.image }}-${{ matrix.gui_backend }}-${{ matrix.offscreen_backend }}
           path: ${{ env.BASEDIR }}/target_ws/**/test_results/**/*.xml
       - name: Generate codecov report
         uses: rhaschke/lcov-action@main
@@ -255,12 +256,12 @@ jobs:
           docker: ${{ '$DOCKER_IMAGE' }}
           workdir: ${{ env.BASEDIR }}/target_ws
           ignore: '"*/target_ws/build/*" "*/target_ws/install/*" "*/test/*"'
-          output: ${{ env.BASEDIR }}/target_ws/coverage-${{ matrix.distro }}-${{ matrix.gui_backend }}-${{ matrix.offscreen_backend }}.info
+          output: ${{ env.BASEDIR }}/target_ws/coverage-${{ matrix.image }}-${{ matrix.gui_backend }}-${{ matrix.offscreen_backend }}.info
       - name: Upload codecov report
         uses: codecov/codecov-action@v5
         if: always() && matrix.check == 'ccov' && steps.ici.outputs.target_test_results == '0'
         with:
-          files: ${{ env.BASEDIR }}/target_ws/coverage-${{ matrix.distro }}-${{ matrix.gui_backend }}-${{ matrix.offscreen_backend }}.info
+          files: ${{ env.BASEDIR }}/target_ws/coverage-${{ matrix.image }}-${{ matrix.gui_backend }}-${{ matrix.offscreen_backend }}.info
       - name: Prepare target_ws for cache
         if: always() && matrix.check != 'ccov'
         run: |

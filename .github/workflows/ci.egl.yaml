@@ -53,19 +53,19 @@ jobs:
   egl_glfw:
     needs: decide
     if: needs.decide.outputs.run_egl == 'true'
-    name: humble GLFW + EGL + ccov
+    name: jazzy GLFW + EGL + ccov
     runs-on: [self-hosted, egl]
     continue-on-error: true
     timeout-minutes: 90
     env:
       BUILDER: colcon
-      MUJOCO_DIR: /vol/mujoco/mujoco-3.17.0
-      DOCKER_IMAGE: ubiagni/mujoco_ros:humble-ci
+      MUJOCO_DIR: /vol/mujoco/mujoco-4.0.1
+      DOCKER_IMAGE: ubiagni/mujoco_ros:jazzy-ci
       CXXFLAGS: -Wwrite-strings -Wunreachable-code -Wpointer-arith
       AFTER_INIT: >
         apt-get update -q;
         apt-get install -qy python3-pip xvfb;
-        python3 -m pip install mujoco==3.17.0;
+        python3 -m pip install mujoco==4.0.1;
         test -n "$DISPLAY" || { echo "DISPLAY unset in container" >&2; exit 1; };
         Xvfb "$DISPLAY" & n=0; sock="/tmp/.X11-unix/X${DISPLAY#:}";
         until [ -S "$sock" ]; do n=$((n+1)); if [ "$n" -gt 100 ]; then echo "Xvfb $DISPLAY failed to start" >&2; exit 1; fi; sleep 0.1; done
@@ -100,20 +100,20 @@ jobs:
             ${{ env.CACHE_PREFIX }}
         env:
           GHA_CACHE_SAVE: always
-          CACHE_PREFIX: ccache-egl-ccov-humble-glfw
+          CACHE_PREFIX: ccache-egl-ccov-jazzy-glfw
       - id: ici
         name: Run industrial_ci
         uses: ros-industrial/industrial_ci@master
         env:
           DOCKER_RUN_OPTS: >-
-            -e MUJOCO_DIR=/root/mujoco/3.17.0
+            -e MUJOCO_DIR=/root/mujoco/4.0.1
             -e DISPLAY=${{ env.ICI_DISPLAY }}
             -e ROS_DOMAIN_ID=${{ env.ICI_ROS_DOMAIN_ID }}
       - name: Upload test artifacts (on failure)
         uses: actions/upload-artifact@v4
         if: failure() && (steps.ici.outputs.run_target_test || steps.ici.outputs.target_test_results)
         with:
-          name: test-results-egl-humble-GLFW-EGL
+          name: test-results-egl-jazzy-GLFW-EGL
           path: ${{ env.BASEDIR }}/target_ws/**/test_results/**/*.xml
       - name: Generate codecov report
         uses: rhaschke/lcov-action@main
@@ -122,29 +122,29 @@ jobs:
           docker: ${{ '$DOCKER_IMAGE' }}
           workdir: ${{ env.BASEDIR }}/target_ws
           ignore: '"*/target_ws/build/*" "*/target_ws/install/*" "*/test/*"'
-          output: ${{ env.BASEDIR }}/target_ws/coverage-humble-GLFW-EGL.info
+          output: ${{ env.BASEDIR }}/target_ws/coverage-jazzy-GLFW-EGL.info
       - name: Upload codecov report
         uses: codecov/codecov-action@v5
         if: always() && steps.ici.outputs.target_test_results == '0'
         with:
-          files: ${{ env.BASEDIR }}/target_ws/coverage-humble-GLFW-EGL.info
+          files: ${{ env.BASEDIR }}/target_ws/coverage-jazzy-GLFW-EGL.info
 
   egl_headless:
     needs: decide
     if: needs.decide.outputs.run_egl == 'true'
-    name: humble DISABLE + EGL + ccov
+    name: jazzy DISABLE + EGL + ccov
     runs-on: [self-hosted, egl]
     continue-on-error: true
     timeout-minutes: 90
     env:
       BUILDER: colcon
-      MUJOCO_DIR: /vol/mujoco/mujoco-3.17.0
-      DOCKER_IMAGE: ubiagni/mujoco_ros:humble-ci
+      MUJOCO_DIR: /vol/mujoco/mujoco-4.0.1
+      DOCKER_IMAGE: ubiagni/mujoco_ros:jazzy-ci
       CXXFLAGS: -Wwrite-strings -Wunreachable-code -Wpointer-arith
       AFTER_INIT: >
         apt-get update -q;
         apt-get install -qy python3-pip;
-        python3 -m pip install mujoco==3.17.0
+        python3 -m pip install mujoco==4.0.1
       AFTER_SETUP_DOWNSTREAM_WORKSPACE: vcs pull $BASEDIR/downstream_ws/src
       AFTER_SETUP_CCACHE: ccache --zero-stats --max-size=10.0G
       AFTER_BUILD_TARGET_WORKSPACE: ccache --show-stats
@@ -175,20 +175,20 @@ jobs:
             ${{ env.CACHE_PREFIX }}
         env:
           GHA_CACHE_SAVE: always
-          CACHE_PREFIX: ccache-egl-ccov-humble-disable
+          CACHE_PREFIX: ccache-egl-ccov-jazzy-disable
       - id: ici
         name: Run industrial_ci
         uses: ros-industrial/industrial_ci@master
         env:
           DOCKER_RUN_OPTS: >-
-            -e MUJOCO_DIR=/root/mujoco/3.17.0
+            -e MUJOCO_DIR=/root/mujoco/4.0.1
             -e DISPLAY=${{ env.ICI_DISPLAY }}
             -e ROS_DOMAIN_ID=${{ env.ICI_ROS_DOMAIN_ID }}
       - name: Upload test artifacts (on failure)
         uses: actions/upload-artifact@v4
         if: failure() && (steps.ici.outputs.run_target_test || steps.ici.outputs.target_test_results)
         with:
-          name: test-results-egl-humble-DISABLE-EGL
+          name: test-results-egl-jazzy-DISABLE-EGL
           path: ${{ env.BASEDIR }}/target_ws/**/test_results/**/*.xml
       - name: Generate codecov report
         uses: rhaschke/lcov-action@main
@@ -197,9 +197,9 @@ jobs:
           docker: ${{ '$DOCKER_IMAGE' }}
           workdir: ${{ env.BASEDIR }}/target_ws
           ignore: '"*/target_ws/build/*" "*/target_ws/install/*" "*/test/*"'
-          output: ${{ env.BASEDIR }}/target_ws/coverage-humble-DISABLE-EGL.info
+          output: ${{ env.BASEDIR }}/target_ws/coverage-jazzy-DISABLE-EGL.info
       - name: Upload codecov report
         uses: codecov/codecov-action@v5
         if: always() && steps.ici.outputs.target_test_results == '0'
         with:
-          files: ${{ env.BASEDIR }}/target_ws/coverage-humble-DISABLE-EGL.info
+          files: ${{ env.BASEDIR }}/target_ws/coverage-jazzy-DISABLE-EGL.info
