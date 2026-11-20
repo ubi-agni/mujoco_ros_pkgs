@@ -33,6 +33,18 @@ if(WITH_GUI STREQUAL "ON")
   add_library(mujoco_ros::platform_ui_adapter ALIAS platform_ui_adapter)
 endif()
 
+# Simulation Middleware Core: internal library (object files folded into mujoco_ros).
+add_library(mujoco_ros_middleware OBJECT
+  middleware/middleware_core.cpp
+)
+set_property(TARGET mujoco_ros_middleware PROPERTY POSITION_INDEPENDENT_CODE ON)
+target_include_directories(mujoco_ros_middleware PUBLIC
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(mujoco_ros_middleware PUBLIC mujoco::mujoco)
+target_link_libraries(mujoco_ros_middleware PRIVATE project_option project_warning)
+
 if(ROS_VERSION EQUAL "1")
   set(MJR_SOURCE_FILES
     main.cpp
@@ -100,6 +112,7 @@ endif()
 
 add_library(${PROJECT_NAME} SHARED
   $<TARGET_OBJECTS:lodepng>
+  $<TARGET_OBJECTS:mujoco_ros_middleware>
   ${MJR_SOURCE_FILES}
 )
 
