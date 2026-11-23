@@ -293,7 +293,7 @@ void CopyStatusMessage(char *status_message, const int status_sz, const std::str
 }
 } // namespace
 
-void MujocoEnv::UpdateModelFlags(const mjOption *opt)
+bool MujocoEnv::UpdateModelFlags(const mjOption *opt)
 {
 	const RuntimeOptionsSnapshot flags          = ReadRuntimeOptions(*opt);
 	const std::vector<RuntimeOptionInput> input = {
@@ -324,8 +324,9 @@ void MujocoEnv::UpdateModelFlags(const mjOption *opt)
 	if (!result.ok()) {
 		const std::string reason = result.error ? result.error->field + ": " + result.error->message : "unknown error";
 		MJR_ERROR_STREAM("UpdateModelFlags rejected by Runtime Options: " << reason);
-		throw std::runtime_error("UpdateModelFlags rejected by Runtime Options: " + reason);
+		return false;
 	}
+	return true;
 }
 
 void MujocoEnv::SetJointPosition(const double &pos, const int &joint_id, const int &jnt_axis /*= 0*/)

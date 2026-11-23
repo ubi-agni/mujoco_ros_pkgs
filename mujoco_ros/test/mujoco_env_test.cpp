@@ -3200,7 +3200,7 @@ TEST_F(BaseEnvFixture, UpdateModelFlagsRoutesThroughRuntimeOptionsEpoch)
 	viewer_opt.disableflags |= mjDSBL_GRAVITY;
 	viewer_opt.enableflags |= mjENBL_ENERGY;
 	viewer_opt.disableactuator = 0x6;
-	env_ptr->UpdateModelFlags(&viewer_opt);
+	ASSERT_TRUE(env_ptr->UpdateModelFlags(&viewer_opt));
 
 	const auto after = env_ptr->GetRuntimeOptions();
 	ASSERT_TRUE(after.ok());

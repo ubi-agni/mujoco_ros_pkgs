@@ -2166,8 +2166,9 @@ void Viewer::SyncInFrame(MujocoEnv &env, bool state_only)
 			}
 		}
 		if (drain.apply_model_flags) {
-			env.UpdateModelFlags(&m_->opt);
-			env.settings_.settings_changed.store(true);
+			if (env.UpdateModelFlags(&m_->opt)) {
+				env.settings_.settings_changed.store(true);
+			}
 		}
 	}
 

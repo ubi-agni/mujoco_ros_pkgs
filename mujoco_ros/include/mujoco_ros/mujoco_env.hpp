@@ -570,7 +570,9 @@ public:
 	void RunRenderCbs(mjvScene *scene);
 	bool Step(int num_steps = 1, bool blocking = true);
 
-	void UpdateModelFlags(const mjOption *opt);
+	/// Applies modeled Runtime Options flags (and disableactuator) from ``opt`` via Core.
+	/// Returns false if the transaction is rejected (e.g. Loading Window); does not throw.
+	bool UpdateModelFlags(const mjOption *opt);
 
 	void FetchRosConfiguration();
 	void GetCameraConfiguration(const std::string &cam_name, rendering::StreamType &stream_type, float &pub_frequency,
