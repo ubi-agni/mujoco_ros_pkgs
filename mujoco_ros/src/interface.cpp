@@ -111,8 +111,7 @@ void MujocoEnv::SetPendingRuntimeOptions(const std::vector<RuntimeOptionInput> &
 	if (!valid.ok()) {
 		throw std::invalid_argument(valid.error->field + ": " + valid.error->message);
 	}
-	pending_runtime_options_     = *parsed.patch;
-	has_pending_runtime_options_ = true;
+	middleware_core_->SetPendingRuntimeOptionsPatch(*parsed.patch);
 }
 
 bool MujocoEnv::RequestManualSteps(int num_steps)
@@ -1202,20 +1201,12 @@ bool MujocoEnv::SetRealTimeFactor(const float &rt_factor, const std::string &adm
 
 std::vector<PluginStat> MujocoEnv::GetPluginStats() const
 {
-	RecursiveLock sim_lock(physics_thread_mutex_);
-	return plugin_host_->Statistics();
+	return middleware_core_->PluginStatistics();
 }
 
 std::vector<PluginHandle> MujocoEnv::GetPluginHandles() const
 {
-	return WithPluginAccess([this](const ScopedPluginAccess &access) {
-		std::vector<PluginHandle> handles;
-		for (const auto &stat : access.Statistics()) {
-			handles.push_back(PluginHandle(const_cast<MujocoEnv *>(this), plugin_lifetime_, model_generation_,
-			                               access.Generation(), stat.name, stat.type));
-		}
-		return handles;
-	});
+	return middleware_core_->GetPluginHandles();
 }
 
 int MujocoEnv::GetPluginStats(std::vector<std::string> &names, std::vector<std::string> &types,

@@ -30,26 +30,32 @@ constexpr const char *kLoadingWindowMessage = "Runtime Options unavailable durin
 } // namespace
 
 MiddlewareCore::MiddlewareCore(IConfigSource &config_source, ITimePublisher &time_publisher)
-    : config_source_(config_source), time_publisher_(time_publisher)
+    : config_source_(&config_source), time_publisher_(&time_publisher)
 {
 }
 
 MiddlewareCore::MiddlewareCore(IConfigSource &config_source, ITimePublisher &time_publisher,
                                IControlBackend &control_backend)
-    : config_source_(config_source), time_publisher_(time_publisher), control_backend_(&control_backend)
+    : config_source_(&config_source), time_publisher_(&time_publisher), control_backend_(&control_backend)
 {
 }
 
 MiddlewareCore::MiddlewareCore(IControlBackend &control_backend)
     : owned_config_source_(std::make_unique<NullConfigSource>())
     , owned_time_publisher_(std::make_unique<NullTimePublisher>())
-    , config_source_(*owned_config_source_)
-    , time_publisher_(*owned_time_publisher_)
+    , config_source_(owned_config_source_.get())
+    , time_publisher_(owned_time_publisher_.get())
     , control_backend_(&control_backend)
 {
 }
 
 MiddlewareCore::~MiddlewareCore() = default;
+
+void MiddlewareCore::AttachPorts(IConfigSource &config_source, ITimePublisher &time_publisher)
+{
+	config_source_  = &config_source;
+	time_publisher_ = &time_publisher;
+}
 
 IControlBackend &MiddlewareCore::Backend() const
 {
@@ -262,6 +268,143 @@ OptionsEpoch MiddlewareCore::AdvanceOptionsEpoch()
 {
 	options_epoch_ = OptionsEpoch(options_epoch_.value() + 1);
 	return options_epoch_;
+}
+
+void MiddlewareCore::SetPendingRuntimeOptionsPatch(const RuntimeOptionsPatch &patch)
+{
+	pending_runtime_options_     = patch;
+	has_pending_runtime_options_ = true;
+}
+
+void MiddlewareCore::ClearPendingRuntimeOptions()
+{
+	pending_runtime_options_     = {};
+	has_pending_runtime_options_ = false;
+}
+
+std::optional<RuntimeOptionsError> MiddlewareCore::ApplyPendingRuntimeOptions(mjOption &option)
+{
+	if (!has_pending_runtime_options_) {
+		return std::nullopt;
+	}
+	const auto patch = pending_runtime_options_;
+	ClearPendingRuntimeOptions();
+	const auto candidate = MergeRuntimeOptions(ReadRuntimeOptions(option), patch);
+	const auto valid     = ValidateRuntimeOptions(candidate);
+	if (!valid.ok()) {
+		return valid.error;
+	}
+	mjOption candidate_option = option;
+	WriteRuntimeOptions(candidate, candidate_option);
+	option = candidate_option;
+	AdvanceOptionsEpoch();
+	return std::nullopt;
+}
+
+PluginHost &MiddlewareCore::RequirePluginHost() const
+{
+	if (!plugin_host_) {
+		throw std::runtime_error("Plugin Host is not initialized");
+	}
+	return *plugin_host_;
+}
+
+void MiddlewareCore::AttachPluginFactory(IPluginAdapterFactory &factory)
+{
+	if (plugin_host_) {
+		plugin_host_->QuiesceAndDestroy();
+	}
+	plugin_factory_ = &factory;
+	plugin_host_    = std::make_unique<PluginHost>(factory);
+}
+
+PluginLoadReport MiddlewareCore::RebindPlugins(const mjModel *model, mjData *data, ModelGeneration model_generation)
+{
+	if (!plugin_host_) {
+		throw std::logic_error("MiddlewareCore: no plugin factory attached");
+	}
+	// LoadGeneration quiesces the previous Plugin Generation first; the factory then rebuilds plugins by name.
+	const auto next    = PluginGeneration(plugin_generation_.value() + 1);
+	auto report        = plugin_host_->LoadGeneration(model, data, model_generation, next);
+	plugin_generation_ = report.generation;
+	return report;
+}
+
+void MiddlewareCore::QuiescePlugins()
+{
+	if (plugin_host_) {
+		plugin_host_->QuiesceAndDestroy();
+	}
+}
+
+void MiddlewareCore::InvalidatePluginHandles()
+{
+	plugin_lifetime_.reset();
+}
+
+void MiddlewareCore::DispatchControl(ModelGeneration generation, const mjModel *model, mjData *data)
+{
+	RequirePluginHost().DispatchControl(generation, model, data);
+}
+
+void MiddlewareCore::DispatchPassive(ModelGeneration generation, const mjModel *model, mjData *data)
+{
+	RequirePluginHost().DispatchPassive(generation, model, data);
+}
+
+void MiddlewareCore::DispatchRender(ModelGeneration generation, const mjModel *model, mjData *data, mjvScene *scene)
+{
+	RequirePluginHost().DispatchRender(generation, model, data, scene);
+}
+
+void MiddlewareCore::DispatchLastStage(ModelGeneration generation, const mjModel *model, mjData *data)
+{
+	RequirePluginHost().DispatchLastStage(generation, model, data);
+}
+
+void MiddlewareCore::ResetPlugins(ModelGeneration generation)
+{
+	RequirePluginHost().Reset(generation);
+}
+
+void MiddlewareCore::NotifyPluginGeometryChanged(ModelGeneration generation, const mjModel *model, mjData *data,
+                                                 int geom_id)
+{
+	RequirePluginHost().NotifyGeometryChanged(generation, model, data, geom_id);
+}
+
+std::vector<PluginStat> MiddlewareCore::PluginStatistics() const
+{
+	std::vector<PluginStat> stats;
+	Backend().ControlWithPhysicsLock([&]() { stats = RequirePluginHost().Statistics(); });
+	return stats;
+}
+
+std::size_t MiddlewareCore::ReadyPluginCount() const
+{
+	return plugin_host_ ? plugin_host_->ReadyCount() : 0;
+}
+
+ModelGeneration MiddlewareCore::ActivePluginModelGeneration() const
+{
+	return RequirePluginHost().ActiveModelGeneration();
+}
+
+std::vector<PluginLoadFailure> MiddlewareCore::PluginDiagnostics() const
+{
+	return plugin_host_ ? plugin_host_->Diagnostics() : std::vector<PluginLoadFailure>{};
+}
+
+std::vector<PluginHandle> MiddlewareCore::GetPluginHandles() const
+{
+	return WithPluginAccess([this](const ScopedPluginAccess &access) {
+		std::vector<PluginHandle> handles;
+		for (const auto &stat : access.Statistics()) {
+			handles.push_back(PluginHandle(const_cast<MiddlewareCore *>(this), plugin_lifetime_, access.Model(),
+			                               access.Generation(), stat.name, stat.type));
+		}
+		return handles;
+	});
 }
 
 } // namespace mujoco_ros::middleware

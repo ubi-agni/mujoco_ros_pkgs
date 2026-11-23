@@ -206,14 +206,14 @@ const char *MujocoEnv::Diverged(int disableflags, const mjData *d)
 
 void MujocoEnv::RunRenderCbs(mjvScene *scene)
 {
-	plugin_host_->DispatchRender(model_generation_, this->model_.get(), this->data_.get(), scene);
+	middleware_core_->DispatchRender(model_generation_, this->model_.get(), this->data_.get(), scene);
 }
 
 void UpdateModelFlags(const mjOption * /*unused*/) {}
 
 void MujocoEnv::RunLastStageCbs()
 {
-	plugin_host_->DispatchLastStage(model_generation_, this->model_.get(), this->data_.get());
+	middleware_core_->DispatchLastStage(model_generation_, this->model_.get(), this->data_.get());
 }
 
 #if MJR_ROS_VERSION == ROS_1
@@ -233,8 +233,11 @@ MujocoEnv::MujocoEnv(const std::string &admin_hash /* = std::string()*/, bool py
 	nh_      = std::make_shared<ros::NodeHandle>("~");
 	ros_api_ = std::make_unique<RosAPI>(nh_, this);
 	plugin_utils::InitPluginLoader();
+	config_source_port_  = std::make_unique<ros_one::RosConfigSource>(*nh_);
+	time_publisher_port_ = std::make_unique<ros_one::RosTimePublisher>(*ros_api_);
+	middleware_core_->AttachPorts(*config_source_port_, *time_publisher_port_);
 	plugin_factory_ = std::make_unique<plugin_utils::RosPluginAdapterFactory>(nh_.get(), this);
-	plugin_host_    = std::make_unique<PluginHost>(*plugin_factory_);
+	middleware_core_->AttachPluginFactory(*plugin_factory_);
 	Configure();
 }
 
@@ -287,8 +290,11 @@ MujocoEnv::MujocoEnv(rclcpp::Executor::SharedPtr executor, const std::string &ad
 
 	ros_api_ = std::make_unique<RosAPI>(this);
 	plugin_utils::InitPluginLoader();
+	config_source_port_  = std::make_unique<ros_two::RosConfigSource>(*this);
+	time_publisher_port_ = std::make_unique<ros_two::RosTimePublisher>(*ros_api_);
+	middleware_core_->AttachPorts(*config_source_port_, *time_publisher_port_);
 	plugin_factory_ = std::make_unique<plugin_utils::RosPluginAdapterFactory>(this);
-	plugin_host_    = std::make_unique<PluginHost>(*plugin_factory_);
+	middleware_core_->AttachPluginFactory(*plugin_factory_);
 	if (auto_configure) {
 		Configure();
 	}
@@ -829,9 +835,7 @@ void MujocoEnv::HandleReloadFailure(const char *message) noexcept
 	    [this] {
 		    RecursiveLock physics_lock(physics_thread_mutex_);
 		    sensor_hub_.Clear();
-		    if (plugin_host_) {
-			    plugin_host_->QuiesceAndDestroy();
-		    }
+		    middleware_core_->QuiescePlugins();
 	    },
 	    true);
 
@@ -963,7 +967,7 @@ void MujocoEnv::ProcessReset()
 		reset_time = ResetSim();
 		break;
 	}
-	ros_api_->PublishSimTime(reset_time);
+	middleware_core_->time_publisher().PublishSimTime(reset_time);
 	{
 		RecursiveLock lock(physics_thread_mutex_);
 		ClearResetRequest();
@@ -982,7 +986,7 @@ mjtNum MujocoEnv::ResetSim()
 	mj_forward(this->model_.get(), this->data_.get());
 	const auto reset_time = this->data_->time;
 
-	plugin_host_->Reset(model_generation_);
+	middleware_core_->ResetPlugins(model_generation_);
 
 	{
 		const auto connected_viewers = AcquireConnectedViewersLease();
@@ -1248,7 +1252,7 @@ bool MujocoEnv::IsHeadless() const
 
 void MujocoEnv::NotifyGeomChanged(const int geom_id)
 {
-	plugin_host_->NotifyGeometryChanged(model_generation_, this->model_.get(), this->data_.get(), geom_id);
+	middleware_core_->NotifyPluginGeometryChanged(model_generation_, this->model_.get(), this->data_.get(), geom_id);
 }
 
 bool MujocoEnv::VerifyAdminHash(const std::string &hash)
@@ -1265,19 +1269,19 @@ bool MujocoEnv::VerifyAdminHash(const std::string &hash)
 
 void MujocoEnv::RunControlCbs(const mjModel *model, mjData *data)
 {
-	plugin_host_->DispatchControl(model_generation_, model, data);
+	middleware_core_->DispatchControl(model_generation_, model, data);
 }
 
 void MujocoEnv::RunPassiveCbs(const mjModel *model, mjData *data)
 {
-	plugin_host_->DispatchPassive(model_generation_, model, data);
+	middleware_core_->DispatchPassive(model_generation_, model, data);
 }
 
 MujocoEnv::~MujocoEnv()
 {
 	MJR_DEBUG("Destructor called");
 	is_rendering_running_.store(0);
-	plugin_lifetime_.reset();
+	middleware_core_->InvalidatePluginHandles();
 	if (MujocoEnv::instance == this) {
 		MujocoEnv::instance = nullptr;
 		mjcb_control        = nullptr;
@@ -1335,11 +1339,8 @@ MujocoEnv::~MujocoEnv()
 	QuiesceRenderCoreForTeardown();
 
 	// Plugin adapters unregister LifecycleNodes from executor_. Member destruction order
-	// destroys executor_ before plugin_host_, so quiesce here while both are still alive.
-	if (plugin_host_) {
-		plugin_host_->QuiesceAndDestroy();
-		plugin_host_.reset();
-	}
+	// destroys executor_ before the Core's Plugin Host, so quiesce here while both are still alive.
+	middleware_core_->QuiescePlugins();
 
 	for (const auto &connection : connections) {
 		connection->DetachEnvironment();

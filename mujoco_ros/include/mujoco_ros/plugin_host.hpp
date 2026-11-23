@@ -29,7 +29,10 @@ struct PluginLoadReport
 };
 
 class PluginHost;
-class MujocoEnv;
+
+namespace middleware {
+class MiddlewareCore;
+}
 
 class PluginHandle
 {
@@ -41,6 +44,7 @@ public:
 	PluginGeneration Generation() const { return generation_; }
 	ModelGeneration Model() const { return model_generation_; }
 
+	// Defined in middleware/middleware_core.hpp (the Core resolves the handle).
 	template <typename Func>
 	decltype(auto) WithAccess(Func &&func) const;
 
@@ -48,10 +52,11 @@ public:
 	decltype(auto) WithBackend(Func &&func) const;
 
 private:
-	friend class MujocoEnv;
-	PluginHandle(MujocoEnv *env, std::weak_ptr<void> lifetime, ModelGeneration model_generation,
+	// Handles are minted by the Middleware Core, which owns the Plugin Host; they never reference MujocoEnv.
+	friend class middleware::MiddlewareCore;
+	PluginHandle(middleware::MiddlewareCore *core, std::weak_ptr<void> lifetime, ModelGeneration model_generation,
 	             PluginGeneration generation, std::string name, std::string type)
-	    : env_(env)
+	    : core_(core)
 	    , lifetime_(std::move(lifetime))
 	    , model_generation_(model_generation)
 	    , generation_(generation)
@@ -60,7 +65,7 @@ private:
 	{
 	}
 
-	MujocoEnv *env_ = nullptr;
+	middleware::MiddlewareCore *core_ = nullptr;
 	std::weak_ptr<void> lifetime_;
 	ModelGeneration model_generation_;
 	PluginGeneration generation_;
@@ -77,6 +82,7 @@ public:
 	ScopedPluginAccess &operator=(const ScopedPluginAccess &)     = delete;
 
 	PluginGeneration Generation() const { return generation_; }
+	ModelGeneration Model() const { return model_generation_; }
 	std::vector<PluginStat> Statistics() const;
 	IPluginAdapter *Adapter(const std::string &name, const std::string &type) const;
 

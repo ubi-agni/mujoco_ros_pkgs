@@ -826,7 +826,7 @@ public:
 	std::string PluginGenerationStatusForTest() const
 	{
 		try {
-			const auto generation = plugin_host_->ActiveModelGeneration();
+			const auto generation = middleware_core_->ActivePluginModelGeneration();
 			return "active:" + std::to_string(generation.value());
 		} catch (const std::exception &error) {
 			return std::string("inactive: ") + error.what();

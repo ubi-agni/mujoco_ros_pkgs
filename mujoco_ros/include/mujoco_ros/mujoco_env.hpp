@@ -78,6 +78,7 @@
 #include <geometry_msgs/TransformStamped.h>
 
 #include <mujoco_ros/ros_one/ros_api.hpp>
+#include <mujoco_ros/ros_one/middleware_ports.hpp>
 
 #include <dynamic_reconfigure/server.h>
 #include <mujoco_ros/SimParamsConfig.h>
@@ -92,6 +93,7 @@ using TransformStamped = geometry_msgs::TransformStamped;
 #include <geometry_msgs/msg/transform_stamped.hpp>
 
 #include <mujoco_ros/ros_two/ros_api.hpp>
+#include <mujoco_ros/ros_two/middleware_ports.hpp>
 
 using TransformStamped = geometry_msgs::msg::TransformStamped;
 
@@ -430,38 +432,25 @@ public:
 	RuntimeOptionsTransactionResult ApplyRuntimeOptions(const std::vector<RuntimeOptionInput> &input);
 	void SetPendingRuntimeOptions(const std::vector<RuntimeOptionInput> &input);
 
+	// Plugin Host lives in the Middleware Core; these forward (physics-lock exclusion is the Core's job).
 	template <typename Func>
 	decltype(auto) WithPluginAccess(Func &&func) const
 	{
-		RecursiveLock physics_lock(physics_thread_mutex_);
-		if (!plugin_host_) {
-			throw std::runtime_error("Plugin Host is not initialized");
-		}
-		auto access = plugin_host_->AcquireScopedAccess();
-		return std::invoke(std::forward<Func>(func), access);
+		return middleware_core_->WithPluginAccess(std::forward<Func>(func));
 	}
 
 	template <typename Func>
 	decltype(auto) WithPluginAccess(PluginGeneration expected_generation, Func &&func) const
 	{
-		RecursiveLock physics_lock(physics_thread_mutex_);
-		if (!plugin_host_) {
-			throw std::runtime_error("Plugin Host is not initialized");
-		}
-		auto access = plugin_host_->AcquireScopedAccess(expected_generation);
-		return std::invoke(std::forward<Func>(func), access);
+		return middleware_core_->WithPluginAccess(expected_generation, std::forward<Func>(func));
 	}
 
 	template <typename Func>
 	decltype(auto) WithPluginAccess(ModelGeneration expected_model_generation, PluginGeneration expected_generation,
 	                                Func &&func) const
 	{
-		RecursiveLock physics_lock(physics_thread_mutex_);
-		if (!plugin_host_) {
-			throw std::runtime_error("Plugin Host is not initialized");
-		}
-		auto access = plugin_host_->AcquireScopedAccess(expected_model_generation, expected_generation);
-		return std::invoke(std::forward<Func>(func), access);
+		return middleware_core_->WithPluginAccess(expected_model_generation, expected_generation,
+		                                          std::forward<Func>(func));
 	}
 
 	std::vector<PluginHandle> GetPluginHandles() const;
@@ -620,11 +609,10 @@ protected:
 		return batch_snapshot_assembly_count_.load(std::memory_order_relaxed);
 	}
 
-	// Declared before plugin_host_ so it outlives plugins that unregister in their destructors.
+	// Declared before middleware_core_ (which hosts the Plugin Host) so it outlives plugins that unregister in
+	// their destructors. plugin_factory_ is flavor-private and also outlives the Core.
 	SensorHub sensor_hub_;
 	std::unique_ptr<IPluginAdapterFactory> plugin_factory_;
-	std::unique_ptr<PluginHost> plugin_host_;
-	std::shared_ptr<void> plugin_lifetime_ = std::make_shared<int>(0);
 #if MJR_ROS_VERSION == ROS_1
 	XmlRpc::XmlRpcValue rpc_plugin_config_;
 #endif
@@ -850,7 +838,7 @@ protected:
 	 * @brief Tries to load all configured plugins.
 	 * This function is called when a new mjData object is assigned to the environment.
 	 */
-	void LoadPlugins(PluginGeneration generation);
+	void LoadPlugins();
 
 	std::vector<rendering::OffscreenCameraPtr> InitializeRenderResources();
 	struct RenderSnapshotBatch
@@ -909,13 +897,14 @@ protected:
 
 	std::mutex control_state_boundary_mutex_;
 	SimulationControlState control_state_;
-	RuntimeOptionsPatch pending_runtime_options_;
-	bool has_pending_runtime_options_  = false;
 	bool startup_runtime_options_open_ = true;
 	std::atomic<std::uint64_t> runtime_options_admission_epoch_{ 0 };
 	ModelGeneration model_generation_;
-	PluginGeneration plugin_generation_;
 	FrameGeneration frame_generation_;
+
+	// Flavor adapters for the Core's outbound ports (IConfigSource, ITimePublisher). They outlive the Core.
+	std::unique_ptr<middleware::IConfigSource> config_source_port_;
+	std::unique_ptr<middleware::ITimePublisher> time_publisher_port_;
 
 	// Simulation Control API host (Middleware Core) and its backend adapter. Declared last: destroyed first.
 	static std::unique_ptr<detail::EnvControlBackend> MakeControlBackend(MujocoEnv &env);
@@ -925,25 +914,3 @@ protected:
 };
 
 } // end namespace mujoco_ros
-
-namespace mujoco_ros {
-
-template <typename Func>
-decltype(auto) PluginHandle::WithAccess(Func &&func) const
-{
-	if (env_ == nullptr || lifetime_.expired()) {
-		throw std::runtime_error("plugin handle belongs to a destroyed MujocoEnv");
-	}
-	return env_->WithPluginAccess(model_generation_, generation_, std::forward<Func>(func));
-}
-
-template <typename Backend, typename Func>
-decltype(auto) PluginHandle::WithBackend(Func &&func) const
-{
-	return WithAccess([this, &func](const ScopedPluginAccess &access) -> decltype(auto) {
-		auto *backend = access.BackendObject<Backend>(name_, type_);
-		return std::invoke(std::forward<Func>(func), *backend);
-	});
-}
-
-} // namespace mujoco_ros

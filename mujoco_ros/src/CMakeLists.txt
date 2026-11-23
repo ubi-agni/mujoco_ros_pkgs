@@ -36,6 +36,7 @@ endif()
 # Simulation Middleware Core: internal library (object files folded into mujoco_ros).
 add_library(mujoco_ros_middleware OBJECT
   middleware/middleware_core.cpp
+  middleware/plugin_host.cpp
 )
 set_property(TARGET mujoco_ros_middleware PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(mujoco_ros_middleware PUBLIC
@@ -54,7 +55,6 @@ if(ROS_VERSION EQUAL "1")
     ros_one/plugin_utils.cpp
     physics.cpp
     runtime_options.cpp
-    plugin_host.cpp
     sensor_hub.cpp
     interface.cpp
     loading.cpp
@@ -82,7 +82,6 @@ else()
     ros_two/plugin_utils.cpp
     physics.cpp
     runtime_options.cpp
-    plugin_host.cpp
     sensor_hub.cpp
     interface.cpp
     loading.cpp

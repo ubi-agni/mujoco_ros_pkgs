@@ -159,7 +159,7 @@ void MujocoEnv::WrappedStep()
 		return;
 	}
 	mj_step(model_.get(), data_.get());
-	ros_api_->PublishSimTime(data_->time);
+	middleware_core_->time_publisher().PublishSimTime(data_->time);
 	// A late /clock sample may have rewound now() since the push; plugins must not see that.
 	ros_api_->ReassertPushedSimTime();
 	RunLastStageCbs();
@@ -336,7 +336,7 @@ void MujocoEnv::SimPausedPhysics(mjtNum &syncSim)
 	} else {
 		// Run mj_forward, to update rendering and joint sliders
 		mj_forward(model_.get(), data_.get());
-		ros_api_->PublishSimTime(data_->time);
+		middleware_core_->time_publisher().PublishSimTime(data_->time);
 		// Sleep for the difference between the lower bound render rate (30Hz) and the time it took to run the forward
 		// step to reduce cpu load
 		std::this_thread::sleep_for(Seconds(mujoco_ros::Viewer::render_ui_rate_lower_bound_) - (Clock::now() - startCPU));

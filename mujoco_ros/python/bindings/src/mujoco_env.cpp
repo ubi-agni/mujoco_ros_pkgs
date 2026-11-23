@@ -749,9 +749,7 @@ public:
 			}
 		}
 		try {
-			if (plugin_host_) {
-				plugin_host_->QuiesceAndDestroy();
-			}
+			middleware_core_->QuiescePlugins();
 		} catch (...) {
 			record_error();
 		}
@@ -903,7 +901,7 @@ private:
 
 		if (model_is_python_owned || data_is_python_owned) {
 			RecursiveLock lock(physics_thread_mutex_);
-			plugin_host_->QuiesceAndDestroy();
+			middleware_core_->QuiescePlugins();
 			camera_publication_transport_.cams.clear();
 			model_.reset();
 			data_.reset();

@@ -51,11 +51,11 @@ namespace fs = std::filesystem;
 namespace mujoco_ros {
 namespace mju = ::mujoco::sample_util;
 
-void MujocoEnv::LoadPlugins(PluginGeneration generation)
+void MujocoEnv::LoadPlugins()
 {
 	MJR_DEBUG("Loading MujocoRosPlugins ...");
-	const auto report  = plugin_host_->LoadGeneration(model_.get(), data_.get(), model_generation_, generation);
-	plugin_generation_ = report.generation;
+	// Rebind hook owned by the Middleware Core: new Plugin Generation, fresh plugins by name.
+	const auto report = middleware_core_->RebindPlugins(model_.get(), data_.get(), model_generation_);
 	for (const auto &stat : report.statistics) {
 		MJR_DEBUG_STREAM("Loading plugin " << stat.type << " took " << stat.load_time << " seconds");
 	}
@@ -69,7 +69,7 @@ void MujocoEnv::CompleteEnvSetup()
 {
 	LoadInitialJointStates();
 
-	LoadPlugins(PluginGeneration(plugin_generation_.value() + 1));
+	LoadPlugins();
 	MJR_DEBUG("Env setup complete");
 }
 
@@ -87,7 +87,7 @@ void MujocoEnv::PrepareReload()
 	// RenderCore teardown, matching the physics -> PluginHost -> RenderCore order.
 	// Drop provider pointers before their plugins are destroyed.
 	sensor_hub_.Clear();
-	plugin_host_->QuiesceAndDestroy();
+	middleware_core_->QuiescePlugins();
 	if (render_core_) {
 		render_core_->StopAcceptingSnapshots();
 		render_core_->RequestCancelRenderTurn();
@@ -260,22 +260,11 @@ void MujocoEnv::LoadWithModelAndData()
 		}
 		OnReloadPhase(ReloadPhase::kForwarded);
 
-		if (has_pending_runtime_options_) {
-			const auto pending_patch     = pending_runtime_options_;
-			has_pending_runtime_options_ = false;
-			pending_runtime_options_     = {};
-			const auto candidate         = MergeRuntimeOptions(ReadRuntimeOptions(model_->opt), pending_patch);
-			const auto valid             = ValidateRuntimeOptions(candidate);
-			if (valid.ok()) {
-				mjOption candidate_option = model_->opt;
-				WriteRuntimeOptions(candidate, candidate_option);
-				model_->opt = candidate_option;
-				middleware_core_->AdvanceOptionsEpoch();
-			} else {
-				const std::string message =
-				    "Runtime Options startup update rejected: " + valid.error->field + ": " + valid.error->message;
-				mju::strcpy_arr(load_error_, message.c_str());
-			}
+		// Rebind hook (Runtime Options): the Core re-applies the pending patch to the new model generation.
+		if (const auto rejected = middleware_core_->ApplyPendingRuntimeOptions(model_->opt)) {
+			const std::string message =
+			    "Runtime Options startup update rejected: " + rejected->field + ": " + rejected->message;
+			mju::strcpy_arr(load_error_, message.c_str());
 		}
 
 		if (model_->opt.integrator == mjINT_EULER) {
@@ -421,9 +410,8 @@ bool MujocoEnv::InitModelFromQueue()
 		// 'clear' new filename
 		queued_filename_[0] = '\0';
 
-		sim_state_.model_valid       = false;
-		has_pending_runtime_options_ = false;
-		pending_runtime_options_     = {};
+		sim_state_.model_valid = false;
+		middleware_core_->ClearPendingRuntimeOptions();
 		return false;
 	}
 

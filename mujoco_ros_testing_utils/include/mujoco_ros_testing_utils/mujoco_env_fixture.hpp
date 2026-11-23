@@ -701,7 +701,7 @@ public:
 		});
 	}
 
-	int GetNumCBReadyPlugins() const { return static_cast<int>(plugin_host_->ReadyCount()); }
+	int GetNumCBReadyPlugins() const { return static_cast<int>(middleware_core_->ReadyPluginCount()); }
 	void NotifyGeomChange() { NotifyGeomChanged(0); }
 
 	bool step(int num_steps = 1, bool blocking = true) { return MujocoEnv::Step(num_steps, blocking); }
@@ -762,9 +762,7 @@ public:
 			requestShutdown();
 			MujocoEnv::WaitForPhysicsJoin();
 			MujocoEnv::WaitForEventsJoin();
-			if (plugin_host_) {
-				plugin_host_->QuiesceAndDestroy();
-			}
+			middleware_core_->QuiescePlugins();
 			// Drain camera/consumer aliases, then join RenderCore before the ROS executor
 			// goes away. Leaving the render thread alive across executor cancel has wedged
 			// the next Configure under GLFW+OSMESA (CI mujoco_env_test timeout).

@@ -532,6 +532,42 @@ TEST_F(BaseEnvFixture, ReloadRejectsOldPluginGenerationAndActivatesOnlyNewCallba
 	env_ptr->shutdown();
 }
 
+TEST_F(BaseEnvFixture, ReloadRebindBumpsPluginGenerationAndDropsCrossGenerationState)
+{
+	nh->setParam("unpause", false);
+	const std::string xml_path = testing::get_test_model_path("empty_world.xml");
+	env_ptr                    = std::make_unique<MujocoEnvTestWrapper>(nh.get());
+	env_ptr->StartWithXML(xml_path);
+
+	ASSERT_TRUE(env_ptr->step());
+	ASSERT_TRUE(WithTestPlugin(env_ptr.get(), [](TestPlugin *plugin) { return plugin->ran_control_cb.load(); }))
+	    << "old generation plugin must have run control before reload";
+
+	PluginGeneration old_generation;
+	env_ptr->WithPluginAccess(
+	    [&old_generation](const ScopedPluginAccess &access) { old_generation = access.Generation(); });
+	const int previous_loads = TestPlugin::load_count.load();
+
+	env_ptr->load_queued_model();
+
+	PluginGeneration new_generation;
+	env_ptr->WithPluginAccess(
+	    [&new_generation](const ScopedPluginAccess &access) { new_generation = access.Generation(); });
+	EXPECT_GT(new_generation.value(), old_generation.value()) << "rebind must bump the Plugin Generation";
+	EXPECT_GT(TestPlugin::load_count.load(), previous_loads) << "rebind must load a fresh plugin instance";
+	EXPECT_EQ(env_ptr->GetNumCBReadyPlugins(), 1);
+	EXPECT_THROW(env_ptr->WithPluginAccess(old_generation, [](const ScopedPluginAccess &) {}), std::runtime_error);
+
+	// A new instance has no callback state from the previous generation.
+	EXPECT_TRUE(WithTestPlugin(env_ptr.get(), [](TestPlugin *plugin) { return !plugin->ran_control_cb.load(); }))
+	    << "plugin state leaked across Plugin Generations";
+	for (const auto &handle : env_ptr->GetPluginHandles()) {
+		EXPECT_EQ(handle.Generation(), new_generation);
+	}
+
+	env_ptr->shutdown();
+}
+
 TEST_F(BaseEnvFixture, ReloadHasDeterministicGenerationBoundaryAndCallbackOrder)
 {
 	nh->setParam("unpause", false);

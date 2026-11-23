@@ -4,7 +4,9 @@
 #include <mujoco_ros/middleware/detail/i_control_backend.hpp>
 #include <mujoco_ros/middleware/i_time_publisher.hpp>
 #include <mujoco_ros/middleware/middleware_core.hpp>
+#include <mujoco_ros/plugin_host.hpp>
 
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -140,6 +142,130 @@ TEST(MiddlewareCore, MiddlewareCoreConstructsWithFakePorts)
 	EXPECT_EQ(&core.config_source(), &config);
 	EXPECT_EQ(&core.time_publisher(), &time_pub);
 	EXPECT_EQ(time_pub.count, 0);
+}
+
+// --- Plugin Host owned by the Core (no MujocoEnv anywhere in this translation unit) ---
+
+struct CountingPluginState
+{
+	int controls = 0;
+};
+
+class CountingAdapter : public IPluginAdapter
+{
+public:
+	explicit CountingAdapter(int *live) : live_(live) { ++*live_; }
+	~CountingAdapter() override { --*live_; }
+
+	const std::string &Name() const override { return name_; }
+	const std::string &Type() const override { return type_; }
+	bool Load(const mjModel *, mjData *, std::string &) override { return true; }
+	void Control(const mjModel *, mjData *) override { ++state_.controls; }
+	void Passive(const mjModel *, mjData *) override {}
+	void Render(const mjModel *, mjData *, mjvScene *) override {}
+	void LastStage(const mjModel *, mjData *) override {}
+	void Reset() override {}
+	void GeometryChanged(const mjModel *, mjData *, int) override {}
+	PluginStat Statistics() const override
+	{
+		PluginStat stat;
+		stat.name = name_;
+		stat.type = type_;
+		return stat;
+	}
+	void *BackendObject() override { return &state_; }
+
+private:
+	int *live_;
+	CountingPluginState state_;
+	std::string name_ = "counter";
+	std::string type_ = "test/CountingAdapter";
+};
+
+class CountingFactory final : public IPluginAdapterFactory
+{
+public:
+	std::vector<std::unique_ptr<IPluginAdapter>> CreateAdapters() override
+	{
+		++creations;
+		std::vector<std::unique_ptr<IPluginAdapter>> adapters;
+		adapters.push_back(std::make_unique<CountingAdapter>(&live));
+		return adapters;
+	}
+	int live      = 0;
+	int creations = 0;
+};
+
+TEST(MiddlewareCore, RebindPluginsBumpsPluginGenerationAndDropsCrossGenerationState)
+{
+	FakeControlBackend backend;
+	CountingFactory factory;
+	MiddlewareCore core(backend);
+	core.AttachPluginFactory(factory);
+
+	const auto first = core.RebindPlugins(nullptr, nullptr, ModelGeneration(1));
+	EXPECT_EQ(first.generation.value(), 1u);
+	EXPECT_EQ(first.model_generation.value(), 1u);
+	EXPECT_TRUE(first.failures.empty());
+	ASSERT_EQ(core.GetPluginHandles().size(), 1u);
+	const auto old_handle = core.GetPluginHandles().front();
+
+	core.DispatchControl(ModelGeneration(1), nullptr, nullptr);
+	EXPECT_EQ(old_handle.WithBackend<CountingPluginState>([](CountingPluginState &s) { return s.controls; }), 1);
+
+	const auto second = core.RebindPlugins(nullptr, nullptr, ModelGeneration(2));
+	EXPECT_EQ(second.generation.value(), 2u);
+	EXPECT_EQ(core.plugin_generation().value(), 2u);
+	EXPECT_EQ(factory.creations, 2);
+	EXPECT_EQ(factory.live, 1) << "old Plugin Generation must be destroyed before the new one is active";
+
+	// Old handle is rejected; the new generation starts from fresh plugin state.
+	EXPECT_THROW(old_handle.WithAccess([](const ScopedPluginAccess &) {}), std::runtime_error);
+	const auto new_handles = core.GetPluginHandles();
+	ASSERT_EQ(new_handles.size(), 1u);
+	EXPECT_EQ(new_handles.front().Generation().value(), 2u);
+	EXPECT_EQ(new_handles.front().WithBackend<CountingPluginState>([](CountingPluginState &s) { return s.controls; }),
+	          0);
+
+	// Stale Model Generation callbacks are refused by the Core-hosted Plugin Host.
+	EXPECT_THROW(core.DispatchControl(ModelGeneration(1), nullptr, nullptr), std::runtime_error);
+
+	core.QuiescePlugins();
+	EXPECT_EQ(factory.live, 0);
+	EXPECT_EQ(core.ReadyPluginCount(), 0u);
+}
+
+TEST(MiddlewareCore, PluginApiWithoutFactoryFailsLoud)
+{
+	FakeControlBackend backend;
+	MiddlewareCore core(backend);
+	EXPECT_THROW(core.RebindPlugins(nullptr, nullptr, ModelGeneration(1)), std::logic_error);
+	EXPECT_THROW(core.WithPluginAccess([](const ScopedPluginAccess &) {}), std::runtime_error);
+}
+
+TEST(MiddlewareCore, PendingRuntimeOptionsReapplyOnceToReboundModel)
+{
+	FakeControlBackend backend;
+	mj_defaultOption(&backend.option);
+	MiddlewareCore core(backend);
+
+	RuntimeOptionsPatch patch;
+	patch.timestep = 0.004;
+	core.SetPendingRuntimeOptionsPatch(patch);
+	const auto epoch = core.options_epoch().value();
+
+	mjOption fresh;
+	mj_defaultOption(&fresh);
+	EXPECT_FALSE(core.ApplyPendingRuntimeOptions(fresh).has_value());
+	EXPECT_DOUBLE_EQ(fresh.timestep, 0.004);
+	EXPECT_EQ(core.options_epoch().value(), epoch + 1);
+
+	// consumed: a later model generation does not receive it again
+	mjOption next;
+	mj_defaultOption(&next);
+	EXPECT_FALSE(core.ApplyPendingRuntimeOptions(next).has_value());
+	EXPECT_DOUBLE_EQ(next.timestep, 0.002);
+	EXPECT_EQ(core.options_epoch().value(), epoch + 1);
 }
 
 } // namespace

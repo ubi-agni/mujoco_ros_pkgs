@@ -2868,6 +2868,23 @@ TEST_F(BaseEnvFixture, SpeedSnapshotPairsIndexWithChangeConsumption)
 	sync_env->shutdown();
 }
 
+TEST_F(BaseEnvFixture, MiddlewareCorePortsAreBackedByFlavorAdapters)
+{
+	nh->setParam("num_mj_threads", 3);
+	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	env_ptr->StartWithXML(testing::get_test_model_path("empty_world.xml"));
+
+	auto &config = env_ptr->middleware_core().config_source();
+	EXPECT_EQ(config.GetInt("num_mj_threads"), std::optional<int>(3));
+	EXPECT_EQ(config.GetInt("definitely_unset_key"), std::nullopt);
+	EXPECT_EQ(config.GetBool("definitely_unset_key"), std::nullopt);
+
+	// The /clock path runs through ITimePublisher; publishing must not throw.
+	EXPECT_NO_THROW(env_ptr->middleware_core().time_publisher().PublishSimTime(0.5));
+
+	env_ptr->shutdown();
+}
+
 TEST_F(BaseEnvFixture, EvalModeWithoutHashThrow)
 {
 	MJR_WARN("###### [START] EvalModeWithoutHashThrow ######");
