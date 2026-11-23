@@ -30,6 +30,17 @@ In ``eval_mode``, ground-truth topics are not created.
 
 Unsupported MuJoCo sensor types are skipped with a warning at load; they are never published.
 
+ROS publish is gated per channel: a topic is only written when it has at least one
+subscriber. Optional per-sensor ``update_rate`` (Hz, sim time) throttles that ROS
+publish further. Unset or ``<= 0`` publishes every step when subscribed.
+In-process Python ``plugin.sensors[<name>].data`` / ``.gt_data`` still update every
+step and do not wait for subscribers.
+
+ROS 1: set ``update_rate`` under the plugin entry keyed by sensor name
+(``MujocoPlugins[].<sensor_name>.update_rate``).
+ROS 2: set ``MujocoPlugins.<plugin_name>.<sensor_name>.update_rate``.
+See ``mujoco_ros_sensors/config/example_sensors.yaml`` and ``example_sensors.ros2.yaml``.
+
 Compound sensors
 ----------------
 
