@@ -50,15 +50,16 @@ class MiddlewareCore
 public:
 	MiddlewareCore(IConfigSource &config_source, ITimePublisher &time_publisher);
 	MiddlewareCore(IConfigSource &config_source, ITimePublisher &time_publisher, IControlBackend &control_backend);
-	/// Control-only construction; config/time ports are inert until the flavor adapters land.
+	/// Control-only construction; config/time ports MUST be attached via AttachPorts() before use,
+	/// otherwise config_source()/time_publisher() throw std::logic_error.
 	explicit MiddlewareCore(IControlBackend &control_backend);
 	~MiddlewareCore();
 
 	MiddlewareCore(const MiddlewareCore &)            = delete;
 	MiddlewareCore &operator=(const MiddlewareCore &) = delete;
 
-	IConfigSource &config_source() const { return *config_source_; }
-	ITimePublisher &time_publisher() const { return *time_publisher_; }
+	IConfigSource &config_source() const;
+	ITimePublisher &time_publisher() const;
 	/// Replaces the (inert) default ports with the flavor adapters. Ports must outlive the Core.
 	void AttachPorts(IConfigSource &config_source, ITimePublisher &time_publisher);
 
@@ -167,10 +168,8 @@ private:
 
 	IControlBackend &Backend() const;
 
-	std::unique_ptr<IConfigSource> owned_config_source_;
-	std::unique_ptr<ITimePublisher> owned_time_publisher_;
-	IConfigSource *config_source_;
-	ITimePublisher *time_publisher_;
+	IConfigSource *config_source_     = nullptr;
+	ITimePublisher *time_publisher_   = nullptr;
 	IControlBackend *control_backend_ = nullptr;
 	OptionsEpoch options_epoch_;
 	RuntimeOptionsPatch pending_runtime_options_;

@@ -9,22 +9,6 @@ namespace mujoco_ros::middleware {
 
 namespace {
 
-class NullConfigSource : public IConfigSource
-{
-public:
-	std::optional<bool> GetBool(const std::string &) const override { return std::nullopt; }
-	std::optional<int> GetInt(const std::string &) const override { return std::nullopt; }
-	std::optional<double> GetDouble(const std::string &) const override { return std::nullopt; }
-	std::optional<std::string> GetString(const std::string &) const override { return std::nullopt; }
-	std::optional<std::vector<std::string>> GetStringList(const std::string &) const override { return std::nullopt; }
-};
-
-class NullTimePublisher : public ITimePublisher
-{
-public:
-	void PublishSimTime(mjtNum) override {}
-};
-
 constexpr const char *kLoadingWindowMessage = "Runtime Options unavailable during Loading Window";
 
 } // namespace
@@ -40,14 +24,7 @@ MiddlewareCore::MiddlewareCore(IConfigSource &config_source, ITimePublisher &tim
 {
 }
 
-MiddlewareCore::MiddlewareCore(IControlBackend &control_backend)
-    : owned_config_source_(std::make_unique<NullConfigSource>())
-    , owned_time_publisher_(std::make_unique<NullTimePublisher>())
-    , config_source_(owned_config_source_.get())
-    , time_publisher_(owned_time_publisher_.get())
-    , control_backend_(&control_backend)
-{
-}
+MiddlewareCore::MiddlewareCore(IControlBackend &control_backend) : control_backend_(&control_backend) {}
 
 MiddlewareCore::~MiddlewareCore() = default;
 
@@ -55,6 +32,22 @@ void MiddlewareCore::AttachPorts(IConfigSource &config_source, ITimePublisher &t
 {
 	config_source_  = &config_source;
 	time_publisher_ = &time_publisher;
+}
+
+IConfigSource &MiddlewareCore::config_source() const
+{
+	if (config_source_ == nullptr) {
+		throw std::logic_error("MiddlewareCore: no config source attached");
+	}
+	return *config_source_;
+}
+
+ITimePublisher &MiddlewareCore::time_publisher() const
+{
+	if (time_publisher_ == nullptr) {
+		throw std::logic_error("MiddlewareCore: no time publisher attached");
+	}
+	return *time_publisher_;
 }
 
 IControlBackend &MiddlewareCore::Backend() const

@@ -134,6 +134,20 @@ TEST(MiddlewareCore, ControlApiWithoutBackendFailsLoud)
 	EXPECT_THROW(core.ApplyRuntimeOptions({}), std::logic_error);
 }
 
+TEST(MiddlewareCore, UnattachedPortsFailLoud)
+{
+	FakeControlBackend backend;
+	MiddlewareCore core(backend);
+	EXPECT_THROW(core.config_source(), std::logic_error);
+	EXPECT_THROW(core.time_publisher(), std::logic_error);
+
+	FakeConfigSource config;
+	FakeTimePublisher time_pub;
+	core.AttachPorts(config, time_pub);
+	EXPECT_EQ(&core.config_source(), &config);
+	EXPECT_EQ(&core.time_publisher(), &time_pub);
+}
+
 TEST(MiddlewareCore, MiddlewareCoreConstructsWithFakePorts)
 {
 	FakeConfigSource config;

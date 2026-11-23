@@ -857,7 +857,7 @@ void RosAPI::ReloadCB(const mujoco_ros_msgs::srv::Reload::Request::SharedPtr &re
                       const mujoco_ros_msgs::srv::Reload::Response::SharedPtr &res)
 {
 	char load_error[MujocoEnv::kErrorLength];
-	res->success        = env_ptr_->middleware_core().LoadModelFromString(req->model, load_error);
+	res->success        = env_ptr_->middleware_core().LoadModelFromString(req->model, load_error, sizeof(load_error));
 	res->status_message = load_error;
 }
 

@@ -434,7 +434,7 @@ bool RosAPI::ShutdownCB(std_srvs::Empty::Request & /*req*/, std_srvs::Empty::Res
 bool RosAPI::ReloadCB(mujoco_ros_msgs::Reload::Request &req, mujoco_ros_msgs::Reload::Response &res)
 {
 	char load_error[MujocoEnv::kErrorLength];
-	res.success        = env_ptr_->middleware_core().LoadModelFromString(req.model, load_error);
+	res.success        = env_ptr_->middleware_core().LoadModelFromString(req.model, load_error, sizeof(load_error));
 	res.status_message = load_error;
 	return true;
 }
