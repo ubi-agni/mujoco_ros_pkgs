@@ -1,6 +1,9 @@
 <a name="unreleased"></a>
 ## Unreleased
 
+<a name="2.2.0"></a>
+## [2.2.0] - 2026-11-23
+
 ### Added
 * [minor] Env-owned sensor hub and typed native sensor streams; Python `plugin.sensors[name].config` / `.data` / `.gt_data` (feat/mujoco-ros-compound-sensors)
 * [minor] Compound sensors (`Wrench` / `Twist` / `Accel` / `Pose` / `IMU` / `Odometry`) via `compound_sensors`; claimed parts demoted; optional `update_rate`; role noise as `<compound>.<role>` (feat/mujoco-ros-compound-sensors)
