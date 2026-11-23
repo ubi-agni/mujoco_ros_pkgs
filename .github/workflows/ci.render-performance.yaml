@@ -62,7 +62,7 @@ env:
   # Advisory/EGL jobs run on Noble/Jazzy (bindings on) so pip mujoco==4.0.1 is valid.
   ROS_DISTRO: jazzy
   MUJOCO_VERSION: "4.0.1"
-  DOCKER_IMAGE: ubiagni/mujoco_ros:jazzy-ci
+  DOCKER_IMAGE: ubiagni/mujoco_ros:jazzy-ci-mj4.0.1
   CCACHE_DIR: ${{ github.workspace }}/.ccache
   # Share object keys across baseline/candidate workspace paths in one campaign.
   CCACHE_NOHASHDIR: "1"
@@ -172,7 +172,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     container:
-      image: ubiagni/mujoco_ros:jazzy-ci
+      image: ubiagni/mujoco_ros:jazzy-ci-mj4.0.1
       env:
         MUJOCO_DIR: /root/mujoco/4.0.1
         CCACHE_DIR: ${{ github.workspace }}/.ccache

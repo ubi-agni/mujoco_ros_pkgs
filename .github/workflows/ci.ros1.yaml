@@ -168,7 +168,7 @@ jobs:
       BUILDER: colcon
       MUJOCO_DIR: /vol/mujoco/mujoco-${{ matrix.mujoco }} # for self-hosted runners
       DOCKER_RUN_OPTS: -e MUJOCO_DIR=/root/mujoco/${{ matrix.mujoco }} -e DISPLAY=:99.0
-      DOCKER_IMAGE: ubiagni/mujoco_ros:${{ matrix.image }}
+      DOCKER_IMAGE: ubiagni/mujoco_ros:${{ matrix.image }}-mj${{ matrix.mujoco }}
 
       # For now we have flags defined in the CMakeLists, using all flags makes the build break
       # I'll fix this once I find some time to do it

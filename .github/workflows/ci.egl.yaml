@@ -60,7 +60,7 @@ jobs:
     env:
       BUILDER: colcon
       MUJOCO_DIR: /vol/mujoco/mujoco-4.0.1
-      DOCKER_IMAGE: ubiagni/mujoco_ros:jazzy-ci
+      DOCKER_IMAGE: ubiagni/mujoco_ros:jazzy-ci-mj4.0.1
       CXXFLAGS: -Wwrite-strings -Wunreachable-code -Wpointer-arith
       AFTER_INIT: >
         apt-get update -q;
@@ -139,7 +139,7 @@ jobs:
     env:
       BUILDER: colcon
       MUJOCO_DIR: /vol/mujoco/mujoco-4.0.1
-      DOCKER_IMAGE: ubiagni/mujoco_ros:jazzy-ci
+      DOCKER_IMAGE: ubiagni/mujoco_ros:jazzy-ci-mj4.0.1
       CXXFLAGS: -Wwrite-strings -Wunreachable-code -Wpointer-arith
       AFTER_INIT: >
         apt-get update -q;

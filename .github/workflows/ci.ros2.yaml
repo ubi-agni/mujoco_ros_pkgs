@@ -192,7 +192,7 @@ jobs:
     env:
       BUILDER: colcon
       MUJOCO_DIR: /vol/mujoco/mujoco-${{ matrix.mujoco }} # for self-hosted runners
-      DOCKER_IMAGE: ubiagni/mujoco_ros:${{ matrix.distro }}-ci
+      DOCKER_IMAGE: ubiagni/mujoco_ros:${{ matrix.distro }}-ci-mj${{ matrix.mujoco }}
 
       # For now we have flags defined in the CMakeLists, using all flags makes the build break
       # I'll fix this once I find some time to do it

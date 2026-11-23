@@ -15,6 +15,12 @@ on:
         required: false
         default: true
 
+# Image tags are versioned: <stem>-mj<MUJOCO_VERSIONS>. This branch pushes only
+# versioned tags (no floating *-ci). Merge to hybrid-devel retags *-ci-devel; merge
+# to hybrid-main retags *-ci-latest (those retag jobs are not part of this workflow yet).
+env:
+  MUJOCO_VERSIONS: 4.0.1
+
 # Fixed group (not github.workflow): CI may call this via workflow_call; using
 # github.workflow would collide with the caller concurrency group.
 concurrency:
@@ -77,9 +83,10 @@ jobs:
       packages: write
       contents: read
     env:
-      # Must match CI DOCKER_IMAGE (…/<distro>-ci), not github.job.
-      IMAGE: ubiagni/mujoco_ros:${{ matrix.ROS_DISTRO }}-ci
-      MUJOCO_VERSIONS: 4.0.1
+      # Must match CI DOCKER_IMAGE (…/<distro>-ci-mj<MUJOCO>), not github.job.
+      # Job-level env cannot use the env context; keep the mj suffix in lockstep with
+      # workflow env MUJOCO_VERSIONS (used in steps below).
+      IMAGE: ubiagni/mujoco_ros:${{ matrix.ROS_DISTRO }}-ci-mj4.0.1
 
     steps:
       - name: Check for apt updates
