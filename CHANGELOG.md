@@ -8,7 +8,11 @@
 
 ### Changed
 * [patch] Laser publishes through the sensor stream hub on a custom hub (feat/mujoco-ros-compound-sensors)
-* [chore] Document compounds, CamProjection, and GeomFromTo in `docs/plugins/sensors.rst` (feat/mujoco-ros-compound-sensors)
+* [chore] Document compounds, CamProjection, GeomFromTo, native `update_rate`, and subscriber-gated publish in `docs/plugins/sensors.rst` (feat/mujoco-ros-compound-sensors)
+* [chore] Call docker workflows with a no-op refresh on PRs so reusable-job skips do not empty the ROS CI matrix (hybrid-devel)
+
+### Fixed
+* [patch] Block on pause (`TogglePaused(blocking)` / `pauseBlocking()`) so free-run sensor, laser, and mocap publish counts stay exact (hybrid-devel)
 
 <a name="2.1.0"></a>
 ## [2.1.0] - 2026-11-05
