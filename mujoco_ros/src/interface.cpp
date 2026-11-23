@@ -44,7 +44,12 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
+#include <cstdio>
 #include <cstring>
+#include <limits>
+#include <sstream>
+#include <string>
 #include <cmath>
 #include <stdexcept>
 #include <thread>
@@ -278,16 +283,49 @@ bool MujocoEnv::Step(int num_steps /* = 1*/, bool blocking /* = true*/)
 	return middleware_core_->Step(num_steps, blocking);
 }
 
+namespace {
+void CopyStatusMessage(char *status_message, const int status_sz, const std::string &message)
+{
+	if (status_message == nullptr || status_sz <= 0) {
+		return;
+	}
+	std::snprintf(status_message, static_cast<std::size_t>(status_sz), "%s", message.c_str());
+}
+} // namespace
+
 void MujocoEnv::UpdateModelFlags(const mjOption *opt)
 {
-	std::unique_lock<std::recursive_mutex> lock(physics_thread_mutex_);
-	// Physics flags
-	model_->opt.disableflags = opt->disableflags;
-	model_->opt.enableflags  = opt->enableflags;
-
-	// Enabled actuator groups
-	model_->opt.disableactuator = opt->disableactuator;
-	settings_.settings_changed.store(1);
+	const RuntimeOptionsSnapshot flags          = ReadRuntimeOptions(*opt);
+	const std::vector<RuntimeOptionInput> input = {
+		{ "constraint_disabled", flags.constraint_disabled },
+		{ "equality_disabled", flags.equality_disabled },
+		{ "frictionloss_disabled", flags.frictionloss_disabled },
+		{ "limit_disabled", flags.limit_disabled },
+		{ "contact_disabled", flags.contact_disabled },
+		{ "passive_disabled", flags.passive_disabled },
+		{ "gravity_disabled", flags.gravity_disabled },
+		{ "clampctrl_disabled", flags.clampctrl_disabled },
+		{ "warmstart_disabled", flags.warmstart_disabled },
+		{ "filterparent_disabled", flags.filterparent_disabled },
+		{ "actuation_disabled", flags.actuation_disabled },
+		{ "refsafe_disabled", flags.refsafe_disabled },
+		{ "sensor_disabled", flags.sensor_disabled },
+		{ "midphase_disabled", flags.midphase_disabled },
+		{ "eulerdamp_disabled", flags.eulerdamp_disabled },
+		{ "override_contacts", flags.override_contacts },
+		{ "energy", flags.energy },
+		{ "fwd_inv", flags.fwd_inv },
+		{ "inv_discrete", flags.inv_discrete },
+		{ "multiccd", flags.multiccd },
+		{ "island", flags.island },
+		{ "disableactuator", static_cast<std::int64_t>(flags.disableactuator) },
+	};
+	const auto result = middleware_core().ApplyRuntimeOptions(input);
+	if (!result.ok()) {
+		const std::string reason = result.error ? result.error->field + ": " + result.error->message : "unknown error";
+		MJR_ERROR_STREAM("UpdateModelFlags rejected by Runtime Options: " << reason);
+		throw std::runtime_error("UpdateModelFlags rejected by Runtime Options: " + reason);
+	}
 }
 
 void MujocoEnv::SetJointPosition(const double &pos, const int &joint_id, const int &jnt_axis /*= 0*/)
@@ -637,16 +675,21 @@ bool MujocoEnv::SetGravity(const mjtNum *gravity, const std::string &admin_hash,
 	if (!VerifyAdminHash(admin_hash)) {
 		std::string message = "Unauthorized gravity request detected. Ignoring request";
 		MJR_ERROR_STREAM(message);
-		if (status_message != nullptr) {
-			std::strncpy(status_message, message.c_str(), status_sz);
-		}
+		CopyStatusMessage(status_message, status_sz, message);
 		return false;
 	}
 
-	// Lock mutex to prevent updating gravity during a step
-	RecursiveLock sim_lock(physics_thread_mutex_);
-	mju_copy(model_->opt.gravity, gravity, 3);
-	settings_.settings_changed.store(1);
+	std::ostringstream gravity_value;
+	gravity_value.precision(std::numeric_limits<double>::max_digits10);
+	gravity_value << gravity[0] << " " << gravity[1] << " " << gravity[2];
+	const auto result = middleware_core().ApplyRuntimeOptions({ { "gravity", gravity_value.str() } });
+	if (!result.ok()) {
+		const std::string message =
+		    result.error ? "Gravity rejected: " + result.error->field + ": " + result.error->message : "Gravity rejected";
+		MJR_ERROR_STREAM(message);
+		CopyStatusMessage(status_message, status_sz, message);
+		return false;
+	}
 	return true;
 }
 
@@ -656,15 +699,21 @@ bool MujocoEnv::GetGravity(mjtNum *gravity, const std::string &admin_hash, char 
 	if (!VerifyAdminHash(admin_hash)) {
 		std::string message = "Unauthorized gravity request detected. Ignoring request";
 		MJR_ERROR_STREAM(message);
-		if (status_message != nullptr) {
-			std::strncpy(status_message, message.c_str(), status_sz);
-		}
+		CopyStatusMessage(status_message, status_sz, message);
 		return false;
 	}
 
-	// Lock mutex to get data within one step
-	RecursiveLock sim_lock(physics_thread_mutex_);
-	mju_copy(gravity, model_->opt.gravity, 3);
+	const auto result = middleware_core().GetRuntimeOptions();
+	if (!result.ok()) {
+		const std::string message =
+		    result.error ? "Gravity unavailable: " + result.error->message : "Gravity unavailable";
+		MJR_ERROR_STREAM(message);
+		CopyStatusMessage(status_message, status_sz, message);
+		return false;
+	}
+	for (int i = 0; i < 3; ++i) {
+		gravity[i] = result.effective->gravity[i];
+	}
 	return true;
 }
 

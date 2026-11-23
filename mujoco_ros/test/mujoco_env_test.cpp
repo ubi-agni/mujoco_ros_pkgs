@@ -3153,6 +3153,66 @@ TEST_F(BaseEnvFixture, RuntimeOptionsTransactionsAdvanceEpochAndRollback)
 	env_ptr->shutdown();
 }
 
+TEST_F(BaseEnvFixture, SetGravityRoutesThroughRuntimeOptionsEpoch)
+{
+	nh->setParam("unpause", false);
+	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	env_ptr->StartWithXML(testing::get_test_model_path("empty_world.xml"));
+
+	const auto before = env_ptr->GetRuntimeOptions();
+	ASSERT_TRUE(before.ok());
+
+	const mjtNum gravity[3]              = { 0.0, -3.0, 1.5 };
+	char status[MujocoEnv::kErrorLength] = {};
+	ASSERT_TRUE(env_ptr->SetGravity(gravity, "", status, MujocoEnv::kErrorLength)) << status;
+
+	const auto after = env_ptr->GetRuntimeOptions();
+	ASSERT_TRUE(after.ok());
+	EXPECT_EQ(after.epoch.value(), before.epoch.value() + 1);
+	EXPECT_EQ(after.effective->gravity, (std::array<double, 3>{ 0.0, -3.0, 1.5 }));
+	EXPECT_DOUBLE_EQ(env_ptr->getModelPtr()->opt.gravity[1], -3.0);
+
+	mjtNum read[3] = {};
+	ASSERT_TRUE(env_ptr->GetGravity(read, "", status, MujocoEnv::kErrorLength)) << status;
+	EXPECT_DOUBLE_EQ(read[2], 1.5);
+
+	// Non-finite gravity is rejected by Runtime Options validation and leaves state untouched.
+	const mjtNum bad[3] = { 0.0, std::numeric_limits<double>::quiet_NaN(), 0.0 };
+	EXPECT_FALSE(env_ptr->SetGravity(bad, "", status, MujocoEnv::kErrorLength));
+	EXPECT_NE(std::string(status), "");
+	const auto unchanged = env_ptr->GetRuntimeOptions();
+	EXPECT_EQ(unchanged.epoch, after.epoch);
+	EXPECT_EQ(unchanged.effective, after.effective);
+
+	env_ptr->shutdown();
+}
+
+TEST_F(BaseEnvFixture, UpdateModelFlagsRoutesThroughRuntimeOptionsEpoch)
+{
+	nh->setParam("unpause", false);
+	env_ptr = std::make_unique<MujocoEnvTestWrapper>("", nh.get());
+	env_ptr->StartWithXML(testing::get_test_model_path("empty_world.xml"));
+
+	const auto before = env_ptr->GetRuntimeOptions();
+	ASSERT_TRUE(before.ok());
+
+	mjOption viewer_opt = env_ptr->getModelPtr()->opt;
+	viewer_opt.disableflags |= mjDSBL_GRAVITY;
+	viewer_opt.enableflags |= mjENBL_ENERGY;
+	viewer_opt.disableactuator = 0x6;
+	env_ptr->UpdateModelFlags(&viewer_opt);
+
+	const auto after = env_ptr->GetRuntimeOptions();
+	ASSERT_TRUE(after.ok());
+	EXPECT_EQ(after.epoch.value(), before.epoch.value() + 1);
+	EXPECT_TRUE(after.effective->gravity_disabled);
+	EXPECT_TRUE(after.effective->energy);
+	EXPECT_EQ(after.effective->disableactuator, 0x6);
+	EXPECT_EQ(env_ptr->getModelPtr()->opt.disableactuator, 0x6);
+
+	env_ptr->shutdown();
+}
+
 TEST_F(BaseEnvFixture, RuntimeOptionPatchKeepsModelAutoresetDisabled)
 {
 	nh->setParam("unpause", false);

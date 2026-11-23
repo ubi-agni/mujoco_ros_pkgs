@@ -36,6 +36,7 @@ TEST(RuntimeOptions, ReadsAndWritesEveryNamedField)
 	expected.cone                  = 0;
 	expected.jacobian              = 1;
 	expected.solver                = 2;
+	expected.disableactuator       = 0x5;
 	expected.timestep              = 0.002;
 	expected.iterations            = 50;
 	expected.tolerance             = 2e-8;
@@ -134,6 +135,18 @@ TEST(RuntimeOptions, WriteKeepsPartiallyDisabledPassiveForces)
 	}
 }
 
+TEST(RuntimeOptions, DisableActuatorRoundTripsThroughOption)
+{
+	mjOption option;
+	mj_defaultOption(&option);
+	option.disableactuator = 0b1010;
+	auto snapshot          = ReadRuntimeOptions(option);
+	EXPECT_EQ(snapshot.disableactuator, 0b1010);
+	snapshot.disableactuator = 0b0101;
+	WriteRuntimeOptions(snapshot, option);
+	EXPECT_EQ(option.disableactuator, 0b0101);
+}
+
 TEST(RuntimeOptions, AcceptsEveryIntegratorUpToDiscrete)
 {
 	for (int integrator = mjINT_EULER; integrator <= mjINT_DISCRETE; ++integrator) {
@@ -216,6 +229,7 @@ TEST(RuntimeOptions, ParsesAllTransportKindsAndLegacyArrayNames)
 	    { "timestep", 0.002 },
 	    { "iterations", std::int64_t(50) },
 	    { "gravity", std::string("1 2 3") },
+	    { "disableactuator", std::int64_t(6) },
 	    { "constraint_disabled", true },
 	});
 	ASSERT_TRUE(parsed.ok());
@@ -225,6 +239,7 @@ TEST(RuntimeOptions, ParsesAllTransportKindsAndLegacyArrayNames)
 	EXPECT_EQ(merged.integrator, 2);
 	EXPECT_DOUBLE_EQ(merged.timestep, 0.002);
 	EXPECT_EQ(merged.iterations, 50);
+	EXPECT_EQ(merged.disableactuator, 6);
 	EXPECT_EQ(merged.gravity, (std::array<double, 3>{ 1, 2, 3 }));
 	EXPECT_TRUE(merged.constraint_disabled);
 }
@@ -254,6 +269,12 @@ TEST(RuntimeOptions, RejectsInvalidDomainsWithFieldSpecificErrors)
 		  [] {
 		     RuntimeOptionsSnapshot value;
 		     value.solver = 3;
+		     return value;
+		  }() },
+		{ "disableactuator",
+		  [] {
+		     RuntimeOptionsSnapshot value;
+		     value.disableactuator = -1;
 		     return value;
 		  }() },
 		{ "iterations",
@@ -418,6 +439,8 @@ TEST(RuntimeOptions, RejectsUnknownFieldsAndWrongTransportTypes)
 	         { "iterations", true },
 	         { "energy", 1.0 },
 	         { "cone", std::numeric_limits<std::int64_t>::max() },
+	         { "disableactuator", true },
+	         { "disableactuator", 1.0 },
 	     }) {
 		const auto result = ParseRuntimeOptionsPatch({ input });
 		EXPECT_FALSE(result.ok());

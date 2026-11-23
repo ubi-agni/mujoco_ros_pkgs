@@ -152,6 +152,7 @@ RuntimeOptionsSnapshot ReadRuntimeOptions(const mjOption &option)
 	result.cone              = option.cone;
 	result.jacobian          = option.jacobian;
 	result.solver            = option.solver;
+	result.disableactuator   = option.disableactuator;
 	result.timestep          = option.timestep;
 	result.iterations        = option.iterations;
 	result.tolerance         = option.tolerance;
@@ -205,7 +206,8 @@ RuntimeOptionsPatchResult ParseRuntimeOptionsPatch(const std::vector<RuntimeOpti
 		const auto type_error = [&item](const char *expected) {
 			return RejectPatch(item.field, "expected " + std::string(expected));
 		};
-		if (item.field == "integrator" || item.field == "cone" || item.field == "jacobian" || item.field == "solver") {
+		if (item.field == "integrator" || item.field == "cone" || item.field == "jacobian" || item.field == "solver" ||
+		    item.field == "disableactuator") {
 			int value = 0;
 			if (!ReadInteger(item, value))
 				return type_error("integer");
@@ -215,6 +217,8 @@ RuntimeOptionsPatchResult ParseRuntimeOptionsPatch(const std::vector<RuntimeOpti
 				patch.cone = value;
 			else if (item.field == "jacobian")
 				patch.jacobian = value;
+			else if (item.field == "disableactuator")
+				patch.disableactuator = value;
 			else
 				patch.solver = value;
 			continue;
@@ -357,6 +361,8 @@ RuntimeOptionsValidationResult ValidateRuntimeOptions(const RuntimeOptionsSnapsh
 		return RejectValidation("jacobian", "must be in range 0..2");
 	if (snapshot.solver < 0 || snapshot.solver > 2)
 		return RejectValidation("solver", "must be in range 0..2");
+	if (snapshot.disableactuator < 0)
+		return RejectValidation("disableactuator", "must be nonnegative");
 	if (!Finite(snapshot.timestep) || snapshot.timestep <= 0)
 		return RejectValidation("timestep", "must be finite and positive");
 	if (snapshot.iterations < 1)
@@ -422,6 +428,7 @@ RuntimeOptionsSnapshot MergeRuntimeOptions(const RuntimeOptionsSnapshot &base, c
 	RUNTIME_OPTION_MERGE(cone);
 	RUNTIME_OPTION_MERGE(jacobian);
 	RUNTIME_OPTION_MERGE(solver);
+	RUNTIME_OPTION_MERGE(disableactuator);
 	RUNTIME_OPTION_MERGE(timestep);
 	RUNTIME_OPTION_MERGE(iterations);
 	RUNTIME_OPTION_MERGE(tolerance);
@@ -478,6 +485,7 @@ void WriteRuntimeOptions(const RuntimeOptionsSnapshot &snapshot, mjOption &optio
 	option.cone              = snapshot.cone;
 	option.jacobian          = snapshot.jacobian;
 	option.solver            = snapshot.solver;
+	option.disableactuator   = snapshot.disableactuator;
 	option.timestep          = snapshot.timestep;
 	option.iterations        = snapshot.iterations;
 	option.tolerance         = snapshot.tolerance;

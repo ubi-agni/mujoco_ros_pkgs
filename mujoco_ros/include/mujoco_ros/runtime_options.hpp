@@ -24,10 +24,11 @@ struct RuntimeOptionInput
 
 struct RuntimeOptionsSnapshot
 {
-	int integrator = mjINT_EULER;
-	int cone       = mjCONE_ELLIPTIC;
-	int jacobian   = mjJAC_AUTO;
-	int solver     = mjSOL_NEWTON;
+	int integrator      = mjINT_EULER;
+	int cone            = mjCONE_ELLIPTIC;
+	int jacobian        = mjJAC_AUTO;
+	int solver          = mjSOL_NEWTON;
+	int disableactuator = 0;
 
 	double timestep         = 1e-3;
 	int iterations          = 100;
@@ -77,26 +78,26 @@ struct RuntimeOptionsSnapshot
 
 	friend bool operator==(const RuntimeOptionsSnapshot &lhs, const RuntimeOptionsSnapshot &rhs)
 	{
-		return std::tie(lhs.integrator, lhs.cone, lhs.jacobian, lhs.solver, lhs.timestep, lhs.iterations, lhs.tolerance,
-		                lhs.ls_iterations, lhs.ls_tolerance, lhs.noslip_iterations, lhs.noslip_tolerance,
-		                lhs.ccd_iterations, lhs.ccd_tolerance, lhs.sdf_iterations, lhs.sdf_initpoints, lhs.density,
-		                lhs.viscosity, lhs.impratio, lhs.margin, lhs.gravity, lhs.wind, lhs.magnetic, lhs.solimp,
-		                lhs.solref, lhs.friction, lhs.constraint_disabled, lhs.equality_disabled,
-		                lhs.frictionloss_disabled, lhs.limit_disabled, lhs.contact_disabled, lhs.passive_disabled,
-		                lhs.gravity_disabled, lhs.clampctrl_disabled, lhs.warmstart_disabled, lhs.filterparent_disabled,
-		                lhs.actuation_disabled, lhs.refsafe_disabled, lhs.sensor_disabled, lhs.midphase_disabled,
-		                lhs.eulerdamp_disabled, lhs.override_contacts, lhs.energy, lhs.fwd_inv, lhs.inv_discrete,
-		                lhs.multiccd, lhs.island) ==
-		       std::tie(rhs.integrator, rhs.cone, rhs.jacobian, rhs.solver, rhs.timestep, rhs.iterations, rhs.tolerance,
-		                rhs.ls_iterations, rhs.ls_tolerance, rhs.noslip_iterations, rhs.noslip_tolerance,
-		                rhs.ccd_iterations, rhs.ccd_tolerance, rhs.sdf_iterations, rhs.sdf_initpoints, rhs.density,
-		                rhs.viscosity, rhs.impratio, rhs.margin, rhs.gravity, rhs.wind, rhs.magnetic, rhs.solimp,
-		                rhs.solref, rhs.friction, rhs.constraint_disabled, rhs.equality_disabled,
-		                rhs.frictionloss_disabled, rhs.limit_disabled, rhs.contact_disabled, rhs.passive_disabled,
-		                rhs.gravity_disabled, rhs.clampctrl_disabled, rhs.warmstart_disabled, rhs.filterparent_disabled,
-		                rhs.actuation_disabled, rhs.refsafe_disabled, rhs.sensor_disabled, rhs.midphase_disabled,
-		                rhs.eulerdamp_disabled, rhs.override_contacts, rhs.energy, rhs.fwd_inv, rhs.inv_discrete,
-		                rhs.multiccd, rhs.island);
+		return std::tie(lhs.integrator, lhs.cone, lhs.jacobian, lhs.solver, lhs.disableactuator, lhs.timestep,
+		                lhs.iterations, lhs.tolerance, lhs.ls_iterations, lhs.ls_tolerance, lhs.noslip_iterations,
+		                lhs.noslip_tolerance, lhs.ccd_iterations, lhs.ccd_tolerance, lhs.sdf_iterations,
+		                lhs.sdf_initpoints, lhs.density, lhs.viscosity, lhs.impratio, lhs.margin, lhs.gravity, lhs.wind,
+		                lhs.magnetic, lhs.solimp, lhs.solref, lhs.friction, lhs.constraint_disabled,
+		                lhs.equality_disabled, lhs.frictionloss_disabled, lhs.limit_disabled, lhs.contact_disabled,
+		                lhs.passive_disabled, lhs.gravity_disabled, lhs.clampctrl_disabled, lhs.warmstart_disabled,
+		                lhs.filterparent_disabled, lhs.actuation_disabled, lhs.refsafe_disabled, lhs.sensor_disabled,
+		                lhs.midphase_disabled, lhs.eulerdamp_disabled, lhs.override_contacts, lhs.energy, lhs.fwd_inv,
+		                lhs.inv_discrete, lhs.multiccd, lhs.island) ==
+		       std::tie(rhs.integrator, rhs.cone, rhs.jacobian, rhs.solver, rhs.disableactuator, rhs.timestep,
+		                rhs.iterations, rhs.tolerance, rhs.ls_iterations, rhs.ls_tolerance, rhs.noslip_iterations,
+		                rhs.noslip_tolerance, rhs.ccd_iterations, rhs.ccd_tolerance, rhs.sdf_iterations,
+		                rhs.sdf_initpoints, rhs.density, rhs.viscosity, rhs.impratio, rhs.margin, rhs.gravity, rhs.wind,
+		                rhs.magnetic, rhs.solimp, rhs.solref, rhs.friction, rhs.constraint_disabled,
+		                rhs.equality_disabled, rhs.frictionloss_disabled, rhs.limit_disabled, rhs.contact_disabled,
+		                rhs.passive_disabled, rhs.gravity_disabled, rhs.clampctrl_disabled, rhs.warmstart_disabled,
+		                rhs.filterparent_disabled, rhs.actuation_disabled, rhs.refsafe_disabled, rhs.sensor_disabled,
+		                rhs.midphase_disabled, rhs.eulerdamp_disabled, rhs.override_contacts, rhs.energy, rhs.fwd_inv,
+		                rhs.inv_discrete, rhs.multiccd, rhs.island);
 	}
 };
 
@@ -106,6 +107,7 @@ struct RuntimeOptionsPatch
 	std::optional<int> cone;
 	std::optional<int> jacobian;
 	std::optional<int> solver;
+	std::optional<int> disableactuator;
 	std::optional<double> timestep;
 	std::optional<int> iterations;
 	std::optional<double> tolerance;
